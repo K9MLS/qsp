@@ -1,0 +1,433 @@
+/*
+ * QSP console shell behaviour.
+ *
+ * Two responsibilities in this phase: report the real health of the instance,
+ * and maintain the event stream connection.
+ *
+ * Nothing here invents data. When a value is unknown the UI says so rather than
+ * showing a plausible number.
+ *
+ * The stream protocol is described in internal/server/events.go. The important
+ * contract: a "resync" event means this client's view may be incomplete and it
+ * must discard local state and re-fetch. It is never ignored.
+ */
+(function () {
+  "use strict";
+
+  var HEALTH_POLL_MS = 15000;
+  var RECONNECT_MIN_MS = 1000;
+  var RECONNECT_MAX_MS = 30000;
+
+  var PEER_POLL_MS = 10000;
+
+  var healthPill = document.getElementById("health-pill");
+  var healthText = document.getElementById("health-text");
+  var streamState = document.getElementById("stream-state");
+
+  var trafficBody = document.getElementById("traffic-body");
+  var trafficNote = document.getElementById("traffic-note");
+
+  var callsBody = document.getElementById("calls-body");
+  var callsCount = document.getElementById("calls-count");
+
+  var peersBody = document.getElementById("peers-body");
+  var peersCount = document.getElementById("peers-count");
+  var knownPeerIds = {};
+  var firstPeerLoad = true;
+
+  var lastEventId = null;
+  var reconnectDelay = RECONNECT_MIN_MS;
+  var source = null;
+
+  var STATUS_CLASSES = [
+    "status--healthy",
+    "status--degraded",
+    "status--failing",
+    "status--unavailable"
+  ];
+
+  function setHealth(status, label) {
+    if (!healthPill || !healthText) {
+      return;
+    }
+    STATUS_CLASSES.forEach(function (cls) {
+      healthPill.classList.remove(cls);
+    });
+    healthPill.classList.add("status--" + status);
+    healthText.textContent = label;
+  }
+
+  function setStream(label) {
+    if (streamState) {
+      streamState.textContent = "Event stream: " + label;
+    }
+  }
+
+  function refreshHealth() {
+    fetch("/healthz", { headers: { Accept: "application/json" } })
+      .then(function (response) {
+        return response.json();
+      })
+      .then(function (report) {
+        var status = report && report.status ? report.status : "unavailable";
+        setHealth(status, status);
+      })
+      .catch(function () {
+        // The instance is unreachable. Say that, rather than leaving a stale
+        // status on screen implying everything is fine.
+        setHealth("failing", "Unreachable");
+      });
+  }
+
+  /* Escape text before it reaches innerHTML. Callsigns arrive from the
+   * network and are attacker-controlled; a peer could otherwise announce a
+   * callsign containing markup. */
+  function escapeText(value) {
+    return String(value === null || value === undefined ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function emptyState(title, body) {
+    return (
+      '<div class="empty">' +
+      '<svg class="empty__icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false">' +
+      '<path d="M16 6v6"/><circle cx="16" cy="14" r="2.6" fill="currentColor" stroke="none"/>' +
+      '<path d="M10.6 19.4a7.6 7.6 0 0 1 0-10.8M21.4 8.6a7.6 7.6 0 0 1 0 10.8"/></svg>' +
+      '<h3 class="empty__title">' + escapeText(title) + "</h3>" +
+      '<p class="empty__body">' + escapeText(body) + "</p></div>"
+    );
+  }
+
+  function statusPill(peer) {
+    var cls = peer.ready ? "status--healthy" : "status--degraded";
+    var glyph = peer.ready
+      ? '<path d="M2.6 6.2 5 8.6l4.4-4.8"/>'
+      : '<circle cx="6" cy="6" r="4.2"/><path d="M6 3.8v2.6"/>';
+    return (
+      '<span class="status ' + cls + '">' +
+      '<svg class="status__glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">' +
+      glyph + "</svg><span>" + escapeText(peer.state) + "</span></span>"
+    );
+  }
+
+  function renderPeers(payload) {
+    if (!peersBody) {
+      return;
+    }
+
+    if (!payload.enabled) {
+      peersCount.textContent = "disabled";
+      peersBody.innerHTML = emptyState(
+        "The DMR listener is not enabled",
+        payload.reason || "Set dmr.enabled in the configuration to accept peers."
+      );
+      return;
+    }
+
+    var list = payload.peers || [];
+    peersCount.textContent = list.length === 1 ? "1 connected" : list.length + " connected";
+
+    if (list.length === 0) {
+      peersBody.innerHTML = emptyState(
+        "No peers are connected",
+        "QSP is listening. Point a hotspot or repeater at it as a custom DMR " +
+          "master and it will appear here."
+      );
+      knownPeerIds = {};
+      firstPeerLoad = false;
+      return;
+    }
+
+    var rows = "";
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+      var p = list[i];
+      seen[p.id] = true;
+      /* Highlight only genuinely new arrivals, and never on first paint —
+       * animating the whole table on load would depict nothing real. */
+      var isNew = !firstPeerLoad && !knownPeerIds[p.id];
+      rows +=
+        '<tr class="' + (isNew ? "is-new" : "") + '">' +
+        '<td class="callsign">' + escapeText(p.callsign || "—") + "</td>" +
+        '<td class="mono">' + escapeText(p.id) + "</td>" +
+        "<td>" + statusPill(p) + "</td>" +
+        '<td class="mono">' + escapeText(p.connected_for || "—") + "</td>" +
+        '<td class="mono">' + escapeText(p.idle_for) + "</td>" +
+        '<td class="mono">' + escapeText(p.color_code || "—") + "</td>" +
+        '<td class="mono">' + escapeText(p.address) + "</td>" +
+        "</tr>";
+    }
+
+    peersBody.innerHTML =
+      '<div class="table-scroll"><table class="table">' +
+      "<caption>Peers currently registered with this master.</caption>" +
+      "<thead><tr>" +
+      "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
+      "<th scope=\"col\">State</th><th scope=\"col\">Connected</th>" +
+      "<th scope=\"col\">Idle</th><th scope=\"col\">CC</th>" +
+      "<th scope=\"col\">Address</th>" +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+
+    knownPeerIds = seen;
+    firstPeerLoad = false;
+  }
+
+  function metric(value, label, cls) {
+    return (
+      '<div class="metric ' + (cls || "") + '">' +
+      '<div class="metric__value">' + escapeText(value) + "</div>" +
+      '<div class="metric__label">' + escapeText(label) + "</div></div>"
+    );
+  }
+
+  function renderTraffic(payload) {
+    if (!trafficBody) {
+      return;
+    }
+    if (!payload.enabled) {
+      trafficNote.textContent = "disabled";
+      trafficBody.innerHTML = emptyState(
+        "The DMR listener is not enabled",
+        payload.reason || "Set dmr.enabled in the configuration to accept peers."
+      );
+      return;
+    }
+
+    var t = payload.traffic || {};
+    var inCount = t.datagrams_in || 0;
+    var frames = t.frames_accepted || 0;
+    var peers = (payload.peers || []).length;
+
+    trafficNote.textContent = "since start";
+    trafficBody.innerHTML =
+      '<div class="metrics">' +
+      metric(inCount, "datagrams in") +
+      metric(t.datagrams_out || 0, "datagrams out") +
+      metric(t.dropped || 0, "dropped", (t.dropped || 0) > 0 ? "metric--warn" : "metric--muted") +
+      metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
+      metric(t.frames_forwarded || 0, "forwarded", (t.frames_forwarded || 0) === 0 ? "metric--muted" : "") +
+      metric(t.collisions || 0, "collisions", (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
+      "</div>";
+
+    /* The case that cost an evening: a peer connected and sending keepalives,
+     * whose voice frames never arrive. The peer table looks healthy and Last
+     * heard looks empty, which is indistinguishable from nobody talking. */
+    if (peers > 0 && inCount > 20 && frames === 0) {
+      trafficBody.innerHTML +=
+        '<p class="hint">Datagrams are arriving but no voice frames have been ' +
+        "accepted. That pattern is keepalives only \u2014 the peer is connected, but " +
+        "its transmissions are not reaching QSP. Check that the sending side is " +
+        "configured to route a talkgroup to this network.</p>";
+    }
+  }
+
+  function callRow(call, live) {
+    var who = live
+      ? '<span class="live-dot" aria-hidden="true"></span> <span class="callsign">' +
+        escapeText(call.source) + "</span>"
+      : '<span class="callsign">' + escapeText(call.source) + "</span>";
+    var kind = call.group ? "TG " + escapeText(call.target) : "DM " + escapeText(call.target);
+    var flags = call.lost
+      ? ' <span class="tag tag--lost" title="ended without a terminator">no terminator</span>'
+      : "";
+    return (
+      "<tr>" +
+      "<td>" + who + "</td>" +
+      '<td class="mono">' + kind + "</td>" +
+      '<td class="mono">TS' + escapeText(call.timeslot) + "</td>" +
+      '<td class="mono">' + escapeText(call.duration) + "</td>" +
+      '<td class="mono">' + escapeText(call.frames) + "</td>" +
+      '<td class="mono">' + escapeText(live ? "now" : call.ago || "—") + flags + "</td>" +
+      "</tr>"
+    );
+  }
+
+  function renderCalls(payload) {
+    if (!callsBody) {
+      return;
+    }
+    if (!payload.enabled) {
+      callsCount.textContent = "disabled";
+      callsBody.innerHTML = emptyState(
+        "The DMR listener is not enabled",
+        "No transmissions can be observed until peers can connect."
+      );
+      return;
+    }
+
+    var active = payload.active_calls || [];
+    var recent = payload.recent_calls || [];
+
+    if (active.length === 0 && recent.length === 0) {
+      callsCount.textContent = "quiet";
+      callsBody.innerHTML = emptyState(
+        "Nothing heard yet",
+        "When a connected peer keys up, the transmission appears here."
+      );
+      return;
+    }
+
+    callsCount.textContent =
+      active.length > 0
+        ? active.length === 1
+          ? "1 transmitting"
+          : active.length + " transmitting"
+        : recent.length + " recent";
+
+    var rows = "";
+    var i;
+    for (i = 0; i < active.length; i++) {
+      rows += callRow(active[i], true);
+    }
+    for (i = 0; i < recent.length; i++) {
+      rows += callRow(recent[i], false);
+    }
+
+    callsBody.innerHTML =
+      '<div class="table-scroll"><table class="table">' +
+      "<caption>Transmissions observed by this master. Nothing is forwarded.</caption>" +
+      "<thead><tr>" +
+      '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
+      '<th scope="col">Slot</th><th scope="col">Duration</th>' +
+      '<th scope="col">Frames</th><th scope="col">When</th>' +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+  }
+
+  function refreshPeers() {
+    fetch("/api/peers", { headers: { Accept: "application/json" } })
+      .then(function (response) {
+        return response.json();
+      })
+      .then(function (payload) {
+        renderPeers(payload);
+        renderCalls(payload);
+        renderTraffic(payload);
+      })
+      .catch(function () {
+        if (trafficBody) {
+          trafficNote.textContent = "unknown";
+          trafficBody.innerHTML = "";
+        }
+        if (peersBody) {
+          peersCount.textContent = "unknown";
+          peersBody.innerHTML = emptyState(
+            "Cannot reach QSP",
+            "The peer list could not be loaded. It may be stale or wrong."
+          );
+        }
+      });
+  }
+
+  /*
+   * Discard local state and re-fetch. There is no local state to discard in
+   * this phase, so the handler refreshes health and records that a resync
+   * happened. When views hold state, they clear it here.
+   */
+  function resync(reason) {
+    setStream("resynchronised");
+    if (reason && window.console && window.console.info) {
+      window.console.info("QSP resync: " + reason);
+    }
+    /* Local state is discarded: after a gap we cannot know which peers are
+     * genuinely new, so the next render must not animate arrivals. */
+    knownPeerIds = {};
+    firstPeerLoad = true;
+    refreshHealth();
+    refreshPeers();
+  }
+
+  function connect() {
+    if (source) {
+      source.close();
+    }
+
+    var url = "/api/events";
+    if (lastEventId !== null) {
+      url += "?last_event_id=" + encodeURIComponent(lastEventId);
+    }
+
+    source = new EventSource(url);
+
+    source.addEventListener("open", function () {
+      reconnectDelay = RECONNECT_MIN_MS;
+      setStream("connected");
+    });
+
+    source.addEventListener("resync", function (event) {
+      var reason = "";
+      try {
+        reason = JSON.parse(event.data).reason;
+      } catch (err) {
+        reason = "unspecified";
+      }
+      resync(reason);
+    });
+
+    source.addEventListener("health.changed", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+      refreshHealth();
+    });
+
+    /* Peer changes are event-driven; the poll below is only a safety net for a
+     * stalled stream, not the primary update path. */
+    source.addEventListener("peer.connected", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+      refreshPeers();
+    });
+
+    source.addEventListener("peer.disconnected", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+      refreshPeers();
+    });
+
+    source.addEventListener("call.started", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+      refreshPeers();
+    });
+
+    source.addEventListener("call.ended", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+      refreshPeers();
+    });
+
+    source.addEventListener("message", function (event) {
+      if (event.lastEventId) {
+        lastEventId = event.lastEventId;
+      }
+    });
+
+    source.addEventListener("error", function () {
+      // EventSource reconnects on its own, but without our Last-Event-ID
+      // parameter. Closing and reconnecting manually preserves the position so
+      // the server can tell us whether we missed anything.
+      setStream("reconnecting");
+      source.close();
+      window.setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_MS);
+    });
+  }
+
+  refreshHealth();
+  refreshPeers();
+  window.setInterval(refreshHealth, HEALTH_POLL_MS);
+  /* Idle times tick upward with no event to announce it, so the table needs a
+   * slow refresh even when nothing has changed. */
+  window.setInterval(refreshPeers, PEER_POLL_MS);
+  connect();
+})();

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QSP Console</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/mark.svg">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <span class="status status--unavailable" id="health-pill">
+      <svg class="status__glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+           stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+        <circle cx="6" cy="6" r="4.4"/>
+        <path d="M6 3.6v2.8"/>
+      </svg>
+      <span id="health-text">Checking</span>
+    </span>
+
+    <div class="topbar__meta">
+      <span class="stream">
+        <svg class="status__glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor"
+             stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+          <path d="M2.4 7.2a3.6 3.6 0 0 1 7.2 0"/>
+          <circle cx="6" cy="9" r="0.9" fill="currentColor" stroke="none"/>
+        </svg>
+        <span class="stream__label" id="stream-state">Event stream: connecting</span>
+      </span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li>
+        <a class="nav__link" href="/" aria-current="page">
+          <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M2.5 10.5 10 3.5l7.5 7"/>
+            <path d="M4.5 9v7.5h11V9"/>
+          </svg>
+          <span>Overview</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav__link" href="#peers">
+          <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M10 3.2v3.4"/>
+            <circle cx="10" cy="8.4" r="1.7" fill="currentColor" stroke="none"/>
+            <path d="M6.6 11.8a4.8 4.8 0 0 1 0-6.8M13.4 5a4.8 4.8 0 0 1 0 6.8"/>
+            <path d="M4.2 14.2a8.4 8.4 0 0 1 0-11.6M15.8 2.6a8.4 8.4 0 0 1 0 11.6"/>
+          </svg>
+          <span>Peers</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav__link" href="#calls">
+          <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M4.5 7.5v5M8 4.5v11M11.5 6.5v7M15 9v2"/>
+          </svg>
+          <span>Last heard</span>
+        </a>
+      </li>
+      <li>
+        <a class="nav__link" href="/healthz">
+          <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M2.5 10.5h3.2l1.8-4.4 2.6 8.8 2-4.4h5.4"/>
+          </svg>
+          <span>Health</span>
+        </a>
+      </li>
+    </ul>
+
+    <p class="nav__heading" id="nav-planned">Not yet built</p>
+    <ul class="nav__group" aria-labelledby="nav-planned">
+      <li>
+        <span class="nav__link" aria-disabled="true">
+          <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <rect x="2.6" y="6" width="14.8" height="8" rx="2"/>
+            <path d="M6 6V4.2M14 6V4.2M6.4 10h1.8M11.8 10h1.8"/>
+          </svg>
+          <span>Vocoder pool</span>
+          <span class="nav__phase">P5</span>
+        </span>
+      </li>
+    </ul>
+  </nav>
+
+  <main class="main" id="main">
+    <h1 class="page__title">Overview</h1>
+    <p class="page__lede">
+      QSP accepts DMR peers, observes their traffic, and relays it between
+      bridged talkgroups on a schedule. Forwarding and scheduling are configured
+      per instance and may be switched off; the panels below show what this
+      instance is actually doing.
+    </p>
+
+    <section class="panel" id="traffic" aria-labelledby="traffic-title" style="margin-bottom: var(--space-5)">
+      <div class="panel__head">
+        <h2 class="panel__title" id="traffic-title">Traffic</h2>
+        <span class="panel__count" id="traffic-note">&mdash;</span>
+      </div>
+      <div id="traffic-body" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" id="peers" aria-labelledby="peers-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="peers-title">Connected peers</h2>
+        <span class="panel__count" id="peers-count">&mdash;</span>
+      </div>
+
+      <div id="peers-body" aria-live="polite">
+        <div class="empty">
+          <svg class="empty__icon" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true" focusable="false">
+            <path d="M16 6v6"/>
+            <circle cx="16" cy="14" r="2.6" fill="currentColor" stroke="none"/>
+            <path d="M10.6 19.4a7.6 7.6 0 0 1 0-10.8M21.4 8.6a7.6 7.6 0 0 1 0 10.8"/>
+          </svg>
+          <h3 class="empty__title">Loading</h3>
+          <p class="empty__body">Fetching the current peer list.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="calls" aria-labelledby="calls-title" style="margin-top: var(--space-5)">
+      <div class="panel__head">
+        <h2 class="panel__title" id="calls-title">Last heard</h2>
+        <span class="panel__count" id="calls-count">&mdash;</span>
+      </div>
+      <div id="calls-body" aria-live="polite">
+        <div class="empty">
+          <svg class="empty__icon" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" aria-hidden="true" focusable="false">
+            <path d="M8 12v8M13 8v16M18 11v10M23 14v4"/>
+          </svg>
+          <h3 class="empty__title">Loading</h3>
+          <p class="empty__body">Fetching recent activity.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="empty" aria-labelledby="routing-title" style="margin-top: var(--space-5)">
+      <svg class="empty__icon" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+           stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+           aria-hidden="true" focusable="false">
+        <rect x="4" y="7" width="24" height="18" rx="3"/>
+        <path d="M9 13h6M9 17h10M9 21h4"/>
+      </svg>
+      <h2 class="empty__title" id="routing-title">Forwarding is off</h2>
+      <p class="empty__body">
+        Transmissions above are observed and discarded, not relayed. Set
+        <code>dmr.forwarding</code> and configure at least one bridge to link
+        talkgroups between peers.
+      </p>
+    </section>
+  </main>
+
+</div>
+
+<script src="/console.js"></script>
+</body>
+</html>

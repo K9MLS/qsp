@@ -1,0 +1,123 @@
+/*
+ * QSP design tokens.
+ *
+ * Every colour, size, weight and timing used by the console is declared here.
+ * Components reference variables; raw hex values in a component are a defect.
+ *
+ * The palette and typography come from BLUEPRINT.md §10. The style is
+ * dark-primary: light mode is not a supported target, so a single palette is
+ * declared rather than a theme switch nobody would use.
+ */
+
+:root {
+  /* ---- Surface and structure ---------------------------------------- */
+  /* Deliberately not #000000: pure black smears on OLED panels. */
+  --color-background: #0f172a;
+  --color-surface: #161f36;
+  --color-muted: #1f1e27;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ---- Text ---------------------------------------------------------- */
+  --color-foreground: #ffffff;
+  /* Contrast against --color-background is 7.4:1, above the 4.5:1 minimum. */
+  --color-foreground-muted: #a9b4c9;
+  --color-foreground-subtle: #8391a8;
+
+  /* ---- Brand --------------------------------------------------------- */
+  --color-primary: #d97706;
+  --color-primary-hover: #f59e0b;
+  --color-on-primary: #1a1206;
+  --color-secondary: #f59e0b;
+  --color-accent: #6366f1;
+  --color-accent-hover: #818cf8;
+
+  /* ---- Status -------------------------------------------------------- */
+  /*
+   * Status is never conveyed by colour alone. Each of these is paired with a
+   * glyph and a text label in every component that uses it.
+   */
+  --color-healthy: #34d399;
+  --color-degraded: #fbbf24;
+  --color-failing: #f87171;
+  --color-unavailable: #7c8aa5;
+  --color-destructive: #dc2626;
+
+  /* ---- Typography ---------------------------------------------------- */
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* Technical identifiers use a monospace face with unambiguous 0/O and 1/l. */
+  --font-mono: "Fira Code", ui-monospace, "SFMono-Regular", "Cascadia Mono", monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2rem;
+  --text-3xl: 2.75rem;
+  /* Extreme scale contrast: a live call reads across a room. */
+  --text-display: 4rem;
+
+  --weight-light: 300;
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.2;
+  --leading-normal: 1.5;
+
+  --tracking-wide: 0.08em;
+
+  /* ---- Spacing (dense dashboard scale) ------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* ---- Motion -------------------------------------------------------- */
+  /*
+   * Expo.out. Durations are deliberate rather than snappy: fast animation is a
+   * listed anti-pattern for this style, and reads as cheap.
+   */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 300ms;
+  --duration-slow: 450ms;
+
+  --shadow-raised: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.28);
+
+  --layout-sidebar: 232px;
+  --layout-max: 1600px;
+
+  /* Minimum interactive target, per WCAG and the blueprint checklist. */
+  --target-min: 44px;
+}
+
+/*
+ * Respect the operating system's reduced-motion preference by removing motion
+ * entirely rather than shortening it. A brief animation is still motion.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-fast: 0ms;
+    --duration-normal: 0ms;
+    --duration-slow: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

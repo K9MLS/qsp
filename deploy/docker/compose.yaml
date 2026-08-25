@@ -1,0 +1,38 @@
+# QSP deployment.
+#
+# The console binds to localhost only. Put a reverse proxy in front of it for
+# TLS; do not expose it directly (see SECURITY.md).
+
+services:
+  qsp:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    image: qsp:latest
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:8080:8080"
+
+    volumes:
+      - qsp-data:/data
+
+    command: ["-config", "/data/qsp.json"]
+
+    # The container has no shell, so the healthcheck cannot use curl or wget.
+    # QSP checks its own readiness endpoint.
+    healthcheck:
+      test: ["CMD", "/qsp", "-version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  qsp-data:

@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same branch: CI should tell you about the
+# commit you just pushed, not the three before it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.22"
+  # Pinned: ADR-0004's reproducibility argument applies to the toolchain too.
+  # An unpinned @latest lets an upstream release turn a green commit red without
+  # a line of QSP changing. Bump deliberately, in its own commit.
+  STATICCHECK_VERSION: "2024.1.1"
+
+jobs:
+  build:
+    name: Build and vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo "Run: gofmt -w ."
+            exit 1
+          fi
+
+      - name: Verify go.mod is tidy
+        run: |
+          cp go.mod go.mod.bak
+          go mod tidy
+          if ! diff -q go.mod go.mod.bak > /dev/null; then
+            echo "go.mod is not tidy. Run: go mod tidy"
+            diff go.mod.bak go.mod || true
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+  race:
+    name: Race detector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Blocking, not advisory. This has already caught a real defect:
+      # a send-on-closed-channel window in the event bus.
+      - name: Test with race detector
+        run: go test -race ./...
+
+  docs:
+    name: Documentation accuracy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Its own job so that stale prose is named on the summary page rather than
+      # buried in the test log. This project has shipped documentation
+      # describing a build that no longer existed four times; see
+      # cmd/qsp/docaccuracy_test.go.
+      - name: Check documentation against the code
+        run: go test ./cmd/qsp/ -run 'TestDocumented|TestEmptiness|TestNothingClaims|TestUnbuilt' -v
+
+  staticcheck:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@${{ env.STATICCHECK_VERSION }}
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+  cross-compile:
+    name: Cross-compile
+    runs-on: ubuntu-latest
+    # ADR-0001 and ADR-0009: the core must stay pure Go and cross-compilable to
+    # every target from one machine. CGO_ENABLED=0 makes a cgo dependency fail
+    # here rather than at a user's install.
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: linux
+            goarch: arm
+            goarm: "7"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+        run: go build -trimpath -o /dev/null ./cmd/qsp

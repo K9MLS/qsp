@@ -1,0 +1,522 @@
+/*
+ * QSP console shell.
+ *
+ * Layout, navigation and empty states only. No component here renders data,
+ * because no data source exists yet; the empty states are the real UI for this
+ * phase, not a placeholder for one.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  /* Never disable zoom. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-normal);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Focus ---------------------------------------------------------- */
+/*
+ * Focus rings are never removed. :focus-visible keeps them out of the way of
+ * pointer users while guaranteeing they exist for keyboard users.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-accent-hover);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: -4rem;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--color-accent);
+  color: var(--color-foreground);
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: top var(--duration-fast) var(--ease-out-expo);
+}
+
+.skip-link:focus {
+  top: var(--space-3);
+}
+
+/* ---- Shell ---------------------------------------------------------- */
+.shell {
+  display: grid;
+  grid-template-columns: var(--layout-sidebar) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    "brand  topbar"
+    "nav    main";
+  min-height: 100vh;
+}
+
+.brand {
+  grid-area: brand;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-right: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.brand__mark {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  color: var(--color-primary);
+}
+
+.brand__name {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+}
+
+.brand__tagline {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+}
+
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.topbar__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-muted);
+}
+
+/* ---- Navigation ------------------------------------------------------ */
+.nav {
+  grid-area: nav;
+  padding: var(--space-4) var(--space-3);
+  border-right: 1px solid var(--color-border);
+}
+
+.nav__group {
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+
+.nav__heading {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--color-foreground-muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out-expo),
+    color var(--duration-fast) var(--ease-out-expo);
+}
+
+.nav__link:hover {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+
+.nav__link[aria-current="page"] {
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.nav__link[aria-disabled="true"] {
+  color: var(--color-foreground-subtle);
+  cursor: not-allowed;
+}
+
+.nav__icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.nav__phase {
+  margin-left: auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+}
+
+/* ---- Main ------------------------------------------------------------ */
+.main {
+  grid-area: main;
+  padding: var(--space-6) var(--space-5);
+  max-width: var(--layout-max);
+}
+
+.page__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.page__lede {
+  margin: 0 0 var(--space-6);
+  max-width: 62ch;
+  color: var(--color-foreground-muted);
+}
+
+/* ---- Empty state ----------------------------------------------------- */
+/*
+ * Empty states are first-class UI, not a gap waiting to be filled with sample
+ * data. QSP never ships seeded demo content.
+ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-6);
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.empty__icon {
+  width: 32px;
+  height: 32px;
+  color: var(--color-foreground-subtle);
+}
+
+.empty__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.empty__body {
+  margin: 0;
+  max-width: 60ch;
+  color: var(--color-foreground-muted);
+}
+
+/* ---- Status pill ----------------------------------------------------- */
+/*
+ * Colour is always accompanied by a glyph and a text label so that status is
+ * legible without colour perception.
+ */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.status__glyph {
+  width: 12px;
+  height: 12px;
+}
+
+.status--healthy { color: var(--color-healthy); }
+.status--degraded { color: var(--color-degraded); }
+.status--failing { color: var(--color-failing); }
+.status--unavailable { color: var(--color-unavailable); }
+
+/* ---- Connection indicator -------------------------------------------- */
+.stream {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stream__label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-muted);
+}
+
+/* ---- Responsive ------------------------------------------------------ */
+/* Mobile is not a shrunk desktop: the sidebar becomes a horizontal rail. */
+@media (max-width: 1023px) {
+  .shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "brand"
+      "topbar"
+      "nav"
+      "main";
+  }
+
+  .brand,
+  .nav {
+    border-right: none;
+  }
+
+  .nav {
+    border-bottom: 1px solid var(--color-border);
+    overflow-x: auto;
+  }
+
+  .nav__group {
+    display: flex;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+  }
+
+  .nav__heading {
+    display: none;
+  }
+
+  .nav__link {
+    white-space: nowrap;
+  }
+
+  .nav__phase {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .main {
+    padding: var(--space-5) var(--space-4);
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+}
+
+/* ---- Peer table ------------------------------------------------------ */
+/*
+ * A dense operations table, not a card grid. An operator scanning for one
+ * callsign among twenty wants aligned columns and monospaced identifiers.
+ */
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.panel__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.panel__title {
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+
+.panel__count {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-foreground-subtle);
+  text-transform: uppercase;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.table caption {
+  padding: var(--space-3) var(--space-5);
+  text-align: left;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+}
+
+.table th {
+  padding: var(--space-3) var(--space-5);
+  text-align: left;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+/* Identifiers are monospaced so digits align down the column. */
+.table .mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.table .callsign {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+}
+
+/*
+ * A newly arrived peer is highlighted briefly. Motion here depicts something
+ * real — a peer that just registered — rather than decorating the table.
+ */
+@keyframes peer-arrive {
+  from { background: rgba(52, 211, 153, 0.16); }
+  to   { background: transparent; }
+}
+
+.table tr.is-new td {
+  animation: peer-arrive var(--duration-slow) var(--ease-out-expo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table tr.is-new td { animation: none; }
+}
+
+@media (max-width: 767px) {
+  .table th:nth-child(n + 5),
+  .table td:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+/* ---- Call activity --------------------------------------------------- */
+/*
+ * A live transmission pulses. Motion here depicts something real — somebody is
+ * keyed up at this moment — rather than decorating the page.
+ */
+@keyframes call-live {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-healthy);
+  animation: call-live 1.4s var(--ease-out-expo) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-dot { animation: none; }
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+}
+
+.tag--lost {
+  border-color: var(--color-degraded);
+  color: var(--color-degraded);
+}
+
+/* ---- Traffic counters ------------------------------------------------ */
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 1px;
+  background: var(--color-border);
+}
+
+.metric {
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+}
+
+.metric__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.metric__label {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.metric--muted .metric__value { color: var(--color-foreground-subtle); }
+.metric--warn .metric__value { color: var(--color-degraded); }
+
+.hint {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-degraded);
+  font-size: var(--text-sm);
+}

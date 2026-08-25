@@ -1,0 +1,723 @@
+package peers
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"net/netip"
+	"sort"
+	"sync/atomic"
+	"time"
+
+	"github.com/k9mls/qsp/internal/calls"
+	"github.com/k9mls/qsp/internal/events"
+	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
+)
+
+// maxDatagram bounds a single read.
+//
+// The largest HBP message observed is RPTC at 302 bytes. This is deliberately
+// far larger so that an oversized datagram is read and rejected by the parser
+// with an explanation, rather than silently truncated into something that might
+// parse as a valid shorter message.
+const maxDatagram = 1500
+
+// sweepInterval is how often idle peers and lost calls are swept.
+//
+// It also serves as the read deadline, which is what lets the listener run in
+// one goroutine: a read that times out is the signal to sweep.
+//
+// It must be no coarser than the shortest thing it detects. Call tracking gives
+// up on a stream after calls.StreamTimeout (2 s), so sweeping every 5 s would
+// leave a transmission that lost its terminator displayed as live for up to
+// five seconds on an otherwise quiet master — a phantom the operator cannot
+// distinguish from somebody actually keyed up.
+//
+// One second bounds that error to a second and costs one timed-out read per
+// second, which is nothing. sweepIntervalIsFineEnough in the tests pins the
+// relationship so that raising either value fails loudly.
+const sweepInterval = 1 * time.Second
+
+// ListenerConfig configures a Listener.
+type ListenerConfig struct {
+	// ListenAddress is the UDP host:port to bind, for example "0.0.0.0:62031".
+	ListenAddress string
+	// Master handles the protocol. Required.
+	Master *Master
+	// Bus receives peer events. Optional; nil disables publishing.
+	Bus *events.Bus
+	// Routing relays traffic between peers. Optional; nil means QSP observes
+	// traffic and forwards none of it.
+	//
+	// It is owned by the serve goroutine, like Master, and must not be touched
+	// by the caller after Start.
+	Routing *routing.Core
+	// ScheduleState reports which bridges should be enabled at an instant.
+	// Optional; nil means bridges follow their configured Enabled flag.
+	//
+	// It is a function rather than a *scheduler.Schedule so that the listener
+	// depends on the answer, not on how it is computed — which keeps this
+	// package independent of the scheduler and lets the gating be tested
+	// without calendar arithmetic.
+	ScheduleState func(now time.Time) map[string]bool
+	// Triggers open bridges on demand. Optional; nil disables triggering.
+	//
+	// Owned by the serve goroutine, like Master.
+	Triggers *routing.Triggers
+	// Rebuild produces the routing table for an instant. Required when
+	// ScheduleState is set.
+	Rebuild func(now time.Time) (*routing.Table, error)
+	// Calls observes transmissions. Optional; nil disables call tracking.
+	//
+	// It is owned by the serve goroutine, like Master, and must not be touched
+	// by the caller after Start.
+	Calls *calls.Tracker
+}
+
+// Listener owns the UDP socket and drives a Master.
+//
+// # Concurrency
+//
+// One goroutine owns everything. It reads a datagram, handles it, writes any
+// responses, and sweeps expired peers when a read times out. Master is
+// therefore never touched concurrently, which is what lets it carry no locks at
+// all — consistent with the single-writer model in ADR-0002.
+//
+// The only values shared with other goroutines are the atomic counters behind
+// Stats, so that the health endpoint can report without disturbing the loop.
+type Listener struct {
+	cfg  ListenerConfig
+	log  *slog.Logger
+	conn *net.UDPConn
+
+	// Observability counters, read by the health check from other goroutines.
+	received  atomic.Uint64
+	sent      atomic.Uint64
+	dropped   atomic.Uint64
+	frames    atomic.Uint64
+	forwarded atomic.Uint64
+	collided  atomic.Uint64
+	peers     atomic.Int64
+	writeErr  atomic.Uint64
+
+	// scheduleState is the set of bridges the schedule last said should be
+	// enabled, so a change can be detected without rebuilding every sweep.
+	// Owned by the serve goroutine.
+	scheduleState map[string]bool
+
+	// enabledBridges publishes the same information for readers on other
+	// goroutines, for the same reason as snapshot: Core and Master carry no
+	// locks because one goroutine owns them, so observers must be handed an
+	// immutable copy rather than reaching in.
+	enabledBridges atomic.Pointer[[]string]
+
+	// running reports whether the loop is active, so health can distinguish
+	// "not started" from "started and quiet".
+	running atomic.Bool
+
+	// callSnapshot holds the most recent active and recent call lists, for the
+	// same reason as snapshot below.
+	callSnapshot atomic.Pointer[CallSnapshot]
+
+	// snapshot holds the most recent peer list for readers on other
+	// goroutines.
+	//
+	// Master is owned by the serve loop and has no locks, so calling its
+	// accessors from an HTTP handler would be a data race. The loop publishes
+	// an immutable slice here after every change instead, which readers load
+	// without synchronising with the loop at all.
+	snapshot atomic.Pointer[[]Peer]
+}
+
+// NewListener constructs a Listener. It does not bind; call Start.
+func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
+	if cfg.Master == nil {
+		return nil, errors.New("peers: a Master is required")
+	}
+	if cfg.ListenAddress == "" {
+		return nil, errors.New("peers: a listen address is required, for example \"0.0.0.0:62031\"")
+	}
+	return &Listener{cfg: cfg, log: logging.Subsystem(log, "network")}, nil
+}
+
+// Start binds the socket and serves in a background goroutine.
+//
+// Binding is synchronous so that a port conflict is reported to the caller
+// rather than appearing later in a log line nobody reads. UDP port 62031 is
+// the observed HBP default and is below 1024 on no system, but binding it may
+// still require the port to be free of another DMR service on the same host.
+func (l *Listener) Start(ctx context.Context) error {
+	addr, err := net.ResolveUDPAddr("udp", l.cfg.ListenAddress)
+	if err != nil {
+		return fmt.Errorf("cannot understand listen address %q: %w (use host:port, for example \"0.0.0.0:62031\")",
+			l.cfg.ListenAddress, err)
+	}
+
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return fmt.Errorf("cannot listen on %s: %w (check that the port is free; another DMR service such as DMRGateway may already hold it)",
+			l.cfg.ListenAddress, err)
+	}
+	l.conn = conn
+	l.running.Store(true)
+	l.refresh()
+	if l.cfg.ScheduleState != nil {
+		empty := []string{}
+		l.enabledBridges.Store(&empty)
+	}
+	l.log.Info("listening for peers", slog.String("address", conn.LocalAddr().String()))
+
+	go l.serve(ctx)
+	return nil
+}
+
+// Address returns the bound address, useful when the configured port was zero.
+func (l *Listener) Address() string {
+	if l.conn == nil {
+		return l.cfg.ListenAddress
+	}
+	return l.conn.LocalAddr().String()
+}
+
+// Close stops the listener and releases the socket. It is safe to call more
+// than once and safe on a listener that was never started.
+func (l *Listener) Close() error {
+	if l.conn == nil {
+		return nil
+	}
+	l.running.Store(false)
+	// Closing unblocks the read in serve.
+	if err := l.conn.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+		return fmt.Errorf("closing the peer listener: %w", err)
+	}
+	return nil
+}
+
+// serve is the single goroutine that owns the Master.
+func (l *Listener) serve(ctx context.Context) {
+	defer l.running.Store(false)
+
+	buf := make([]byte, maxDatagram)
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		// The deadline doubles as the expiry timer: a timed-out read means it
+		// is time to sweep, and no second goroutine or channel is needed.
+		if err := l.conn.SetReadDeadline(time.Now().Add(sweepInterval)); err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			l.log.Error("cannot set a read deadline", slog.String("error", err.Error()))
+			return
+		}
+
+		n, from, err := l.conn.ReadFromUDPAddrPort(buf)
+		switch {
+		case err == nil:
+			l.handle(buf[:n], from)
+		case errors.Is(err, net.ErrClosed):
+			return
+		case isTimeout(err):
+			// Expected: nothing arrived within the deadline.
+		default:
+			if ctx.Err() != nil {
+				return
+			}
+			// A read error on a UDP socket is usually transient, for example an
+			// ICMP port-unreachable from a peer that went away. Log and carry
+			// on rather than tearing down every other peer's session.
+			l.log.Warn("read failed", slog.String("error", err.Error()))
+		}
+
+		l.expire()
+		l.expireCalls()
+		l.expireRoutes()
+		l.expireTriggers()
+		l.applySchedule()
+	}
+}
+
+func isTimeout(err error) bool {
+	var ne net.Error
+	return errors.As(err, &ne) && ne.Timeout()
+}
+
+// handle processes one datagram and writes any responses.
+func (l *Listener) handle(datagram []byte, from netip.AddrPort) {
+	l.received.Add(1)
+
+	out := l.cfg.Master.Handle(datagram, from)
+
+	if out.Dropped != "" {
+		l.dropped.Add(1)
+		// Debug rather than warn: a busy master on the public internet is
+		// scanned constantly, and warning on every stray packet would bury the
+		// signal. Refusals that an operator needs to see, such as a failed
+		// password, are logged at warn by the Master itself.
+		l.log.Debug("datagram dropped",
+			slog.String("from", from.String()),
+			slog.String("reason", out.Dropped),
+		)
+	}
+
+	for _, r := range out.Responses {
+		if _, err := l.conn.WriteToUDPAddrPort(r.Payload, r.To); err != nil {
+			l.writeErr.Add(1)
+			l.log.Warn("cannot send a response",
+				slog.String("to", r.To.String()),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		l.sent.Add(1)
+	}
+
+	if out.Data != nil {
+		l.frames.Add(1)
+		// Phase 2 routes this. Until the routing engine exists the frame is
+		// observed and discarded: it is not queued anywhere that could grow
+		// without bound, and nothing pretends it was delivered.
+		l.observe(out.From, *out.Data)
+		l.trigger(out.From, *out.Data)
+		l.forward(out.From, *out.Data)
+	}
+
+	l.publish(out.Events)
+	l.refresh()
+}
+
+// trigger opens any bridge this transmission demands.
+//
+// It runs before forwarding so that the frame which opened a bridge is itself
+// relayed. Opening on the second frame would clip the first syllable of every
+// on-demand transmission, which is exactly the complaint operators report about
+// systems that get this wrong.
+func (l *Listener) trigger(from hbp.RepeaterID, frame hbp.Data) {
+	if l.cfg.Triggers == nil {
+		return
+	}
+	opened := l.cfg.Triggers.Observe(routing.EndpointOf(from, frame), time.Now())
+	if len(opened) == 0 {
+		return
+	}
+	for _, bridge := range opened {
+		l.log.Info("bridge opened on demand",
+			slog.String("bridge", bridge),
+			logging.PeerID(frame.SourceID),
+			logging.Talkgroup(frame.TargetID),
+		)
+	}
+	// Apply immediately rather than waiting for the next sweep, so the opening
+	// transmission is carried.
+	l.applySchedule()
+}
+
+// A frame that is refused is counted and logged rather than silently dropped:
+// Constitution §18. The usual cause is two people keying the same talkgroup at
+// once, which an operator should be able to see.
+func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
+	if l.cfg.Routing == nil {
+		return
+	}
+	res := l.cfg.Routing.Route(from, frame, time.Now())
+
+	for _, d := range res.Deliveries {
+		peer, ok := l.cfg.Master.Lookup(d.Peer)
+		if !ok {
+			// The peer left between the routing decision and this write.
+			continue
+		}
+		if _, err := l.conn.WriteToUDPAddrPort(d.Frame.Marshal(), peer.Addr); err != nil {
+			l.writeErr.Add(1)
+			l.log.Warn("cannot forward a frame",
+				logging.PeerID(uint32(d.Peer)),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		l.forwarded.Add(1)
+		l.sent.Add(1)
+	}
+
+	for _, drop := range res.Drops {
+		l.collided.Add(1)
+		l.log.Debug("frame not forwarded",
+			slog.String("to", drop.To.String()),
+			slog.String("reason", drop.Reason),
+		)
+	}
+
+	for _, started := range res.StartedStreams {
+		l.log.Info("relaying transmission",
+			logging.PeerID(uint32(from)),
+			logging.Talkgroup(started.Talkgroup),
+			slog.String("to", started.String()),
+		)
+	}
+}
+
+// expireTriggers closes bridges whose hang time has elapsed.
+func (l *Listener) expireTriggers() {
+	if l.cfg.Triggers == nil {
+		return
+	}
+	for _, bridge := range l.cfg.Triggers.Expire(time.Now()) {
+		l.log.Info("bridge closed after hang time", slog.String("bridge", bridge))
+	}
+}
+
+// applySchedule enables or disables bridges according to the schedule.
+//
+// The schedule is level-triggered: it is asked what should be enabled now,
+// rather than remembering what it enabled earlier. A restart mid-net therefore
+// resumes the net, and a missed sweep corrects itself on the next one.
+//
+// The table is rebuilt only when the answer changes, so the common case costs
+// one map comparison per second.
+func (l *Listener) applySchedule() {
+	if l.cfg.ScheduleState == nil || l.cfg.Rebuild == nil || l.cfg.Routing == nil {
+		return
+	}
+	now := time.Now()
+	want := l.cfg.ScheduleState(now)
+	if sameState(l.scheduleState, want) {
+		return
+	}
+
+	table, err := l.cfg.Rebuild(now)
+	if err != nil {
+		// Keep the current table rather than dropping every bridge: a schedule
+		// that fails to rebuild must not take a net off the air.
+		l.log.Error("cannot apply the schedule; keeping the current routing table",
+			slog.String("error", err.Error()))
+		return
+	}
+
+	for name := range want {
+		if !l.scheduleState[name] {
+			l.log.Info("scheduled window opened", slog.String("bridge", name))
+		}
+	}
+	for name := range l.scheduleState {
+		if !want[name] {
+			l.log.Info("scheduled window closed", slog.String("bridge", name))
+		}
+	}
+
+	// In-flight transmissions keep their reservations; the new table applies
+	// from the next frame (clarification R4).
+	l.cfg.Routing.SetTable(table)
+	l.scheduleState = want
+	enabled := sortedKeys(want)
+	l.enabledBridges.Store(&enabled)
+
+	if l.cfg.Bus != nil {
+		l.cfg.Bus.Publish(events.TypeRouteChanged, map[string]any{
+			"active_bridges": sortedKeys(want),
+			"source":         "schedule",
+		})
+	}
+}
+
+func sameState(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k, v := range m {
+		if v {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// expireRoutes frees destinations held by transmissions that stopped without a
+// terminator.
+func (l *Listener) expireRoutes() {
+	if l.cfg.Routing == nil {
+		return
+	}
+	for _, freed := range l.cfg.Routing.Expire(time.Now()) {
+		l.log.Warn("released a destination held by an abandoned transmission",
+			slog.String("endpoint", freed.String()),
+		)
+	}
+}
+
+// observe records a frame against the call tracker and publishes call events.
+func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
+	if l.cfg.Calls == nil {
+		return
+	}
+	started, ended := l.cfg.Calls.Update(peer, frame, time.Now())
+	if started != nil {
+		l.log.Info("call started",
+			logging.PeerID(started.Source),
+			logging.Talkgroup(started.Target),
+			logging.Timeslot(int(started.Key.Timeslot)),
+			logging.StreamID(uint32(started.Key.Stream)),
+		)
+		l.publishCall(events.TypeCallStarted, *started)
+	}
+	if ended != nil {
+		l.publishCall(events.TypeCallEnded, *ended)
+	}
+	l.refreshCalls()
+}
+
+// expireCalls closes transmissions that stopped without a terminator.
+func (l *Listener) expireCalls() {
+	if l.cfg.Calls == nil {
+		return
+	}
+	lost := l.cfg.Calls.Expire(time.Now())
+	for _, c := range lost {
+		// Worth an operator's attention: many of these mean a lossy link or a
+		// peer that keeps vanishing mid-transmission.
+		l.log.Warn("call ended without a terminator",
+			logging.PeerID(c.Source),
+			logging.Talkgroup(c.Target),
+			logging.StreamID(uint32(c.Key.Stream)),
+			slog.Int("frames", c.Frames),
+		)
+		l.publishCall(events.TypeCallEnded, c)
+	}
+	if len(lost) > 0 {
+		l.refreshCalls()
+	}
+}
+
+func (l *Listener) publishCall(t events.Type, c calls.Call) {
+	if l.cfg.Bus == nil {
+		return
+	}
+	l.cfg.Bus.Publish(t, map[string]any{
+		"peer_id":    uint32(c.Key.Peer),
+		"source":     c.Source,
+		"target":     c.Target,
+		"timeslot":   int(c.Key.Timeslot),
+		"stream_id":  uint32(c.Key.Stream),
+		"group":      c.Group,
+		"frames":     c.Frames,
+		"end_reason": string(c.EndReason),
+	})
+}
+
+// CallSnapshot is a point-in-time view of call activity.
+type CallSnapshot struct {
+	Active []calls.Call
+	Recent []calls.Call
+}
+
+func (l *Listener) refreshCalls() {
+	if l.cfg.Calls == nil {
+		return
+	}
+	snap := CallSnapshot{Active: l.cfg.Calls.Active(), Recent: l.cfg.Calls.History()}
+	l.callSnapshot.Store(&snap)
+}
+
+// Calls returns the most recent call snapshot. Safe to call from any goroutine.
+func (l *Listener) Calls() CallSnapshot {
+	if p := l.callSnapshot.Load(); p != nil {
+		return *p
+	}
+	return CallSnapshot{}
+}
+
+// refresh republishes the peer snapshot and counters.
+//
+// Called only from the serve goroutine, which is the sole owner of Master.
+func (l *Listener) refresh() {
+	l.peers.Store(int64(l.cfg.Master.ConfiguredCount()))
+	snap := l.cfg.Master.Peers()
+	l.snapshot.Store(&snap)
+}
+
+// EnabledBridges returns the bridges the schedule currently has open, sorted.
+//
+// Safe to call from any goroutine. Nil means no schedule is configured, which
+// is different from an empty slice meaning a schedule with nothing open.
+func (l *Listener) EnabledBridges() []string {
+	if p := l.enabledBridges.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// Snapshot returns the most recent peer list. Safe to call from any goroutine.
+//
+// The result is a point-in-time copy taken by the serve loop, so it may be
+// marginally stale — by at most one datagram or one expiry sweep. That is the
+// correct trade for a console view: a slightly old list costs nothing, while
+// reaching into live registry state from an HTTP handler would be a race.
+func (l *Listener) Snapshot() []Peer {
+	if p := l.snapshot.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// expire sweeps idle peers and publishes their departure.
+func (l *Listener) expire() {
+	if evs := l.cfg.Master.Expire(); len(evs) > 0 {
+		l.publish(evs)
+		l.refresh()
+	}
+}
+
+// publish forwards peer events to the bus.
+func (l *Listener) publish(evs []Event) {
+	if l.cfg.Bus == nil {
+		return
+	}
+	for _, e := range evs {
+		var t events.Type
+		switch e.Kind {
+		case EventConnected:
+			t = events.TypePeerConnected
+		case EventDisconnected, EventRebound:
+			t = events.TypePeerDisconnected
+		default:
+			continue
+		}
+		l.cfg.Bus.Publish(t, map[string]any{
+			"peer_id":  uint32(e.Peer.ID),
+			"callsign": e.Peer.Callsign(),
+			"address":  e.Peer.Addr.String(),
+			"reason":   e.Reason,
+		})
+	}
+}
+
+// Stats is a snapshot of listener counters.
+type Stats struct {
+	Received        uint64
+	Sent            uint64
+	Dropped         uint64
+	Frames          uint64
+	Forwarded       uint64
+	Collisions      uint64
+	WriteErrors     uint64
+	ConfiguredPeers int64
+}
+
+// Stats returns current counters. Safe to call from any goroutine.
+func (l *Listener) Stats() Stats {
+	return Stats{
+		Received:        l.received.Load(),
+		Sent:            l.sent.Load(),
+		Dropped:         l.dropped.Load(),
+		Frames:          l.frames.Load(),
+		Forwarded:       l.forwarded.Load(),
+		Collisions:      l.collided.Load(),
+		WriteErrors:     l.writeErr.Load(),
+		ConfiguredPeers: l.peers.Load(),
+	}
+}
+
+// HealthCheck reports on the peer listener.
+type HealthCheck struct {
+	// Listener is the listener to report on. Nil means the DMR listener is not
+	// enabled in this configuration.
+	Listener *Listener
+	// DisabledReason explains why Listener is nil, and is shown to the operator.
+	DisabledReason string
+}
+
+// Name implements health.Checker.
+func (HealthCheck) Name() string { return "network" }
+
+// Check implements health.Checker.
+func (h HealthCheck) Check(context.Context) health.Result {
+	if h.Listener == nil {
+		reason := h.DisabledReason
+		if reason == "" {
+			reason = "the DMR listener is not enabled"
+		}
+		return health.Unavailable(reason)
+	}
+	if !h.Listener.running.Load() {
+		return health.Failing(
+			"the peer listener is not running",
+			"check the log for a bind failure, then restart QSP",
+		)
+	}
+
+	s := h.Listener.Stats()
+	res := health.Healthy(fmt.Sprintf("listening on %s", h.Listener.Address()))
+	if s.WriteErrors > 0 {
+		res = health.Degraded(
+			fmt.Sprintf("listening, but %d responses could not be sent", s.WriteErrors),
+			"peers may be unreachable; check for a firewall or NAT problem between QSP and them",
+		)
+	}
+	res.Detail = map[string]string{
+		"address":          h.Listener.Address(),
+		"configured_peers": fmt.Sprintf("%d", s.ConfiguredPeers),
+		"datagrams_in":     fmt.Sprintf("%d", s.Received),
+		"datagrams_out":    fmt.Sprintf("%d", s.Sent),
+		"dropped":          fmt.Sprintf("%d", s.Dropped),
+		"frames_accepted":  fmt.Sprintf("%d", s.Frames),
+		"frames_forwarded": fmt.Sprintf("%d", s.Forwarded),
+		"collisions":       fmt.Sprintf("%d", s.Collisions),
+	}
+	return res
+}
+
+// PeersHealthCheck reports on registered peers, separately from the socket.
+type PeersHealthCheck struct {
+	Listener *Listener
+	Master   *Master
+	// DisabledReason explains a nil Listener.
+	DisabledReason string
+}
+
+// Name implements health.Checker.
+func (PeersHealthCheck) Name() string { return "peers" }
+
+// Check implements health.Checker.
+//
+// A master with no peers is reported healthy, not degraded. An empty club
+// network at three in the morning is not a fault, and reporting it as one
+// trains operators to ignore the health page.
+func (h PeersHealthCheck) Check(context.Context) health.Result {
+	if h.Listener == nil || h.Master == nil {
+		reason := h.DisabledReason
+		if reason == "" {
+			reason = "the DMR listener is not enabled"
+		}
+		return health.Unavailable(reason)
+	}
+
+	s := h.Listener.Stats()
+	res := health.Healthy(fmt.Sprintf("%d peer(s) connected", s.ConfiguredPeers))
+	res.Detail = map[string]string{
+		"configured_peers": fmt.Sprintf("%d", s.ConfiguredPeers),
+	}
+	return res
+}
+
+// SweepInterval reports how often the listener sweeps idle peers and lost
+// calls. It is exported so that the relationship with calls.StreamTimeout can
+// be asserted in a test rather than maintained by memory.
+func SweepInterval() time.Duration { return sweepInterval }

@@ -1,0 +1,22 @@
+# Build output
+/qsp
+/qsp-*
+/dist/
+*.exe
+
+# Local databases and configuration
+*.db
+*.db-shm
+*.db-wal
+/qsp.json
+
+# Editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Go
+*.test
+*.out
+go.mod.bak

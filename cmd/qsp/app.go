@@ -1,0 +1,618 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/netip"
+	"strconv"
+	"time"
+
+	"os"
+
+	"github.com/k9mls/qsp/console"
+	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/calls"
+	"github.com/k9mls/qsp/internal/config"
+	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/events"
+	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/peers"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
+	"github.com/k9mls/qsp/internal/scheduler"
+	"github.com/k9mls/qsp/internal/server"
+)
+
+// app holds the constructed dependency graph.
+//
+// Dependencies are wired here by constructor injection and passed explicitly.
+// There is no global state and no container: the graph is small enough to read
+// top to bottom, and keeping it that way is a design goal rather than an
+// accident.
+type app struct {
+	cfg    config.Config
+	log    *slog.Logger
+	bus    *events.Bus
+	db     *database.DB
+	audit  audit.Recorder
+	srv    *server.Server
+	dmr    *peers.Listener
+	health *health.Registry
+	// closers are run in reverse order during shutdown.
+	closers []func(context.Context) error
+}
+
+// build constructs every subsystem.
+//
+// The database is optional: this binary registers no SQL driver (see
+// docs/adr/ADR-0005), so Open fails with ErrDriverNotRegistered. That is a
+// declared condition rather than a fault, so startup continues and the health
+// check reports the database as unavailable with the reason. Any other database
+// error is fatal.
+func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, error) {
+	a := &app{cfg: cfg, log: log}
+
+	a.bus = events.NewBus(log, events.Options{
+		HistorySize:      cfg.Events.HistorySize,
+		SubscriberBuffer: cfg.Events.SubscriberBuffer,
+	})
+	a.closers = append(a.closers, func(context.Context) error {
+		a.bus.Close()
+		return nil
+	})
+
+	a.audit = audit.NewLogRecorder(log)
+
+	var dbUnavailableReason string
+	db, err := database.Open(ctx, log, database.Options{
+		Driver:          cfg.Database.Driver,
+		DSN:             cfg.Database.DSN,
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
+	})
+	switch {
+	case errors.Is(err, database.ErrDriverNotRegistered):
+		dbUnavailableReason = fmt.Sprintf(
+			"no %q driver is registered in this build; persistence is disabled (see docs/adr/ADR-0005)",
+			cfg.Database.Driver)
+		log.Warn("running without persistence", slog.String("reason", dbUnavailableReason))
+	case err != nil:
+		return nil, err
+	default:
+		a.db = db
+		a.closers = append(a.closers, func(context.Context) error { return db.Close() })
+
+		result, migrateErr := db.Migrate(ctx)
+		if migrateErr != nil {
+			return nil, migrateErr
+		}
+		log.Info("schema ready",
+			slog.Int("schema_version", result.SchemaVersion),
+			slog.Int("applied_now", len(result.Applied)),
+			slog.Int("already_applied", result.AlreadyApplied),
+		)
+	}
+
+	master, dmrDisabledReason, err := buildDMR(cfg, log, a.bus)
+	if err != nil {
+		return nil, err
+	}
+	if master != nil {
+		var core *routing.Core
+		sched, serr := buildSchedule(cfg)
+		if serr != nil {
+			return nil, serr
+		}
+		triggers, terr2 := buildTriggers(cfg)
+		if terr2 != nil {
+			return nil, terr2
+		}
+		if cfg.DMR.Forwarding {
+			table, terr := buildTable(cfg, sched, triggers, time.Now())
+			if terr != nil {
+				return nil, terr
+			}
+			if sched != nil {
+				log.Info("schedule loaded",
+					slog.Int("windows", len(cfg.DMR.Schedule)),
+					slog.Any("scheduled_bridges", sched.Bridges()),
+				)
+				for _, occ := range sched.Preview(time.Now(), 1) {
+					if occ.Skipped {
+						log.Warn("a scheduled occurrence will be skipped",
+							slog.String("bridge", occ.Bridge),
+							slog.String("when", occ.LocalStart),
+							slog.String("reason", occ.Note),
+						)
+						continue
+					}
+					log.Info("next scheduled window",
+						slog.String("bridge", occ.Bridge),
+						slog.String("starts", occ.LocalStart),
+					)
+				}
+			}
+			core, err = routing.NewCore(routing.CoreOptions{
+				Table: table,
+				Peers: readyPeers{master: master},
+			})
+			if err != nil {
+				return nil, err
+			}
+			log.Info("forwarding enabled",
+				slog.Int("bridges", len(cfg.DMR.Bridges)),
+				slog.Int("enabled_bridges", table.EnabledCount()),
+			)
+		} else {
+			log.Info("forwarding disabled; traffic is observed and not relayed")
+		}
+
+		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
+			ListenAddress: cfg.DMR.ListenAddress,
+			Master:        master,
+			Bus:           a.bus,
+			Calls:         calls.NewTracker(calls.Options{}),
+			Routing:       core,
+			ScheduleState: bridgeState(sched, triggers),
+			Triggers:      triggers,
+			Rebuild:       func(now time.Time) (*routing.Table, error) { return buildTable(cfg, sched, triggers, now) },
+		})
+		if lerr != nil {
+			return nil, lerr
+		}
+		a.dmr = listener
+		a.closers = append(a.closers, func(context.Context) error { return listener.Close() })
+	} else {
+		log.Info("DMR listener disabled", slog.String("reason", dmrDisabledReason))
+	}
+
+	registry := health.NewRegistry(health.Options{})
+	registry.MustRegister(database.HealthCheck{DB: a.db, UnavailableReason: dbUnavailableReason})
+	registry.MustRegister(processCheck{started: time.Now()})
+	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})
+	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
+	registry.MustRegister(routingCheck{enabled: cfg.DMR.Forwarding, bridges: len(cfg.DMR.Bridges)})
+	registry.MustRegister(schedulerCheck{windows: len(cfg.DMR.Schedule), forwarding: cfg.DMR.Forwarding})
+	for _, s := range unbuiltSubsystems {
+		registry.MustRegister(unbuilt(s.name, s.arrives))
+	}
+	a.health = registry
+
+	assets, err := console.Assets()
+	if err != nil {
+		return nil, fmt.Errorf("cannot open embedded console assets: %w", err)
+	}
+
+	var peerSource server.PeerSource
+	if a.dmr != nil {
+		peerSource = peerViews{listener: a.dmr}
+	}
+
+	srv, err := server.New(log, registry, a.bus, server.Options{
+		ListenAddress:       cfg.Server.ListenAddress,
+		ReadHeaderTimeout:   cfg.Server.ReadHeaderTimeout.AsDuration(),
+		ReadTimeout:         cfg.Server.ReadTimeout.AsDuration(),
+		WriteTimeout:        cfg.Server.WriteTimeout.AsDuration(),
+		IdleTimeout:         cfg.Server.IdleTimeout.AsDuration(),
+		ShutdownTimeout:     cfg.Server.ShutdownTimeout.AsDuration(),
+		BehindProxy:         cfg.Server.BehindProxy,
+		ConsoleAssets:       assets,
+		Peers:               peerSource,
+		PeersDisabledReason: dmrDisabledReason,
+	})
+	if err != nil {
+		return nil, err
+	}
+	a.srv = srv
+	a.closers = append(a.closers, srv.Shutdown)
+
+	return a, nil
+}
+
+// buildDMR constructs the peer master when the DMR listener is enabled.
+//
+// It returns a nil Master and a reason when the listener is disabled, which is
+// the default: a freshly installed QSP must not start accepting connections
+// before an operator has decided it should. A configuration that enables the
+// listener but cannot supply a password is a fatal error rather than a silent
+// downgrade, because running a master that authenticates nobody would be worse
+// than not running one.
+func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Master, string, error) {
+	if !cfg.DMR.Enabled {
+		return nil, "the DMR listener is disabled; set dmr.enabled to accept peers", nil
+	}
+
+	password, err := config.LoadPeerPassword(os.ReadFile, cfg.DMR.PasswordFile)
+	if err != nil {
+		return nil, "", err
+	}
+
+	master, err := peers.NewMaster(log, peers.MasterConfig{
+		// One shared password for every peer, which is how these networks are
+		// operated in practice. Per-peer secrets would come from storage.
+		Password:     func(hbp.RepeaterID) ([]byte, bool) { return password, true },
+		PeerTimeout:  cfg.DMR.PeerTimeout.AsDuration(),
+		LoginTimeout: cfg.DMR.LoginTimeout.AsDuration(),
+		MaxPeers:     cfg.DMR.MaxPeers,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return master, "", nil
+}
+
+// run starts the application and blocks until ctx is cancelled.
+func (a *app) run(ctx context.Context) error {
+	if err := a.srv.Start(); err != nil {
+		return err
+	}
+	if a.dmr != nil {
+		if err := a.dmr.Start(ctx); err != nil {
+			return err
+		}
+	}
+
+	if err := a.audit.Record(ctx, audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      audit.SystemActor,
+		Action:     audit.ActionServiceStarted,
+		Outcome:    audit.OutcomeSuccess,
+		Detail:     map[string]string{"listen_address": a.srv.Address()},
+	}); err != nil {
+		a.log.Warn("cannot record startup in the audit trail", slog.String("error", err.Error()))
+	}
+
+	<-ctx.Done()
+	return nil
+}
+
+// shutdown closes every subsystem in reverse construction order.
+//
+// It continues past a failure so that one stuck subsystem cannot prevent the
+// others from releasing their resources, and reports every error it saw.
+func (a *app) shutdown(ctx context.Context) error {
+	if err := a.audit.Record(ctx, audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      audit.SystemActor,
+		Action:     audit.ActionServiceStopped,
+		Outcome:    audit.OutcomeSuccess,
+	}); err != nil {
+		a.log.Warn("cannot record shutdown in the audit trail", slog.String("error", err.Error()))
+	}
+
+	var errs []error
+	for i := len(a.closers) - 1; i >= 0; i-- {
+		if err := a.closers[i](ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// bridgeState merges the two mechanisms that can open a bridge.
+//
+// A bridge may be scheduled, triggered, both, or neither. Either mechanism
+// opening it is enough: a net that starts early because somebody keyed up is
+// the behaviour an operator wants, and so is a triggered link staying open
+// through a scheduled window.
+//
+// Returns nil when neither mechanism is configured, so bridges keep their own
+// enabled setting and nothing overrides it.
+func bridgeState(s *scheduler.Schedule, t *routing.Triggers) func(time.Time) map[string]bool {
+	if s == nil && t == nil {
+		return nil
+	}
+	return func(now time.Time) map[string]bool {
+		out := make(map[string]bool)
+		for name, open := range s.ActiveAt(now) {
+			if open {
+				out[name] = true
+			}
+		}
+		for name, open := range t.ActiveAt(now) {
+			if open {
+				out[name] = true
+			}
+		}
+		return out
+	}
+}
+
+// buildTriggers converts configured triggers into a trigger set.
+func buildTriggers(cfg config.Config) (*routing.Triggers, error) {
+	if len(cfg.DMR.Triggers) == 0 {
+		return nil, nil
+	}
+	out := make([]routing.Trigger, 0, len(cfg.DMR.Triggers))
+	for _, t := range cfg.DMR.Triggers {
+		on := make([]routing.Endpoint, 0, len(t.On))
+		for _, e := range t.On {
+			on = append(on, routing.Endpoint{
+				Peer: hbp.RepeaterID(e.Peer), Talkgroup: e.Talkgroup, Timeslot: timeslot(e.Timeslot),
+			})
+		}
+		out = append(out, routing.Trigger{
+			Bridge: t.Bridge, On: on, HangTime: t.HangTime.AsDuration(), Enabled: t.Enabled,
+		})
+	}
+	return routing.NewTriggers(out)
+}
+
+func timeslot(n int) hbp.Timeslot {
+	if n == 2 {
+		return hbp.Timeslot2
+	}
+	return hbp.Timeslot1
+}
+
+// buildSchedule converts configured windows into a schedule.
+func buildSchedule(cfg config.Config) (*scheduler.Schedule, error) {
+	if len(cfg.DMR.Schedule) == 0 {
+		return nil, nil
+	}
+	windows := make([]scheduler.Window, 0, len(cfg.DMR.Schedule))
+	for _, w := range cfg.DMR.Schedule {
+		start, err := scheduler.ParseLocalTime(w.Start)
+		if err != nil {
+			return nil, fmt.Errorf("schedule window for bridge %q: %w", w.Bridge, err)
+		}
+		days := make([]time.Weekday, 0, len(w.Days))
+		for _, d := range w.Days {
+			days = append(days, time.Weekday(d))
+		}
+		windows = append(windows, scheduler.Window{
+			Bridge:   w.Bridge,
+			Days:     days,
+			Start:    start,
+			Duration: w.Duration.AsDuration(),
+			Timezone: w.Timezone,
+			Enabled:  w.Enabled,
+		})
+	}
+	return scheduler.NewSchedule(windows)
+}
+
+// buildTable converts configured bridges into a routing table for an instant.
+//
+// A bridge named by any schedule window is controlled entirely by the schedule;
+// its own Enabled field is ignored. A bridge with no window uses that field.
+// One mechanism decides each bridge, so an operator never has to work out which
+// setting won.
+func buildTable(cfg config.Config, sched *scheduler.Schedule, triggers *routing.Triggers, now time.Time) (*routing.Table, error) {
+	controlled := make(map[string]bool)
+	for _, name := range sched.Bridges() {
+		controlled[name] = true
+	}
+	for _, name := range triggers.Bridges() {
+		controlled[name] = true
+	}
+
+	active := make(map[string]bool)
+	for name, open := range sched.ActiveAt(now) {
+		active[name] = active[name] || open
+	}
+	for name, open := range triggers.ActiveAt(now) {
+		active[name] = active[name] || open
+	}
+
+	bridges := make([]routing.Bridge, 0, len(cfg.DMR.Bridges))
+	for _, b := range cfg.DMR.Bridges {
+		endpoints := make([]routing.Endpoint, 0, len(b.Endpoints))
+		for _, e := range b.Endpoints {
+			endpoints = append(endpoints, routing.Endpoint{
+				Peer:      hbp.RepeaterID(e.Peer),
+				Talkgroup: e.Talkgroup,
+				Timeslot:  timeslot(e.Timeslot),
+			})
+		}
+		enabled := b.Enabled
+		if controlled[b.Name] {
+			enabled = active[b.Name]
+		}
+		bridges = append(bridges, routing.Bridge{Name: b.Name, Enabled: enabled, Endpoints: endpoints})
+	}
+	return routing.NewTable(bridges)
+}
+
+// readyPeers adapts the peer master to the routing core's narrow view of it.
+//
+// Both are owned by the listener goroutine, so these calls are made from that
+// goroutine only; nothing here is safe to call from elsewhere.
+type readyPeers struct{ master *peers.Master }
+
+func (r readyPeers) Ready(id hbp.RepeaterID) bool {
+	p, ok := r.master.Lookup(id)
+	return ok && p.State.CanPassTraffic()
+}
+
+func (r readyPeers) ReadyPeers() []hbp.RepeaterID {
+	var out []hbp.RepeaterID
+	for _, p := range r.master.Peers() {
+		if p.State.CanPassTraffic() {
+			out = append(out, p.ID)
+		}
+	}
+	return out
+}
+
+func (p peerViews) Traffic() server.Traffic {
+	s := p.listener.Stats()
+	return server.Traffic{
+		DatagramsIn:     s.Received,
+		DatagramsOut:    s.Sent,
+		Dropped:         s.Dropped,
+		FramesAccepted:  s.Frames,
+		FramesForwarded: s.Forwarded,
+		Collisions:      s.Collisions,
+	}
+}
+
+// displayAddr renders a peer address for the console.
+//
+// A socket bound to the IPv6 wildcard reports IPv4 clients as IPv4-mapped
+// addresses, so a hotspot at 192.168.1.155 appears as
+// "[::ffff:192.168.1.155]:46458". That is correct and unreadable, and it means
+// the same peer could be shown two different ways depending on how the socket
+// was bound. Unmapping gives one stable form.
+func displayAddr(a netip.AddrPort) string {
+	addr := a.Addr()
+	if addr.Is4In6() {
+		return netip.AddrPortFrom(addr.Unmap(), a.Port()).String()
+	}
+	return a.String()
+}
+
+// peerViews adapts the peer listener to the console's narrow view of it.
+//
+// The projection lives here rather than in either package so that
+// internal/server does not depend on internal/peers, and so that the fields the
+// console can see are chosen in one obvious place. Notably absent: a peer's
+// outstanding challenge salt.
+type peerViews struct{ listener *peers.Listener }
+
+func (p peerViews) PeerViews(now time.Time) []server.PeerView {
+	snap := p.listener.Snapshot()
+	out := make([]server.PeerView, 0, len(snap))
+	for _, peer := range snap {
+		v := server.PeerView{
+			ID:       uint32(peer.ID),
+			Callsign: peer.Callsign(),
+			Address:  displayAddr(peer.Addr),
+			State:    string(peer.State),
+			Ready:    peer.State.CanPassTraffic(),
+			IdleFor:  peer.Idle(now).Truncate(time.Second).String(),
+		}
+		if !peer.ConfiguredAt.IsZero() {
+			v.ConnectedFor = now.Sub(peer.ConfiguredAt).Truncate(time.Second).String()
+		}
+		if peer.Config != nil {
+			v.ColorCode = peer.Config.ColorCode
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func (p peerViews) CallViews(now time.Time) (active, recent []server.CallView) {
+	snap := p.listener.Calls()
+	for _, c := range snap.Active {
+		active = append(active, callView(c, now))
+	}
+	for _, c := range snap.Recent {
+		v := callView(c, now)
+		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
+		recent = append(recent, v)
+	}
+	return active, recent
+}
+
+func callView(c calls.Call, now time.Time) server.CallView {
+	return server.CallView{
+		Source:   c.Source,
+		Target:   c.Target,
+		Group:    c.Group,
+		Timeslot: int(c.Key.Timeslot),
+		// 10 ms granularity: DMR frames arrive 60 ms apart, so a coarser
+		// truncation renders a short but real transmission as "0s", which reads
+		// as nothing having happened.
+		Duration: c.Duration(now).Truncate(10 * time.Millisecond).String(),
+		Frames:   c.Frames,
+		Lost:     c.EndReason == calls.EndTimedOut,
+	}
+}
+
+// processCheck reports that the process itself is running.
+//
+// It is trivially true, which is the point: it distinguishes "QSP answered and
+// says it is unwell" from "nothing answered at all".
+type processCheck struct{ started time.Time }
+
+func (processCheck) Name() string { return "process" }
+
+func (p processCheck) Check(context.Context) health.Result {
+	res := health.Healthy("running")
+	res.Detail = map[string]string{
+		"uptime": time.Since(p.started).Truncate(time.Second).String(),
+	}
+	return res
+}
+
+// routingCheck reports whether traffic is being relayed.
+//
+// The earlier version of this said "the routing engine arrives in phase 2" long
+// after it had arrived. A health summary that quotes a plan rather than the
+// running instance is the same failure as fake data, just slower: it was true
+// when written and nobody checked it again.
+type routingCheck struct {
+	enabled bool
+	bridges int
+}
+
+func (routingCheck) Name() string { return "routing" }
+
+func (c routingCheck) Check(context.Context) health.Result {
+	if !c.enabled {
+		return health.Unavailable("forwarding is off; set dmr.forwarding to relay traffic between peers")
+	}
+	if c.bridges == 0 {
+		return health.Degraded(
+			"forwarding is on but no bridges are configured",
+			"add a bridge under dmr.bridges, or turn dmr.forwarding off",
+		)
+	}
+	res := health.Healthy(fmt.Sprintf("forwarding across %d bridge(s)", c.bridges))
+	res.Detail = map[string]string{"bridges": strconv.Itoa(c.bridges)}
+	return res
+}
+
+// schedulerCheck reports whether any bridge is scheduled.
+type schedulerCheck struct {
+	windows    int
+	forwarding bool
+}
+
+func (schedulerCheck) Name() string { return "scheduler" }
+
+func (c schedulerCheck) Check(context.Context) health.Result {
+	if c.windows == 0 {
+		return health.Unavailable("no schedule is configured; bridges follow their own enabled setting")
+	}
+	if !c.forwarding {
+		return health.Degraded(
+			fmt.Sprintf("%d scheduled window(s) configured, but forwarding is off so they relay nothing", c.windows),
+			"set dmr.forwarding, or remove the schedule",
+		)
+	}
+	res := health.Healthy(fmt.Sprintf("%d scheduled window(s)", c.windows))
+	res.Detail = map[string]string{"windows": strconv.Itoa(c.windows)}
+	return res
+}
+
+// unbuiltSubsystems have no implementation at all, only a place in the phase
+// plan. Every other registered check describes something that exists, even when
+// configuration has it switched off.
+//
+// That distinction is not carried by health.StatusUnavailable, which a disabled
+// listener reports too. This list is the authoritative answer to "what has not
+// been written yet", and docaccuracy_test.go checks the documentation against
+// it. A subsystem leaves this list on the commit that implements it.
+var unbuiltSubsystems = []struct{ name, arrives string }{
+	{"p25", "P25 peering arrives in phase 4"},
+	{"vocoder", "the vocoder pool arrives in phase 5"},
+	{"allstar", "the AllStar connector arrives in phase 5"},
+	{"zello", "the Zello connector arrives in phase 6"},
+	{"echolink", "the EchoLink connector arrives in phase 6"},
+}
+
+// unbuilt returns a check for a subsystem that does not exist yet.
+//
+// Constitution §3: an absent subsystem reports its absence. It is neither
+// hidden from the report nor reported healthy.
+func unbuilt(name, reason string) health.Checker {
+	return health.CheckerFunc{
+		CheckName: name,
+		Fn:        func(context.Context) health.Result { return health.Unavailable(reason) },
+	}
+}

@@ -1,0 +1,28 @@
+# Packet captures are byte-exact fixtures. Every test asserting a round-trip
+# compares against these bytes, so any normalisation — line endings, encoding
+# detection, filters — silently invalidates the test rather than failing it.
+# Mark them binary explicitly rather than trusting auto-detection.
+*.pcap  binary
+*.pcapng binary
+
+# Source and documentation are normalised to LF in the repository regardless of
+# the platform they are edited on. A CRLF slipping into a Go file is a gofmt
+# failure in CI on someone else's machine.
+*.go    text eol=lf
+*.md    text eol=lf
+*.sql   text eol=lf
+*.sh    text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.json  text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
+
+# Files with no extension that are still text.
+VERSION   text eol=lf
+LICENSE   text eol=lf
+COPYRIGHT text eol=lf
+
+# Keep generated and vendored material out of language statistics and diffs.
+testdata/**/*.pcap linguist-generated=true
