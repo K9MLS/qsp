@@ -19,7 +19,10 @@ All notable changes to QSP. Dates are UTC.
   staticcheck suggests converting `Ping` to `Pong` rather than naming the field.
   The two are distinct wire messages that share a shape by coincidence; a
   conversion would silently copy any field later added to both. See the comment
-  at the call site.
+  at the call site. The response message is now hoisted to a local so the
+  `//lint:ignore` directive sits on the line it suppresses — the directive
+  applies to the following line only, and inside a composite literal that is not
+  where the diagnostic lands.
 
 ## [0.1.3] — 2026-08-25
 

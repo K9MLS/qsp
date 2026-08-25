@@ -363,16 +363,20 @@ func (m *Master) handlePing(msg hbp.Ping, from netip.AddrPort, now time.Time) Ou
 	}
 
 	p.LastHeard = now
-	// staticcheck suggests hbp.Pong(msg), which is legal because the two
+
+	// staticcheck suggests hbp.Pong(msg), which compiles only because the two
 	// structs happen to share a shape today. They are distinct wire messages —
 	// RPTPING and MSTPONG — and that shape is a coincidence, not a contract.
 	// A conversion would silently start copying any field later added to both,
-	// which is precisely the class of bug the fuzzer cannot catch. Naming the
-	// one field that crosses the boundary is worth the extra characters.
+	// which is precisely the class of bug the fuzzer cannot catch, since both
+	// sides would agree. Naming the one field that crosses the boundary is
+	// worth the extra characters.
 	//lint:ignore S1016 Ping and Pong are distinct messages that share a shape by coincidence
+	pong := hbp.Pong{RepeaterID: msg.RepeaterID}
+
 	return Outcome{Responses: []Response{{
 		To:      from,
-		Payload: hbp.Pong{RepeaterID: msg.RepeaterID}.Marshal(),
+		Payload: pong.Marshal(),
 	}}}
 }
 
