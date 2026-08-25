@@ -2,6 +2,25 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [Unreleased]
+
+### Fixed
+- **First staticcheck run.** `S1011` in `internal/peers/fuzz_test.go` — a copy
+  loop replaced with a variadic append.
+- CI actions bumped to `checkout@v5` and `setup-go@v6`. Node.js 20 is removed
+  from GitHub runners in September 2026, so the previous versions were on a
+  deadline rather than merely deprecated.
+- `cache: false` in every CI job. `setup-go` keys its cache on `go.sum`, which
+  a zero-dependency module does not have, so every job logged a cache-restore
+  failure for a cache that would have been empty.
+
+### Not changed
+- **`S1016` in `internal/peers/master.go` is suppressed with a reason.**
+  staticcheck suggests converting `Ping` to `Pong` rather than naming the field.
+  The two are distinct wire messages that share a shape by coincidence; a
+  conversion would silently copy any field later added to both. See the comment
+  at the call site.
+
 ## [0.1.3] — 2026-08-25
 
 Documentation regenerated against the code it describes.

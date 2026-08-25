@@ -94,8 +94,6 @@ func readFixture(f *testing.F, path string) [][]byte {
 		f.Fatalf("%v", err)
 	}
 	out := make([][]byte, 0, len(packets))
-	for _, p := range packets {
-		out = append(out, p)
-	}
+	out = append(out, packets...)
 	return out
 }
