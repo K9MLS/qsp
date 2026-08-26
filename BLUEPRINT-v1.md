@@ -111,11 +111,15 @@ it needs no further code.
 happens a hundred times. **[ASSUMPTION]** the admin — you — can keep
 hand-editing JSON in the interim.
 
-**Phase 4 is narrower than it was.** `internal/peers/fanout_test.go` drives
-synthetic peers through the real login handshake and replays captured frames, so
-relay logic and the repeater-ID rewrite are now verified at one hundred peers.
-What remains unproven is the wire: two physical hotspots have never been
-connected to one instance.
+**Phase 4 is narrower than it looked.** Relay between two peers over real
+sockets has been tested since before the fan-out work — `forward_test.go` covers
+talkgroup and timeslot translation, whole transmissions, and that a bridge
+gated by schedule or PTT carries the opening frame. What was missing was scale
+and provenance, and both are now covered: a captured transmission survives the
+wire intact, and fan-out holds at a hundred peers.
+
+What remains is hardware. Two physical hotspots have never been connected to one
+instance, and no radio has received relayed audio.
 
 ## 7. Beyond this
 

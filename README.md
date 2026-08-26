@@ -18,11 +18,12 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
 > what those runs confirmed and what they did not.
 >
-> **Relay is tested against synthetic peers, not two radios.** Audio crossing
-> between bridged talkgroups is verified by replaying captured frames through
-> the real protocol stack to a hundred synthetic peers
-> (`internal/peers/fanout_test.go`). Two physical hotspots have never been
-> connected at once.
+> **Relay is tested; two radios are not.** Audio crossing between bridged
+> talkgroups is verified over real sockets, both with constructed frames
+> (`internal/peers/forward_test.go`) and by replaying a captured transmission
+> from a hotspot (`internal/peers/fanout_test.go`), and the fan-out holds at a
+> hundred peers. What has never happened is two *physical* hotspots connected to
+> one instance — the gap is hardware, not code.
 >
 > **Not yet run unattended.** The scheduler and PTT triggers are built and
 > tested, but the two-week soak that BLUEPRINT-v1 requires has not started.

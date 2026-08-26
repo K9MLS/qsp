@@ -19,10 +19,14 @@ import (
 // README.md claimed it did. These tests are what makes that claim true, or
 // would have caught it being false.
 //
+// forward_test.go already relays between two peers over real sockets, and
+// listener_test.go already drives a full handshake over UDP. What neither does
+// is scale: every existing test uses one or two peers. A club network is fifty
+// to a hundred.
+//
 // A syntheticPeer is not a mock. It performs the six-step login using the same
-// hbp package the master validated against a WPSD hotspot on 2026-08-23, and it
-// transmits the DMRD frames captured from a real radio on 2026-08-25. If the
-// handshake or the frame layout changes, these break — which is the point.
+// hbp package the master validated against a WPSD hotspot on 2026-08-23. If the
+// handshake changes, these break — which is the point.
 
 // syntheticPeer speaks the peer half of the Homebrew Protocol.
 type syntheticPeer struct {
@@ -207,74 +211,64 @@ func testMaster(t *testing.T, password []byte, maxPeers int) *peers.Master {
 
 // -----------------------------------------------------------------------------
 
-// TestAudioCrossesBetweenTwoPeers is the assertion README.md was making without
-// evidence: that QSP relays audio between bridged talkgroups.
+// TestCapturedTransmissionSurvivesTheWire relays a real radio's frames through
+// real sockets.
 //
-// Peer A transmits on TG 9; peer B is bridged to it on TG 91. Every frame must
-// arrive at B, and each must carry B's repeater ID rather than A's — a relaying
-// master re-stamps the frame as its own, and the wrong ID there is a bug the
-// receiving hotspot would silently act on.
-func TestAudioCrossesBetweenTwoPeers(t *testing.T) {
-	const password = "test-password"
-	m := testMaster(t, []byte(password), 8)
+// forward_test.go already proves relay between two peers over UDP, but with
+// frames this project constructed — StreamID 0xFEEDFACE, hand-picked frame
+// types. That proves the relay agrees with our idea of a transmission. It
+// cannot reveal that the idea is wrong, which is the same argument
+// docs/architecture/testing.md makes for refusing fabricated protocol fixtures.
+//
+// This sends the 242 frames captured from a WPSD hotspot on 2026-08-25 through
+// the listener and reads them off the wire at the far end.
+func TestCapturedTransmissionSurvivesTheWire(t *testing.T) {
+	l := startForwarding(t)
+	addr := l.Address()
 
-	a := newSyntheticPeer(3132910, 1, []byte(password))
-	b := newSyntheticPeer(3132911, 2, []byte(password))
-	a.register(t, m)
-	b.register(t, m)
-
-	if m.ConfiguredCount() != 2 {
-		t.Fatalf("%d peers configured, want 2", m.ConfiguredCount())
-	}
-
-	table, err := routing.NewTable([]routing.Bridge{{
-		Name:    "club",
-		Enabled: true,
-		Endpoints: []routing.Endpoint{
-			{Peer: a.id, Talkgroup: 9, Timeslot: hbp.Timeslot2},
-			{Peer: b.id, Talkgroup: 91, Timeslot: hbp.Timeslot2},
-		},
-	}})
-	if err != nil {
-		t.Fatalf("NewTable: %v", err)
-	}
-
-	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: readyPeers{m}})
-	if err != nil {
-		t.Fatalf("NewCore: %v", err)
-	}
+	sender := register(t, addr, testID, "K9MLS")
+	receiver := register(t, addr, peerTwo, "W5ABC")
 
 	frames := liveFrames(t)
-	now := time.Now()
 
-	delivered := 0
-	for _, out := range a.transmit(t, m, frames, 9, hbp.Timeslot2) {
-		result := core.Route(out.From, *out.Data, now)
-		now = now.Add(60 * time.Millisecond)
+	// startForwarding bridges TG 3148/TS1 to TG 91/TS2, so the captured frames
+	// are re-addressed to the sending endpoint. Everything else — sequence,
+	// frame type, the 33-byte burst, the trailing bytes MMDVMHost appends — is
+	// exactly as it came off the air.
+	for _, f := range frames {
+		f.RepeaterID = testID
+		f.TargetID = 3148
+		f.Timeslot = hbp.Timeslot1
+		sender.send(f)
+	}
 
-		for _, d := range result.Deliveries {
-			if d.Peer != b.id {
-				t.Fatalf("frame delivered to peer %d, want %d", d.Peer, b.id)
-			}
-			if d.Frame.RepeaterID != b.id {
-				t.Errorf("delivered frame carries repeater ID %d, want %d rewritten for the destination",
-					d.Frame.RepeaterID, b.id)
-			}
-			if d.Frame.TargetID != 91 {
-				t.Errorf("delivered frame targets TG %d, want 91", d.Frame.TargetID)
-			}
-			if d.Frame.SourceID != uint32(a.id) {
-				t.Errorf("delivered frame's source is %d, want %d — the originating radio must survive the relay",
-					d.Frame.SourceID, a.id)
-			}
-			delivered++
+	received := 0
+	for range frames {
+		msg := receiver.recv()
+		got, ok := msg.(hbp.Data)
+		if !ok {
+			t.Fatalf("the receiver got %s, want a DMRD frame", msg.Kind())
 		}
+		if got.TargetID != 91 {
+			t.Errorf("frame %d: talkgroup %d, want 91", got.Sequence, got.TargetID)
+		}
+		if got.Timeslot != hbp.Timeslot2 {
+			t.Errorf("frame %d: timeslot %s, want TS2", got.Sequence, got.Timeslot)
+		}
+		if got.SourceID != frames[0].SourceID {
+			t.Errorf("frame %d: source %d, want %d — the originating radio must survive the relay",
+				got.Sequence, got.SourceID, frames[0].SourceID)
+		}
+		if len(got.Payload) != len(frames[0].Payload) {
+			t.Errorf("frame %d: payload is %d bytes, want %d", got.Sequence, len(got.Payload), len(frames[0].Payload))
+		}
+		received++
 	}
 
-	if delivered != len(frames) {
-		t.Errorf("%d of %d frames crossed the bridge", delivered, len(frames))
+	if received != len(frames) {
+		t.Errorf("%d of %d captured frames survived the wire", received, len(frames))
 	}
-	t.Logf("relayed %d live frames from peer %d to peer %d", delivered, a.id, b.id)
+	t.Logf("relayed %d captured frames through real sockets", received)
 }
 
 // TestFanOutToManyPeers measures what one transmission costs at club scale.

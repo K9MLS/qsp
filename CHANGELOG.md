@@ -5,26 +5,29 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
-- **`internal/peers/fanout_test.go` — synthetic peers.** Every test until now
-  ran one peer with forwarding off, so audio had never crossed between two
-  stations. `README.md` claimed it did. A synthetic peer performs the real
-  six-step login through `internal/protocol/hbp` and replays the DMRD frames
-  captured from a radio on 2026-08-25, so it is not a mock: if the handshake or
-  frame layout changes, these break.
-- **Relay is verified.** 242 live frames cross a bridge between two peers, every
-  frame delivered, repeater ID rewritten for the destination and source ID
-  preserved.
+- **`internal/peers/fanout_test.go` — scale and provenance.** `forward_test.go`
+  already relayed between two peers over real sockets; what it used were frames
+  this project constructed, and only two peers. This adds a hundred, and adds
+  frames a radio actually sent.
+- **A captured transmission survives the wire.** 242 frames recorded from a WPSD
+  hotspot are relayed through the listener and read off the far end, translated
+  to the destination talkgroup and timeslot with the originating radio's ID
+  intact. Constructed frames prove the relay agrees with our idea of a
+  transmission; only captured ones can reveal the idea is wrong — the same
+  argument `docs/architecture/testing.md` makes against fabricated fixtures.
 - **Fan-out is measured rather than estimated.** One transmission to 100 peers
   is **1,650 deliveries per second of speech**; 242 frames to 99 destinations
   costs about 10 ms of CPU. BLUEPRINT-v1's arithmetic said 1,700.
 - Registry and `max_peers` behaviour at 100 peers.
 
 ### Fixed
-- **`README.md` claimed QSP "relays audio between bridged talkgroups".** It had
-  never done so in any test. The claim is now qualified: relay is proven against
-  synthetic peers, and two physical hotspots have still never been connected at
-  once. This is the failure mode `docs/architecture/testing.md` names as
-  uncatchable by the accuracy gate — a promise rather than an absence claim.
+- **A correction to a correction.** The previous entry here claimed audio had
+  never crossed between two stations and that `README.md` was wrong to say
+  otherwise. That was itself wrong: `TestTrafficIsRelayedBetweenTwoRealPeers`
+  and `TestWholeTransmissionIsRelayed` had covered it over real sockets all
+  along. The genuine gap was hardware — two *physical* hotspots have never been
+  connected to one instance — and the documents amended on the false premise are
+  corrected here.
 
 ## [0.1.6] — 2026-08-26
 
