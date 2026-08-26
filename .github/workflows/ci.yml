@@ -19,7 +19,7 @@ env:
   # Pinned: ADR-0004's reproducibility argument applies to the toolchain too.
   # An unpinned @latest lets an upstream release turn a green commit red without
   # a line of QSP changing. Bump deliberately, in its own commit.
-  STATICCHECK_VERSION: "2024.1.1"
+  STATICCHECK_VERSION: "2026.2.1"
 
 jobs:
   build:
