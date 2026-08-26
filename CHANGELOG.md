@@ -32,6 +32,12 @@ Persistence, and with it the project's first dependency.
   at postgres would hit.
 - `cache: true` in CI. `go.sum` exists now, so the reason for disabling it is
   gone.
+- **`staticcheck` bumped from `2024.1.1` to `2026.2.1`.** The old release no
+  longer compiles under Go 1.27 — the failure was an invalid array length in
+  staticcheck's own source, at the install step rather than the run step. Clean
+  across the version jump, on 15,800 lines. The pin did its job: the breakage
+  arrived when the toolchain was deliberately changed and someone was watching,
+  rather than on an unrelated day.
 - ADR-0004 is amended rather than rewritten. It records a decision that was
   correct when taken and remains the default for everything else.
 

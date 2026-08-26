@@ -25,6 +25,9 @@ subsystem tolerates being in-memory; a two-week acceptance test does not.
 
 The binary registers `modernc.org/sqlite` v1.57.0.
 
+This required moving to Go 1.27 and, in turn, bumping `staticcheck` from
+`2024.1.1` to `2026.2.1` — the older release no longer compiles under 1.27.
+
 ### Purpose
 
 Persistence for configuration versions and the audit log — the two schemas in
@@ -58,7 +61,7 @@ The driver requires Go 1.25 or later, which forced the move to Go 1.27. That was
 overdue on its own terms: Go 1.22 had been out of support since around the 1.24
 release and was receiving no security fixes.
 
-**Accepted cost:** ten modules where there were zero.
+**Accepted cost:** nine modules in `go.mod` where there were none.
 
 | Module | Role |
 |---|---|
@@ -67,6 +70,17 @@ release and was receiving no security fixes.
 | `modernc.org/mathutil`, `modernc.org/memory` | support for the above |
 | `golang.org/x/sys` | syscall wrappers |
 | `github.com/google/uuid`, `github.com/dustin/go-humanize`, `github.com/mattn/go-isatty`, `github.com/ncruces/go-strftime`, `github.com/remyoudompheng/bigfft` | indirect |
+
+`go mod graph` shows considerably more than nine — `modernc.org/cc/v4`,
+`modernc.org/ccgo/v4`, `golang.org/x/tools` and `github.com/google/pprof` among
+them. Those are the driver's own build-time tooling, needed to compute the
+module graph but **not linked into the binary**. `go list -deps ./cmd/qsp`
+reports 8 modernc packages, which is the number that matters for what ships.
+
+**Measured size cost.** The stripped armv7 binary went from 8.4 MB to 12 MB, a
+3.6 MB increase. That is the price of carrying a C runtime as Go source, and it
+is comfortable on a Pi. Recorded here so nobody has to discover it on the
+target.
 
 The supply-chain surface is no longer "the Go standard library". Reviewing a
 dependency bump is no longer trivial. `go.sum` must now be part of review.
