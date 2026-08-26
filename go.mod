@@ -1,3 +1,3 @@
 module github.com/k9mls/qsp
 
-go 1.22
+go 1.27
