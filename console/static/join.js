@@ -153,7 +153,9 @@
     /* A value a member can type goes in <code>. Anything else must not look
      * like one, or it gets pasted into the field verbatim. */
     setField($("field-address"), settings.address, "Ask whoever runs the network");
-    setField($("field-port"), settings.port ? String(settings.port) : "", "62031");
+    /* 62031 is the port QSP listens on by default, not a guess, so it is a
+     * value to type even when the server has not told us one. */
+    setField($("field-port"), settings.port ? String(settings.port) : "62031", "");
 
     var notice = $("disabled-notice");
     if (notice) {
