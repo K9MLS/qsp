@@ -26,6 +26,21 @@
     }
   }
 
+  /* Swap the element between a typeable value and a placeholder, changing the
+   * styling with it. The <code> box means "type this exactly". */
+  function setField(el, value, placeholder) {
+    if (!el) {
+      return;
+    }
+    if (value) {
+      el.textContent = value;
+      el.classList.remove("field--missing");
+      return;
+    }
+    el.textContent = placeholder;
+    el.classList.add("field--missing");
+  }
+
   /* Talkgroup rows. The dialled number is the one that matters, so it is first
    * and set in the largest type. "Arrives as" is shown because a member who
    * looks at their hotspot's log will otherwise see a number nobody told them
@@ -135,8 +150,10 @@
       document.title = "Join " + settings.network_name + " — QSP";
     }
 
-    text($("field-address"), settings.address || "ask your network admin");
-    text($("field-port"), settings.port ? String(settings.port) : "62031");
+    /* A value a member can type goes in <code>. Anything else must not look
+     * like one, or it gets pasted into the field verbatim. */
+    setField($("field-address"), settings.address, "Ask whoever runs the network");
+    setField($("field-port"), settings.port ? String(settings.port) : "", "62031");
 
     var notice = $("disabled-notice");
     if (notice) {
@@ -146,6 +163,14 @@
         notice.hidden = false;
         text($("disabled-reason"), data.reason || "");
       }
+    }
+
+    /* Following six steps against a listener that cannot accept anyone wastes
+     * ten minutes and ends in a failure the member cannot explain. Dim the
+     * steps so the notice is read as an instruction to stop, not a footnote. */
+    var steps = document.querySelector(".steps");
+    if (steps) {
+      steps.classList.toggle("steps--blocked", !data.enabled);
     }
 
     renderTalkgroups(settings.talkgroups);

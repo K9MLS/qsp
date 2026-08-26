@@ -189,6 +189,27 @@
   font-style: italic;
 }
 
+/* A value in a <code> box reads as "type this exactly". When there is no value
+ * to give, the box has to go, or the placeholder gets typed instead. */
+.field--missing {
+  font-family: var(--font-ui);
+  font-style: italic;
+  color: var(--color-foreground-subtle);
+  background: none;
+  padding: 0;
+}
+
+/* Nothing can connect, so the steps are shown for reference but not as work to
+ * do now. Opacity alone would be colour-as-meaning; the cursor and the notice
+ * above carry it too. */
+.steps--blocked {
+  opacity: 0.45;
+}
+
+.steps--blocked .waiting {
+  border-style: dashed;
+}
+
 /* The number to dial is the one thing on this page a member must get right. */
 .tg-dial {
   font-family: var(--font-mono);
