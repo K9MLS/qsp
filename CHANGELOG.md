@@ -12,7 +12,8 @@ All notable changes to QSP. Dates are UTC.
 - **A captured transmission survives the wire.** 242 frames recorded from a WPSD
   hotspot are relayed through the listener and read off the far end, translated
   to the destination talkgroup and timeslot with the originating radio's ID
-  intact. Constructed frames prove the relay agrees with our idea of a
+  intact and the 33-byte burst byte-identical. Frames are sent and read one at a
+  time, at the pace a radio produces them. Constructed frames prove the relay agrees with our idea of a
   transmission; only captured ones can reveal the idea is wrong — the same
   argument `docs/architecture/testing.md` makes against fabricated fixtures.
 - **Fan-out is measured rather than estimated.** One transmission to 100 peers

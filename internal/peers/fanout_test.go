@@ -231,19 +231,26 @@ func TestCapturedTransmissionSurvivesTheWire(t *testing.T) {
 
 	frames := liveFrames(t)
 
+	// Send and receive one frame at a time.
+	//
+	// The first version of this test wrote all 242 datagrams in a tight loop
+	// and then read 242. It passed on a slow machine and failed on a fast one:
+	// nothing drains the listener's receive queue while the loop runs, and UDP
+	// discards what will not fit. A radio sends one frame every 60 ms, so
+	// blasting them was never realistic — and an unrealistic test that is also
+	// flaky has nothing to recommend it.
+	//
 	// startForwarding bridges TG 3148/TS1 to TG 91/TS2, so the captured frames
 	// are re-addressed to the sending endpoint. Everything else — sequence,
 	// frame type, the 33-byte burst, the trailing bytes MMDVMHost appends — is
 	// exactly as it came off the air.
+	received := 0
 	for _, f := range frames {
 		f.RepeaterID = testID
 		f.TargetID = 3148
 		f.Timeslot = hbp.Timeslot1
 		sender.send(f)
-	}
 
-	received := 0
-	for range frames {
 		msg := receiver.recv()
 		got, ok := msg.(hbp.Data)
 		if !ok {
@@ -259,8 +266,8 @@ func TestCapturedTransmissionSurvivesTheWire(t *testing.T) {
 			t.Errorf("frame %d: source %d, want %d — the originating radio must survive the relay",
 				got.Sequence, got.SourceID, frames[0].SourceID)
 		}
-		if len(got.Payload) != len(frames[0].Payload) {
-			t.Errorf("frame %d: payload is %d bytes, want %d", got.Sequence, len(got.Payload), len(frames[0].Payload))
+		if got.Payload != f.Payload {
+			t.Errorf("frame %d: the 33-byte burst was altered in transit", got.Sequence)
 		}
 		received++
 	}
