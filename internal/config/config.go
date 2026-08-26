@@ -84,6 +84,10 @@ type DMR struct {
 	// audio on anybody's repeater. Turning it on is the moment QSP stops
 	// observing and starts transmitting.
 	Forwarding bool `json:"forwarding"`
+	// Join is what a club member needs in order to point a hotspot at this
+	// network. Optional: an empty Join means /api/join reports what it can and
+	// tells the member to ask their admin for the rest, rather than guessing.
+	Join Join `json:"join"`
 	// Bridges are the routing rules. Traffic is only relayed between endpoints
 	// a bridge joins.
 	Bridges []Bridge `json:"bridges"`
@@ -148,6 +152,50 @@ type Bridge struct {
 	Enabled bool `json:"enabled"`
 	// Endpoints are the places this bridge joins. At least two are required.
 	Endpoints []Endpoint `json:"endpoints"`
+}
+
+// Join describes what a club member needs in order to point a hotspot at this
+// network, and is served by GET /api/join.
+//
+// This is configuration rather than something QSP derives, and the reason is
+// the whole difficulty of onboarding: the number a member dials is rewritten
+// by their own hotspot before QSP ever sees it. QSP knows only the arriving
+// talkgroup. Only the admin, who has seen the TGRewrite lines in
+// /etc/dmrgateway, knows both halves — and a member told only one of them
+// reaches nothing and concludes the software is broken.
+//
+// The shared peer password is deliberately absent. Everything here is safe to
+// show a club's members; the password is not, and it travels separately.
+type Join struct {
+	// NetworkName is what the club calls this network.
+	NetworkName string `json:"network_name"`
+	// Address is the host or IP a member's hotspot should point at. Left empty
+	// when the admin has not said; the page then asks them to ask, rather than
+	// guessing at an address that may be a container's.
+	Address string `json:"address"`
+	// Talkgroups are the ones members may use.
+	Talkgroups []JoinTalkgroup `json:"talkgroups"`
+}
+
+// JoinTalkgroup is one talkgroup as a member must dial it.
+type JoinTalkgroup struct {
+	// Name is what the club calls it, in plain words.
+	Name string `json:"name"`
+	// Dialled is the number entered into the radio.
+	Dialled uint32 `json:"dialled"`
+	// Arrives is the talkgroup it becomes by the time QSP sees it. Zero means
+	// the hotspot does not rewrite it.
+	Arrives uint32 `json:"arrives,omitempty"`
+	// Timeslot is 1 or 2.
+	Timeslot int `json:"timeslot"`
+}
+
+// Target returns the talkgroup QSP will actually receive.
+func (t JoinTalkgroup) Target() uint32 {
+	if t.Arrives != 0 {
+		return t.Arrives
+	}
+	return t.Dialled
 }
 
 // Endpoint is one talkgroup on one timeslot at one peer.
@@ -487,6 +535,53 @@ func (c Config) Validate() error {
 			}
 			if tr.HangTime < 0 {
 				v.add(field+".hang_time", "must not be negative", "use \"3m\", or omit it for the default")
+			}
+		}
+
+		// Join. What a member is told to dial has to be a talkgroup this
+		// instance will actually relay, or they reach silence and blame the
+		// software. QSP can check that, and it is the one part of onboarding
+		// an admin cannot verify without a second radio.
+		reachable := make(map[[2]uint32]bool)
+		for _, b := range c.DMR.Bridges {
+			for _, e := range b.Endpoints {
+				reachable[[2]uint32{e.Talkgroup, uint32(e.Timeslot)}] = true
+			}
+		}
+
+		seen := make(map[[2]uint32]string, len(c.DMR.Join.Talkgroups))
+		for i, tg := range c.DMR.Join.Talkgroups {
+			field := fmt.Sprintf("dmr.join.talkgroups[%d]", i)
+
+			if strings.TrimSpace(tg.Name) == "" {
+				v.add(field+".name", "must not be empty",
+					"name it the way the club refers to it, such as \"Club chat\"")
+			}
+			if tg.Dialled == 0 {
+				v.add(field+".dialled", "must not be 0",
+					"use the number a member enters into their radio, which their hotspot may rewrite")
+			}
+			if tg.Timeslot != 1 && tg.Timeslot != 2 {
+				v.add(field+".timeslot", fmt.Sprintf("is %d", tg.Timeslot),
+					"DMR has two timeslots; use 1 or 2")
+			}
+
+			key := [2]uint32{tg.Target(), uint32(tg.Timeslot)}
+			if prior, dup := seen[key]; dup {
+				v.add(field, fmt.Sprintf("arrives as TG %d on TS %d, the same as %q",
+					tg.Target(), tg.Timeslot, prior),
+					"two entries that arrive identically are indistinguishable to a member; remove one")
+			}
+			seen[key] = tg.Name
+
+			// Only meaningful once bridges exist; an instance with none is
+			// observing rather than relaying, and says so elsewhere.
+			if len(c.DMR.Bridges) > 0 && tg.Timeslot >= 1 && tg.Timeslot <= 2 &&
+				tg.Dialled != 0 && !reachable[key] {
+				v.add(field, fmt.Sprintf("tells members to dial %d, arriving as TG %d on TS %d, "+
+					"which no bridge carries", tg.Dialled, tg.Target(), tg.Timeslot),
+					"add that talkgroup to a bridge, or correct \"arrives\" to match the rewrite "+
+						"in the hotspot's DMRGateway configuration")
 			}
 		}
 

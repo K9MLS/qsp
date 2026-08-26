@@ -31,17 +31,97 @@
         "name": "soak",
         "enabled": false,
         "endpoints": [
-          { "peer": 0, "talkgroup": 9,  "timeslot": 2 },
-          { "peer": 0, "talkgroup": 91, "timeslot": 2 }
+          {
+            "peer": 0,
+            "talkgroup": 9,
+            "timeslot": 2
+          },
+          {
+            "peer": 0,
+            "talkgroup": 91,
+            "timeslot": 2
+          }
         ]
       }
     ],
     "schedule": [
-      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "06:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
-      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "12:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
-      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "18:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
-      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "23:30", "duration": "60m", "timezone": "America/Chicago", "enabled": true }
+      {
+        "bridge": "soak",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "06:00",
+        "duration": "30m",
+        "timezone": "America/Chicago",
+        "enabled": true
+      },
+      {
+        "bridge": "soak",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "12:00",
+        "duration": "30m",
+        "timezone": "America/Chicago",
+        "enabled": true
+      },
+      {
+        "bridge": "soak",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "18:00",
+        "duration": "30m",
+        "timezone": "America/Chicago",
+        "enabled": true
+      },
+      {
+        "bridge": "soak",
+        "days": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "start": "23:30",
+        "duration": "60m",
+        "timezone": "America/Chicago",
+        "enabled": true
+      }
     ],
-    "triggers": []
+    "triggers": [],
+    "join": {
+      "network_name": "QSP soak",
+      "address": "",
+      "talkgroups": [
+        {
+          "name": "Soak net",
+          "dialled": 11,
+          "arrives": 9,
+          "timeslot": 2
+        }
+      ]
+    }
   }
 }

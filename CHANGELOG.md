@@ -5,6 +5,18 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`dmr.join` configuration**, feeding `/api/join`. It is configuration rather
+  than something QSP derives, and the reason is the whole difficulty of
+  onboarding: the number a member dials is rewritten by their own hotspot
+  before QSP ever sees it. QSP knows only the arriving talkgroup; only the
+  admin, who has read the `TGRewrite` lines in `/etc/dmrgateway`, knows both.
+- **Validation catches a talkgroup no bridge carries.** An admin who mistypes
+  `arrives` sends every member to a destination that goes nowhere — they hear
+  silence, conclude QSP is broken, and the admin cannot reproduce it without a
+  second radio. Startup now refuses, naming the entry and pointing at the
+  hotspot's DMRGateway configuration. Timeslot is checked too, because TG 9 on
+  TS1 is not TG 9 on TS2. Duplicate arrivals are refused for the same reason:
+  once rewritten they are indistinguishable.
 - **`GET /api/join` — member onboarding.** A club network is one admin and fifty
   to a hundred members, each of whom must point a hotspot at it. Getting the
   first one connected took two sessions, and QSP was never at fault: the

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"strconv"
 	"time"
@@ -202,6 +203,7 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		ConsoleAssets:       assets,
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
+		Join:                joinSettings(cfg),
 	})
 	if err != nil {
 		return nil, err
@@ -620,4 +622,53 @@ func unbuilt(name, reason string) health.Checker {
 		CheckName: name,
 		Fn:        func(context.Context) health.Result { return health.Unavailable(reason) },
 	}
+}
+
+// joinSettings translates the configured join block into the shape the server
+// serves at /api/join.
+//
+// The port comes from dmr.listen_address rather than being configured twice: a
+// member must connect to the port QSP is actually listening on, and two places
+// to state one fact is two places to get it wrong.
+//
+// The address is not derived. QSP could report the interface it bound, but
+// 0.0.0.0 means nothing to a member and a container's address would be worse
+// than silence — it looks authoritative and is wrong. An unset address leaves
+// the page telling the member to ask their admin, which is true.
+func joinSettings(cfg config.Config) server.JoinSettings {
+	out := server.JoinSettings{
+		NetworkName: cfg.DMR.Join.NetworkName,
+		Address:     cfg.DMR.Join.Address,
+		Port:        listenPort(cfg.DMR.ListenAddress),
+		Talkgroups:  make([]server.JoinTalkgroup, 0, len(cfg.DMR.Join.Talkgroups)),
+	}
+	if out.Address == "" {
+		out.AddressReason = "no address is configured; set dmr.join.address to the " +
+			"host or IP members should point their hotspots at"
+	}
+	for _, tg := range cfg.DMR.Join.Talkgroups {
+		out.Talkgroups = append(out.Talkgroups, server.JoinTalkgroup{
+			Name:     tg.Name,
+			Dialled:  tg.Dialled,
+			Arrives:  tg.Arrives,
+			Timeslot: tg.Timeslot,
+		})
+	}
+	return out
+}
+
+// listenPort extracts the UDP port from a listen address, falling back to the
+// Homebrew Protocol's usual 62031 when it cannot be read. A wrong port on the
+// join page is worse than a conventional one: the member would have no reason
+// to doubt it.
+func listenPort(addr string) int {
+	_, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return 62031
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil || port <= 0 || port > 65535 {
+		return 62031
+	}
+	return port
 }
