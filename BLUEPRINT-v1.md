@@ -68,9 +68,11 @@ filter is unusable. The `Connected peers` panel needs to answer "is *my* hotspot
 connected" and "what is talking right now", not list everything.
 
 **Forwarding is a different engineering problem.** One member keying up, relayed
-to a hundred peers, is roughly 1,700 datagrams per second outbound from a single
-transmission. Nothing has tested that. **[ASSUMPTION]** the target host is a Pi
-4 or better; that figure needs measuring before a club depends on it.
+to a hundred peers, is **1,650 datagrams per second outbound** — measured, not
+estimated, in `internal/peers/fanout_test.go`. Routing 242 live frames to 99
+destinations costs about 10 ms of CPU, so the routing core is not the
+constraint. The constraint is the UDP send path, which that test does not
+exercise. **[ASSUMPTION]** the target host is a Pi 4 or better.
 
 **Peer identity matters.** With one peer, a radio ID is a curiosity. With a
 hundred, the admin needs to know which callsign belongs to which member, who is
@@ -100,7 +102,7 @@ test suite.
 | **2a** | **Member onboarding** | A club member with a hotspot joins the network unassisted in under ten minutes |
 | **2b** | Admin setup | A club officer stands up a new instance without hand-editing JSON |
 | **2c** | Console at scale | An admin finds one member among a hundred connected peers in seconds |
-| **4** | Multi-peer forwarding | Audio relays correctly between two hotspots, then at club scale |
+| **4** | Multi-peer forwarding | Audio relays between two *physical* hotspots. Synthetic peers already prove the logic; this proves the wire |
 
 Phase 3 runs first because fourteen days of wall-clock cannot be compressed, and
 it needs no further code.
@@ -109,9 +111,11 @@ it needs no further code.
 happens a hundred times. **[ASSUMPTION]** the admin — you — can keep
 hand-editing JSON in the interim.
 
-**Phase 4 is not optional and is currently unproven.** Every relay test to date
-has run with one peer and forwarding off, so audio has never crossed between two
-stations. That is the product's core function.
+**Phase 4 is narrower than it was.** `internal/peers/fanout_test.go` drives
+synthetic peers through the real login handshake and replays captured frames, so
+relay logic and the repeater-ID rewrite are now verified at one hundred peers.
+What remains unproven is the wire: two physical hotspots have never been
+connected to one instance.
 
 ## 7. Beyond this
 

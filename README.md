@@ -18,8 +18,14 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
 > what those runs confirmed and what they did not.
 >
+> **Relay is tested against synthetic peers, not two radios.** Audio crossing
+> between bridged talkgroups is verified by replaying captured frames through
+> the real protocol stack to a hundred synthetic peers
+> (`internal/peers/fanout_test.go`). Two physical hotspots have never been
+> connected at once.
+>
 > **Not yet run unattended.** The scheduler and PTT triggers are built and
-> tested, but the two-week soak that BLUEPRINT §16 requires has not started.
+> tested, but the two-week soak that BLUEPRINT-v1 requires has not started.
 >
 > **Not yet built:** P25, the vocoder pool, and the analog connectors
 > (AllStar, Zello, EchoLink). The health endpoint reports each as

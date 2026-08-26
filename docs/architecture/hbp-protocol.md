@@ -289,7 +289,7 @@ Timeouts: an incomplete handshake expires after 30 s, a configured peer after
 | Gap | What would close it |
 |---|---|
 | `RPTCL` / `MSTNAK` implemented but never seen on a wire | Capture a hotspot disconnecting, and a login with a wrong password |
-| Relay repeater-ID rewrite unverified | Two peers with forwarding on. The 2026-08-25 capture does **not** close this: one peer, forwarding off, nothing relayed |
+| Relay repeater-ID rewrite unverified against hardware | Two physical hotspots. Verified against synthetic peers in `internal/peers/fanout_test.go`, which replays the captured frames through the real protocol stack — the rewrite is correct, but no second radio has received the result |
 | `description` / `slots` split unverified | A hotspot configured for one timeslot |
 | `RPTO` options string | Capture a hotspot configured with options |
 | Trailer bytes uninterpreted | Correlate with MMDVMHost's reported BER/RSSI |
