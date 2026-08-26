@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "server": {
+    "listen_address": "127.0.0.1:8080"
+  },
+  "database": {
+    "driver": "sqlite",
+    "dsn": "/var/lib/qsp/qsp.db",
+    "max_open_conns": 4,
+    "conn_max_lifetime": "1h",
+    "busy_timeout": "5s"
+  },
+  "logging": {
+    "level": "info",
+    "format": "json"
+  },
+  "events": {
+    "history_size": 256,
+    "subscriber_buffer": 64
+  },
+  "dmr": {
+    "enabled": true,
+    "listen_address": "0.0.0.0:62031",
+    "password_file": "/var/lib/qsp/peer.pass",
+    "peer_timeout": "60s",
+    "login_timeout": "30s",
+    "max_peers": 16,
+    "forwarding": true,
+    "bridges": [
+      {
+        "name": "soak",
+        "enabled": false,
+        "endpoints": [
+          { "peer": 0, "talkgroup": 9,  "timeslot": 2 },
+          { "peer": 0, "talkgroup": 91, "timeslot": 2 }
+        ]
+      }
+    ],
+    "schedule": [
+      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "06:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
+      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "12:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
+      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "18:00", "duration": "30m", "timezone": "America/Chicago", "enabled": true },
+      { "bridge": "soak", "days": [0,1,2,3,4,5,6], "start": "23:30", "duration": "60m", "timezone": "America/Chicago", "enabled": true }
+    ],
+    "triggers": []
+  }
+}

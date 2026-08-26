@@ -16,10 +16,27 @@ This is that ADR. ADR-0005 already decided *which* driver and *where* it is
 registered; what was never written down is the justification for taking the
 dependency at all, because until now none was taken.
 
-The forcing function is BLUEPRINT §16's Phase 3 gate: a scheduled net linking
-and unlinking unattended for two weeks. Without persistence, a restart on day
-nine loses nine days of evidence and the fortnight starts again. Every other
-subsystem tolerates being in-memory; a two-week acceptance test does not.
+The forcing function was taken to be BLUEPRINT §16's Phase 3 gate: without
+persistence, a restart on day nine loses nine days of evidence.
+
+**That reasoning was wrong, and is corrected here rather than quietly dropped.**
+QSP's audit trail is written by `audit.LogRecorder` to the structured log, not
+to the database. Nothing inserts into `configuration_versions` or
+`audit_events`; the only `INSERT` in the codebase is the migration runner's own
+bookkeeping. Soak evidence comes from the journal, and survives a restart
+because journald does, not because QSP does.
+
+What the driver actually buys today is narrower and still worth having: the
+migration runner and the storage layer execute for the first time in any build,
+the schema exists and is proven to survive a restart, and the health check
+reports a real database rather than a permanent absence. It is a prerequisite
+for persistence, not persistence itself.
+
+The honest justification is therefore ordering rather than urgency. The
+dependency has to land before anything can be written to storage, it is easier
+to land while the tree is quiet than beside a feature, and it forced a Go
+upgrade that was overdue on its own terms. `docs/SOAK.md` states plainly that
+the journal is the evidence.
 
 ## Decision
 

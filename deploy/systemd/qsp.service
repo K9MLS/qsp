@@ -1,0 +1,64 @@
+[Unit]
+Description=QSP DMR linking server
+Documentation=https://github.com/K9MLS/qsp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/qsp -config /var/lib/qsp/qsp.json
+WorkingDirectory=/var/lib/qsp
+
+# Restart, but not in a tight loop. A crash loop during a fourteen-day soak
+# should be visible as a gap in service rather than hidden by systemd retrying
+# a hundred times a second — and RestartSec is what makes the gap legible in
+# the journal.
+Restart=on-failure
+RestartSec=10s
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# QSP writes its audit trail to the structured log. Nothing writes to the
+# database yet, so the journal *is* the soak evidence. It must outlive a
+# reboot: set Storage=persistent in /etc/systemd/journald.conf, or fourteen
+# days of evidence ends at the first restart.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qsp
+
+User=qsp
+Group=qsp
+
+# /var/lib/qsp, created and owned automatically.
+StateDirectory=qsp
+StateDirectoryMode=0750
+
+# UDP 62031 needs no privilege; nothing here binds below 1024.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+
+# The scheduler resolves wall-clock times in named IANA zones, so it needs the
+# zone database. ProtectSystem=strict leaves /usr readable, which covers it.
+
+[Install]
+WantedBy=multi-user.target

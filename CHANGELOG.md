@@ -7,6 +7,11 @@ All notable changes to QSP. Dates are UTC.
 Persistence, and with it the project's first dependency.
 
 ### Added
+- **`docs/SOAK.md`**, the Phase 3 procedure, plus a hardened
+  `deploy/systemd/qsp.service` and `deploy/soak/qsp.json`. Four windows a day
+  gives 112 scheduler transitions over the fortnight rather than 28, so a fault
+  surfaces in hours instead of days. The 23:30 window crosses midnight
+  deliberately.
 - **`modernc.org/sqlite` v1.57.0 is registered**, in `cmd/qsp/driver_sqlite.go`.
   Roughly two hundred lines of migration and storage code had never executed in
   any build, because `database.Open` always returned `ErrDriverNotRegistered`.
@@ -43,6 +48,11 @@ Persistence, and with it the project's first dependency.
 
 ### Fixed
 - `build`'s doc comment said the binary registers no SQL driver. It does.
+- **ADR-0017's justification was wrong and is corrected in place.** It claimed
+  the driver was needed so a restart during the soak would not lose evidence.
+  It would not have: the audit trail goes to the log, and nothing writes to the
+  database at all. The dependency is still worth taking, for narrower reasons
+  now stated accurately.
 
 ## [0.1.5] — 2026-08-26
 
