@@ -243,6 +243,17 @@ Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
 ---
 
+## 7a. Current scope
+
+`BLUEPRINT-v1.md` describes what is being built now: **a private DMR network for
+a radio club's hotspots, fifty to a hundred of them.** The frozen
+`BLUEPRINT.md` v0.4 predates any code and its phase plan assumes a different
+target; where they disagree, v1 is correct.
+
+The near-term risk is not protocol work — that is done and hardware-validated.
+It is onboarding. Getting one hotspot connected took two sessions, and QSP was
+never at fault.
+
 ## 8. Immediate next steps
 
 **The critical path is the Phase 3 soak**, because two weeks of wall-clock time
