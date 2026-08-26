@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"sort"
 	"strings"
@@ -593,6 +594,32 @@ func parseFormat(s string) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown format %q", s)
 	}
+}
+
+// CheckPeerPasswordMode reports whether a peer password file's permissions are
+// tight enough to hold a shared secret.
+//
+// A password readable by every account on the host is not a shared secret, and
+// nothing about that failure is visible: the file works, peers authenticate,
+// and the exposure is silent. ssh refuses a private key with loose permissions
+// for the same reason, and this follows that precedent rather than warning and
+// continuing — a warning in a log nobody reads is not a control.
+//
+// Only the group and world bits matter. The owner's bits are their business,
+// and the execute bit, while meaningless here, is not a disclosure.
+//
+// This takes a mode rather than a path so that it is testable without touching
+// a filesystem, and so the decision about which platforms can enforce it lives
+// with the caller. Windows cannot: os.Stat synthesises a mode from the
+// read-only attribute and reports 0666 for an ordinary file whatever its ACL
+// says, so enforcing this there would reject every correctly secured file.
+func CheckPeerPasswordMode(mode fs.FileMode) error {
+	if perm := mode.Perm() & 0o077; perm != 0 {
+		return fmt.Errorf("the peer password file is mode %#o, readable beyond its owner; "+
+			"run chmod 600 on it — a shared secret every account on this host can read "+
+			"is not a secret", mode.Perm())
+	}
+	return nil
 }
 
 // LoadPeerPassword reads the shared peer password from DMR.PasswordFile.

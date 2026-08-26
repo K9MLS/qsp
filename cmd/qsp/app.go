@@ -224,6 +224,10 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		return nil, "the DMR listener is disabled; set dmr.enabled to accept peers", nil
 	}
 
+	if err := checkPasswordFileMode(cfg.DMR.PasswordFile); err != nil {
+		return nil, "", err
+	}
+
 	password, err := config.LoadPeerPassword(os.ReadFile, cfg.DMR.PasswordFile)
 	if err != nil {
 		return nil, "", err

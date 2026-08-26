@@ -24,8 +24,8 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.4 |
-| Tests | 294, all passing (291 `Test`, 3 `Fuzz`) |
+| Version | 0.1.5 |
+| Tests | 297, all passing (294 `Test`, 3 `Fuzz`) |
 | Race detector | clean |
 | Dependencies | **zero** — standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -90,7 +90,7 @@ distinguished explicitly or documentation checks acquire false exemptions.
 | `description`/`slots` field split unverified | A single-timeslot hotspot |
 | No manual override for Net Control | Deliberately deferred |
 | No SQL driver registered | `go get modernc.org/sqlite` + blank import. Nothing survives a restart until then |
-| `password_file` mode is not checked | Documented as "should be mode 0600", never verified. QSP starts on a `0644` file silently. Close before anything runs unattended |
+| No ACL check for `password_file` on Windows | POSIX hosts refuse a file readable beyond its owner; Windows cannot — `os.Stat` reports no ACL. Secure it with an ACL there |
 | No authentication on any endpoint | Designed, unbuilt. `/api/peers` discloses callsigns, radio IDs and source addresses. Bind to `127.0.0.1`; reach the console over a tunnel |
 | Docs can still over-claim | The accuracy gate catches absence claims, not promises of things that do not exist. That stays a review problem |
 | `overall: healthy` with 10 of 11 unavailable | Correct by the current rule, but reads oddly. Revisit before wiring alerting |
@@ -255,17 +255,15 @@ else can proceed alongside it.
    fortnight starts again. Note it is the first dependency the project will
    have; ADR-0005 chose `modernc.org/sqlite` precisely because it is pure Go and
    keeps `CGO_ENABLED=0` intact.
-2. **Check the `password_file` mode.** A few lines, and the failure it prevents
-   is silent. Do it before anything runs unattended, not after.
-3. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
+2. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
    `127.0.0.1` and reached over a tunnel; only UDP 62031 faces the network.
    Configure a schedule that links and unlinks daily so the fortnight actually
    exercises the scheduler rather than merely staying up.
-4. **Console visual design** (Phase 2) — runs concurrently with the soak. The
+3. **Console visual design** (Phase 2) — runs concurrently with the soak. The
    gate is a newcomer running unassisted in ten minutes, which is a usability
    claim and needs a person who has not seen it before.
-5. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
+4. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
    disabled in the WPSD dashboard. The cheapest remaining gap.
-6. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
-7. **P25** (Phase 4) — also needs a capture containing an actual P25
+5. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
+6. **P25** (Phase 4) — also needs a capture containing an actual P25
    transmission; `testdata/p25/` holds polling traffic only.

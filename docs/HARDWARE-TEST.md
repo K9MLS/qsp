@@ -103,7 +103,7 @@ sudo firewall-cmd --add-port=62031/udp     # firewalld hosts, or packets vanish
 Expected:
 
 ```
-level=INFO msg=starting version=0.1.4
+level=INFO msg=starting version=0.1.5
 level=WARN msg="running without persistence" ...
 level=INFO msg="forwarding disabled; traffic is observed and not relayed"
 level=INFO msg="console listening" subsystem=server address=127.0.0.1:8080
@@ -294,13 +294,22 @@ reference.
 
 ---
 
-## Known gap: the password file's mode is not checked
+## The password file's permissions
 
-`internal/config/config.go` documents `password_file` as "should be mode 0600",
-and the error text tells operators to create it that way, but nothing verifies
-it. QSP starts on a `0644` file without complaint.
+On Linux, macOS and the Pi, **QSP refuses to start if `peer.pass` is readable
+beyond its owner**:
 
-A shared secret readable by every account on the host is not a shared secret,
-and the failure is silent. `ssh` refuses a private key with loose permissions
-for this reason. Not urgent on a single-user bench; close it before anything
-runs unattended.
+```
+qsp: the peer password file is mode 0644, readable beyond its owner;
+run chmod 600 on it
+```
+
+`chmod 600 peer.pass` and start it again. `ssh` behaves the same way about
+private keys, and for the same reason: a shared secret every account on the host
+can read is not a secret, and nothing about that failure is visible at runtime.
+
+**On Windows the check does nothing.** `os.Stat` there does not report an ACL —
+it synthesises a mode from the read-only attribute, so an ordinary file reads as
+`0666` however tightly it is actually secured. Enforcing the POSIX rule would
+reject every correctly protected file. Secure it with an ACL granting only the
+account QSP runs as.

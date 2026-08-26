@@ -2,6 +2,29 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [0.1.5] — 2026-08-26
+
+### Added
+- **QSP refuses to start if the peer password file is readable beyond its
+  owner.** It was documented as mode 0600 and never verified, so a `0644` file
+  worked silently — the worst shape a security failure can take, since nothing
+  at runtime distinguishes it from a correct setup. `ssh` refuses a loose
+  private key for the same reason, and this follows that rather than warning and
+  continuing: a warning in a log nobody reads is not a control.
+- `config.CheckPeerPasswordMode` takes a `fs.FileMode` rather than a path, so it
+  is tested without a filesystem and the platform decision sits with the caller.
+  15 cases covering the boundaries, including that type bits are ignored and
+  that the error names the fix.
+
+### Not changed
+- **The check does nothing on Windows**, in `passwordmode_windows.go`. `os.Stat`
+  there does not report an ACL — it synthesises a mode from the read-only
+  attribute, so an ordinary file reads as `0666` however tightly it is secured.
+  Enforcing the POSIX rule would reject every correctly protected file and teach
+  operators to route around a control rather than satisfy it. Split by build tag
+  rather than a `runtime.GOOS` branch so the Windows binary carries no check it
+  can never apply.
+
 ## [0.1.4] — 2026-08-25
 
 The Phase 1 gate closed and the repository went to GitHub. Documentation
