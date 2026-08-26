@@ -2,12 +2,14 @@ package server
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 )
@@ -190,4 +192,43 @@ func newJoinServer(t *testing.T, opts Options) *Server {
 		t.Fatalf("New: %v", err)
 	}
 	return srv
+}
+
+// TestJoinPathRedirects: /join is the URL an admin sends to fifty members.
+// Making them type join.html would be a small tax collected fifty times.
+func TestJoinPathRedirects(t *testing.T) {
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("console.Assets: %v", err)
+	}
+	srv := newJoinServer(t, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+		Join:          joinSettings(),
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/join", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("GET /join returned %d, want 302", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/join.html" {
+		t.Errorf("Location = %q, want /join.html", loc)
+	}
+}
+
+// TestJoinPageIsEmbedded guards against the page existing in the tree but not
+// in the binary, which is the failure mode of //go:embed.
+func TestJoinPageIsEmbedded(t *testing.T) {
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("console.Assets: %v", err)
+	}
+	for _, name := range []string{"join.html", "join.css", "join.js"} {
+		if _, err := fs.Stat(assets, name); err != nil {
+			t.Errorf("%s is not embedded in the console assets: %v", name, err)
+		}
+	}
 }

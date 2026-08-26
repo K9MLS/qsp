@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join the network — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="stylesheet" href="/join.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body class="join-body">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<main class="join" id="main">
+
+  <header class="join__head">
+    <svg class="join__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <h1 class="join__title" id="network-name">Join the network</h1>
+    <p class="join__lede">
+      Point your hotspot at this server. It takes about five minutes, and
+      nothing here changes your radio.
+    </p>
+  </header>
+
+  <!-- Shown only when the DMR listener is off. A member following these steps
+       against a disabled listener would see nothing happen and have no way to
+       know why. -->
+  <div class="notice notice--warn" id="disabled-notice" hidden>
+    <p class="notice__title">This network is not accepting hotspots yet</p>
+    <p class="notice__body" id="disabled-reason"></p>
+  </div>
+
+  <ol class="steps">
+
+    <li class="step">
+      <h2 class="step__title">Open your hotspot's configuration</h2>
+      <p class="step__body">
+        In a browser, go to your hotspot's dashboard — usually
+        <code>http://pi-star.local</code> or <code>http://wpsd.local</code>.
+        Then <strong>Admin → Configuration → DMR Configuration</strong>.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2 class="step__title">Turn off your current DMR network</h2>
+      <p class="step__body">
+        Set <strong>BrandMeister Network Enable</strong> to <strong>off</strong>.
+        Two networks at once compete for the same talkgroups, and yours will
+        reach whichever answers first.
+      </p>
+      <p class="step__note">
+        You can switch back at any time. Nothing here is permanent.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2 class="step__title">Fill in the custom network</h2>
+      <p class="step__body">
+        Set <strong>Custom DMR Network Enable</strong> to <strong>on</strong>,
+        then enter these:
+      </p>
+
+      <table class="fields">
+        <tbody>
+          <tr>
+            <th scope="row">Server Name</th>
+            <td><code>QSP</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Server Address</th>
+            <td><code id="field-address">…</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Port</th>
+            <td><code id="field-port">…</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Password</th>
+            <td class="fields__missing">Ask whoever runs the network</td>
+          </tr>
+          <tr>
+            <th scope="row">ESSID</th>
+            <td><code>None</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="step__note">
+        Then press <strong>Apply Changes</strong>. Your hotspot restarts, which
+        takes a few seconds.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2 class="step__title">Check it really saved</h2>
+      <p class="step__body">
+        Reload the configuration page and confirm the custom network still shows
+        as enabled.
+      </p>
+      <p class="step__note">
+        This step exists because the dashboard has been known to display a
+        network as enabled while the underlying file said otherwise. The hotspot
+        then connects, holds a session, and quietly sends everything to the old
+        network instead. Thirty seconds here saves an evening.
+      </p>
+    </li>
+
+    <li class="step">
+      <h2 class="step__title">Wait for your hotspot</h2>
+
+      <div class="waiting" id="waiting" data-state="waiting">
+        <span class="waiting__dot" aria-hidden="true"></span>
+        <p class="waiting__text" id="waiting-text">
+          Watching for your hotspot to connect…
+        </p>
+      </div>
+
+      <p class="step__note" id="connected-count"></p>
+    </li>
+
+    <li class="step">
+      <h2 class="step__title">Set your radio</h2>
+      <p class="step__body">
+        These are the talkgroups on this network. <strong>Dial the number in the
+        first column</strong> — your hotspot changes it on the way through, which
+        is normal and why the second column looks different.
+      </p>
+
+      <table class="fields fields--talkgroups" id="talkgroups">
+        <thead>
+          <tr>
+            <th scope="col">Dial this</th>
+            <th scope="col">Timeslot</th>
+            <th scope="col">Name</th>
+            <th scope="col">Arrives as</th>
+          </tr>
+        </thead>
+        <tbody id="talkgroup-rows">
+          <tr><td colspan="4" class="fields__missing">Loading…</td></tr>
+        </tbody>
+      </table>
+
+      <p class="step__note">
+        Key up for a few seconds. If nobody answers, that is normal — the
+        network may simply be quiet.
+      </p>
+    </li>
+
+  </ol>
+
+  <footer class="join__foot">
+    <p>
+      Stuck? Tell whoever runs the network which step you reached. That is
+      almost always enough to sort it out.
+    </p>
+  </footer>
+
+</main>
+
+<script src="/join.js"></script>
+</body>
+</html>

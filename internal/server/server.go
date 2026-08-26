@@ -180,6 +180,13 @@ func (s *Server) handler() http.Handler {
 	}
 
 	if s.opts.ConsoleAssets != nil {
+		// /join is the URL an admin sends to fifty club members, so it is worth
+		// a redirect rather than making them type join.html. It is not in
+		// apiRoutes because it serves a page, not an API — the same reason the
+		// asset root is not listed there.
+		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/join.html", http.StatusFound)
+		})
 		mux.Handle("GET /", http.FileServerFS(s.opts.ConsoleAssets))
 	} else {
 		mux.HandleFunc("GET /", s.handleNoConsole)

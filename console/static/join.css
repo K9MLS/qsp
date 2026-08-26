@@ -1,0 +1,282 @@
+/*
+ * The join page.
+ *
+ * Read on a phone, in a shack, by somebody who is also restarting a hotspot.
+ * It is a single column of steps at a size that survives being glanced at, not
+ * a dashboard.
+ *
+ * Every value here is a token from tokens.css. A raw hex value in this file is
+ * a defect, per the note at the top of that file.
+ */
+
+.join-body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-ui);
+  line-height: var(--leading-normal);
+  margin: 0;
+}
+
+.join {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-7);
+}
+
+/* ---- Header ---------------------------------------------------------- */
+
+.join__head {
+  text-align: center;
+  margin-bottom: var(--space-6);
+}
+
+.join__mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  color: var(--color-primary);
+}
+
+.join__title {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  margin: var(--space-3) 0 var(--space-2);
+}
+
+.join__lede {
+  color: var(--color-foreground-muted);
+  font-size: var(--text-base);
+  margin: 0;
+}
+
+/* ---- Notices --------------------------------------------------------- */
+
+.notice {
+  border: 1px solid var(--color-border-strong);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  background: var(--color-surface);
+}
+
+.notice--warn {
+  border-left-color: var(--color-degraded);
+}
+
+.notice__title {
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+}
+
+.notice__body {
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+/* ---- Steps ----------------------------------------------------------- */
+
+.steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  counter-increment: step;
+  position: relative;
+  padding: 0 0 var(--space-6) var(--space-6);
+  border-left: 1px solid var(--color-border);
+}
+
+.step:last-child {
+  border-left-color: transparent;
+  padding-bottom: var(--space-4);
+}
+
+/* The number sits on the rail, so the eye can find "which step am I on"
+ * without reading. */
+.step::before {
+  content: counter(step);
+  position: absolute;
+  left: calc(var(--space-6) / -2 - 0.75rem);
+  top: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  margin: 0 0 var(--space-2);
+}
+
+.step__body {
+  color: var(--color-foreground-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.step__note {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-sm);
+  margin: var(--space-3) 0 0;
+}
+
+.step code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--color-foreground);
+}
+
+.step strong {
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
+/* ---- Field tables ---------------------------------------------------- */
+
+.fields {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-3) 0;
+  font-size: var(--text-sm);
+}
+
+.fields th,
+.fields td {
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: baseline;
+}
+
+.fields tbody tr:last-child th,
+.fields tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.fields th[scope="row"] {
+  color: var(--color-foreground-muted);
+  font-weight: var(--weight-normal);
+  white-space: nowrap;
+}
+
+.fields thead th {
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+.fields__missing {
+  color: var(--color-foreground-subtle);
+  font-style: italic;
+}
+
+/* The number to dial is the one thing on this page a member must get right. */
+.tg-dial {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  color: var(--color-primary);
+  background: none;
+  padding: 0;
+}
+
+.tg-arrives {
+  font-family: var(--font-mono);
+  color: var(--color-foreground-subtle);
+}
+
+/* ---- Waiting for the hotspot ----------------------------------------- */
+
+.waiting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  margin: var(--space-3) 0;
+}
+
+.waiting__dot {
+  flex: 0 0 auto;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  background: var(--color-unavailable);
+}
+
+.waiting__text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+}
+
+.waiting[data-state="waiting"] .waiting__dot {
+  background: var(--color-degraded);
+  animation: waiting-pulse 2s var(--ease-out-expo) infinite;
+}
+
+/* Status is never colour alone: the text changes too, and the border carries
+ * the same signal for anyone who cannot distinguish the dot. */
+.waiting[data-state="found"] {
+  border-color: var(--color-healthy);
+}
+
+.waiting[data-state="found"] .waiting__dot {
+  background: var(--color-healthy);
+}
+
+.waiting[data-state="found"] .waiting__text {
+  color: var(--color-foreground);
+  font-weight: var(--weight-medium);
+}
+
+.waiting[data-state="off"] .waiting__dot {
+  background: var(--color-unavailable);
+}
+
+@keyframes waiting-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waiting[data-state="waiting"] .waiting__dot {
+    animation: none;
+  }
+}
+
+/* ---- Footer ---------------------------------------------------------- */
+
+.join__foot {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.join__foot p {
+  margin: 0;
+}

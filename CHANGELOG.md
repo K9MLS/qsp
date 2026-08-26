@@ -22,6 +22,22 @@ All notable changes to QSP. Dates are UTC.
   response for the password rather than trusting the struct to lack a field for
   it.
 
+- **The `/join` page.** `console/static/join.{html,css,js}` — six steps, one
+  column, readable on a phone in a shack. The dialled talkgroup number is set
+  in the largest type on the page because it is the one thing a member must get
+  right, and "arrives as" is shown beside it so the unfamiliar number in their
+  hotspot's log does not read as a fault.
+
+  Step 4 is "check it really saved", and exists solely because the WPSD
+  dashboard once displayed a network as enabled while the file said otherwise.
+  Step 5 watches for the member's own hotspot and turns green when the server
+  sees it.
+
+  No build step and no CDN, matching the rest of the console: a hotspot is often
+  on a network with no route to the internet. Polling rather than SSE, because
+  this page is read by people simultaneously restarting hotspots and reloading
+  dashboards. Every colour comes from `tokens.css`; there are no raw hex values.
+
   Decided without an approval workflow: HBP uses one shared secret per network,
   a club of fifty knows its own members, and vetting needs admin sessions that
   do not exist. It can be added later — the peer registry already records who
