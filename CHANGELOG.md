@@ -24,6 +24,32 @@ All notable changes to QSP. Dates are UTC.
   applies to the following line only, and inside a composite literal that is not
   where the diagnostic lands.
 
+## [Unreleased]
+
+### Changed
+- **`docs/HARDWARE-TEST.md` rewritten from a run that actually happened.** The
+  previous version had the operator key up on TG 9990 expecting parrot. Parrot
+  is a BrandMeister service that QSP does not implement, and the procedure
+  requires BrandMeister to be off, so there was nothing to echo back — the
+  instruction could not have worked. It now identifies the talkgroup from the
+  `TGRewrite` rule in `/etc/dmrgateway` and treats a climbing frame count as
+  the gate.
+- The procedure now covers Windows, Linux and Pi hosts in one document rather
+  than maintaining a second platform-specific copy, which would be one more
+  thing to drift.
+
+### Added
+- The step that cost a session: **verify `/etc/dmrgateway`, not the dashboard.**
+  WPSD reported the custom network as enabled while the file said `Enabled=0`.
+  The hotspot registered and held a session for ten minutes while routing every
+  transmission to BrandMeister, because DMRGateway had never loaded the network.
+- A note that BrandMeister must be disabled rather than deprioritised: its
+  `PassAllTG` lines claim every talkgroup on both slots, and `Primary=1` puts it
+  first.
+- How to read a capture without misdiagnosing Ethernet padding as a protocol
+  defect. Clip to the UDP length field.
+- The unchecked `password_file` mode, recorded as a known gap.
+
 ## [0.1.3] — 2026-08-25
 
 Documentation regenerated against the code it describes.
