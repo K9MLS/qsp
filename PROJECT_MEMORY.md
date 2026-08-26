@@ -39,7 +39,7 @@ No phase advances on a passing test suite alone. By that rule:
 
 | Phase | Gate | Status |
 |---|---|---|
-| 1 — HBP master core | A hotspot keys up and hears itself through parrot | **open** — code complete, gate unmet; no voice frame has ever reached QSP |
+| 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
 | 2 — Console | A newcomer is running in under 10 minutes, unassisted | open — shell is functional and plain; redesign not started |
 | 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak not started |
 | 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
@@ -192,10 +192,25 @@ talkgroup to the custom network, so frames never left the Pi. Diagnosed from the
 traffic counters: 28 datagrams in six minutes with nothing dropped is the
 keepalive rate exactly.
 
-**The Phase 1 gate is therefore still open.** It reads "a real hotspot keys up
-and hears itself through parrot," and nothing has keyed up. Registration and
-keepalives are not the gate. Closing it needs a DMRGateway rule routing a
-talkgroup to the QSP network and one parrot session on TG 9990.
+### 2026-08-25 — Phase 1 gate closed
+
+A live transmission reached QSP and decoded. Five voice streams, 556 frames,
+zero dropped, zero collisions; every one of the 576 LAN payloads round-trips
+byte-for-byte through the codec. Frame rates land within 1.5 % of DMR's
+16.67/s across durations from 3.8 s to 14.6 s.
+
+What blocked the earlier attempt was `[DMR Network Custom] Enabled=0` in
+`/etc/dmrgateway` — the WPSD dashboard reported the network as on while the
+file said off, so DMRGateway never loaded it and routed everything to
+BrandMeister. The talkgroup mapping is `TGRewrite0=2,11,2,9,1`: dial TG 11 on
+TS2, arrive as TG 9.
+
+Parrot was dropped from the gate's wording. It is a BrandMeister service and
+QSP does not implement it, so "hears itself through parrot" was never
+achievable on a QSP-only network. The substance — a live transmission
+decoding — is what was verified.
+
+Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
 ---
 

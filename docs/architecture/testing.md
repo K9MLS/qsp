@@ -104,13 +104,17 @@ repeater off the air.
 **Covered.** The complete HBP login handshake, steady-state keepalives, and a
 voice session. Every message parses and round-trips byte-for-byte.
 
+**And, as of 2026-08-25, a live transmission.** `hbp-voice-live.pcap` is the
+first capture of a real radio reaching QSP: five voice streams, 556 frames, all
+576 LAN payloads round-tripping exactly. See
+[`testdata/hbp/hbp-voice-live.md`](../../testdata/hbp/hbp-voice-live.md).
+
 **Not covered, and therefore unverified in code:**
 
 | Gap | What closes it |
 |---|---|
-| No live voice frame decoded end to end | A hotspot transmission reaching QSP |
 | `RPTCL` and `MSTNAK` never seen on a wire | A capture of a disconnect and a bad login |
-| Repeater-ID rewrite on relay | A TG 9990 parrot capture |
+| Repeater-ID rewrite on relay | Two peers with forwarding on |
 | The `description`/`slots` field split | A capture from a single-timeslot hotspot |
 | Any P25 transmission | `testdata/p25/` holds polling traffic only |
 
