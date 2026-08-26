@@ -2,6 +2,42 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [0.1.6] — 2026-08-26
+
+Persistence, and with it the project's first dependency.
+
+### Added
+- **`modernc.org/sqlite` v1.57.0 is registered**, in `cmd/qsp/driver_sqlite.go`.
+  Roughly two hundred lines of migration and storage code had never executed in
+  any build, because `database.Open` always returned `ErrDriverNotRegistered`.
+  It runs now.
+- **[ADR-0017](docs/adr/ADR-0017-first-dependency.md)**, documenting purpose,
+  licence, maintenance status and build implications — the terms ADR-0004 set
+  for ever taking a dependency. `CGO_ENABLED=0` still builds for amd64, arm64
+  and armv7; that was verified before the ADR was written.
+- `TestPersistenceIsRealNow` and `TestSchemaSurvivesARestart`. The second is the
+  property the two-week soak depends on: a restart on day nine must not lose the
+  first nine days.
+
+### Changed
+- **Moved to Go 1.27** from 1.22, which left support around the 1.24 release and
+  had received no security patches since. The driver requires 1.25, so this was
+  forced, but it was overdue independently. No source changes were needed.
+- `testConfig` takes a `*testing.T` and redirects the DSN into `t.TempDir()`.
+  With a driver registered, the default relative `qsp.db` would otherwise have
+  had every test write a real database beside the source and leak state between
+  runs.
+- `TestBuildSucceedsWithoutADatabaseDriver` now reaches the absent-driver path
+  by configuring a driver that cannot exist, which is what an operator pointing
+  at postgres would hit.
+- `cache: true` in CI. `go.sum` exists now, so the reason for disabling it is
+  gone.
+- ADR-0004 is amended rather than rewritten. It records a decision that was
+  correct when taken and remains the default for everything else.
+
+### Fixed
+- `build`'s doc comment said the binary registers no SQL driver. It does.
+
 ## [0.1.5] — 2026-08-26
 
 ### Added

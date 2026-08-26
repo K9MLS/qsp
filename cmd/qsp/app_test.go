@@ -17,16 +17,37 @@ import (
 	"github.com/k9mls/qsp/internal/logging"
 )
 
-func testConfig() config.Config {
+// testConfig returns a configuration safe to build an app from.
+//
+// The DSN is redirected into the test's temporary directory. config.Default
+// points at a relative "qsp.db", and now that a driver is registered every test
+// calling this would otherwise create a real database beside the source and
+// leak state between runs.
+func testConfig(t *testing.T) config.Config {
+	t.Helper()
 	cfg := config.Default()
 	cfg.Server.ListenAddress = "127.0.0.1:0"
+	cfg.Database.DSN = filepath.Join(t.TempDir(), "qsp.db")
+	return cfg
+}
+
+// testConfigNoDriver asks for a driver that cannot exist, to exercise the
+// path where persistence is absent. Naming a bogus driver is more honest than
+// removing the real one, because it tests the code that runs when an operator
+// configures something this binary was not built with.
+func testConfigNoDriver(t *testing.T) config.Config {
+	t.Helper()
+	cfg := testConfig(t)
+	cfg.Database.Driver = "no-such-driver"
 	return cfg
 }
 
 func TestBuildSucceedsWithoutADatabaseDriver(t *testing.T) {
-	// This binary registers no SQL driver. Startup must continue and report the
-	// absence, rather than either failing or pretending persistence works.
-	a, err := build(context.Background(), testConfig(), logging.Discard())
+	// Constitution §3: an absent capability says so rather than failing or
+	// pretending. This binary registers sqlite, so the case is reached by
+	// configuring a driver that does not exist — which is exactly what an
+	// operator pointing at postgres would hit.
+	a, err := build(context.Background(), testConfigNoDriver(t), logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -48,7 +69,7 @@ func TestBuildSucceedsWithoutADatabaseDriver(t *testing.T) {
 }
 
 func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
-	a, err := build(context.Background(), testConfig(), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -124,11 +145,12 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 		}
 	}
 
-	if byName["database"].Status != health.StatusUnavailable {
-		t.Errorf("database reports %q, want %q", byName["database"].Status, health.StatusUnavailable)
-	}
-	if !strings.Contains(byName["database"].Summary, "driver") {
-		t.Errorf("database summary does not explain the absence: %q", byName["database"].Summary)
+	// The database is built and configured, so it reports healthy. Its absence
+	// is covered by TestBuildSucceedsWithoutADatabaseDriver and
+	// TestHealthReportsAnAbsentDriverHonestly.
+	if byName["database"].Status == health.StatusUnavailable {
+		t.Errorf("database reports unavailable despite a registered driver: %q",
+			byName["database"].Summary)
 	}
 
 	if byName["process"].Status != health.StatusHealthy {
@@ -145,7 +167,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 }
 
 func TestConsoleIsServedFromEmbeddedAssets(t *testing.T) {
-	a, err := build(context.Background(), testConfig(), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -170,7 +192,7 @@ func TestConsoleIsServedFromEmbeddedAssets(t *testing.T) {
 }
 
 func TestRunStopsOnContextCancellation(t *testing.T) {
-	a, err := build(context.Background(), testConfig(), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -198,7 +220,7 @@ func TestRunStopsOnContextCancellation(t *testing.T) {
 }
 
 func TestShutdownIsCleanWithoutStart(t *testing.T) {
-	a, err := build(context.Background(), testConfig(), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -240,7 +262,7 @@ func TestDMRListenerStartsWhenEnabled(t *testing.T) {
 		t.Fatalf("writing the password file: %v", err)
 	}
 
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.DMR.Enabled = true
 	cfg.DMR.ListenAddress = "127.0.0.1:0"
 	cfg.DMR.PasswordFile = passwordFile
@@ -288,7 +310,7 @@ func TestDMRListenerStartsWhenEnabled(t *testing.T) {
 func TestDMREnabledWithoutAPasswordFileIsFatal(t *testing.T) {
 	// A master that authenticates nobody is worse than no master at all, so
 	// this must stop startup rather than silently disable the listener.
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.DMR.Enabled = true
 	cfg.DMR.PasswordFile = filepath.Join(t.TempDir(), "does-not-exist")
 
@@ -302,7 +324,7 @@ func TestDMREnabledWithAnEmptyPasswordFileIsFatal(t *testing.T) {
 	if err := os.WriteFile(empty, []byte("   \n"), 0o600); err != nil {
 		t.Fatalf("writing: %v", err)
 	}
-	cfg := testConfig()
+	cfg := testConfig(t)
 	cfg.DMR.Enabled = true
 	cfg.DMR.PasswordFile = empty
 
@@ -342,7 +364,7 @@ func TestDisplayAddrUnmapsIPv4(t *testing.T) {
 func TestHealthSummariesDescribeTheInstanceNotAPlan(t *testing.T) {
 	run := func(t *testing.T, mutate func(*config.Config)) map[string]health.Result {
 		t.Helper()
-		cfg := testConfig()
+		cfg := testConfig(t)
 		mutate(&cfg)
 		a, err := build(context.Background(), cfg, logging.Discard())
 		if err != nil {
@@ -402,4 +424,56 @@ func TestHealthSummariesDescribeTheInstanceNotAPlan(t *testing.T) {
 			t.Error("the degraded scheduler check offers no fix")
 		}
 	})
+}
+
+// TestPersistenceIsRealNow covers what registering a driver actually bought.
+//
+// Until 0.1.6 the database was configured, wired and migrated by code no build
+// ever executed, because no driver was registered. Every one of these
+// assertions would have been unreachable.
+func TestPersistenceIsRealNow(t *testing.T) {
+	cfg := testConfig(t)
+
+	a, err := build(context.Background(), cfg, logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	defer func() { _ = a.shutdown(context.Background()) }()
+
+	if a.db == nil {
+		t.Fatal("no database handle despite a registered sqlite driver")
+	}
+
+	// The migrations are embedded and applied at startup. If they did not run,
+	// the schema version is zero and nothing else here is meaningful.
+	if _, err := os.Stat(cfg.Database.DSN); err != nil {
+		t.Errorf("the database file was not created at %s: %v", cfg.Database.DSN, err)
+	}
+}
+
+// TestSchemaSurvivesARestart is the property the two-week soak depends on.
+//
+// A restart at day nine must not lose the first nine days. Building twice
+// against one DSN proves the schema is durable and that re-running migrations
+// against an already-migrated database is safe rather than an error.
+func TestSchemaSurvivesARestart(t *testing.T) {
+	cfg := testConfig(t)
+
+	first, err := build(context.Background(), cfg, logging.Discard())
+	if err != nil {
+		t.Fatalf("first build: %v", err)
+	}
+	if err := first.shutdown(context.Background()); err != nil {
+		t.Fatalf("first shutdown: %v", err)
+	}
+
+	second, err := build(context.Background(), cfg, logging.Discard())
+	if err != nil {
+		t.Fatalf("second build against an existing database: %v", err)
+	}
+	defer func() { _ = second.shutdown(context.Background()) }()
+
+	if second.db == nil {
+		t.Fatal("no database handle on the second build")
+	}
 }

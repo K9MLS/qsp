@@ -24,10 +24,10 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.5 |
+| Version | 0.1.6 |
 | Tests | 297, all passing (294 `Test`, 3 `Fuzz`) |
 | Race detector | clean |
-| Dependencies | **zero** — standard library only |
+| Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
 | Health report | 11 subsystems |
 | Hardware validated | **yes** — live voice decoded 2026-08-25, see §6 |
@@ -89,7 +89,7 @@ distinguished explicitly or documentation checks acquire false exemptions.
 | Repeater-ID rewrite on relay unverified | Two peers with forwarding on. **Not** closed by the 2026-08-25 capture — one peer, forwarding off, nothing relayed |
 | `description`/`slots` field split unverified | A single-timeslot hotspot |
 | No manual override for Net Control | Deliberately deferred |
-| No SQL driver registered | `go get modernc.org/sqlite` + blank import. Nothing survives a restart until then |
+
 | No ACL check for `password_file` on Windows | POSIX hosts refuse a file readable beyond its owner; Windows cannot — `os.Stat` reports no ACL. Secure it with an ACL there |
 | No authentication on any endpoint | Designed, unbuilt. `/api/peers` discloses callsigns, radio IDs and source addresses. Bind to `127.0.0.1`; reach the console over a tunnel |
 | Docs can still over-claim | The accuracy gate catches absence claims, not promises of things that do not exist. That stays a review problem |
@@ -249,21 +249,15 @@ Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 is the only thing here that cannot be compressed by working harder. Everything
 else can proceed alongside it.
 
-1. **Register a SQL driver.** `go get modernc.org/sqlite` plus a blank import.
-   This is a prerequisite for the soak rather than a nice-to-have: without
-   persistence, a restart at day nine loses nine days of evidence and the
-   fortnight starts again. Note it is the first dependency the project will
-   have; ADR-0005 chose `modernc.org/sqlite` precisely because it is pure Go and
-   keeps `CGO_ENABLED=0` intact.
-2. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
+1. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
    `127.0.0.1` and reached over a tunnel; only UDP 62031 faces the network.
    Configure a schedule that links and unlinks daily so the fortnight actually
    exercises the scheduler rather than merely staying up.
-3. **Console visual design** (Phase 2) — runs concurrently with the soak. The
+2. **Console visual design** (Phase 2) — runs concurrently with the soak. The
    gate is a newcomer running unassisted in ten minutes, which is a usability
    claim and needs a person who has not seen it before.
-4. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
+3. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
    disabled in the WPSD dashboard. The cheapest remaining gap.
-5. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
-6. **P25** (Phase 4) — also needs a capture containing an actual P25
+4. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
+5. **P25** (Phase 4) — also needs a capture containing an actual P25
    transmission; `testdata/p25/` holds polling traffic only.

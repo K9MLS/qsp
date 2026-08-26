@@ -46,11 +46,12 @@ type app struct {
 
 // build constructs every subsystem.
 //
-// The database is optional: this binary registers no SQL driver (see
-// docs/adr/ADR-0005), so Open fails with ErrDriverNotRegistered. That is a
-// declared condition rather than a fault, so startup continues and the health
-// check reports the database as unavailable with the reason. Any other database
-// error is fatal.
+// The database is optional. This binary registers modernc.org/sqlite (see
+// driver_sqlite.go and docs/adr/ADR-0005), so the default configuration opens a
+// database and migrates it. A configuration naming some other driver still
+// fails with ErrDriverNotRegistered, which is a declared condition rather than a
+// fault: startup continues and the health check reports the database as
+// unavailable with the reason. Any other database error is fatal.
 func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, error) {
 	a := &app{cfg: cfg, log: log}
 
