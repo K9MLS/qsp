@@ -199,11 +199,23 @@
   padding: 0;
 }
 
-/* Nothing can connect, so the steps are shown for reference but not as work to
- * do now. Opacity alone would be colour-as-meaning; the cursor and the notice
- * above carry it too. */
-.steps--blocked {
-  opacity: 0.45;
+/* Nothing can connect yet, so the steps are premature rather than unavailable.
+ *
+ * The first attempt dimmed them to opacity 0.45. That dropped
+ * --color-foreground-muted from the 7.4:1 contrast tokens.css guarantees to
+ * roughly 3.3:1, under the 4.5:1 minimum — breaking an accessibility promise
+ * the design system states in a comment, in order to convey state. Opacity is
+ * the wrong tool for "not yet".
+ *
+ * Instead the rail loses its solidity and the steps sit slightly back. Text
+ * contrast is untouched. */
+.steps--blocked .step {
+  border-left-style: dashed;
+}
+
+.steps--blocked .step::before {
+  border-style: dashed;
+  color: var(--color-foreground-subtle);
 }
 
 .steps--blocked .waiting {
