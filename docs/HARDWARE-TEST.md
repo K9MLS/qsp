@@ -103,7 +103,7 @@ sudo firewall-cmd --add-port=62031/udp     # firewalld hosts, or packets vanish
 Expected:
 
 ```
-level=INFO msg=starting version=0.1.3
+level=INFO msg=starting version=0.1.4
 level=WARN msg="running without persistence" ...
 level=INFO msg="forwarding disabled; traffic is observed and not relayed"
 level=INFO msg="console listening" subsystem=server address=127.0.0.1:8080

@@ -1,8 +1,8 @@
 # QSP — Project Memory
 
 **Single source of truth. Regenerated at major milestones.**
-Last regenerated: 2026-08-25, at 0.1.3, after documentation accuracy became a
-CI gate.
+Last regenerated: 2026-08-25, at 0.1.4, after the Phase 1 gate closed and the
+repository went to GitHub.
 
 ---
 
@@ -24,14 +24,15 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.3 |
+| Version | 0.1.4 |
 | Tests | 294, all passing (291 `Test`, 3 `Fuzz`) |
 | Race detector | clean |
 | Dependencies | **zero** — standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
 | Health report | 11 subsystems |
-| Hardware validated | partially — see §6 |
-| CI | never run; the repository has never been pushed |
+| Hardware validated | **yes** — live voice decoded 2026-08-25, see §6 |
+| CI | green, 8 jobs, `github.com/K9MLS/qsp` (private) |
+| Static analysis | `staticcheck` clean, pinned at 2024.1.1 |
 
 ### Phase gates (BLUEPRINT §16)
 
@@ -45,7 +46,10 @@ No phase advances on a passing test suite alone. By that rule:
 | 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
 
 Phase 3's gate is two weeks of wall-clock time and cannot be compressed, so it
-is the critical path. It cannot start until 1 and 2 close.
+is now the critical path. Phase 1 closing is what unblocked it.
+
+Phase 2 does not gate the soak. The console works; it is only unpolished. The
+two can run concurrently, and should, because the fortnight is the constraint.
 
 ### Working
 
@@ -81,13 +85,12 @@ distinguished explicitly or documentation checks acquire false exemptions.
 
 | Gap | What closes it |
 |---|---|
-| No live voice frame decoded | A hotspot transmission reaching QSP |
-| `RPTCL`/`MSTNAK` never seen on a wire | Capture a disconnect and a bad login |
-| Repeater-ID rewrite on relay unverified | A TG 9990 parrot capture |
+| `RPTCL`/`MSTNAK` never seen on a wire | Capture a disconnect and a bad login. `RPTCL` needs 30 s of tcpdump while the custom network is disabled |
+| Repeater-ID rewrite on relay unverified | Two peers with forwarding on. **Not** closed by the 2026-08-25 capture — one peer, forwarding off, nothing relayed |
 | `description`/`slots` field split unverified | A single-timeslot hotspot |
 | No manual override for Net Control | Deliberately deferred |
-| No SQL driver registered | `go get modernc.org/sqlite` + blank import |
-| CI never run | Push to GitHub; `staticcheck` has never analysed a line |
+| No SQL driver registered | `go get modernc.org/sqlite` + blank import. Nothing survives a restart until then |
+| `password_file` mode is not checked | Documented as "should be mode 0600", never verified. QSP starts on a `0644` file silently. Close before anything runs unattended |
 | No authentication on any endpoint | Designed, unbuilt. `/api/peers` discloses callsigns, radio IDs and source addresses. Bind to `127.0.0.1`; reach the console over a tunnel |
 | Docs can still over-claim | The accuracy gate catches absence claims, not promises of things that do not exist. That stays a review problem |
 | `overall: healthy` with 10 of 11 unavailable | Correct by the current rule, but reads oddly. Revisit before wiring alerting |
@@ -242,23 +245,27 @@ Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
 ## 8. Immediate next steps
 
-1. **Push to a private GitHub repo.** CI has never run; `staticcheck` has never
-   analysed a line. A versioned zip is currently the only copy, and it lives on
-   one machine. This blocks nothing else technically and everything else
-   practically.
-2. **Close the Phase 1 gate.** A DMRGateway rule routing a talkgroup to the QSP
-   network, then key up on the TG 9990 parrot. Roughly twenty minutes at the
-   bench, and one session closes three documented gaps at once: the live voice
-   frame, the repeater-ID rewrite on relay, and `RPTCL` on a clean disconnect.
-   The codec has never decoded a voice frame from a radio; everything downstream
-   relays frames the parser has not seen in anger.
-3. **Stand up a server for the Phase 3 soak.** Two weeks of wall-clock time that
-   nothing can compress, so it should start the day Phases 1 and 2 close. Note
-   that a server validates *operation*, not the protocol — only a radio closes
-   Phase 1. Deploy with the console bound to `127.0.0.1`; only UDP 62031 needs
-   to face the hotspot, and there is no authentication in this build.
-4. **Console visual design** (Phase 2) — the current shell is honest but plain.
-   Can proceed in parallel with the soak.
-5. **ADR-0008** — the licensing question remains open and blocks Phase 4.
-6. **P25** (Phase 4) — also needs a capture containing an actual P25
+**The critical path is the Phase 3 soak**, because two weeks of wall-clock time
+is the only thing here that cannot be compressed by working harder. Everything
+else can proceed alongside it.
+
+1. **Register a SQL driver.** `go get modernc.org/sqlite` plus a blank import.
+   This is a prerequisite for the soak rather than a nice-to-have: without
+   persistence, a restart at day nine loses nine days of evidence and the
+   fortnight starts again. Note it is the first dependency the project will
+   have; ADR-0005 chose `modernc.org/sqlite` precisely because it is pure Go and
+   keeps `CGO_ENABLED=0` intact.
+2. **Check the `password_file` mode.** A few lines, and the failure it prevents
+   is silent. Do it before anything runs unattended, not after.
+3. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
+   `127.0.0.1` and reached over a tunnel; only UDP 62031 faces the network.
+   Configure a schedule that links and unlinks daily so the fortnight actually
+   exercises the scheduler rather than merely staying up.
+4. **Console visual design** (Phase 2) — runs concurrently with the soak. The
+   gate is a newcomer running unassisted in ten minutes, which is a usability
+   claim and needs a person who has not seen it before.
+5. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
+   disabled in the WPSD dashboard. The cheapest remaining gap.
+6. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
+7. **P25** (Phase 4) — also needs a capture containing an actual P25
    transmission; `testdata/p25/` holds polling traffic only.

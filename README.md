@@ -8,11 +8,18 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > between bridged talkgroups, and opens those bridges on a schedule or on
 > demand when somebody keys up. Forwarding is off by default.
 >
-> **Validated against real hardware** on 2026-08-23: a WPSD hotspot
-> (MMDVMHost + DMRGateway) completed the login handshake, registered, and held
-> its session with keepalives cycling. See
+> **Validated against real hardware.** On 2026-08-23 a WPSD hotspot
+> (MMDVMHost + DMRGateway) completed the login handshake and held its session.
+> On 2026-08-25 a live transmission reached the codec and decoded: five voice
+> streams, 556 frames, none dropped, every one of 576 payloads round-tripping
+> byte-for-byte. Frame rates landed within 1.5 % of DMR's 16.67/s across
+> durations from 3.8 s to 14.6 s. The capture is committed at
+> [`testdata/hbp/hbp-voice-live.pcap`](testdata/hbp/hbp-voice-live.pcap); see
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
-> what that run confirmed and what it did not.
+> what those runs confirmed and what they did not.
+>
+> **Not yet run unattended.** The scheduler and PTT triggers are built and
+> tested, but the two-week soak that BLUEPRINT §16 requires has not started.
 >
 > **Not yet built:** P25, the vocoder pool, and the analog connectors
 > (AllStar, Zello, EchoLink). The health endpoint reports each as

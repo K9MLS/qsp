@@ -235,9 +235,33 @@ Confirmed by that run:
   peer answers; QSP follows the captured traffic instead, and MMDVMHost
   confirmed that reading by staying connected
 
-Still unvalidated: `DMRD` decoding against a live transmission, forwarding
-between two real peers, and the specification-derived messages (`RPTCL`,
-`MSTNAK`).
+**2026-08-25.** The same hotspot, with a DMRGateway rule routing TG 11 on TS2
+to QSP, carried five live transmissions.
+
+Confirmed by that run:
+
+- **`DMRD` decoding against a live radio.** 556 voice frames across five
+  streams, zero dropped, zero collisions.
+- **Frame timing.** Rates of 16.44–16.59/s against DMR's nominal 16.67/s, held
+  across durations from 3.77 s to 14.58 s. Within 1.5 % throughout.
+- **Byte-exact round-tripping.** All 576 LAN payloads — `Data`, `Ping`, `Pong` —
+  re-marshal identically to what arrived.
+- **The talkgroup rewrite.** Dialled as TG 11, arrived as TG 9, matching
+  `TGRewrite0=2,11,2,9,1`.
+- **Both dialects concurrently.** The capture holds the master link's 11-byte
+  `MSTPONG` and the MMDVMHost/DMRGateway loopback's 4-byte `DMRP` side by side.
+
+Fixture: [`testdata/hbp/hbp-voice-live.pcap`](../../testdata/hbp/hbp-voice-live.pcap).
+
+Still unvalidated: forwarding between two real peers, and the
+specification-derived messages (`RPTCL`, `MSTNAK`).
+
+**A trap when reading these captures.** Frames below the 60-byte Ethernet
+minimum are zero-padded, and the padding is recorded. An 11-byte `MSTPONG` makes
+a 39-byte IP datagram padded by 7 bytes, so slicing from the end of the UDP
+header to the end of the record yields an 18-byte message no parser accepts —
+indistinguishable at a glance from a protocol defect. Clip to the UDP length
+field; `internal/peers/pcap_test.go` is the reference.
 
 ## Master-side behaviour
 
@@ -265,8 +289,7 @@ Timeouts: an incomplete handshake expires after 30 s, a configured peer after
 | Gap | What would close it |
 |---|---|
 | `RPTCL` / `MSTNAK` implemented but never seen on a wire | Capture a hotspot disconnecting, and a login with a wrong password |
-| No inbound voice from the operator | Talkgroup 9990 parrot session |
-| Relay repeater-ID rewrite unverified | Same 9990 session |
+| Relay repeater-ID rewrite unverified | Two peers with forwarding on. The 2026-08-25 capture does **not** close this: one peer, forwarding off, nothing relayed |
 | `description` / `slots` split unverified | A hotspot configured for one timeslot |
 | `RPTO` options string | Capture a hotspot configured with options |
 | Trailer bytes uninterpreted | Correlate with MMDVMHost's reported BER/RSSI |
