@@ -70,12 +70,20 @@ cannot force arbitrary CPU consumption.
 
 Sessions, roles and authorisation are designed before any state-changing
 endpoint exists. **There are none today** — the current build exposes only
-`/healthz`, `/readyz`, `/api/events`, `/api/peers` and static console assets,
-all read-only.
+`/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
+console assets, all read-only.
 
 `/api/peers` returns callsigns, radio IDs and peer source addresses. Like every
 other endpoint it is unauthenticated, which is a further reason to follow the
 deployment guidance below rather than exposing the console directly.
+
+`/api/join` returns the network's address, port and talkgroups — what a club
+member needs to point a hotspot at it. It deliberately does **not** return the
+shared peer password, so the endpoint is safe to expose to a club's members
+even though the rest of the console is not. It also reports how many peers are
+connected, and identifies the caller's own hotspot by matching source
+addresses, which is a hint rather than an assertion: several members behind one
+router share a public address.
 
 ### Deployment guidance
 

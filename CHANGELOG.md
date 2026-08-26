@@ -5,6 +5,27 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`GET /api/join` — member onboarding.** A club network is one admin and fifty
+  to a hundred members, each of whom must point a hotspot at it. Getting the
+  first one connected took two sessions, and QSP was never at fault: the
+  obstacles were `Enabled=0` in `/etc/dmrgateway` while the WPSD dashboard said
+  otherwise, and a rewrite meaning the number dialled was not the number that
+  arrived. Told fifty times, that becomes the product's reputation.
+
+  The endpoint returns the address, port and — critically — **both** talkgroup
+  numbers, dialled and arriving. It reports whether the listener is even
+  enabled, and identifies the caller's own hotspot by source address, so the
+  machine confirms it worked rather than the member wondering.
+
+  It deliberately carries **no credential**, which is what makes it safe to show
+  a club's members when the rest of the console is not. A test greps the raw
+  response for the password rather than trusting the struct to lack a field for
+  it.
+
+  Decided without an approval workflow: HBP uses one shared secret per network,
+  a club of fifty knows its own members, and vetting needs admin sessions that
+  do not exist. It can be added later — the peer registry already records who
+  connected and when.
 - **`internal/peers/fanout_test.go` — scale and provenance.** `forward_test.go`
   already relayed between two peers over real sockets; what it used were frames
   this project constructed, and only two peers. This adds a hundred, and adds

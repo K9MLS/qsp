@@ -52,6 +52,10 @@ type Options struct {
 	Peers PeerSource
 	// PeersDisabledReason explains a nil Peers, and is shown to the operator.
 	PeersDisabledReason string
+	// Join supplies the connection details shown to a member onboarding a
+	// hotspot. The server does not read configuration itself, so the binary
+	// fills this in.
+	Join JoinSettings
 }
 
 // Server owns the HTTP listener and its lifecycle.
@@ -137,6 +141,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /readyz", s.handleReady},
 		{"GET /api/events", s.handleEvents},
 		{"GET /api/peers", s.handlePeers},
+		{"GET /api/join", s.handleJoin},
 	}
 }
 
