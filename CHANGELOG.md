@@ -34,7 +34,7 @@ All notable changes to QSP. Dates are UTC.
   response for the password rather than trusting the struct to lack a field for
   it.
 
-- **The `/join` page.** `console/static/join.{html,css,js}` — six steps, one
+- **The `/join` page**, in `console/static/` — six steps, one
   column, readable on a phone in a shack. The dialled talkgroup number is set
   in the largest type on the page because it is the one thing a member must get
   right, and "arrives as" is shown beside it so the unfamiliar number in their

@@ -210,6 +210,14 @@ func TestDocumentedPathsExist(t *testing.T) {
 				continue
 			}
 			if _, err := os.Stat(filepath.Join(repoRoot, span)); err != nil {
+				// Shell brace expansion reads naturally in prose and is not a
+				// path. Saying so directly saves the reader working out why an
+				// obviously-present set of files "does not exist".
+				if strings.ContainsAny(span, "{}") {
+					t.Errorf("%s names %s, which is shell brace expansion rather than a path; "+
+						"name the files individually or reference the directory", name, span)
+					continue
+				}
 				t.Errorf("%s names %s, which does not exist", name, span)
 			}
 		}
