@@ -115,16 +115,22 @@ Both directions are needed, because both exist in the wild: QSP as **IPSC
 master**, with repeaters registering to it, and QSP as **IPSC peer**, joining an
 existing IPSC system. `ipsc2hbp` supports both for that reason.
 
-**Blocked on [ADR-0008](docs/adr/ADR-0008-protocol-licensing.md)**, which
-governs what QSP may derive protocol knowledge from. IPSC has no published
-specification; the open implementations are reverse-engineered. **DMRlink and
-HBlink3 are GPL-3.0**, and QSP is GPL-3.0, so deriving from them is what that
-licence exists to permit. ADR-0008's restrictive limb concerns CC BY-NC-SA
-documents, whose non-commercial term GPL-3.0 cannot satisfy — a different
-question. The ADR needs amending to record that this case was considered and
-cleared, with the attribution consequence stated. **Amending it to record
-reasoning is right; editing it to say "accepted" because IPSC is wanted is not.
-An ADR is a record, not a permission slip.**
+**Unblocked as of 2026-08-27.** [ADR-0008](docs/adr/ADR-0008-protocol-licensing.md)
+is amended rather than rewritten. Two findings settled it.
+
+There is **no published IPSC specification** — Motorola has not released one, so
+the "protocol documents" route that HBP used does not exist. But the interim
+rules already permit implementing from **captured traffic**, and the club runs
+the exact repeaters IPSC is wanted for. That is the preferred route and it
+needed no amendment.
+
+And **DMRlink is GPL-3.0, not CC BY-SA 3.0** as ADR-0008 had recorded; its
+source files carry a GPL v3-or-later header. Reading it where captures are
+insufficient is therefore permitted into a GPL-3.0 project, at the cost of
+attribution and a derivative-work notice that cannot be undone later. That is
+now allowed explicitly and narrowly.
+
+The CC BY-NC-SA question remains open. IPSC does not touch it.
 
 ## 5. Who uses it
 

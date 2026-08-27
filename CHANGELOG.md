@@ -4,6 +4,23 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **ADR-0008 amended for IPSC, and one of its own claims corrected.** It
+  recorded DMRlink as CC BY-SA 3.0; the source files carry a GNU GPL v3-or-later
+  header. That correction changes the picture, because GPL-3.0 into GPL-3.0 is
+  the arrangement that licence exists to permit rather than a conflict to
+  reconcile.
+
+  The larger finding is that IPSC has **no published specification** at all, so
+  the "protocol documents" route HBP used does not exist for it. But the interim
+  rules already permit implementing from **captured traffic**, and the club runs
+  the exact repeaters IPSC is wanted for — so the preferred route needed no
+  amendment. Reading DMRlink where captures fall short is now permitted
+  explicitly and narrowly, at the cost of attribution and a derivative-work
+  notice that cannot be undone later.
+
+  The CC BY-NC-SA question remains open. IPSC does not touch it.
+
 ### Added
 - **OpenBridge is wired end to end.** `upstream.Set` holds the links and routes
   sends by name; the listener gains `Upstreams` for outbound and

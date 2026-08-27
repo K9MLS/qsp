@@ -265,10 +265,14 @@ MMDVM without an onboard radio. OpenBridge is DMRD-only with no handshake and no
 keepalive — small to build, and gated on the master admin's approval.
 
 **IPSC is required, not optional.** Motorola XPR8300, XPR8400, SLR7500 and
-MTR3000 are what club sites run. Both master and peer modes are needed. Blocked
-on ADR-0008, which likely clears once amended: DMRlink and HBlink3 are GPL-3.0
-and so is QSP, while ADR-0008's restrictive limb concerns CC BY-NC-SA
-non-commercial terms.
+MTR3000 are what club sites run. Both master and peer modes are needed.
+
+**Unblocked 2026-08-27.** There is no published IPSC specification, but the
+interim rules already permit implementing from captured traffic, and the club
+runs the repeaters in question — so that route needed no amendment and is
+preferred. DMRlink is GPL-3.0 rather than CC BY-SA 3.0 as ADR-0008 had recorded,
+so reading it where captures fall short is permitted, at the cost of attribution
+and a derivative-work notice.
 
 **Deployment targets a server or VM.** The Pi remains the proven minimum and
 stays in CI.
