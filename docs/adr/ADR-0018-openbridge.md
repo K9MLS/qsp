@@ -109,6 +109,22 @@ this rule exists to prevent.
 **Consequence, stated plainly:** two QSP instances cannot relay for each other
 through a third. A club needing that links directly.
 
+### Timeslot: OpenBridge is TS1
+
+Proper OpenBridge passes all traffic on TS1, with the slot bit clear in the
+`DMRD` header. HBlink extends this to both slots for unit calls only, and marks
+that as an extension rather than the protocol.
+
+**This is not optional and it has a consequence for every club.** Hotspot
+talkgroups are conventionally on TS2. Anything QSP exports must be moved to TS1
+on the way out, and anything imported must be moved to the configured local
+timeslot on the way in.
+
+QSP already translates timeslots — `forward_test.go` covers TS1↔TS2 across a
+bridge — so the mechanism exists. What matters is that the `export` and `import`
+lists name the **local** talkgroup and timeslot, and the TS1 rule is applied by
+QSP rather than left for an administrator to remember.
+
 ### Routing
 
 **Upstreams route through the existing core**, as endpoints in `routing.Table`,
@@ -128,22 +144,51 @@ deliberately, with the existing tests as the check.
 OpenBridge has no keep-alive, so QSP **cannot distinguish "no traffic" from
 "the far end is gone"**. A quiet talkgroup and a dead link look identical.
 
-Three options were considered:
+That sounds like a minor reporting question. The research says otherwise, and
+three findings turn this from a judgement call into the most valuable thing this
+feature can offer.
+
+**It is the documented top failure.** The BrandMeister wiki's OpenBridge FAQ
+leads with "not seeing any traffic from BrandMeister on your OpenBridge
+connection", and the answer is to check UDP forwarding and verify the IP address
+is still the one supplied at setup. A link therefore breaks *silently* on any
+address change — and the wiki notes BrandMeister logs "connection address of
+OpenBridge system changed" on their side, not ours. The DVSwitch mailing list
+carries operators spending days on exactly this, with no diagnostic to work
+from.
+
+**Monitoring is explicitly the operator's job.** BrandMeister's bridging policy
+asks bridge operators to confirm they understand it is not the BrandMeister
+team's responsibility to alert them to issues or down connections, and that
+monitoring their own servers is theirs.
+
+**And silence has a consequence.** The same policy states that bridges showing
+no traffic for more than 60 days, or that are not connected, may be disconnected
+or removed without notice. A link that quietly died is a link that will quietly
+be taken away, and re-requesting it means going back through approval.
+
+So the decision:
 
 1. Report an enabled upstream as healthy. Honest about what is known, useless to
-   an operator.
+   an operator, and leaves them in the position the mailing list describes.
 2. Track the time of the last frame received and report the link as stale beyond
    a threshold.
 3. Report frame counts only, and let a human interpret them.
 
-**Option 2**, with the threshold configurable and the health summary stating
-what it actually means: *"no traffic received for 47 minutes; this may be a
-quiet talkgroup or a broken link"*. Constitution §3 requires an absent
-capability to say so, and silence that might be either is exactly the case §3
-exists for. The wording must not claim more than QSP knows.
+**Option 2.** Constitution §3 requires an absent capability to say so, and
+silence that might be either is exactly the case §3 exists for. The health
+summary must state what it actually means and claim no more than QSP knows:
 
-Any default threshold is a guess. It is configuration, defaulting to something
-long enough not to cry wolf on a quiet club network.
+> no traffic received for 4 hours; this may be a quiet talkgroup or a broken
+> link
+
+The console shows the last-heard time unconditionally, whatever the threshold
+says, because that is the number an operator actually reasons with.
+
+**The threshold is configuration and any default is a guess.** It should be long
+enough not to cry wolf on a club talkgroup that is genuinely quiet overnight,
+and far short of the 60 days at which a bridge is at risk of removal. A default
+in hours rather than minutes or days.
 
 ## Consequences
 
@@ -152,7 +197,15 @@ long enough not to cry wolf on a quiet club network.
   regression check for that change.
 - QSP-to-QSP-to-elsewhere relaying is not possible. Direct links only.
 - A stale-link warning is a guess dressed as a measurement unless its wording is
-  careful. It is worded carefully.
+  careful. It is worded carefully, and the last-heard time is always shown.
+- Every exported talkgroup is translated to TS1 and back. An administrator
+  configures local talkgroups and timeslots; the TS1 rule is QSP's to apply.
+- **No re-bridging.** BrandMeister prohibits re-bridging talk groups provided to
+  a bridge, and states that connections found doing so are disconnected without
+  notice. The loop-prevention rule above happens to enforce this, but it is
+  worth recording as a policy obligation rather than a side effect: a club that
+  bridges a BrandMeister talkgroup onward to a third network is breaking the
+  terms its bridge was granted under.
 - ADR-0008 remains open, with one more case recorded against its interim rules.
 
 ## Alternatives considered

@@ -24,6 +24,17 @@ All notable changes to QSP. Dates are UTC.
   tests become the regression check. And because OpenBridge has no keep-alive,
   QSP cannot tell a quiet talkgroup from a dead link, so the health summary says
   exactly that rather than guessing.
+- **Evidence for the link-health decision**, added after a research pass. A
+  silently dead OpenBridge link is the documented top failure — the BrandMeister
+  FAQ leads with it, and an address change breaks a link with no local signal.
+  BrandMeister states plainly that alerting operators to down connections is not
+  their responsibility, and that bridges showing no traffic for 60 days may be
+  removed without notice. So a link that quietly died is a link that will
+  quietly be taken away. Staleness reporting is the most valuable thing this
+  feature offers, not a nicety.
+- Also records that proper OpenBridge passes all traffic on **TS1** with the
+  slot bit clear, so club talkgroups on TS2 must be translated on the way out
+  and back on the way in. That is a routing rule, not an option.
 
 ### Fixed
 - ADR-0017 was never added to `docs/adr/README.md`.
