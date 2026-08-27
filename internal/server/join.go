@@ -78,6 +78,15 @@ type joinResponse struct {
 	// machine tells them it worked.
 	You *PeerView `json:"you,omitempty"`
 
+	// Heard is the caller's most recent transmission, if QSP saw one.
+	//
+	// Without it the page ends in ambiguity: a member keys up and is told that
+	// silence is normal, which is true and useless. QSP already knows whether
+	// the transmission arrived and how many frames it carried, so it can say
+	// so — and a member who can see that their audio reached the network stops
+	// wondering whether they configured something wrong.
+	Heard *CallView `json:"heard,omitempty"`
+
 	GeneratedAt time.Time `json:"generated_at"`
 }
 
@@ -118,7 +127,35 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Their most recent transmission, once their hotspot is identified.
+	//
+	// Matching on the peer's radio ID rather than the call's source, because a
+	// relayed call keeps the originating radio's ID and this member did not
+	// send it. Active calls are checked first: somebody watching this page
+	// while keying up should see it happen, not afterwards.
+	if body.You != nil {
+		active, recent := s.opts.Peers.CallViews(now)
+		body.Heard = mostRecentFrom(body.You.ID, active, recent)
+	}
+
 	writeJSON(w, s.log, http.StatusOK, body)
+}
+
+// mostRecentFrom returns the newest call originated by a radio, preferring one
+// still in progress.
+func mostRecentFrom(id uint32, active, recent []CallView) *CallView {
+	for i := range active {
+		if active[i].Source == id {
+			return &active[i]
+		}
+	}
+	// recent is newest-first, as the console renders it.
+	for i := range recent {
+		if recent[i].Source == id {
+			return &recent[i]
+		}
+	}
+	return nil
 }
 
 // clientHost extracts the caller's address, ignoring the port.

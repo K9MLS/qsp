@@ -81,7 +81,7 @@
       var arrives = document.createElement("td");
       if (tg.arrives && tg.arrives !== tg.dialled) {
         arrives.className = "tg-arrives";
-        arrives.textContent = "TG " + tg.arrives;
+        arrives.textContent = "TG" + "\u00a0" + tg.arrives;
       } else {
         arrives.className = "fields__missing";
         arrives.textContent = "unchanged";
@@ -121,6 +121,35 @@
 
     box.setAttribute("data-state", "waiting");
     text(label, "Watching for your hotspot to connect…");
+  }
+
+  /* Whether QSP heard this member transmit. The page previously ended by
+   * telling them silence was normal, which is true and tells them nothing. */
+  function renderHeard(data) {
+    var box = $("heard");
+    var label = $("heard-text");
+    if (!box) {
+      return;
+    }
+
+    if (!data.enabled || !data.you) {
+      box.setAttribute("data-state", "waiting");
+      text(label, "Connect your hotspot first, then key up.");
+      return;
+    }
+
+    var call = data.heard;
+    if (!call) {
+      box.setAttribute("data-state", "waiting");
+      text(label, "Nothing heard from you yet. Key up for a few seconds.");
+      return;
+    }
+
+    box.setAttribute("data-state", "found");
+    var when = call.ago ? call.ago + " ago" : "now";
+    text(label,
+      "Heard you on TG " + call.target + ", TS" + call.timeslot +
+      " — " + call.frames + " frames, " + call.duration + ", " + when + ".");
   }
 
   function renderCount(data) {
@@ -177,6 +206,7 @@
 
     renderTalkgroups(settings.talkgroups);
     renderWaiting(data);
+    renderHeard(data);
     renderCount(data);
   }
 

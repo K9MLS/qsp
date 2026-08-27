@@ -24,8 +24,8 @@
     </svg>
     <h1 class="join__title" id="network-name">Join the network</h1>
     <p class="join__lede">
-      Point your hotspot at this server. It takes about five minutes, and
-      nothing here changes your radio.
+      Point your hotspot at this server. Allow about ten minutes. Nothing
+      here changes your radio, and you can undo all of it.
     </p>
   </header>
 
@@ -40,23 +40,16 @@
   <ol class="steps">
 
     <li class="step">
-      <h2 class="step__title">Open your hotspot's configuration</h2>
+      <h2 class="step__title">Open your hotspot and turn off BrandMeister</h2>
       <p class="step__body">
         In a browser, go to your hotspot's dashboard — usually
         <code>pi-star.local</code> or <code>wpsd.local</code> — then open
-        <strong>Admin → Configuration → DMR Configuration</strong>.
-      </p>
-    </li>
-
-    <li class="step">
-      <h2 class="step__title">Turn off your current DMR network</h2>
-      <p class="step__body">
-        Set <strong>BrandMeister Network Enable</strong> to <strong>off</strong>.
-        Two networks at once compete for the same talkgroups, and yours will
-        reach whichever answers first.
+        <strong>Admin → Configuration → DMR Configuration</strong> and set
+        <strong>BrandMeister Network Enable</strong> to <strong>off</strong>.
       </p>
       <p class="step__note">
-        You can switch back at any time. Nothing here is permanent.
+        Two networks at once compete for the same talkgroups, and yours would
+        reach whichever answered first. You can switch back at any time.
       </p>
     </li>
 
@@ -105,10 +98,8 @@
         as enabled.
       </p>
       <p class="step__note">
-        This step exists because the dashboard has been known to display a
-        network as enabled while the underlying file said otherwise. The hotspot
-        then connects, holds a session, and quietly sends everything to the old
-        network instead. Thirty seconds here saves an evening.
+        Dashboards sometimes show a network as enabled when it did not save.
+        Thirty seconds here can save an evening.
       </p>
     </li>
 
@@ -147,10 +138,17 @@
         </tbody>
       </table>
 
-      <p class="step__note">
-        Key up for a few seconds. If nobody answers, that is normal — the
-        network may simply be quiet.
+      <p class="step__body">
+        Then key up for a few seconds. You do not need anyone to answer —
+        this page will tell you whether your audio reached the network.
       </p>
+
+      <div class="waiting" id="heard" data-state="waiting">
+        <span class="waiting__dot" aria-hidden="true"></span>
+        <p class="waiting__text" id="heard-text">
+          Nothing heard from you yet.
+        </p>
+      </div>
     </li>
 
   </ol>

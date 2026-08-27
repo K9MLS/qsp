@@ -232,3 +232,83 @@ func TestJoinPageIsEmbedded(t *testing.T) {
 		}
 	}
 }
+
+// TestJoinReportsTheCallersOwnTransmission closes the loop the page would
+// otherwise leave open.
+//
+// Step 6 tells a member to key up and warns that silence is normal. True, and
+// useless: they learn nothing about whether it worked. QSP already knows.
+func TestJoinReportsTheCallersOwnTransmission(t *testing.T) {
+	srv := newJoinServer(t, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          joinSettings(),
+		Peers: stubPeers{
+			views: []PeerView{
+				{ID: 3132910, Callsign: "K9MLS", Address: "192.168.1.155:45582", Ready: true},
+			},
+			recent: []CallView{
+				{Source: 3132910, Target: 9, Group: true, Timeslot: 2, Frames: 74, Duration: "4.4s", Ago: "12s"},
+			},
+		},
+	})
+
+	body := getJoin(t, srv, "192.168.1.155:60000")
+	heard, ok := body["heard"].(map[string]any)
+	if !ok {
+		t.Fatal("the caller's transmission was not reported")
+	}
+	if heard["frames"] != float64(74) {
+		t.Errorf("frames = %v, want 74", heard["frames"])
+	}
+	if heard["target"] != float64(9) {
+		t.Errorf("target = %v, want 9 — the arriving talkgroup", heard["target"])
+	}
+}
+
+// TestJoinPrefersACallInProgress.
+//
+// Somebody watching this page while keying up should see it happen, not learn
+// about it afterwards.
+func TestJoinPrefersACallInProgress(t *testing.T) {
+	srv := newJoinServer(t, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          joinSettings(),
+		Peers: stubPeers{
+			views: []PeerView{{ID: 3132910, Callsign: "K9MLS", Address: "192.168.1.155:45582", Ready: true}},
+			active: []CallView{
+				{Source: 3132910, Target: 9, Timeslot: 2, Frames: 20, Duration: "1.2s"},
+			},
+			recent: []CallView{
+				{Source: 3132910, Target: 9, Timeslot: 2, Frames: 74, Duration: "4.4s", Ago: "30s"},
+			},
+		},
+	})
+
+	body := getJoin(t, srv, "192.168.1.155:60000")
+	heard, _ := body["heard"].(map[string]any)
+	if heard == nil || heard["frames"] != float64(20) {
+		t.Errorf("reported %v, want the call in progress (20 frames)", heard)
+	}
+}
+
+// TestJoinDoesNotReportSomebodyElsesTransmission.
+//
+// Telling a member their audio arrived when it was another member's would stop
+// them troubleshooting a real problem.
+func TestJoinDoesNotReportSomebodyElsesTransmission(t *testing.T) {
+	srv := newJoinServer(t, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          joinSettings(),
+		Peers: stubPeers{
+			views: []PeerView{{ID: 3132910, Callsign: "K9MLS", Address: "192.168.1.155:45582", Ready: true}},
+			recent: []CallView{
+				{Source: 3121380, Target: 9, Timeslot: 2, Frames: 100, Duration: "6s", Ago: "5s"},
+			},
+		},
+	})
+
+	body := getJoin(t, srv, "192.168.1.155:60000")
+	if _, present := body["heard"]; present {
+		t.Error("another member's transmission was reported as the caller's")
+	}
+}

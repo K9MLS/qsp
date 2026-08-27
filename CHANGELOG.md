@@ -34,7 +34,13 @@ All notable changes to QSP. Dates are UTC.
   response for the password rather than trusting the struct to lack a field for
   it.
 
-- **The `/join` page**, in `console/static/` — six steps, one
+- **`/api/join` reports the member's own transmission.** The page previously
+  ended by telling them silence was normal — true, and useless: they keyed up
+  and learned nothing. QSP already knows whether the audio arrived and how many
+  frames it carried, so it says so. Matched on the peer's radio ID rather than
+  the call's source, because a relayed call keeps the originating radio's ID
+  and that member did not send it.
+- **The `/join` page**, in `console/static/` — five steps, one
   column, readable on a phone in a shack. The dialled talkgroup number is set
   in the largest type on the page because it is the one thing a member must get
   right, and "arrives as" is shown beside it so the unfamiliar number in their
