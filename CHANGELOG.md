@@ -2,7 +2,9 @@
 
 All notable changes to QSP. Dates are UTC.
 
-## [Unreleased]
+## [0.1.8] — 2026-08-27
+
+OpenBridge, end to end.
 
 ### Changed
 - **ADR-0008 amended for IPSC, and one of its own claims corrected.** It

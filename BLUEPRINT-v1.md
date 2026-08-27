@@ -186,8 +186,8 @@ to remove someone. Nothing addresses that today.
 | Console | read-only, four panels, functional and plain |
 | Persistence | driver registered, schema migrates, **nothing writes to it** |
 | Authentication | **none.** Every endpoint is unauthenticated |
-| OpenBridge | not started |
-| IPSC | not started, blocked on ADR-0008 |
+| OpenBridge | **code complete**, never run against a real far end |
+| IPSC | not started; unblocked, needs a capture |
 | Unattended operation | fourteen-day soak not started |
 | Two physical hotspots on one instance | never done |
 
@@ -200,7 +200,7 @@ Each gate is a claim about the world, not about the test suite.
 | **1** | HBP master core | ~~a hotspot keys up and its transmission decodes~~ **CLOSED 2026-08-25** |
 | **3** | Scheduler proven | a scheduled bridge opens and closes unattended for fourteen days |
 | **2a** | Member onboarding | a club member joins unassisted in under ten minutes |
-| **4** | OpenBridge upstream | a talkgroup carries traffic to and from BrandMeister |
+| **4** | OpenBridge upstream | ~~code complete 2026-08-27~~ — **gate open**: a talkgroup carries traffic to and from a real far end, which needs an approved bridge |
 | **2b** | Admin setup | a club officer stands up an instance without hand-editing JSON |
 | **5** | IPSC | a Motorola repeater registers to QSP and passes audio |
 | **2c** | Console at scale | an admin finds one member among a hundred peers in seconds |

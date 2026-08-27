@@ -18,6 +18,11 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
 > what those runs confirmed and what they did not.
 >
+> **Linking to other networks** is implemented over OpenBridge, which is what
+> BrandMeister requires for interconnecting a network. No link has yet run
+> against a real far end — that needs a bridge granted by the network being
+> joined.
+>
 > **Relay is tested; two radios are not.** Audio crossing between bridged
 > talkgroups is verified over real sockets, both with constructed frames
 > (`internal/peers/forward_test.go`) and by replaying a captured transmission

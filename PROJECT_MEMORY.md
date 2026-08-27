@@ -24,8 +24,8 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.7 |
-| Tests | 297, all passing (294 `Test`, 3 `Fuzz`) |
+| Version | 0.1.8 |
+| Tests | 368, all passing |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -65,6 +65,12 @@ two can run concurrently, and should, because the fortnight is the constraint.
 - **Scheduler** — recurring windows, DST-correct, level-triggered.
 - **PTT triggers** — on-demand bridging with hang time.
 - **Console** — peers, last heard, traffic counters, health; live over SSE.
+- **OpenBridge upstreams** — `internal/protocol/openbridge` for the wire format,
+  `internal/upstream` for the links, `dmr.upstreams` for configuration. Signed
+  DMRD frames, no handshake, no keepalive. Routes through the existing core, so
+  contention and translation apply unchanged. Never tested against a real far
+  end: everything is verified over loopback, and the failures that matter — a
+  passphrase mismatch, an address change — only appear against a granted bridge.
 - **Documentation accuracy gate** — `cmd/qsp/docaccuracy_test.go` checks
   documented endpoints against registered routes, paths named in prose against
   the filesystem, emptiness claims against directory contents, and absence
@@ -292,6 +298,12 @@ else can proceed alongside it.
    claim and needs a person who has not seen it before.
 3. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
    disabled in the WPSD dashboard. The cheapest remaining gap.
-4. **ADR-0008** — the licensing question blocks Phase 4 and needs no hardware.
-5. **P25** (Phase 4) — also needs a capture containing an actual P25
+4. **An IPSC capture.** The only thing standing between here and IPSC.
+   `tcpdump` between a club XPR8300 and whatever it registers with today: a
+   registration sequence from a cold power-cycle, ten minutes of steady state,
+   and one transmission. Sanitise before committing, as for the HBP captures.
+5. **A BrandMeister bridge request.** OpenBridge is code complete and has never
+   run against a real far end. Approval is BrandMeister's to grant and takes as
+   long as it takes, so the request is worth starting before it is needed.
+6. **P25** (Phase 4) — also needs a capture containing an actual P25
    transmission; `testdata/p25/` holds polling traffic only.
