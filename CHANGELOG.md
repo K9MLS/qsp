@@ -5,8 +5,21 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/protocol/openbridge`** — the wire format. Sign, verify, parse and
+  encode; no sockets, no retries, no forwarding decisions, for the same reason
+  ADR-0013 keeps routing pure.
+
+  Thirteen tests, of which the ones worth naming: the signature is checked
+  against an independently computed HMAC-SHA1 rather than only round-tripping,
+  because Sign and Verify sharing a mistake would pass a round-trip and fail
+  against the far end. Nine tamper cases cover every field a mischievous sender
+  would want to alter. An empty passphrase is refused outright — it produces a
+  signature anyone else with an empty passphrase can forge, which is worse than
+  no authentication because it looks like authentication. And `Encode` forces
+  TS1 and stamps the network ID, both of which are the protocol's rules rather
+  than an administrator's to remember.
 - **[ADR-0018](docs/adr/ADR-0018-openbridge.md): OpenBridge for linking to other
-  networks.** Design only; no code yet.
+  networks.**
 
   QSP will not log into a BrandMeister master as a homebrew peer. That is not a
   preference: BrandMeister requires OpenBridge for interconnecting a network,
