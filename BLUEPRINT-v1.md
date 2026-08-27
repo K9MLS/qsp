@@ -1,150 +1,240 @@
 # QSP — Blueprint v1
 
-**Status: current. This document describes what is being built now.**
+**Status: current. This document describes what is being built and why.**
 
 [`BLUEPRINT.md`](BLUEPRINT.md) is frozen at v0.4 and records what was believed
-before any code existed. It is kept as a record and is not a description of the
-build. Where the two disagree, this one is correct.
-
-> **This draft was written by Claude from conversation and needs Mike's review.**
-> Sections marked **[ASSUMPTION]** are inferred, not stated, and are the most
-> likely places to be wrong.
+before any code existed. Where the two disagree, this one is correct.
 
 ---
 
-## 1. What QSP is, now
+## 0. The rule that governs everything below
 
-**A private DMR network for a radio club's hotspots.**
+**QSP is being built for the amateur radio community, not for one club.**
 
-Fifty to a hundred hotspots register with one QSP instance. Members talk to each
-other on club talkgroups without routing through BrandMeister or any commercial
-network. The club owns its own infrastructure.
+Every value specific to a network — talkgroup numbers, upstream masters,
+repeater IDs, passwords, timezones, callsigns — is **administrator
+configuration**. None of it is hardcoded, assumed, or asked for at design time.
 
-That is the whole of the near-term target. It is not the whole ambition —
-§7 sketches where this goes — but it is what the next phases build and what the
-gates measure.
+A club in Toulouse points its upstream at `2081.master.brandmeister.network`;
+a club in Texas at `3102`. QSP neither knows nor cares which. When a design
+question sounds like "which talkgroup does the club want?", the correct answer
+is almost always "that is a field, not a decision" — and the real question is
+what shape the field takes.
+
+K9MLS's own club network is the **test bed**, not the specification. Build the
+mechanism for everyone; validate it against the equipment in the room.
+
+---
+
+## 1. What QSP is
+
+**A DMR call-routing server for amateur radio: a free, open alternative to
+a commercial DMR server.**
+
+The near-term deliverable is a private club network for hotspots — fifty to a
+hundred of them — that can also link outward to the wider DMR world. The
+long-term deliverable is the full suite: repeaters over IPSC, P25, analog
+connectors, and the console that makes all of it operable by a club officer
+rather than a specialist.
 
 ## 2. Why this exists
 
-The commercial option for this is a commercial DMR server. Its moat is not capability, it is
-that networks have already paid the setup cost and will not pay it twice. A free
-alternative competes on the twenty minutes a club officer will spend before
-concluding it does not work.
+a commercial DMR server is the incumbent and it is commercial. Its moat is not capability, it
+is that networks have already paid the setup cost and will not pay it twice.
 
-**The evidence for what that means is this project's own history.** Getting one
-hotspot to reach QSP took two sessions across two days, and QSP was never at
-fault. The obstacles were `Enabled=0` in `/etc/dmrgateway` while the WPSD
-dashboard reported the network as enabled, and the talkgroup rewrite that meant
-the number dialled was not the number that arrived. A stranger hitting either of
-those concludes the software is broken.
+A free alternative competes on the twenty minutes a club officer will spend
+before concluding it does not work. **The evidence for what that means is this
+project's own history.** Connecting one hotspot took two sessions across two
+days, and QSP was never at fault. The obstacles were `Enabled=0` in
+`/etc/dmrgateway` while the WPSD dashboard reported the network as enabled, and
+a talkgroup rewrite that meant the number dialled was not the number that
+arrived. A stranger hitting either concludes the software is broken.
 
-That is the problem to solve. The protocol work is done and validated; the
-remaining risk is entirely in onboarding.
+## 3. How QSP relates to the existing networks
 
-## 3. Who uses it
+Understanding this stopped a wrong turn, so it is recorded rather than
+rediscovered.
 
-Two audiences with almost nothing in common. Confusing them is what made the
-earlier console proposal aim at the wrong target.
+### QSP's routing model is a commercial DMR server's, not BrandMeister's
 
-**The club admin.** Stands the server up once, configures talkgroups and
-bridges, and thereafter wants to know it is healthy. Technical enough to run a
-Pi. Does this a handful of times a year.
+The a commercial DMR server manages talkgroups on an **always-on, scheduled, or on-demand
+(PTT)** basis. That is exactly QSP's `enabled`, `schedule` and `triggers` — the
+alignment is complete, and it was built before anyone checked. A a commercial DMR server is a
+point-to-multipoint router, similar to VLAN trunking, with talkgroups as the
+control points carrying traffic, routing and timers that hold off other traffic
+on a timeslot. That is ADR-0013's pure routing decision plus ADR-0014's
+contention.
 
-**The club member.** Owns a hotspot, wants to be on the club network, and will
-follow instructions but will not debug DMRGateway. There are fifty to a hundred
-of them, and they onboard themselves or the admin spends a hundred evenings on
-the phone. **[ASSUMPTION]** They run WPSD or Pi-Star; other hotspot software is
-out of scope for now.
+### BrandMeister works differently, and that difference is not a defect
 
-Member onboarding is therefore the highest-value work available, and it is
-distinct from the setup wizard the frozen blueprint described.
+BrandMeister is subscription-centric: talkgroups exist implicitly, peers attach
+to them, and the network creates any talkgroup ID on demand. Attachment comes in
+three kinds — **static** (set per-peer, permanent), **dynamic** (created by
+transmitting, times out after ~15 minutes without local traffic), and
+**auto-static** (hotspot-only; persists until the user keys a different
+talkgroup; TG 4000 clears everything).
 
-## 4. What fifty to a hundred hotspots changes
+**QSP follows the a commercial DMR server model:** the administrator sets the static
+talkgroups; users select among them by programming their subscriber radios.
 
-Every previous test had one peer. Three assumptions do not survive the jump:
+**Known gap.** QSP's PTT trigger opens a bridge **network-wide**. On
+BrandMeister a dynamic talkgroup attaches to *one hotspot*. For a club of a
+hundred, one member keying up should not open a talkgroup for everybody. Making
+attachment per-peer is real work and is not yet scheduled.
 
-**The console cannot show a flat table.** A hundred rows with no search, sort or
-filter is unusable. The `Connected peers` panel needs to answer "is *my* hotspot
-connected" and "what is talking right now", not list everything.
+## 4. Linking outward
 
-**Forwarding is a different engineering problem.** One member keying up, relayed
-to a hundred peers, is **1,650 datagrams per second outbound** — measured, not
-estimated, in `internal/peers/fanout_test.go`. Routing 242 live frames to 99
-destinations costs about 10 ms of CPU, so the routing core is not the
-constraint. The constraint is the UDP send path, which that test does not
-exercise. **[ASSUMPTION]** the target host is a Pi 4 or better.
+### BrandMeister: OpenBridge only
 
-**Peer identity matters.** With one peer, a radio ID is a curiosity. With a
-hundred, the admin needs to know which callsign belongs to which member, who is
-allowed on, and how to remove someone. Nothing addresses that today.
+**Settled, and not a matter of preference.** BrandMeister's documentation
+requires the OpenBridge protocol for interconnecting another network, forbids
+peer bridging via MMDVM or Homebrew, and explicitly asks people not to build
+software that impersonates those protocols without an onboard radio.
 
-## 5. Where the build actually is
+QSP logging into a BM master as though it were a hotspot is precisely what they
+have asked nobody to build. It would work today and break on a version bump,
+unsupported.
+
+**OpenBridge is small.** It is a simple protocol based on MMDVM carrying DMRD
+packets only, with no connection establishment and no keep-alive — a shared
+passphrase, a network ID, and frames on UDP. QSP's HBP codec already parses
+DMRD. Approval is the hard part, not the code: bridges are granted at each
+master's discretion.
+
+**Configuration shape:** named upstream blocks, each with target address, port,
+network ID, passphrase, and the talkgroups carried in each direction. Multiple
+blocks — a club may bridge to BrandMeister *and* to a neighbouring QSP.
+
+### IPSC: for real repeaters
+
+Motorola XPR8300, XPR8400, SLR7500 and MTR3000 are what club sites actually run,
+and they speak IPSC. **This is what makes QSP a a commercial DMR server alternative rather than
+a hotspot server.**
+
+Both directions are needed, because both exist in the wild: QSP as **IPSC
+master**, with repeaters registering to it, and QSP as **IPSC peer**, joining an
+existing IPSC system. `ipsc2hbp` supports both for that reason.
+
+**Blocked on [ADR-0008](docs/adr/ADR-0008-protocol-licensing.md)**, which
+governs what QSP may derive protocol knowledge from. IPSC has no published
+specification; the open implementations are reverse-engineered. **DMRlink and
+HBlink3 are GPL-3.0**, and QSP is GPL-3.0, so deriving from them is what that
+licence exists to permit. ADR-0008's restrictive limb concerns CC BY-NC-SA
+documents, whose non-commercial term GPL-3.0 cannot satisfy — a different
+question. The ADR needs amending to record that this case was considered and
+cleared, with the attribution consequence stated. **Amending it to record
+reasoning is right; editing it to say "accepted" because IPSC is wanted is not.
+An ADR is a record, not a permission slip.**
+
+## 5. Who uses it
+
+**The network administrator.** Stands the server up, defines talkgroups and
+bridges, links upstream, and thereafter wants to know it is healthy. Technical
+enough to run a server. Does this a handful of times a year.
+
+**The club member.** Owns a hotspot, wants on the network, will follow
+instructions but will not debug DMRGateway. There are fifty to a hundred of
+them, and they onboard themselves or the admin spends a hundred evenings on the
+phone. Assumed to run WPSD or Pi-Star.
+
+**The repeater trustee.** Has a Motorola repeater and an IPSC configuration.
+Blocked until IPSC lands.
+
+## 6. Deployment
+
+**The target is a server or VM, not a Raspberry Pi.** a commercial DMR server is server
+software and that is the right precedent. A club network with upstream links,
+persistence and a hundred peers deserves more than a Pi, and a 4-vCPU VM is the
+honest deployment target.
+
+The Pi remains the *minimum*: armv7 cross-compilation is proven and stays in CI,
+because a small club running one hotspot should not need a server.
+
+Both paths exist already — `deploy/docker/` (Dockerfile and compose, console
+bound to localhost, data volume) and `deploy/systemd/qsp.service` (hardened
+unit). Ubuntu installs from either.
+
+## 7. What fifty to a hundred hotspots changes
+
+**The console cannot show a flat table.** A hundred rows with no search is
+unusable. The peers panel must answer "is *my* hotspot connected" and "what is
+talking now".
+
+**Fan-out is measured, not estimated.** One transmission to 100 peers is
+**1,650 deliveries per second of speech**; 242 frames to 99 destinations costs
+about 10 ms of CPU (`internal/peers/fanout_test.go`). The routing core is not
+the constraint. The UDP send path is untested at that rate.
+
+**Peer identity matters.** With one peer a radio ID is a curiosity. With a
+hundred, an admin needs to know which callsign belongs to which member and how
+to remove someone. Nothing addresses that today.
+
+## 8. Where the build actually is
 
 | | |
 |---|---|
-| Protocol (HBP) | **done and hardware-validated** — 556 live frames decoded, 0 dropped |
-| Peer lifecycle, routing, scheduler, PTT triggers | built, tested, unproven at scale |
+| Protocol (HBP) | **done, hardware-validated** — 556 live frames, 0 dropped |
+| Relay between peers | **done** — verified over real sockets, and at 100 peers |
+| Peer lifecycle, routing, scheduler, PTT | built and tested |
+| Member onboarding (`/api/join`, `/join`) | **done**, ungated |
 | Console | read-only, four panels, functional and plain |
-| Configuration | hand-edited JSON. No write path, no wizard |
-| Authentication | **none.** Every endpoint is unauthenticated |
 | Persistence | driver registered, schema migrates, **nothing writes to it** |
-| Unattended operation | untested; the fourteen-day soak has not started |
+| Authentication | **none.** Every endpoint is unauthenticated |
+| OpenBridge | not started |
+| IPSC | not started, blocked on ADR-0008 |
+| Unattended operation | fourteen-day soak not started |
+| Two physical hotspots on one instance | never done |
 
-## 6. Phases, restated for this target
+## 9. Phases
 
-Supersedes the frozen §16. Each gate is a claim about the world, not about the
-test suite.
+Each gate is a claim about the world, not about the test suite.
 
 | Phase | Delivers | Gate |
 |---|---|---|
-| **1** | HBP master core | ~~A hotspot keys up and its transmission decodes~~ **CLOSED 2026-08-25** |
-| **3** | Scheduler proven | A scheduled bridge opens and closes unattended for fourteen days |
-| **2a** | **Member onboarding** | A club member with a hotspot joins the network unassisted in under ten minutes |
-| **2b** | Admin setup | A club officer stands up a new instance without hand-editing JSON |
-| **2c** | Console at scale | An admin finds one member among a hundred connected peers in seconds |
-| **4** | Multi-peer forwarding | Audio relays between two *physical* hotspots. Synthetic peers already prove the logic; this proves the wire |
+| **1** | HBP master core | ~~a hotspot keys up and its transmission decodes~~ **CLOSED 2026-08-25** |
+| **3** | Scheduler proven | a scheduled bridge opens and closes unattended for fourteen days |
+| **2a** | Member onboarding | a club member joins unassisted in under ten minutes |
+| **4** | OpenBridge upstream | a talkgroup carries traffic to and from BrandMeister |
+| **2b** | Admin setup | a club officer stands up an instance without hand-editing JSON |
+| **5** | IPSC | a Motorola repeater registers to QSP and passes audio |
+| **2c** | Console at scale | an admin finds one member among a hundred peers in seconds |
+| **6** | P25, vocoder, analog connectors | as the frozen blueprint describes |
 
-Phase 3 runs first because fourteen days of wall-clock cannot be compressed, and
-it needs no further code.
+Phase 3 runs first: fourteen days of wall-clock cannot be compressed and it
+needs no further code.
 
-**2a before 2b** reverses the frozen blueprint. Setup happens once; onboarding
-happens a hundred times. **[ASSUMPTION]** the admin — you — can keep
-hand-editing JSON in the interim.
+**2a before 2b** reverses the frozen plan. Setup happens once; onboarding
+happens a hundred times.
 
-**Phase 4 is narrower than it looked.** Relay between two peers over real
-sockets has been tested since before the fan-out work — `forward_test.go` covers
-talkgroup and timeslot translation, whole transmissions, and that a bridge
-gated by schedule or PTT carries the opening frame. What was missing was scale
-and provenance, and both are now covered: a captured transmission survives the
-wire intact, and fan-out holds at a hundred peers.
+## 10. On the horizon
 
-What remains is hardware. Two physical hotspots have never been connected to one
-instance, and no radio has received relayed audio.
+**A live node map.** Every hotspot already sends `Latitude`, `Longitude`,
+`Height` and `Location` in its `RPTC` login — `internal/protocol/hbp/config.go`
+parses them and QSP currently discards them. Storing and drawing them is
+genuinely close. The obstacle is that a map library is a build-step-and-CDN
+dependency, which cuts against the console's no-build-step rule; self-hosting is
+possible and needs an ADR.
 
-## 7. Beyond this
+## 11. Decided
 
-P25, the vocoder pool, and the AllStar, Zello and EchoLink connectors remain the
-direction. Each registers a health check naming the phase that brings it, so the
-running instance always states what it does not yet do.
+- **No membership vetting in v1.** HBP uses one shared secret per network, a
+  club knows its own members, and an approval workflow needs admin sessions that
+  do not exist. The peer registry already records who connected and when, so
+  vetting is additive later.
+- **The join page**: five steps, ten minutes promised, no credential shown.
 
-The full a commercial DMR server alternative is the destination. A club network that works is
-the step that proves it is worth building.
+## 12. Non-goals, for now
 
-## 8. Non-goals, for now
-
-- Hotspot software other than WPSD or Pi-Star **[ASSUMPTION]**
-- Federation between QSP instances
-- Public internet exposure. Deployment assumes a LAN or a tunnel; there is no
-  authentication and `/api/peers` discloses callsigns, radio IDs and addresses
-- A mobile app. The console must work on a phone browser; that is different
+- Hotspot software other than WPSD or Pi-Star
+- Public internet exposure without a proxy: there is no authentication, and
+  `/api/peers` discloses callsigns, radio IDs and addresses
+- A mobile app. The console must work in a phone browser; that is different
 - Migration tooling from a commercial DMR server
 
-## 9. Open decisions
+## 13. Still open
 
-1. Is there a second admin, or is one shared credential honest for v1?
-2. Does the club vet who joins, or does anyone with the password get on? This
-   decides whether Phase 2a needs approval workflow or just instructions.
-3. Which talkgroups does the club actually want, and do they bridge to anything
-   outside?
-4. Is there a member who has never seen this, who would test Phase 2a's gate?
-   It cannot be self-certified.
+1. Whether a second administrator exists, which decides whether roles and
+   sessions are needed before the config write path.
+2. Whether per-peer dynamic talkgroup attachment is built, or the network-wide
+   PTT trigger is enough for a club.
+3. Whether the console's map dependency is worth a build step.

@@ -24,7 +24,7 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.6 |
+| Version | 0.1.7 |
 | Tests | 297, all passing (294 `Test`, 3 `Fuzz`) |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
@@ -245,14 +245,33 @@ Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
 ## 7a. Current scope
 
-`BLUEPRINT-v1.md` describes what is being built now: **a private DMR network for
-a radio club's hotspots, fifty to a hundred of them.** The frozen
-`BLUEPRINT.md` v0.4 predates any code and its phase plan assumes a different
-target; where they disagree, v1 is correct.
+`BLUEPRINT-v1.md` is the current plan. Read it before proposing work; the frozen
+`BLUEPRINT.md` v0.4 predates any code.
 
-The near-term risk is not protocol work — that is done and hardware-validated.
-It is onboarding. Getting one hotspot connected took two sessions, and QSP was
-never at fault.
+**The rule that governs design decisions:** QSP is built for the amateur radio
+community, not for one club. Talkgroup numbers, upstream masters, repeater IDs
+and passwords are all administrator configuration. When a question sounds like
+"which talkgroup does the club want?", the answer is "that is a field, not a
+decision". K9MLS's club is the test bed, not the specification.
+
+**QSP's routing model is a commercial DMR server's**, not BrandMeister's: always-on, scheduled
+and on-demand talkgroup management, which is `enabled`, `schedule` and
+`triggers`. The administrator sets static talkgroups; users choose among them by
+programming their radios.
+
+**Linking outward is OpenBridge, not a homebrew peer.** BrandMeister forbids
+peer bridging and asks that nobody build software impersonating Homebrew or
+MMDVM without an onboard radio. OpenBridge is DMRD-only with no handshake and no
+keepalive — small to build, and gated on the master admin's approval.
+
+**IPSC is required, not optional.** Motorola XPR8300, XPR8400, SLR7500 and
+MTR3000 are what club sites run. Both master and peer modes are needed. Blocked
+on ADR-0008, which likely clears once amended: DMRlink and HBlink3 are GPL-3.0
+and so is QSP, while ADR-0008's restrictive limb concerns CC BY-NC-SA
+non-commercial terms.
+
+**Deployment targets a server or VM.** The Pi remains the proven minimum and
+stays in CI.
 
 ## 8. Immediate next steps
 

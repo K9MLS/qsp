@@ -2,7 +2,41 @@
 
 All notable changes to QSP. Dates are UTC.
 
-## [Unreleased]
+## [0.1.7] — 2026-08-26
+
+Member onboarding shipped, and the network's direction settled and written down
+so it stops being rediscovered.
+
+### Changed
+- **`BLUEPRINT-v1.md` rewritten.** It now opens with the rule that governs every
+  other decision: QSP is built for the amateur radio community, not one club, so
+  talkgroups, masters, repeater IDs and passwords are administrator
+  configuration rather than design-time questions. That mistake was made three
+  times in one session.
+- **How QSP relates to the existing networks is recorded.** Its routing model is
+  a commercial DMR server's — always-on, scheduled, on-demand — which is `enabled`, `schedule`
+  and `triggers`, built before anyone checked. BrandMeister's subscription model
+  is documented as a difference rather than a defect, with the one real gap
+  named: QSP's PTT trigger opens a bridge network-wide, where a dynamic
+  talkgroup should attach to a single peer.
+- **BrandMeister linking is OpenBridge.** Not a preference: BrandMeister forbids
+  peer bridging and asks that nobody build software impersonating Homebrew or
+  MMDVM without an onboard radio. OpenBridge is DMRD-only, no handshake, no
+  keepalive.
+- **IPSC is scheduled as its own phase**, master and peer modes both, for the
+  Motorola repeaters club sites actually run. Blocked on ADR-0008, with the
+  likely resolution recorded: DMRlink and HBlink3 are GPL-3.0 and so is QSP,
+  while ADR-0008's restrictive limb concerns CC BY-NC-SA non-commercial terms.
+  Amending an ADR to record reasoning is right; editing it to say "accepted"
+  because something is wanted is not.
+- **Deployment targets a server or VM**, with the Pi kept as the proven minimum.
+- Phases reordered: OpenBridge before admin setup, IPSC after.
+- `PROJECT_MEMORY.md` §7a carries the same summary, so a new session reads it
+  before proposing work.
+- A live node map is recorded as near-term feasible: hotspots already send
+  latitude, longitude, height and location in `RPTC`, and QSP discards them.
+
+### Also in this release
 
 ### Added
 - **`dmr.join` configuration**, feeding `/api/join`. It is configuration rather
