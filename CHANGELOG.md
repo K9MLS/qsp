@@ -2,6 +2,32 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [Unreleased]
+
+### Added
+- **[ADR-0018](docs/adr/ADR-0018-openbridge.md): OpenBridge for linking to other
+  networks.** Design only; no code yet.
+
+  QSP will not log into a BrandMeister master as a homebrew peer. That is not a
+  preference: BrandMeister requires OpenBridge for interconnecting a network,
+  prohibits peer bridging, and asks specifically that nobody build software
+  without an onboard radio that impersonates Homebrew or MMDVM. QSP is exactly
+  what they are describing.
+
+  The ADR settles four things worth arguing with before there is code. Upstreams
+  are named blocks with separate `export` and `import` lists, because a club may
+  send its net up while accepting a nationwide talkgroup down. A frame that
+  arrived from an upstream is never sent to an upstream — blunt rather than
+  clever, because the failure mode of a hop count is a broadcast storm on
+  somebody else's network. Upstreams route through the existing core rather than
+  beside it, so contention and translation apply unchanged and the 297 existing
+  tests become the regression check. And because OpenBridge has no keep-alive,
+  QSP cannot tell a quiet talkgroup from a dead link, so the health summary says
+  exactly that rather than guessing.
+
+### Fixed
+- ADR-0017 was never added to `docs/adr/README.md`.
+
 ## [0.1.7] — 2026-08-26
 
 Member onboarding shipped, and the network's direction settled and written down

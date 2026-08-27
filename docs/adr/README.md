@@ -26,3 +26,5 @@ conclusion.
 | [0014](ADR-0014-contention.md) | A transmission occupies its origin as well as its destinations | Accepted |
 | [0015](ADR-0015-level-triggered-scheduler.md) | The scheduler is level-triggered, and stores wall time | Accepted |
 | [0016](ADR-0016-ptt-triggered-bridging.md) | PTT-triggered bridging, and how it merges with the schedule | Accepted |
+| [0017](ADR-0017-first-dependency.md) | Adopting modernc.org/sqlite, the first dependency | Accepted |
+| [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed |
