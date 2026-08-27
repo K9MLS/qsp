@@ -5,6 +5,24 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **Upstreams route through the existing core.** `routing.Endpoint` gains an
+  `Upstream` field, `Result` gains `Upstreams`, and `Core.RouteFromUpstream`
+  handles traffic arriving over a link. Contention, talkgroup translation and
+  the drop accounting all apply unchanged — the point of routing through the
+  core rather than beside it.
+
+  `Route` keeps its signature, so the existing routing tests are untouched and
+  become the regression check. All of them still pass.
+
+  Two subtleties found while writing it. `Endpoint.Matches` had to learn that a
+  link is not a peer: an upstream endpoint carries `AnyPeer` by default,
+  `AnyPeer` matches everything, and the table concluded the link *was* the peer
+  that had just transmitted — so it declined to send the frame there, on the
+  grounds that a call is never sent back where it came from. The bridge would
+  have appeared configured and carried nothing. And `sourceKey` gains the link
+  name, because two networks choose stream IDs independently: a frame from
+  BrandMeister sharing a stream ID with a local transmission would otherwise
+  look like a continuation of it, and two people's audio would interleave.
 - **`dmr.upstreams` configuration**, with validation. Named links, each with a
   far-end address, a local listen address, a network ID, a passphrase file, and
   separate `export` and `import` lists naming **local** talkgroups — QSP applies

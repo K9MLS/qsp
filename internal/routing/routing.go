@@ -40,7 +40,19 @@ const AnyPeer = hbp.RepeaterID(0)
 // Endpoint is one place traffic arrives at or is sent to.
 type Endpoint struct {
 	// Peer is the peer this endpoint lives at, or AnyPeer for all of them.
+	//
+	// Ignored when Upstream is set: a link is not a peer, and the two are
+	// mutually exclusive.
 	Peer hbp.RepeaterID
+	// Upstream names a link to another network, empty for an ordinary peer
+	// endpoint.
+	//
+	// An upstream is a destination like any other as far as the routing
+	// decision is concerned — it takes part in contention, it is refused when
+	// busy, and it is counted in the same drops. What differs is only how the
+	// frame leaves, which is the caller's business rather than this package's.
+	// See docs/adr/ADR-0018-openbridge.md.
+	Upstream string
 	// Talkgroup is the talkgroup ID.
 	Talkgroup uint32
 	// Timeslot is the DMR timeslot.
@@ -49,6 +61,9 @@ type Endpoint struct {
 
 // String implements fmt.Stringer.
 func (e Endpoint) String() string {
+	if e.Upstream != "" {
+		return fmt.Sprintf("upstream %s TG%d TS%d", e.Upstream, e.Talkgroup, e.Timeslot)
+	}
 	peer := "any"
 	if e.Peer != AnyPeer {
 		peer = fmt.Sprintf("%d", e.Peer)
@@ -65,11 +80,30 @@ func (e Endpoint) Matches(actual Endpoint) bool {
 	if e.Talkgroup != actual.Talkgroup || e.Timeslot != actual.Timeslot {
 		return false
 	}
+
+	// A link and a peer are never each other, whatever their talkgroups.
+	//
+	// Without this, an upstream endpoint carries AnyPeer by default, AnyPeer
+	// matches everything, and the routing table concludes that the link *is*
+	// the peer that just transmitted — so it declines to send the frame there,
+	// on the grounds that a call is never sent back where it came from. The
+	// bridge then appears configured and carries nothing.
+	if (e.Upstream == "") != (actual.Upstream == "") {
+		return false
+	}
+	if e.Upstream != "" {
+		return e.Upstream == actual.Upstream
+	}
+
 	return e.Peer == AnyPeer || e.Peer == actual.Peer
 }
 
 // Validate reports whether the endpoint is usable.
 func (e Endpoint) Validate() error {
+	if e.Upstream != "" && e.Peer != AnyPeer {
+		return fmt.Errorf("endpoint names both upstream %q and peer %d; an endpoint is one or the other",
+			e.Upstream, e.Peer)
+	}
 	if e.Talkgroup == 0 {
 		return fmt.Errorf("endpoint has talkgroup 0, which is not a valid destination")
 	}

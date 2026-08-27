@@ -26,6 +26,25 @@ type Delivery struct {
 	Bridge string
 }
 
+// UpstreamDelivery is a frame bound for a link to another network.
+//
+// It is separate from Delivery because the two leave by different doors: a peer
+// delivery is a DMRD datagram to a registered repeater, while an upstream
+// delivery is signed and sent to a fixed address. Merging them would mean every
+// consumer of Deliveries had to check which kind it held.
+type UpstreamDelivery struct {
+	// Upstream names the link.
+	Upstream string
+	// Frame is the frame to send, rewritten for the destination talkgroup.
+	//
+	// The timeslot is *not* forced to TS1 here. That is the OpenBridge
+	// encoder's rule, applied where the protocol is spoken, so that this
+	// package stays ignorant of which protocol a link uses.
+	Frame hbp.Data
+	// Bridge names the bridge responsible, for logging.
+	Bridge string
+}
+
 // Drop explains a frame that was not forwarded.
 //
 // Constitution §18 forbids silently dropping traffic. Every refusal produces
@@ -39,8 +58,10 @@ type Drop struct {
 
 // Result is the outcome of routing one frame.
 type Result struct {
-	// Deliveries are the frames to send.
+	// Deliveries are the frames to send to peers.
 	Deliveries []Delivery
+	// Upstreams are the frames to send over links to other networks.
+	Upstreams []UpstreamDelivery
 	// Drops explain destinations that were skipped.
 	Drops []Drop
 	// StartedStreams are destinations that began receiving with this frame.
@@ -75,6 +96,13 @@ type sourceKey struct {
 	peer   hbp.RepeaterID
 	stream hbp.StreamID
 	slot   hbp.Timeslot
+	// upstream names the link a frame arrived on, empty for peer traffic.
+	//
+	// Two networks choose stream IDs independently, so a frame from
+	// BrandMeister and a local transmission can share one. Without this, the
+	// collision would look like a continuation of the same stream and the
+	// second talker's audio would be interleaved with the first.
+	upstream string
 }
 
 // Core applies a routing table to live traffic.
@@ -155,13 +183,46 @@ func (c *Core) Table() *Table { return c.table }
 // Setting the destination peer's ID is the behaviour that was observed. It
 // needs confirming against real hardware before QSP forwards to a live network.
 func (c *Core) Route(from hbp.RepeaterID, frame hbp.Data, now time.Time) Result {
-	origin := Endpoint{Peer: from, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}
+	return c.route(Endpoint{Peer: from, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
+}
+
+// RouteFromUpstream routes a frame that arrived over a link from another
+// network.
+//
+// It is a separate entry point rather than a flag on Route because the two
+// differ in one rule that must not be possible to forget: a frame from an
+// upstream is never sent to an upstream.
+//
+// Without that, a club exporting and importing the same talkgroup — the
+// ordinary case, not an exotic one — relays every frame from BrandMeister
+// straight back to BrandMeister, where the copy is indistinguishable from a new
+// transmission. That is a broadcast storm on somebody else's network produced
+// by a configuration that looks entirely reasonable, and BrandMeister
+// disconnects bridges found re-bridging.
+//
+// The rule is blunt rather than clever. A hop count would permit
+// QSP-to-QSP-to-elsewhere chains, but it requires every participant to
+// cooperate and fails into exactly the storm it was meant to prevent when one
+// does not.
+func (c *Core) RouteFromUpstream(name string, frame hbp.Data, now time.Time) Result {
+	return c.route(Endpoint{Upstream: name, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
+}
+
+func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
+	from := origin.Peer
+	fromUpstream := origin.Upstream != ""
 	decision := c.table.Route(origin)
 	if !decision.Routed() {
 		return Result{Reason: decision.Reason}
 	}
 
 	src := sourceKey{peer: from, stream: frame.StreamID, slot: frame.Timeslot}
+	if fromUpstream {
+		// Distinguish streams arriving on different links that happen to share
+		// a stream ID. Two networks pick stream IDs independently, so a
+		// collision is a matter of time rather than malice.
+		src.upstream = origin.Upstream
+	}
 
 	// A transmission opens and closes with the same frame type: DMR marks both
 	// the voice header and the voice terminator as sync frames, and nothing in
@@ -194,6 +255,20 @@ func (c *Core) Route(from hbp.RepeaterID, frame hbp.Data, now time.Time) Result 
 
 	var res Result
 	for _, target := range decision.Targets {
+		if target.Upstream != "" {
+			// The loop rule. See RouteFromUpstream.
+			if fromUpstream {
+				res.Drops = append(res.Drops, Drop{
+					To: target,
+					Reason: fmt.Sprintf("arrived from upstream %s; a frame from a link is never "+
+						"sent to a link", origin.Upstream),
+				})
+				continue
+			}
+			c.deliverUpstream(&res, target, frame, src, bridge, now)
+			continue
+		}
+
 		for _, peer := range c.resolve(target) {
 			dest := Endpoint{Peer: peer, Talkgroup: target.Talkgroup, Timeslot: target.Timeslot}
 
@@ -242,13 +317,53 @@ func (c *Core) Route(from hbp.RepeaterID, frame hbp.Data, now time.Time) Result 
 		c.release(src)
 	}
 
-	if len(res.Deliveries) == 0 && res.Reason == "" {
+	if len(res.Deliveries) == 0 && len(res.Upstreams) == 0 && res.Reason == "" {
 		res.Reason = "every destination refused the frame"
 	}
 	return res
 }
 
 // resolve expands an endpoint into concrete destination peers.
+// deliverUpstream applies the same contention rules to a link that a peer gets.
+//
+// An upstream is one destination rather than many, so there is no resolve step,
+// but everything else holds: a link already carrying somebody else's
+// transmission refuses this one, and the refusal is counted rather than silent.
+func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src sourceKey, bridge string, now time.Time) {
+	held, occupied := c.busy[target]
+	switch {
+	case occupied && held.source != src:
+		if now.Sub(held.lastSeen) <= c.timeout {
+			res.Drops = append(res.Drops, Drop{
+				To:     target,
+				Reason: fmt.Sprintf("already carrying a transmission from peer %d", held.source.peer),
+			})
+			return
+		}
+		fallthrough
+	case !occupied:
+		c.busy[target] = &reservation{source: src, lastSeen: now, bridge: bridge}
+	default:
+		held.lastSeen = now
+	}
+
+	out := frame
+	out.TargetID = target.Talkgroup
+	out.Timeslot = target.Timeslot
+	// RepeaterID is left alone. On OpenBridge that field names the sending
+	// server, and the encoder stamps the configured network ID — this package
+	// does not know it and should not guess.
+	if len(frame.Trailing) > 0 {
+		out.Trailing = append([]byte(nil), frame.Trailing...)
+	}
+
+	res.Upstreams = append(res.Upstreams, UpstreamDelivery{
+		Upstream: target.Upstream,
+		Frame:    out,
+		Bridge:   bridge,
+	})
+}
+
 func (c *Core) resolve(target Endpoint) []hbp.RepeaterID {
 	if target.Peer != AnyPeer {
 		if c.peers.Ready(target.Peer) {
