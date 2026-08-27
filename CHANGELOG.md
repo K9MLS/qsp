@@ -5,6 +5,18 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`dmr.upstreams` configuration**, with validation. Named links, each with a
+  far-end address, a local listen address, a network ID, a passphrase file, and
+  separate `export` and `import` lists naming **local** talkgroups — QSP applies
+  the TS1 rule rather than leaving an administrator to remember it.
+
+  Two validation decisions worth naming. A **disabled** link is checked only for
+  its name, because an administrator writes the configuration down before
+  BrandMeister grants the bridge and has neither passphrase nor address yet;
+  requiring them would mean the only way to record the intent is not to. And an
+  enabled link carrying **neither** export nor import is refused: it connects,
+  authenticates and does nothing, which looks identical to a broken link and
+  which the far end eventually removes for showing no traffic.
 - **`internal/protocol/openbridge`** — the wire format. Sign, verify, parse and
   encode; no sockets, no retries, no forwarding decisions, for the same reason
   ADR-0013 keeps routing pure.

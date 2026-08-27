@@ -101,6 +101,71 @@ type DMR struct {
 	// One mechanism decides each bridge, so there is never a question of which
 	// setting wins.
 	Schedule []Window `json:"schedule"`
+	// Upstreams are links to other DMR networks over OpenBridge.
+	Upstreams []Upstream `json:"upstreams"`
+}
+
+// Upstream is a link to another DMR server over OpenBridge.
+//
+// See docs/adr/ADR-0018-openbridge.md. Everything here is administrator
+// configuration: a club in Toulouse points at a different master from a club in
+// Texas, and QSP has no opinion about which.
+type Upstream struct {
+	// Name identifies this link on the console and in the health report.
+	Name string `json:"name"`
+	// Enabled turns the link on.
+	//
+	// It defaults to false deliberately. Enabling an upstream puts a club's
+	// audio onto somebody else's network, and that should be a deliberate edit
+	// rather than something inherited from a copied configuration.
+	Enabled bool `json:"enabled"`
+	// Address is the far end, host:port. OpenBridge conventionally uses 62035.
+	Address string `json:"address"`
+	// ListenAddress is the local UDP host:port to receive on. OpenBridge has no
+	// connection establishment, so the far end sends to an address agreed in
+	// advance rather than one discovered from our packets.
+	ListenAddress string `json:"listen_address"`
+	// NetworkID identifies this server to the far end, in the format of a DMR
+	// radio ID. It is stamped into the repeater ID field of every frame sent,
+	// which on OpenBridge names the sending server rather than a repeater.
+	NetworkID uint32 `json:"network_id"`
+	// PassphraseFile holds the shared secret, mode 0600.
+	//
+	// It is a path for the same reason DMR.PasswordFile is: configuration gets
+	// versioned, exported and pasted into support requests, and a secret should
+	// not travel with it.
+	PassphraseFile string `json:"passphrase_file"`
+	// Export names local talkgroups whose traffic is sent upstream.
+	//
+	// These are the *local* talkgroup and timeslot. QSP moves traffic to TS1
+	// on the way out, because proper OpenBridge passes all traffic on TS1 and
+	// an administrator should not have to remember that.
+	Export []UpstreamTalkgroup `json:"export"`
+	// Import names talkgroups accepted from upstream, with the local talkgroup
+	// and timeslot they are delivered on.
+	//
+	// Export and Import are separate lists because they are genuinely different
+	// sets: a club may send its own net upstream while accepting a nationwide
+	// talkgroup down. Collapsing them makes the asymmetric case unexpressible
+	// and the symmetric case look safer than it is.
+	Import []UpstreamTalkgroup `json:"import"`
+	// StaleAfter is how long without traffic before the link is reported as
+	// possibly broken.
+	//
+	// OpenBridge has no keep-alive, so QSP cannot distinguish a quiet talkgroup
+	// from a dead link. Any value here is a guess; the health summary says so
+	// rather than claiming to know. Zero disables the warning.
+	StaleAfter Duration `json:"stale_after"`
+}
+
+// UpstreamTalkgroup is one talkgroup carried over a link, named as it exists
+// locally.
+type UpstreamTalkgroup struct {
+	// Talkgroup is the local talkgroup ID.
+	Talkgroup uint32 `json:"talkgroup"`
+	// Timeslot is the local timeslot, 1 or 2. Traffic is translated to TS1 for
+	// the link itself.
+	Timeslot int `json:"timeslot"`
 }
 
 // Trigger opens a bridge on demand, when somebody transmits on it.
@@ -535,6 +600,88 @@ func (c Config) Validate() error {
 			}
 			if tr.HangTime < 0 {
 				v.add(field+".hang_time", "must not be negative", "use \"3m\", or omit it for the default")
+			}
+		}
+
+		// Upstreams. Each link puts a club's audio on somebody else's network,
+		// so the errors here name the consequence rather than the field.
+		upstreamNames := make(map[string]bool, len(c.DMR.Upstreams))
+		for i, u := range c.DMR.Upstreams {
+			field := fmt.Sprintf("dmr.upstreams[%d]", i)
+
+			if strings.TrimSpace(u.Name) == "" {
+				v.add(field+".name", "must not be empty",
+					"name it after the network it reaches, such as \"brandmeister\"")
+			} else if key := strings.ToLower(strings.TrimSpace(u.Name)); upstreamNames[key] {
+				v.add(field+".name", fmt.Sprintf("%q is used by more than one upstream", u.Name),
+					"names appear in the health report; give each link a distinct one")
+			} else {
+				upstreamNames[key] = true
+			}
+
+			// A disabled link is a note about intent, not a live connection, so
+			// only its name is checked. Requiring a passphrase file for a link
+			// switched off would stop an operator from writing down a
+			// configuration before they have been granted the bridge.
+			if !u.Enabled {
+				continue
+			}
+
+			if strings.TrimSpace(u.Address) == "" {
+				v.add(field+".address", "must not be empty when the link is enabled",
+					"use the far end's host:port, such as \"3102.master.brandmeister.network:62035\"")
+			} else if _, _, err := net.SplitHostPort(u.Address); err != nil {
+				v.add(field+".address", fmt.Sprintf("%q is not host:port", u.Address),
+					"OpenBridge conventionally uses port 62035")
+			}
+
+			if strings.TrimSpace(u.ListenAddress) == "" {
+				v.add(field+".listen_address", "must not be empty when the link is enabled",
+					"OpenBridge has no connection setup, so the far end sends to an address "+
+						"agreed in advance; use \"0.0.0.0:62035\"")
+			} else if _, _, err := net.SplitHostPort(u.ListenAddress); err != nil {
+				v.add(field+".listen_address", fmt.Sprintf("%q is not host:port", u.ListenAddress),
+					"use \"0.0.0.0:62035\"")
+			}
+
+			if u.NetworkID == 0 {
+				v.add(field+".network_id", "must not be 0",
+					"use the DMR ID the far end expects; it identifies this server in every frame sent")
+			}
+
+			if strings.TrimSpace(u.PassphraseFile) == "" {
+				v.add(field+".passphrase_file", "must not be empty when the link is enabled",
+					"create a file containing the passphrase agreed with the far end, mode 0600, "+
+						"and give its path here")
+			}
+
+			if len(u.Export) == 0 && len(u.Import) == 0 {
+				v.add(field, "carries no talkgroups in either direction",
+					"add an entry to \"export\" or \"import\"; a link with neither is enabled "+
+						"but does nothing")
+			}
+
+			if u.StaleAfter < 0 {
+				v.add(field+".stale_after", "must not be negative",
+					"use \"4h\", or 0 to disable the warning")
+			}
+
+			for _, dir := range []struct {
+				name string
+				tgs  []UpstreamTalkgroup
+			}{{"export", u.Export}, {"import", u.Import}} {
+				for j, tg := range dir.tgs {
+					sub := fmt.Sprintf("%s.%s[%d]", field, dir.name, j)
+					if tg.Talkgroup == 0 {
+						v.add(sub+".talkgroup", "must not be 0",
+							"use the talkgroup as it exists on this network, not as the far end names it")
+					}
+					if tg.Timeslot != 1 && tg.Timeslot != 2 {
+						v.add(sub+".timeslot", fmt.Sprintf("is %d", tg.Timeslot),
+							"DMR has two timeslots; use 1 or 2. Traffic is moved to TS1 for the "+
+								"link itself, which QSP does for you")
+					}
+				}
 			}
 		}
 
