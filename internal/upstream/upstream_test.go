@@ -453,3 +453,71 @@ func dial(addr string) (*net.UDPConn, error) {
 	}
 	return net.DialUDP("udp", nil, target)
 }
+
+// TestSetRoutesByName.
+func TestSetRoutesByName(t *testing.T) {
+	a, _, _, rb := pair(t, nil)
+
+	set := upstream.NewSet(logging.Discard())
+	if err := set.Add(a); err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+
+	if err := set.Send("a", voice(1, 3148)); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	waitFor(t, "the frame", func() bool { return rb.count() == 1 })
+}
+
+// TestSetRefusesAnUnknownLink.
+//
+// A bridge naming a link that does not exist would otherwise appear to work
+// while carrying nothing — the hardest fault to notice, because everything
+// looks configured.
+func TestSetRefusesAnUnknownLink(t *testing.T) {
+	set := upstream.NewSet(logging.Discard())
+
+	err := set.Send("not-configured", voice(1, 3148))
+	if err == nil {
+		t.Fatal("sending to an unknown link succeeded")
+	}
+	if !contains(err.Error(), "not-configured") {
+		t.Errorf("the error does not name the missing link: %v", err)
+	}
+}
+
+// TestSetRefusesDuplicateNames, because Send would otherwise reach whichever
+// happened to be registered second.
+func TestSetRefusesDuplicateNames(t *testing.T) {
+	a, b, _, _ := pair(t, nil)
+
+	set := upstream.NewSet(logging.Discard())
+	if err := set.Add(a); err != nil {
+		t.Fatalf("Add a: %v", err)
+	}
+	// b is named "b", so rename by building a second set entry with a's name.
+	if err := set.Add(a); err == nil {
+		t.Error("two links with the same name were accepted")
+	}
+	_ = b
+}
+
+func TestSetReportsEveryStatus(t *testing.T) {
+	a, b, _, _ := pair(t, nil)
+
+	set := upstream.NewSet(logging.Discard())
+	if err := set.Add(a); err != nil {
+		t.Fatalf("Add a: %v", err)
+	}
+	if err := set.Add(b); err != nil {
+		t.Fatalf("Add b: %v", err)
+	}
+
+	statuses := set.Statuses()
+	if len(statuses) != 2 {
+		t.Fatalf("%d statuses, want 2", len(statuses))
+	}
+	if statuses[0].Name != "a" || statuses[1].Name != "b" {
+		t.Errorf("statuses are not in name order: %s, %s", statuses[0].Name, statuses[1].Name)
+	}
+}

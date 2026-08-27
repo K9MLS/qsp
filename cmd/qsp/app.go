@@ -24,6 +24,7 @@ import (
 	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/scheduler"
 	"github.com/k9mls/qsp/internal/server"
+	"github.com/k9mls/qsp/internal/upstream"
 )
 
 // app holds the constructed dependency graph.
@@ -33,14 +34,15 @@ import (
 // top to bottom, and keeping it that way is a design goal rather than an
 // accident.
 type app struct {
-	cfg    config.Config
-	log    *slog.Logger
-	bus    *events.Bus
-	db     *database.DB
-	audit  audit.Recorder
-	srv    *server.Server
-	dmr    *peers.Listener
-	health *health.Registry
+	cfg       config.Config
+	log       *slog.Logger
+	bus       *events.Bus
+	db        *database.DB
+	audit     audit.Recorder
+	srv       *server.Server
+	dmr       *peers.Listener
+	health    *health.Registry
+	upstreams *upstream.Set
 	// closers are run in reverse order during shutdown.
 	closers []func(context.Context) error
 }
@@ -151,12 +153,26 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 			log.Info("forwarding disabled; traffic is observed and not relayed")
 		}
 
+		links, lerr := buildUpstreams(log, cfg, func(name string, frame hbp.Data) {
+			// Resolved at call time rather than captured: the listener does not
+			// exist yet. Links are not started until run(), by which point
+			// a.dmr is set and never written again.
+			if a.dmr != nil {
+				a.dmr.DeliverFromUpstream(name, frame)
+			}
+		})
+		if lerr != nil {
+			return nil, lerr
+		}
+		a.upstreams = links
+
 		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
 			ListenAddress: cfg.DMR.ListenAddress,
 			Master:        master,
 			Bus:           a.bus,
 			Calls:         calls.NewTracker(calls.Options{}),
 			Routing:       core,
+			Upstreams:     upstreamSender(links),
 			ScheduleState: bridgeState(sched, triggers),
 			Triggers:      triggers,
 			Rebuild:       func(now time.Time) (*routing.Table, error) { return buildTable(cfg, sched, triggers, now) },
@@ -166,6 +182,15 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		}
 		a.dmr = listener
 		a.closers = append(a.closers, func(context.Context) error { return listener.Close() })
+
+		// The link hands received frames back through the listener, because the
+		// listener owns the socket peers are reachable on.
+		if links != nil {
+			for _, name := range links.Names() {
+				log.Info("upstream configured", slog.String("link", name))
+			}
+			a.closers = append(a.closers, func(context.Context) error { return links.Close() })
+		}
 	} else {
 		log.Info("DMR listener disabled", slog.String("reason", dmrDisabledReason))
 	}
@@ -177,6 +202,11 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(routingCheck{enabled: cfg.DMR.Forwarding, bridges: len(cfg.DMR.Bridges)})
 	registry.MustRegister(schedulerCheck{windows: len(cfg.DMR.Schedule), forwarding: cfg.DMR.Forwarding})
+	if a.upstreams != nil {
+		for _, name := range a.upstreams.Names() {
+			registry.MustRegister(a.upstreams.CheckFor(name))
+		}
+	}
 	for _, s := range unbuiltSubsystems {
 		registry.MustRegister(unbuilt(s.name, s.arrives))
 	}
@@ -257,6 +287,14 @@ func (a *app) run(ctx context.Context) error {
 	}
 	if a.dmr != nil {
 		if err := a.dmr.Start(ctx); err != nil {
+			return err
+		}
+	}
+	// Links start after the listener, because a frame arriving on one is
+	// delivered through the listener's socket. Starting them first would open a
+	// window in which a received frame had nowhere to go.
+	if a.upstreams != nil {
+		if err := a.upstreams.Start(ctx); err != nil {
 			return err
 		}
 	}
@@ -671,4 +709,63 @@ func listenPort(addr string) int {
 		return 62031
 	}
 	return port
+}
+
+// upstreamSender adapts a link set to the interface the listener wants, or
+// returns nil when no links are configured.
+//
+// A typed nil in an interface is not a nil interface, and the listener checks
+// for nil to decide whether an upstream delivery is a configuration error. This
+// keeps that check working.
+func upstreamSender(links *upstream.Set) peers.UpstreamSender {
+	if links == nil || links.Len() == 0 {
+		return nil
+	}
+	return links
+}
+
+// buildUpstreams creates a link for every enabled upstream.
+//
+// Disabled ones are skipped entirely rather than created and left closed: an
+// administrator writes them down before the far end grants the bridge, and a
+// link with no passphrase cannot be constructed. Returning nil when none are
+// enabled keeps the common case free of machinery.
+func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hbp.Data)) (*upstream.Set, error) {
+	var enabled []config.Upstream
+	for _, u := range cfg.DMR.Upstreams {
+		if u.Enabled {
+			enabled = append(enabled, u)
+		}
+	}
+	if len(enabled) == 0 {
+		return nil, nil
+	}
+
+	set := upstream.NewSet(log)
+	for _, u := range enabled {
+		passphrase, err := config.LoadPeerPassword(os.ReadFile, u.PassphraseFile)
+		if err != nil {
+			return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+		}
+		if err := checkPasswordFileMode(u.PassphraseFile); err != nil {
+			return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+		}
+
+		link, err := upstream.New(log, upstream.Config{
+			Name:          u.Name,
+			ListenAddress: u.ListenAddress,
+			TargetAddress: u.Address,
+			NetworkID:     hbp.RepeaterID(u.NetworkID),
+			Passphrase:    passphrase,
+			StaleAfter:    time.Duration(u.StaleAfter),
+			Receive:       receive,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if err := set.Add(link); err != nil {
+			return nil, err
+		}
+	}
+	return set, nil
 }

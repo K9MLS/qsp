@@ -5,6 +5,20 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **OpenBridge is wired end to end.** `upstream.Set` holds the links and routes
+  sends by name; the listener gains `Upstreams` for outbound and
+  `DeliverFromUpstream` for inbound, since it owns the socket peers are
+  reachable on. Each link registers its own health check rather than one
+  aggregate, because an operator with two links needs to know which is quiet.
+
+  A stale link reports **degraded**, not unhealthy: QSP does not know it is
+  broken, and claiming a fault it cannot confirm teaches an operator to ignore
+  the report. Each degraded state carries an actionable fix — check the
+  passphrase is byte-identical, confirm the far end has this address, or raise
+  `stale_after` if the talkgroup really is quiet.
+
+  A bridge naming a link that is not configured is refused with the name, rather
+  than appearing to work while carrying nothing.
 - **`internal/upstream`** — the link itself. One UDP socket per configured
   upstream, signing frames outbound and verifying them inbound, making no
   routing decisions of its own.

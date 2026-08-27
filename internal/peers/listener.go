@@ -57,6 +57,10 @@ type ListenerConfig struct {
 	// It is owned by the serve goroutine, like Master, and must not be touched
 	// by the caller after Start.
 	Routing *routing.Core
+	// Upstreams sends frames over links to other networks. Optional; nil means
+	// no links are configured and upstream deliveries are discarded with a
+	// reason rather than silently.
+	Upstreams UpstreamSender
 	// ScheduleState reports which bridges should be enabled at an instant.
 	// Optional; nil means bridges follow their configured Enabled flag.
 	//
@@ -327,8 +331,32 @@ func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
 	}
-	res := l.cfg.Routing.Route(from, frame, time.Now())
+	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+}
 
+// UpstreamSender carries a frame over a link to another network.
+//
+// It is an interface rather than a concrete type so that internal/peers does
+// not depend on internal/upstream: the listener knows a frame should leave by
+// some link, and nothing about which protocol that link speaks.
+type UpstreamSender interface {
+	Send(link string, frame hbp.Data) error
+}
+
+// DeliverFromUpstream routes a frame that arrived over a link and sends the
+// result to peers.
+//
+// It exists because the listener owns the socket peers are reachable on. A link
+// receiving a frame cannot deliver it itself without reaching into that, so it
+// hands the frame here instead.
+func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
+	if l.cfg.Routing == nil {
+		return
+	}
+	l.deliver(0, l.cfg.Routing.RouteFromUpstream(link, frame, time.Now()))
+}
+
+func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 	for _, d := range res.Deliveries {
 		peer, ok := l.cfg.Master.Lookup(d.Peer)
 		if !ok {
@@ -339,6 +367,30 @@ func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
 			l.writeErr.Add(1)
 			l.log.Warn("cannot forward a frame",
 				logging.PeerID(uint32(d.Peer)),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		l.forwarded.Add(1)
+		l.sent.Add(1)
+	}
+
+	for _, u := range res.Upstreams {
+		if l.cfg.Upstreams == nil {
+			// Constitution §18: a frame that is not carried says why. A bridge
+			// naming a link that this build has no sender for is a
+			// configuration error the operator needs to see.
+			l.collided.Add(1)
+			l.log.Warn("a bridge names an upstream, but no links are configured",
+				slog.String("upstream", u.Upstream),
+				slog.String("bridge", u.Bridge),
+			)
+			continue
+		}
+		if err := l.cfg.Upstreams.Send(u.Upstream, u.Frame); err != nil {
+			l.writeErr.Add(1)
+			l.log.Warn("cannot send a frame upstream",
+				slog.String("upstream", u.Upstream),
 				slog.String("error", err.Error()),
 			)
 			continue
