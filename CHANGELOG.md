@@ -5,6 +5,25 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/upstream`** — the link itself. One UDP socket per configured
+  upstream, signing frames outbound and verifying them inbound, making no
+  routing decisions of its own.
+
+  The clock is injected, so a four-hour staleness threshold is tested in
+  microseconds. A test that had to wait four hours would never have been
+  written and the threshold would have gone unverified.
+
+  `Status` distinguishes three cases an operator would otherwise conflate.
+  Nothing ever received, with datagrams rejected, means both ends are
+  configured and disagree about the passphrase — the one fault QSP can name
+  precisely, and the one that otherwise costs an evening. Nothing ever
+  received, with no rejections, means traffic is not arriving at all: check the
+  far end has this address. And received-but-not-lately means it stopped, which
+  is a different place to look. Rejections are logged for the first five only,
+  because a misconfigured sender can produce them as fast as the network allows.
+
+  Verified over real loopback sockets, twenty consecutive runs and five under
+  the race detector.
 - **Upstreams route through the existing core.** `routing.Endpoint` gains an
   `Upstream` field, `Result` gains `Upstreams`, and `Core.RouteFromUpstream`
   handles traffic arriving over a link. Contention, talkgroup translation and
