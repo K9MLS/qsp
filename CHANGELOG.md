@@ -73,9 +73,17 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
-- **The console uses two columns on a wide screen.** Above 1280px, traffic and
-  connected peers take full rows and last heard sits beside health, so all four
-  fit on one screen without scrolling. Below it, nothing changes.
+- **Table rows alternate, and highlight under the pointer.** Following one row
+  across a wide table is exactly what gets hard when there is enough traffic for
+  it to matter. Both shades darken rather than lighten, which takes text
+  contrast up rather than down, and the contrast test now measures a striped and
+  a hovered row as surfaces in their own right.
+
+- **Panels stay one column at every width.** Two columns were tried and
+  reverted: connected peers and health both carry columns that need width, and
+  halving the page put health's detail column back to being cut off — the exact
+  defect the full-width tables were meant to fix. A tall page that can be read
+  beats a compact one that cannot.
 
 - **Wide tables scroll instead of clipping.** `.table` was `width: 100%`, so a
   table squeezed itself into whatever space it was given and the cells

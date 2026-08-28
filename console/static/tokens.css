@@ -27,6 +27,13 @@
      floor this file promises; darkening separates the band and takes subtle
      text up to 5.35:1 instead. */
   --color-surface-sunken: rgba(0, 0, 0, 0.24);
+  /* Alternate table rows, so the eye can follow one across a wide table
+     without losing the line. Darkening for the same reason the header band
+     does: it takes text contrast up rather than down. */
+  --color-row-stripe: rgba(0, 0, 0, 0.14);
+  /* The row under the pointer, distinct from both a striped and an unstriped
+     row so it reads the same whichever it lands on. */
+  --color-row-hover: rgba(0, 0, 0, 0.28);
   --color-muted: #1f1e27;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);

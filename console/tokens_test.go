@@ -141,10 +141,23 @@ func TestTextMeetsContrastFloor(t *testing.T) {
 	}
 	header := over(sunken.c, sunken.alpha, surface)
 
+	// Table rows are composited onto the surface too, and text sits on them.
+	// A stripe that broke the floor would be invisible to a check that only
+	// measured the surface underneath it.
 	planes := map[string]rgb{
 		"page background": background,
 		"panel surface":   surface,
 		"panel header":    header,
+	}
+	for name, plane := range map[string]string{
+		"striped table row": "--color-row-stripe",
+		"hovered table row": "--color-row-hover",
+	} {
+		tint, ok := translucent[plane]
+		if !ok {
+			t.Fatalf("tokens.css no longer defines %s", plane)
+		}
+		planes[name] = over(tint.c, tint.alpha, surface)
 	}
 	texts := []string{
 		"--color-foreground",

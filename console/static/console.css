@@ -199,35 +199,11 @@ body {
   align-content: start;
 }
 
-/* Above this width a single column wastes most of the screen and pushes the
-   things an operator watches below the fold. Two columns put traffic, peers,
-   last heard and health on one screen without scrolling.
-   The breakpoint is min-width while the rest of this file is max-width; the
-   stylesheet is desktop-first and rewriting that wholesale for one rule would
-   be a larger change than the rule is worth. */
-@media (min-width: 1280px) {
-  .main {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* Traffic is a strip of metrics and reads better wide. Connected peers
-     carries an address column and is the widest table here, so it takes a full
-     row rather than being made to scroll sideways for one field. Last heard and
-     health both hold short values and sit together below. */
-  .main > .page__title,
-  .main > .lede,
-  .main > #traffic,
-  .main > #peers,
-  .main > #routing-empty {
-    grid-column: 1 / -1;
-  }
-
-  /* Panels in a row size to their own content rather than to the tallest
-     sibling, so a short peer list does not stretch to match a long call list. */
-  .main > .panel {
-    align-self: start;
-  }
-}
+/* One column, always.
+   Two columns were tried and reverted: connected peers and health both carry
+   columns that need width, and halving the page put health's detail column
+   back to being cut off — the exact defect the full-width tables were meant to
+   fix. A tall page that can be read beats a compact one that cannot. */
 
 .page__title {
   margin: 0;
@@ -513,6 +489,17 @@ body {
 .table .cell--wrap {
   white-space: normal;
   max-width: 34ch;
+}
+
+/* Alternate rows, so the eye can follow one across a wide table without
+   dropping a line — which matters most exactly when there is enough traffic for
+   it to be hard. */
+.table tbody tr:nth-child(even) {
+  background: var(--color-row-stripe);
+}
+
+.table tbody tr:hover {
+  background: var(--color-row-hover);
 }
 
 .table th {
