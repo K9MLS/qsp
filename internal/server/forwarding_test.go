@@ -82,3 +82,54 @@ func TestDisabledListenerIsNotForwarding(t *testing.T) {
 		t.Error("a disabled listener reported that it is forwarding")
 	}
 }
+
+// TestPeerViewCarriesPositionOptionally covers the pointer fields. A station on
+// the equator must be distinguishable from one that announced nothing, or a map
+// either loses it or draws it in the Gulf of Guinea.
+func TestPeerViewCarriesPositionOptionally(t *testing.T) {
+	equator := 0.0
+	meridianish := -97.1331
+
+	views := []PeerView{
+		{ID: 1, Callsign: "NOPOS"},
+		{ID: 2, Callsign: "NAMED", Location: "Denton, TX"},
+		{ID: 3, Callsign: "PINNED", Location: "Equator", Latitude: &equator, Longitude: &meridianish},
+	}
+	srv := newForwardingServer(t, stubPeers{views: views}, true)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/peers", nil))
+
+	var body struct {
+		Peers []map[string]any `json:"peers"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Peers) != 3 {
+		t.Fatalf("got %d peers, want 3", len(body.Peers))
+	}
+
+	if _, ok := body.Peers[0]["location"]; ok {
+		t.Error("a peer with no position carried a location field")
+	}
+	if _, ok := body.Peers[0]["latitude"]; ok {
+		t.Error("a peer with no position carried a latitude field")
+	}
+
+	if body.Peers[1]["location"] != "Denton, TX" {
+		t.Errorf("the place name did not survive: %v", body.Peers[1]["location"])
+	}
+	if _, ok := body.Peers[1]["latitude"]; ok {
+		t.Error("a peer with a name but no coordinates carried a latitude")
+	}
+
+	// The one that matters: latitude 0 must be present, not omitted.
+	lat, ok := body.Peers[2]["latitude"]
+	if !ok {
+		t.Fatal("a station on the equator lost its latitude to omitempty")
+	}
+	if lat.(float64) != 0 {
+		t.Errorf("latitude is %v, want 0", lat)
+	}
+}

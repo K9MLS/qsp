@@ -126,6 +126,24 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **Peers report where they say they are**, which is the map's foundation.
+  PROJECT_MEMORY §8 says QSP discards the coordinates hotspots send in `RPTC`.
+  It does not: they have been parsed and kept on the peer all along and simply
+  never exposed. `/api/peers` now carries them and the console shows a Location
+  column.
+
+  **Says, not is.** These are fixed-width free text from a station QSP does not
+  control, and nothing verifies them. The place name is shown as announced,
+  because "Denton, TX" is useful whether or not a pin can be drawn; coordinates
+  appear only when they parse and are plausible, because a pin in the wrong
+  place is believed while a missing one prompts somebody to ask.
+
+  0,0 is refused. It is a real coordinate in the Gulf of Guinea and is almost
+  never where a hotspot is; it is what an unset field looks like. A zero on one
+  axis alone is kept, since the equator and the prime meridian are real places —
+  and latitude and longitude are pointers in the JSON so that a station on the
+  equator is distinguishable from one that announced nothing.
+
 - **Outbound peer mode is wired into startup.** A homebrew upstream now builds
   a `PeerLink`, registers a health check like any other link, and no longer
   refuses startup. It still must not be pointed at BrandMeister; see

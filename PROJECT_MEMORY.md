@@ -328,7 +328,7 @@ This is a thin product and it is worth saying so plainly.
 | **Per-peer talkgroup subscription (layer 3)** | a member cannot choose what they hear |
 | **Authentication** | no login anywhere; `/api/peers` discloses callsigns, radio IDs and source addresses |
 | **Persistence in use** | the schema exists and migrates; nothing writes to it |
-| **Live map** | wanted, and closer than it looks: hotspots already send lat/long/height in `RPTC` and QSP discards them |
+| **Live map** | closer still: the coordinates were never discarded, and are now parsed, exposed on `/api/peers` and shown in the console. What remains is drawing them, which needs the map-library decision |
 | **IPSC** | unblocked by ADR-0008; needs a capture |
 | **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
 

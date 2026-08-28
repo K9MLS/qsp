@@ -232,6 +232,7 @@
         '<td class="mono">' + escapeText(p.connected_for || "—") + "</td>" +
         '<td class="mono">' + escapeText(p.idle_for) + "</td>" +
         '<td class="mono">' + escapeText(p.color_code || "—") + "</td>" +
+        '<td class="cell--wrap">' + peerPlace(p) + "</td>" +
         '<td class="mono">' + escapeText(p.address) + "</td>" +
         "</tr>";
     }
@@ -243,11 +244,36 @@
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
       "<th scope=\"col\">State</th><th scope=\"col\">Connected</th>" +
       "<th scope=\"col\">Idle</th><th scope=\"col\">CC</th>" +
+      "<th scope=\"col\" class=\"cell--wrap\">Location</th>" +
       "<th scope=\"col\">Address</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
 
     knownPeerIds = seen;
     firstPeerLoad = false;
+  }
+
+  // peerPlace renders what a peer says about where it is.
+  //
+  // **It says, and QSP does not know.** These fields are free text from a
+  // station QSP does not control and nothing verifies them, so the place name
+  // is shown as given and coordinates only appear when the server could parse
+  // them into something plausible. A hotspot that has never been configured
+  // announces nothing, and an em dash is the honest answer for it.
+  function peerPlace(p) {
+    var name = (p.location || "").trim();
+    var located = typeof p.latitude === "number" && typeof p.longitude === "number";
+    if (!name && !located) {
+      return "—";
+    }
+    if (!located) {
+      return escapeText(name);
+    }
+    var coords = p.latitude.toFixed(4) + ", " + p.longitude.toFixed(4);
+    if (!name) {
+      return '<span class="mono">' + escapeText(coords) + "</span>";
+    }
+    return escapeText(name) +
+      ' <span class="mono muted">' + escapeText(coords) + "</span>";
   }
 
   function metric(value, label, cls) {

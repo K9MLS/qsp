@@ -594,6 +594,17 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 		if peer.Config != nil {
 			v.ColorCode = peer.Config.ColorCode
 		}
+		// What the peer says about where it is. Unverified, and reported only
+		// when it parses — a pin in the wrong place is believed, while a
+		// missing one prompts somebody to ask.
+		if pos := peer.Position(); pos.Location != "" || pos.Located {
+			v.Location = pos.Location
+			v.Height = pos.Height
+			if pos.Located {
+				lat, lon := pos.Latitude, pos.Longitude
+				v.Latitude, v.Longitude = &lat, &lon
+			}
+		}
 		out = append(out, v)
 	}
 	return out

@@ -29,6 +29,20 @@ type PeerView struct {
 	IdleFor string `json:"idle_for"`
 	// ColorCode is the peer's announced colour code. Empty until configured.
 	ColorCode string `json:"color_code,omitempty"`
+	// Location is the place name a peer announced, free text and unverified.
+	// Shown even when the coordinates did not parse, because "Denton, TX" is
+	// useful to an operator whether or not a pin can be drawn.
+	Location string `json:"location,omitempty"`
+	// Latitude and Longitude are decimal degrees, present only when the peer
+	// announced coordinates that parsed and are plausible.
+	//
+	// **Pointers, so absent and zero are distinguishable.** A station on the
+	// equator would otherwise be indistinguishable from one that sent nothing,
+	// and a map would either lose it or draw it in the Gulf of Guinea.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+	// Height is metres above ground, omitted when zero or unannounced.
+	Height int `json:"height,omitempty"`
 }
 
 // CallView is one transmission as the console sees it.
