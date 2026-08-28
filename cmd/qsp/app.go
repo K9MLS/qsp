@@ -266,6 +266,17 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		return nil, "", err
 	}
 
+	// Validate has already accepted these, so a parse failure here would mean
+	// the two disagree. Reporting it is better than starting a master whose
+	// access lists silently defaulted to permitting everything.
+	lists, err := cfg.AccessLists()
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot apply the access lists: %w", err)
+	}
+	for _, advisory := range cfg.AccessAdvisories() {
+		log.Warn("access list advisory", slog.String("detail", advisory))
+	}
+
 	master, err := peers.NewMaster(log, peers.MasterConfig{
 		// One shared password for every peer, which is how these networks are
 		// operated in practice. Per-peer secrets would come from storage.
@@ -273,6 +284,7 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		PeerTimeout:  cfg.DMR.PeerTimeout.AsDuration(),
 		LoginTimeout: cfg.DMR.LoginTimeout.AsDuration(),
 		MaxPeers:     cfg.DMR.MaxPeers,
+		Access:       lists,
 	})
 	if err != nil {
 		return nil, "", err

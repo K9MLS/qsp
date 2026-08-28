@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/k9mls/qsp/internal/access"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 )
@@ -50,6 +51,14 @@ type MasterConfig struct {
 	LoginTimeout time.Duration
 	// MaxPeers bounds the registry. Zero selects DefaultMaxPeers.
 	MaxPeers int
+	// Access decides which repeaters may register and which subscribers may
+	// transmit.
+	//
+	// The zero value permits everything, which is what makes an instance with
+	// no access block behave as it did before access control existed. The
+	// talkgroup lists in this set are not consulted here: a talkgroup is a
+	// routing question and is answered where destinations are known.
+	Access access.Lists
 	// Now supplies the current time. Zero uses time.Now.
 	Now func() time.Time
 	// Salt generates login challenges. Zero uses crypto/rand.
@@ -206,6 +215,19 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) Outcome {
 	if msg.RepeaterID == 0 {
 		return dropped("login from %s carries repeater ID 0, which is not a valid station", from)
+	}
+	// The registration list is consulted before the password, so that a
+	// refused ID never reaches the credential path at all. It also means the
+	// log says which of the two refused it, and "wrong password" and "not
+	// permitted here" are very different messages to an operator debugging a
+	// hotspot that will not connect.
+	if !m.cfg.Access.Registration.Allows(uint32(msg.RepeaterID)) {
+		m.log.Warn("login refused: not permitted by the registration list",
+			logging.PeerID(uint32(msg.RepeaterID)),
+			slog.String("from", from.String()),
+		)
+		return m.reject(msg.RepeaterID, from,
+			fmt.Sprintf("repeater ID %d is not permitted by dmr.access.registration", msg.RepeaterID))
 	}
 	if _, ok := m.cfg.Password(msg.RepeaterID); !ok {
 		m.log.Warn("login refused: unknown repeater ID",
@@ -397,9 +419,50 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 		return dropped("frame for repeater ID %d arrived from %s but it registered from %s", msg.RepeaterID, from, p.Addr)
 	}
 
+	// The peer is heard from whether or not the frame is carried. A subscriber
+	// refusal is about one radio; the hotspot behind it is working, and timing
+	// it out because somebody keyed a banned radio would disconnect innocent
+	// users of shared infrastructure.
 	p.LastHeard = now
+
+	if !m.cfg.Access.Subscriber.Allows(msg.SourceID) {
+		return m.refuseSubscriber(p, msg, now)
+	}
+	p.refused = refusedStream{}
+
 	frame := msg
 	return Outcome{Data: &frame, From: p.ID}
+}
+
+// refuseSubscriber drops a frame from a subscriber the access list refuses.
+//
+// **The refusal is announced once per transmission, not once per frame.** A
+// subscriber holding the key for thirty seconds is roughly five hundred frames,
+// and five hundred identical lines is not an explanation — it is an operator's
+// journal rotated past the evidence they needed. The same reasoning quietened
+// the join page's successful polls at 0.1.9.
+//
+// Constitution §18 still holds: nothing is dropped silently. The first frame of
+// the stream says what happened and why, and the rest are counted.
+func (m *Master) refuseSubscriber(p *Peer, msg hbp.Data, now time.Time) Outcome {
+	current := refusedStreamID{source: msg.SourceID, stream: msg.StreamID, slot: msg.Timeslot}
+
+	if p.refused.id == current {
+		p.refused.frames++
+		// Silent in the log, but never silent in the Outcome. A caller
+		// counting drops still sees every one.
+		return dropped("subscriber %d is not permitted by dmr.access.subscribers "+
+			"(frame %d of this transmission)", msg.SourceID, p.refused.frames)
+	}
+
+	p.refused = refusedStream{id: current, frames: 1}
+	m.log.Info("transmission refused: subscriber not permitted",
+		logging.PeerID(uint32(p.ID)),
+		slog.Uint64("subscriber", uint64(msg.SourceID)),
+		slog.Uint64("talkgroup", uint64(msg.TargetID)),
+		slog.String("timeslot", msg.Timeslot.String()),
+	)
+	return dropped("subscriber %d is not permitted by dmr.access.subscribers", msg.SourceID)
 }
 
 // reject answers a refused peer with MSTNAK.

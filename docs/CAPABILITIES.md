@@ -91,6 +91,8 @@ rules whatsoever.
 | Trunking to another bridge | 4, 5 | **partial** — OpenBridge links outward; QSP cannot yet dial out |
 | Motorola repeater support | — | **missing** — IPSC; see §4 |
 | Administration without a text editor | — | **missing** |
+| Private calls, radio to radio | 1 | **missing** — see below |
+| Text messaging, GPS, data | — | **missing** — ADR-0021 |
 
 QSP is ahead of a commercial DMR server on scheduling, on being free and self-hosted, and on
 the repeat model. It is behind on access control, on per-peer subscription, and
@@ -125,16 +127,27 @@ from a cold power-cycle, ten minutes of steady state, and one transmission.
 ADR-0008 records the licence provenance question and is open rather than
 blocking.
 
-### Data calls
+### Private calls, and data
 
-QSP carries group voice. It does not carry data — IP over DMR, CAI, text
-messaging, GPS and location reporting. a commercial DMR server handles these, and for a club
-they are not a curiosity: location reporting is what feeds a live map, and text
-messaging is what members expect from a modern network.
+Both are wanted, both are missing, and they turn out to need the same thing.
+[ADR-0021](adr/ADR-0021-private-calls-and-data.md) records why.
 
-This is not in the five-layer model at all, because the layers describe *where a
-frame goes* and data calls are a question of *what a frame is*. It needs a
-decision record of its own before any of it is written.
+**Private calls do not work at all.** Repeat fires only on a group call, and
+nothing routes a call whose target is a radio rather than a talkgroup. This is
+layer 1 work that was missed in the same way repeat was missed, not a feature
+sitting above the model.
+
+**Data is two jobs of very different size.** A text message to a talkgroup is a
+group call carrying data bursts, and may already traverse the repeat path
+unchanged — a hardware question, not a design one. A text message to another
+radio is a private call and needs everything above. IP over DMR and CAI are a
+third thing again, because they mean interpreting a field no capture has
+established.
+
+What both need is **subscriber location**: which peer a radio was last heard
+through. It cannot be configured, because it changes when somebody drives to
+work, so it is learned from traffic and aged out. Nothing in QSP tracks it
+today.
 
 ### Further out
 

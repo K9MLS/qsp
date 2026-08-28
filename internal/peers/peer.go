@@ -83,6 +83,37 @@ type Peer struct {
 	LastHeard time.Time
 	// ConfiguredAt is when it completed registration, in UTC. Zero until then.
 	ConfiguredAt time.Time
+
+	// refused remembers the transmission most recently refused by the
+	// subscriber access list, so the refusal is logged once rather than once
+	// per frame. Not exported: it is bookkeeping, not something an observer of
+	// the registry has any use for.
+	refused refusedStream
+}
+
+// refusedStream is the transmission most recently refused, and how much of it.
+//
+// **The count is deliberately not part of the identity.** Folding it in would
+// make every comparison fail from the second frame onward, and the refusal
+// would be logged once per frame — precisely the behaviour this exists to
+// prevent, failing in the direction that looks like it is working.
+type refusedStream struct {
+	id refusedStreamID
+	// frames counts how many frames of this transmission were refused,
+	// including the first.
+	frames int
+}
+
+// refusedStreamID identifies one transmission at its origin.
+//
+// A peer carries one transmission per timeslot at a time, so remembering the
+// most recent refusal per peer is enough to tell the opening frame of a refused
+// stream from the four hundred that follow it. The slot is part of the identity
+// because a peer can be refused on one slot while talking on the other.
+type refusedStreamID struct {
+	source uint32
+	stream hbp.StreamID
+	slot   hbp.Timeslot
 }
 
 // Callsign returns the peer's announced callsign, or the empty string if it has

@@ -53,6 +53,41 @@ All notable changes to QSP. Dates are UTC.
   entirely because the layers describe where a frame goes and data is a
   question of what a frame is.
 
+- **Access control is enforced at the master.** The registration list is checked
+  at login, before the password lookup, so a refused ID never reaches the
+  credential path and the log says which of the two refused it — "wrong
+  password" and "not permitted here" being very different messages to an
+  operator whose hotspot will not connect. The subscriber list is checked per
+  frame.
+
+  **A refused subscriber does not disconnect its peer.** On DMR a hotspot is
+  shared infrastructure and the offending party is a radio, so the peer is still
+  heard from and its timeout still resets.
+
+  **A refused transmission is announced once, not once per frame.** Thirty
+  seconds of a held key is roughly five hundred frames. The opening frame
+  explains itself and the rest are counted — never silently, since a caller
+  counting drops still sees every one.
+
+  Ten tests. Talkgroup lists are deliberately not consulted here: refusing at
+  the master would drop a frame before any destination was known, including
+  destinations the list would have allowed.
+
+- **[ADR-0021](docs/adr/ADR-0021-private-calls-and-data.md): private calls and
+  data are in scope, and share one missing thing.** Private calls do not work at
+  all — repeat fires only on a group call, and nothing routes a call whose
+  target is a radio. That is layer 1 work that was missed in the same way repeat
+  was missed, not a feature sitting above the model.
+
+  Both need **subscriber location**: which peer a radio was last heard through.
+  It cannot be configured, because it changes when somebody drives to work, so
+  it is learned from traffic and aged out. Nothing tracks it today.
+
+  Data splits into two jobs of very different size. A text message to a
+  talkgroup is a group call carrying data bursts and may already work, which is
+  a hardware question rather than a design one. A text message to another radio
+  is a private call and needs everything above.
+
 ### Changed
 - **A DMR listener on an address reachable from beyond its host now refuses to
   start without an `access` block.** This is a breaking change for any instance
