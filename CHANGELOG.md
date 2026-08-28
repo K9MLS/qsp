@@ -73,6 +73,22 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **The console's panels are separated from the page.** Surface and background
+  differed by 1.09:1, which is not a difference anyone can see, so a column of
+  panels read as one continuous area with hairlines drawn on it — reported by an
+  operator looking at the screen, which is becoming a theme.
+
+  The page is darker, the surface lighter, and panels finally use
+  `--shadow-raised`, which had been defined in `tokens.css` and applied nowhere.
+  Most of the perceptual separation comes from the shadow: there is very little
+  room above 1.27:1 before subtle text on a panel breaks the 4.5:1 floor.
+
+  A panel's header band now darkens rather than lightens, because lightening it
+  by the same amount put subtle text at 4.39:1. Panels space themselves in CSS
+  instead of each carrying an inline margin that two of them disagreed about.
+  An empty state inside a panel drops its dashed border, since it was drawing a
+  box inside a box.
+
 - **The console has a health page.** The Health link went to `/healthz` and
   showed the operator raw JSON. The report was already being fetched every few
   seconds for the status pill, with everything else thrown away; it now renders
@@ -117,6 +133,19 @@ All notable changes to QSP. Dates are UTC.
   Ten tests. **Nothing routes on this yet**; private call routing is next.
 
 ### Fixed
+- **`tokens.css` promised 4.5:1 and nothing checked it.** The promise had been
+  broken twice: once by an opacity applied to muted text, once while widening
+  the gap between panels and the page. Both were caught by somebody doing the
+  arithmetic by hand at the right moment.
+
+  `console` now measures every text colour against every surface it is drawn
+  on, including the composited header band, and fails the build below 4.5:1. It
+  found a third violation immediately: lifting the surface had taken
+  `--color-unavailable` from 4.70:1 to 4.40:1, so that colour is lightened. It
+  also asserts that panels carry a shadow and that no component stylesheet
+  contains a raw hex, since a colour outside `tokens.css` is one nothing can
+  audit.
+
 - **The routing health check called a working master degraded.** It reported
   degraded whenever no bridges were configured, which was right while bridging
   was the whole routing model and wrong from the moment the master learned to

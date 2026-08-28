@@ -224,6 +224,16 @@ body {
   background: var(--color-surface);
 }
 
+/* An empty state inside a panel does not need its own card: it is already in
+   one, and the dashed border drew a box inside a box. Only a standalone empty
+   state — the forwarding notice — keeps the border and fill. */
+.panel .empty {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-6) var(--space-5);
+}
+
 .empty__icon {
   width: 32px;
   height: 32px;
@@ -343,7 +353,26 @@ body {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
+  /* The token existed and was applied nowhere. Surface and background differ
+     by only 1.27:1 — the most available before subtle text breaks 4.5:1 — so
+     the shadow is what actually separates a panel from the page. Without it a
+     column of panels reads as one continuous area with hairlines drawn on it. */
+  box-shadow: var(--shadow-raised);
   overflow: hidden;
+}
+
+/* Panels space themselves rather than each carrying an inline margin.
+   Spacing was set per-panel in the markup, so every new panel had to remember
+   to bring its own, and two of them disagreed about whether it went above or
+   below. */
+.main > .panel,
+.main > .empty {
+  margin-block: 0 var(--space-5);
+}
+
+.main > .panel:last-child,
+.main > .empty:last-child {
+  margin-block-end: 0;
 }
 
 .panel__head {
@@ -353,6 +382,9 @@ body {
   gap: var(--space-4);
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--color-border);
+  /* A distinct band, so the title reads as a header rather than as the first
+     row of the table under it. */
+  background: var(--color-surface-sunken);
 }
 
 .panel__title {

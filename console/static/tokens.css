@@ -12,8 +12,21 @@
 :root {
   /* ---- Surface and structure ---------------------------------------- */
   /* Deliberately not #000000: pure black smears on OLED panels. */
-  --color-background: #0f172a;
-  --color-surface: #161f36;
+  --color-background: #080c18;
+  /* Surface sits 1.27:1 above the background, which is the most separation
+     available before --color-foreground-subtle drops under the 4.5:1 floor
+     this file promises. Panels get --shadow-raised as well; a shadow does most
+     of the perceptual work at this contrast, and the two together are what
+     stop a stack of panels reading as one continuous mass. */
+  --color-surface: #1a2440;
+  /* A panel's header band, so the title reads as a header rather than as the
+     first row of the content. Translucent, so it tracks any future change to
+     the surface rather than becoming a third hex to keep in step.
+     **It darkens rather than lightens.** Lightening it by the same amount put
+     --color-foreground-subtle at 4.39:1 against the band, under the 4.5:1
+     floor this file promises; darkening separates the band and takes subtle
+     text up to 5.35:1 instead. */
+  --color-surface-sunken: rgba(0, 0, 0, 0.24);
   --color-muted: #1f1e27;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
@@ -40,7 +53,11 @@
   --color-healthy: #34d399;
   --color-degraded: #fbbf24;
   --color-failing: #f87171;
-  --color-unavailable: #7c8aa5;
+  /* Lightened from #7c8aa5 when the surface was lifted to separate panels from
+     the page. It measured 4.70:1 before and 4.40:1 after — a change made for
+     one reason quietly breaking a rule elsewhere, which is why the ratios are
+     now asserted by a test rather than trusted. */
+  --color-unavailable: #8f9bb3;
   --color-destructive: #dc2626;
 
   /* ---- Typography ---------------------------------------------------- */
