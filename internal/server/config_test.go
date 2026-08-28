@@ -497,3 +497,70 @@ func TestNothingAppliedMeansTheConstructedValues(t *testing.T) {
 		t.Error("the constructed forwarding flag was lost")
 	}
 }
+
+// TestTheTileOriginIsAllowedByThePolicy. `img-src 'self'` blocked every map
+// tile: the browser refused them silently and the map drew an empty frame,
+// which is the policy working and the feature not.
+func TestTheTileOriginIsAllowedByThePolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		tileURL string
+		want    string
+	}{
+		{"openstreetmap", "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+			"https://tile.openstreetmap.org"},
+		{"a self-hosted server", "http://tiles.lan:8080/{z}/{x}/{y}.png",
+			"http://tiles.lan:8080"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := events.NewBus(nil, events.Options{})
+			t.Cleanup(bus.Close)
+			srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+				ListenAddress: "127.0.0.1:0",
+				Map:           MapSettings{TileURL: tc.tileURL},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+			csp := rec.Header().Get("Content-Security-Policy")
+
+			if !strings.Contains(csp, "img-src 'self' data: "+tc.want+";") {
+				t.Errorf("the policy does not allow %s:\n  %s", tc.want, csp)
+			}
+			// And nothing else was widened.
+			if !strings.Contains(csp, "script-src 'self';") {
+				t.Errorf("script-src was changed: %s", csp)
+			}
+			if strings.Contains(csp, "*") {
+				t.Errorf("the policy contains a wildcard: %s", csp)
+			}
+		})
+	}
+}
+
+// TestNoTilesMeansTheOriginalPolicy. An operator who clears the tile URL gets
+// the strict policy back unchanged.
+func TestNoTilesMeansTheOriginalPolicy(t *testing.T) {
+	for _, tileURL := range []string{"", "   ", "not a url at all", "ftp://tiles/{z}/{x}/{y}.png"} {
+		bus := events.NewBus(nil, events.Options{})
+		srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+			ListenAddress: "127.0.0.1:0",
+			Map:           MapSettings{TileURL: tileURL},
+		})
+		bus.Close()
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+		csp := rec.Header().Get("Content-Security-Policy")
+
+		if !strings.Contains(csp, "img-src 'self' data:;") {
+			t.Errorf("tile URL %q widened the policy: %s", tileURL, csp)
+		}
+	}
+}

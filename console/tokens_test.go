@@ -391,3 +391,61 @@ func TestSignInPageIsServed(t *testing.T) {
 		t.Error("the password field is not type=password")
 	}
 }
+
+// TestEveryClassTheScriptsUseIsStyled.
+//
+// The peers table asked for `.muted`, nothing defined it, and the browser's
+// default link colour showed through: blue, underlined, and unreadable on a
+// dark panel. It reached a live server.
+//
+// A class name is a string in one file and a selector in another, so nothing
+// connects them — no compiler, no linter, and the contrast test measures tokens
+// rather than whether a rule exists to use them.
+func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
+	styles := ""
+	for _, sheet := range []string{"static/console.css", "static/tokens.css", "static/join.css"} {
+		body, err := assets.ReadFile(sheet)
+		if err != nil {
+			t.Fatalf("reading %s: %v", sheet, err)
+		}
+		styles += string(body)
+	}
+
+	defined := make(map[string]bool)
+	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllStringSubmatch(styles, -1) {
+		defined[m[1]] = true
+	}
+
+	// Classes the markup carries are covered by the pages themselves; this is
+	// about the ones only the scripts know, which nothing else would catch.
+	// Only the literal part of the attribute, up to the first quote or the
+	// point where an expression begins. `class="badge " + kind` contributes
+	// "badge" and stops; anything else here would be checking JavaScript
+	// against a stylesheet.
+	classAttr := regexp.MustCompile(`class=\\?"([a-zA-Z][\w\- ]*)`)
+	var checked int
+	for _, script := range []string{"static/console.js", "static/map.js", "static/join.js"} {
+		body, err := assets.ReadFile(script)
+		if err != nil {
+			t.Fatalf("reading %s: %v", script, err)
+		}
+		for _, m := range classAttr.FindAllStringSubmatch(string(body), -1) {
+			for _, name := range strings.Fields(m[1]) {
+				// A name ending in a hyphen is a modifier prefix finished by
+				// concatenation — `class="status status--" + kind` — and the
+				// completed name cannot be known from the source.
+				if strings.HasSuffix(name, "-") {
+					continue
+				}
+				checked++
+				if !defined[name] {
+					t.Errorf("%s uses class %q, which no stylesheet defines", script, name)
+				}
+			}
+		}
+	}
+	if checked < 10 {
+		t.Fatalf("only %d classes were found in the scripts; the check is missing some", checked)
+	}
+	t.Logf("checked %d class references", checked)
+}

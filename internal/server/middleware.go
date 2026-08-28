@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -184,11 +185,21 @@ func withRecovery(log *slog.Logger) middleware {
 // The content security policy forbids inline script and remote origins. The
 // console is built to satisfy it: assets are served from this origin and no
 // handler emits inline JavaScript.
-func withSecurityHeaders() middleware {
-	const csp = "default-src 'self'; " +
+//
+// **One exception, and only one: the map's tile origin.** Map tiles are images
+// from somebody else's server by definition, and `img-src 'self'` blocked every
+// one of them — the map drew an empty frame and the browser refused the
+// requests silently, which is the policy working and the feature not.
+//
+// The origin is derived from the configured tile URL rather than opened to
+// every host. An operator who points the map at their own tile server gets that
+// host allowed and no other, and one who clears the tile URL gets the original
+// policy back unchanged.
+func withSecurityHeaders(tileURL string) middleware {
+	csp := "default-src 'self'; " +
 		"script-src 'self'; " +
 		"style-src 'self'; " +
-		"img-src 'self' data:; " +
+		"img-src 'self' data:" + tileOrigin(tileURL) + "; " +
 		"font-src 'self'; " +
 		"connect-src 'self'; " +
 		"form-action 'self'; " +
@@ -233,4 +244,32 @@ func clientIP(r *http.Request, behindProxy bool) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// tileOrigin returns the scheme and host of a tile URL, prefixed with a space,
+// or the empty string when there is nothing to allow.
+//
+// **Scheme and host only.** A policy naming a path would not match the tiles,
+// which vary by zoom and coordinate, and one naming a wildcard would allow
+// every host the operator did not choose.
+func tileOrigin(tileURL string) string {
+	tileURL = strings.TrimSpace(tileURL)
+	if tileURL == "" {
+		return ""
+	}
+	// The template holds {z}, {x} and {y}, which are not valid URL characters
+	// everywhere they appear. Only the origin is wanted, so the placeholders
+	// are replaced with something parseable first.
+	replacer := strings.NewReplacer("{z}", "0", "{x}", "0", "{y}", "0")
+	u, err := url.Parse(replacer.Replace(tileURL))
+	if err != nil || u.Host == "" {
+		// An unparseable tile URL allows nothing extra. The map will not draw
+		// tiles, which is the same outcome as a tile server that is down, and
+		// better than widening the policy on a value nobody could read.
+		return ""
+	}
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return ""
+	}
+	return " " + u.Scheme + "://" + u.Host
 }

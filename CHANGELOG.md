@@ -245,6 +245,31 @@ All notable changes to QSP. Dates are UTC.
   this only reclaims rows.
 
 ### Fixed
+- **The content security policy blocked every map tile.** `img-src 'self' data:`
+  and tiles come from somebody else's server by definition, so the browser
+  refused all of them silently and the map drew an empty frame. The policy now
+  allows the configured tile origin — scheme and host, derived from
+  `server.map.tile_url`, and nothing else. Clearing the tile URL restores the
+  original policy exactly.
+
+  This is the failure the map could never have worked through, and no amount of
+  drawing arithmetic would have fixed it.
+
+- **The map measured itself once, before it had a size.** A panel not laid out
+  when `show()` ran measured zero, fell back to 600×320 inside a frame nearly
+  three times wider, and placed every tile and pin relative to a viewport that
+  did not exist — which is what put the only pin in the top-left corner. It now
+  measures at draw time and redraws when the element's size changes, so a map
+  created before layout draws correctly the moment there is one. A resize
+  redraws without refitting: somebody who has panned away should not be yanked
+  back because the window changed width.
+
+- **`.muted` was used and never defined**, so the coordinate link in the peers
+  table fell through to the browser's default blue — underlined and unreadable
+  on a dark panel. A new test fails when any class the scripts use has no rule
+  in any stylesheet, which is the general form of this: a class name is a string
+  in one file and a selector in another, and nothing connected them.
+
 - **A saved join or map setting applied to nothing.** Both are derived from the
   configuration and were captured once when the server was constructed, so a
   save changed the file and the routing table and left the join page serving the

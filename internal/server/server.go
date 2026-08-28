@@ -231,7 +231,7 @@ func (s *Server) handler() http.Handler {
 	return chain(mux,
 		withRequestID(),
 		withRecovery(s.log),
-		withSecurityHeaders(),
+		withSecurityHeaders(s.opts.Map.TileURL),
 		withLogging(s.log),
 	)
 }

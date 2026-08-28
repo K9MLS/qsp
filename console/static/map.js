@@ -82,6 +82,10 @@
     this.centre = { lat: 0, lon: 0 };
     this.zoom = 2;
     this.points = [];
+    /* Whether the view has been fitted to the points. A resize redraws and
+     * does not refit: somebody who has panned away from their club should not
+     * be yanked back because the window changed width. */
+    this.fitted = false;
 
     this.el.classList.add("map");
     this.el.innerHTML =
@@ -106,7 +110,25 @@
 
     this.bindControls();
     this.bindDrag();
+    this.bindResize();
   }
+
+  /* bindResize redraws when the element's size changes.
+   *
+   * It covers the case that broke this — a panel measured before it was laid
+   * out — and the ordinary one of somebody resizing the window, which
+   * previously left the tiles covering the old width. */
+  Map.prototype.bindResize = function () {
+    var self = this;
+    if (typeof ResizeObserver !== "function") {
+      /* Old browsers get a window listener, which handles the resize case and
+       * not the late-layout one. Better than nothing and not worth more. */
+      window.addEventListener("resize", function () { self.refit(); });
+      return;
+    }
+    this.observer = new ResizeObserver(function () { self.refit(); });
+    this.observer.observe(this.el);
+  };
 
   Map.prototype.bindControls = function () {
     var self = this;
@@ -164,22 +186,64 @@
     this.canvas.addEventListener("pointercancel", stop);
   };
 
+  /* size returns the element's own box, or null when it has not got one yet.
+   *
+   * **Measuring once and keeping the answer was the bug.** A panel that is not
+   * laid out when show() runs measures zero, the code fell back to 600x320
+   * inside a frame nearly three times that wide, and every tile and pin landed
+   * relative to a viewport that did not exist — which is what put the only pin
+   * in the top-left corner instead of the middle.
+   *
+   * clientWidth rather than getBoundingClientRect, because it is the box the
+   * absolutely-positioned children are placed inside and so is the number the
+   * arithmetic actually needs. */
+  Map.prototype.size = function () {
+    var width = this.el.clientWidth;
+    var height = this.el.clientHeight;
+    if (width < 1 || height < 1) {
+      return null;
+    }
+    return { width: width, height: height };
+  };
+
   /* show replaces the points and refits the view. */
   Map.prototype.show = function (points) {
     this.points = points || [];
-    var box = this.el.getBoundingClientRect();
-    var view = fit(this.points, box.width || 600, box.height || 320, this.maxZoom);
-    if (view) {
-      this.centre = view.centre;
-      this.zoom = view.zoom;
+    this.fitted = false;
+    this.refit();
+  };
+
+  /* refit recomputes the view and redraws, if the element has a size yet.
+   *
+   * Called from show and from the resize observer, so a map created inside a
+   * panel that is not laid out yet draws correctly the moment it is — rather
+   * than drawing wrongly and staying that way. */
+  Map.prototype.refit = function () {
+    var box = this.size();
+    if (!box) {
+      return;
+    }
+    if (!this.fitted) {
+      var view = fit(this.points, box.width, box.height, this.maxZoom);
+      if (view) {
+        this.centre = view.centre;
+        this.zoom = view.zoom;
+      }
+      this.fitted = true;
     }
     this.draw();
   };
 
   Map.prototype.draw = function () {
-    var box = this.el.getBoundingClientRect();
-    var width = box.width || 600;
-    var height = box.height || 320;
+    var box = this.size();
+    if (!box) {
+      /* Nothing is drawn rather than something drawn wrongly. The observer
+       * calls back when there is a size, and an empty frame for a moment is
+       * better than a pin in the wrong place for ever. */
+      return;
+    }
+    var width = box.width;
+    var height = box.height;
 
     var centreX = lonToX(this.centre.lon, this.zoom);
     var centreY = latToY(this.centre.lat, this.zoom);
@@ -234,6 +298,13 @@
       var p = this.points[i];
       var x = lonToX(p.lon, this.zoom) - originX;
       var y = latToY(p.lat, this.zoom) - originY;
+      /* Pins outside the frame are skipped. One drawn at a negative offset
+       * escaped the panel's overflow in the corner case and overlapped the
+       * header above it. */
+      if (x < -TILE || y < -TILE || x > this.el.clientWidth + TILE ||
+          y > this.el.clientHeight + TILE) {
+        continue;
+      }
       html +=
         '<div class="map__pin" style="left:' + x + "px;top:" + y + 'px">' +
         '<span class="map__pin-dot" aria-hidden="true"></span>' +

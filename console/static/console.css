@@ -921,6 +921,31 @@ body {
   background: var(--color-row-hover);
 }
 
+/* ---- Secondary text -------------------------------------------------- */
+
+/* Detail beside a primary value, such as coordinates after a place name.
+   Muted rather than smaller: shrinking text to de-emphasise it is how a table
+   ends up with something nobody can read.
+
+   **This was missing for a release.** The peers table asked for it, nothing
+   defined it, and the browser's default link colour showed through — blue,
+   underlined, and unreadable on a dark panel. */
+.muted {
+  color: var(--color-foreground-subtle);
+}
+
+/* An anchor carrying .muted is still a link and still needs to look like one,
+   so the underline stays and only the colour is toned down. */
+a.muted:hover {
+  color: var(--color-foreground);
+}
+
+a.muted:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 /* ---- Sign-in state in the topbar ------------------------------------- */
 
 .topbar__auth {
