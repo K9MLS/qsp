@@ -127,3 +127,18 @@ func (m *Master) expireSubscribers(now time.Time) []Location {
 	sort.Slice(stale, func(i, j int) bool { return stale[i].Subscriber < stale[j].Subscriber })
 	return stale
 }
+
+// LocateFor implements routing.SubscriberLookup.
+//
+// A separate method from Locate rather than a changed signature: Locate returns
+// the whole record because the console and the operator want it, and the
+// routing core wants only the two fields it can act on. Widening the core's
+// dependency to a struct it does not need would make it harder to test with a
+// stub.
+func (m *Master) LocateFor(subscriber uint32) (hbp.RepeaterID, hbp.Timeslot, bool) {
+	loc, ok := m.Locate(subscriber)
+	if !ok {
+		return 0, 0, false
+	}
+	return loc.Peer, loc.Timeslot, true
+}

@@ -63,6 +63,14 @@ reachability. `dmr.subscriber_timeout` defaults to two hours: a working shift,
 and a guess informed by nothing but plausibility, which is why it is a field
 rather than a constant.
 
+*Built 2026-08-28.* A private call resolves the called radio to the one peer it
+is behind and is delivered there and nowhere else. The called radio's ID stays
+in the target field, since that is what opens the receiving radio's squelch;
+only the timeslot comes from where the radio was heard, because a peer's two
+slots are independent paths. An instance with no subscriber lookup refuses
+private calls with an explanation and keeps routing group calls, which is a
+working configuration rather than a fault.
+
 **2. The layer model gains no layer.** Private calls are not a sixth layer;
 they are the same question — *who else should hear this?* — with a different
 kind of answer. Repeat resolves a talkgroup to every other peer on it; a private
@@ -93,6 +101,12 @@ reserves a destination endpoint so two transmissions cannot interleave. A
 private call's destination is a peer and a subscriber rather than a peer and a
 talkgroup, so what exactly is reserved has to be decided rather than assumed.
 Reserving the whole timeslot is probably right and is not obviously right.
+
+*Settled by [ADR-0022](ADR-0022-timeslot-contention.md).* Asking the question
+exposed a group-call bug: two talkgroups could be delivered to one peer's
+timeslot at once. Keying reservations on the slot fixes that and makes group and
+private calls contend identically, with no special case for either — a better
+answer than the one that would have been invented for private calls alone.
 
 **Access control gains a second reason to exist.** ADR-0020's subscriber list
 already names radio IDs. Private call routing names radio IDs too, and the same

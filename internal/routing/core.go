@@ -81,6 +81,19 @@ type Result struct {
 	Reason string
 }
 
+// SubscriberLookup reports which peer a radio was last heard through.
+//
+// It is a separate interface from PeerLookup because it answers a different
+// kind of question and may not be available: an instance that does not track
+// radios still routes group calls perfectly well, and a nil lookup means
+// private calls are simply not routed rather than that routing fails.
+type SubscriberLookup interface {
+	// Locate returns the peer and timeslot a radio was last heard on, and
+	// whether that is currently usable. It reports false for a radio never
+	// heard, one whose location has aged out, and one whose peer has gone.
+	LocateFor(subscriber uint32) (peer hbp.RepeaterID, slot hbp.Timeslot, ok bool)
+}
+
 // PeerLookup reports whether a peer is registered and able to receive traffic.
 //
 // The core depends on this narrow interface rather than on the peers package,
@@ -152,10 +165,13 @@ type Core struct {
 	// access holds the talkgroup lists. The registration and subscriber lists
 	// are in the same value and are not consulted here: they are questions
 	// about who is talking, answered at the master where the sender is known.
-	access  access.Lists
-	table   *Table
-	peers   PeerLookup
-	timeout time.Duration
+	access access.Lists
+	table  *Table
+	peers  PeerLookup
+	// subscribers locates a radio for a private call. Nil means private calls
+	// are not routed, which is a working configuration rather than a fault.
+	subscribers SubscriberLookup
+	timeout     time.Duration
 
 	// busy maps a destination endpoint to the transmission holding it.
 	//
@@ -181,6 +197,9 @@ type CoreOptions struct {
 	Table *Table
 	// Peers resolves destinations. Required.
 	Peers PeerLookup
+	// Subscribers locates a radio for a private call. Optional: nil means
+	// private calls are refused with an explanation rather than routed.
+	Subscribers SubscriberLookup
 	// Timeout is how long a destination stays reserved after its last frame.
 	// Zero selects StreamTimeout.
 	Timeout time.Duration
@@ -195,12 +214,13 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		opts.Timeout = StreamTimeout
 	}
 	return &Core{
-		repeat:  !opts.NoRepeat,
-		access:  opts.Access,
-		table:   opts.Table,
-		peers:   opts.Peers,
-		timeout: opts.Timeout,
-		busy:    make(map[Endpoint]*reservation),
+		repeat:      !opts.NoRepeat,
+		access:      opts.Access,
+		table:       opts.Table,
+		peers:       opts.Peers,
+		subscribers: opts.Subscribers,
+		timeout:     opts.Timeout,
+		busy:        make(map[Endpoint]*reservation),
 	}, nil
 }
 
@@ -315,6 +335,36 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 				Timeslot:  frame.Timeslot,
 			},
 			repeat: true,
+		})
+	}
+
+	// A private call goes to one radio, wherever that radio is.
+	//
+	// This is the same question repeat answers — who else should hear this? —
+	// with a different kind of answer. Repeat resolves a talkgroup to every
+	// other peer on it; a private call resolves a subscriber to the single peer
+	// it is behind. Both are layer 1, which is why this is not a sixth layer.
+	// See ADR-0021.
+	//
+	// The destination keeps the *called radio's* ID as its target, because that
+	// is what makes the receiving radio open its squelch. Only the timeslot is
+	// taken from where the radio was last heard, since a peer's two slots are
+	// independent paths and the call has to pick the one the radio is using.
+	if c.repeat && frame.CallType == hbp.CallPrivate {
+		if c.subscribers == nil {
+			return Result{Reason: "private calls are not routed by this instance"}
+		}
+		peer, slot, found := c.subscribers.LocateFor(frame.TargetID)
+		if !found {
+			// Naming the radio matters: "not heard recently" is something an
+			// operator can act on, and silence is not.
+			return Result{Reason: fmt.Sprintf(
+				"radio %d has not been heard recently, so there is nowhere to send a private call to it",
+				frame.TargetID)}
+		}
+		targets = append(targets, routeTarget{
+			Endpoint: Endpoint{Peer: peer, Talkgroup: frame.TargetID, Timeslot: slot},
+			repeat:   true,
 		})
 	}
 

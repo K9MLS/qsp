@@ -73,6 +73,23 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **Private calls are routed.** Radio-to-radio calling is used constantly on DMR
+  and QSP routed none of it: repeat fired only on group calls, and nothing
+  handled a call whose target is a radio rather than a talkgroup. A private call
+  now resolves the called radio to the one peer it is behind and is delivered
+  there and nowhere else — a private conversation on every hotspot would be the
+  obvious way to get this wrong.
+
+  The called radio's ID stays in the target field, because that is what opens
+  the receiving radio's squelch. Only the timeslot comes from where the radio
+  was last heard, since a peer's two slots are independent paths.
+
+  Group and private calls contend identically thanks to
+  [ADR-0022](docs/adr/ADR-0022-timeslot-contention.md), with no special case for
+  either. A call to a radio not heard recently is refused with a reason naming
+  the radio, because silence leaves an operator unable to tell a failure from
+  somebody not answering. Eight tests. **Untested on hardware.**
+
 - **QSP now knows where radios are**, the prerequisite
   [ADR-0021](docs/adr/ADR-0021-private-calls-and-data.md) named for private
   calls and radio-to-radio text. A private call's destination is a radio rather

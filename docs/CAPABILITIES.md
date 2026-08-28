@@ -91,12 +91,12 @@ rules whatsoever.
 | Trunking to another bridge | 4, 5 | **partial** — OpenBridge links outward; QSP cannot yet dial out |
 | Motorola repeater support | — | **missing** — IPSC; see §4 |
 | Administration without a text editor | — | **missing** |
-| Private calls, radio to radio | 1 | **missing** — see below |
+| Private calls, radio to radio | 1 | **built** — routed to the radio's peer |
 | Text messaging, GPS, data | — | **missing** — ADR-0021 |
 
 QSP is ahead of a commercial DMR server on scheduling, on being free and self-hosted, and on
-the repeat model. It is behind on per-peer subscription and on being administrable by anyone who
-is not comfortable with SSH.
+the repeat model. It is behind on per-peer subscription and on being
+administrable by anyone who is not comfortable with SSH.
 
 ---
 
@@ -132,10 +132,9 @@ blocking.
 Both are wanted, both are missing, and they turn out to need the same thing.
 [ADR-0021](adr/ADR-0021-private-calls-and-data.md) records why.
 
-**Private calls do not work at all.** Repeat fires only on a group call, and
-nothing routes a call whose target is a radio rather than a talkgroup. This is
-layer 1 work that was missed in the same way repeat was missed, not a feature
-sitting above the model.
+**Private calls are built.** Layer 1 work that was missed in the same way
+repeat was missed, not a feature sitting above the model. A call whose target
+is a radio resolves to the one peer that radio is behind. Untested on hardware.
 
 **Data is two jobs of very different size.** A text message to a talkgroup is a
 group call carrying data bursts, and may already traverse the repeat path
@@ -144,10 +143,9 @@ radio is a private call and needs everything above. IP over DMR and CAI are a
 third thing again, because they mean interpreting a field no capture has
 established.
 
-What both need is **subscriber location**: which peer a radio was last heard
-through. It cannot be configured, because it changes when somebody drives to
-work, so it is learned from traffic and aged out. Nothing in QSP tracks it
-today.
+Both rest on **subscriber location**: which peer a radio was last heard through.
+It cannot be configured, because it changes when somebody drives to work, so it
+is learned from traffic and aged out.
 
 ### Further out
 

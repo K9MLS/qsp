@@ -151,6 +151,11 @@ func TestRepeatAndBridgeDeliverOneCopy(t *testing.T) {
 //
 // A private call is addressed to one radio. Repeating it to every peer would
 // broadcast a conversation intended for one person.
+//
+// This core has no subscriber lookup, so it covers the instance that does not
+// route private calls at all: the call is refused rather than broadcast, and
+// group calls keep working. The case where a lookup *is* configured, and the
+// call must reach exactly one peer, is TestAPrivateCallIsNotBroadcast.
 func TestRepeatDoesNotCarryPrivateCalls(t *testing.T) {
 	const a, b hbp.RepeaterID = 3100001, 3100002
 	core := noBridges(t, a, b)

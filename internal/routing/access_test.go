@@ -436,3 +436,175 @@ func TestALinkCarriesSeveralTalkgroupsAtOnce(t *testing.T) {
 			"and not a radio channel: %+v", second.Drops)
 	}
 }
+
+// Private calls. See docs/adr/ADR-0021-private-calls-and-data.md.
+
+// stubSubscribers is a fixed radio-to-peer map.
+type stubSubscribers map[uint32]struct {
+	peer hbp.RepeaterID
+	slot hbp.Timeslot
+}
+
+func (s stubSubscribers) LocateFor(id uint32) (hbp.RepeaterID, hbp.Timeslot, bool) {
+	loc, ok := s[id]
+	return loc.peer, loc.slot, ok
+}
+
+func privateCall(stream hbp.StreamID, target uint32, slot hbp.Timeslot, ft hbp.FrameType) hbp.Data {
+	return hbp.Data{
+		SourceID: 3132910, TargetID: target, Timeslot: slot,
+		CallType: hbp.CallPrivate, FrameType: ft, StreamID: stream,
+	}
+}
+
+func coreWithSubscribers(t *testing.T, subs stubSubscribers, peers ...hbp.RepeaterID) *routing.Core {
+	t.Helper()
+	c, err := routing.NewCore(routing.CoreOptions{
+		Peers:       peersReady(peers...),
+		Subscribers: subs,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	return c
+}
+
+// TestAPrivateCallReachesTheRadiosPeer is the whole feature. Radio-to-radio
+// calling is used constantly on DMR and QSP routed none of it.
+func TestAPrivateCallReachesTheRadiosPeer(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := coreWithSubscribers(t, stubSubscribers{
+		3121002: {peer: b, slot: hbp.Timeslot2},
+	}, a, b, c)
+
+	res := core.Route(a, privateCall(0x1111, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("a private call produced %d deliveries, want 1 (reason: %q)",
+			len(res.Deliveries), res.Reason)
+	}
+	got := res.Deliveries[0]
+	if got.Peer != b {
+		t.Errorf("delivered to peer %d, want %d — the peer the radio is behind", got.Peer, b)
+	}
+	// The called radio's ID stays in the target field. That is what makes the
+	// receiving radio open its squelch.
+	if got.Frame.TargetID != 3121002 {
+		t.Errorf("target is %d, want the called radio's ID 3121002", got.Frame.TargetID)
+	}
+	if got.Frame.CallType != hbp.CallPrivate {
+		t.Error("the call type was not preserved")
+	}
+}
+
+// TestAPrivateCallIsNotBroadcast is the property that made this worth doing
+// carefully. A private call reaching every peer would put a private
+// conversation on every hotspot on the network.
+func TestAPrivateCallIsNotBroadcast(t *testing.T) {
+	const a, b, c, d hbp.RepeaterID = 3100001, 3100002, 3100003, 3100004
+	core := coreWithSubscribers(t, stubSubscribers{
+		3121002: {peer: b, slot: hbp.Timeslot2},
+	}, a, b, c, d)
+
+	res := core.Route(a, privateCall(0x2222, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for _, del := range res.Deliveries {
+		if del.Peer != b {
+			t.Errorf("a private call reached peer %d, which is not where the radio is", del.Peer)
+		}
+	}
+}
+
+// TestAPrivateCallToAnUnknownRadioSaysSo. Silence would leave an operator with
+// no idea whether the call failed or the other person simply did not answer.
+func TestAPrivateCallToAnUnknownRadioSaysSo(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithSubscribers(t, stubSubscribers{}, a, b)
+
+	res := core.Route(a, privateCall(0x3333, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Fatal("a private call to an unlocatable radio was delivered somewhere")
+	}
+	if !strings.Contains(res.Reason, "3121002") {
+		t.Errorf("the reason should name the radio: %q", res.Reason)
+	}
+	if !strings.Contains(res.Reason, "heard") {
+		t.Errorf("the reason should say why: %q", res.Reason)
+	}
+}
+
+// TestPrivateCallsAreOptional keeps an instance that tracks no radios working.
+// It routes group calls perfectly well, and must say so rather than fail.
+func TestPrivateCallsAreOptional(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := noBridges(t, a, b)
+
+	res := core.Route(a, privateCall(0x4444, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Fatal("a private call was delivered with no subscriber lookup configured")
+	}
+	if res.Reason == "" {
+		t.Error("the refusal carried no explanation")
+	}
+	// Group calls are unaffected.
+	if got := core.Route(a, groupCall(0x5555, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(got.Deliveries) != 1 {
+		t.Errorf("group calls broke: %q", got.Reason)
+	}
+}
+
+// TestAPrivateCallUsesTheSlotTheRadioIsOn. A peer's two timeslots are
+// independent paths, and sending down the wrong one reaches nobody.
+func TestAPrivateCallUsesTheSlotTheRadioIsOn(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithSubscribers(t, stubSubscribers{
+		3121002: {peer: b, slot: hbp.Timeslot1},
+	}, a, b)
+
+	// The caller is on TS2; the called radio was last heard on TS1.
+	res := core.Route(a, privateCall(0x6666, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("no delivery: %q", res.Reason)
+	}
+	if res.Deliveries[0].Frame.Timeslot != hbp.Timeslot1 {
+		t.Errorf("sent on %s, want TS1 where the radio was heard",
+			res.Deliveries[0].Frame.Timeslot)
+	}
+}
+
+// TestAPrivateCallContendsForTheSlot is ADR-0022 paying for itself: group and
+// private calls contend identically, with no special case for either.
+func TestAPrivateCallContendsForTheSlot(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := coreWithSubscribers(t, stubSubscribers{
+		3121002: {peer: b, slot: hbp.Timeslot2},
+	}, a, b, c)
+
+	// A group call takes B's TS2.
+	core.Route(c, groupCall(0x7777, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+
+	// A private call to a radio behind B, on the same slot, must be refused.
+	res := core.Route(a, privateCall(0x8888, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Error("a private call was delivered to a slot already carrying a group call")
+	}
+	if len(res.Drops) == 0 {
+		t.Error("the refusal was not recorded as a drop")
+	}
+}
+
+// TestAPrivateCallIsNotSentBackToItsCaller guards the obvious mistake, which
+// would sound to the caller exactly like a fault.
+func TestAPrivateCallIsNotSentBackToItsCaller(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	// The called radio is behind the *calling* peer — two radios on one
+	// hotspot, which is ordinary.
+	core := coreWithSubscribers(t, stubSubscribers{
+		3121002: {peer: a, slot: hbp.Timeslot2},
+	}, a, b)
+
+	res := core.Route(a, privateCall(0x9999, 3121002, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for _, del := range res.Deliveries {
+		if del.Peer == a {
+			t.Error("a private call was echoed back to the peer that sent it")
+		}
+	}
+}

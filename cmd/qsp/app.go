@@ -152,6 +152,9 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 				Access: lists,
 				Table:  table,
 				Peers:  readyPeers{master: master},
+				// Where radios are, so a private call can reach one. The
+				// master learns this from traffic; see ADR-0021.
+				Subscribers: master,
 			})
 			if err != nil {
 				return nil, err
