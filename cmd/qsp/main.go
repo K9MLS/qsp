@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -49,6 +50,21 @@ func realMain() error {
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		return err
+	}
+
+	// Subcommands come after the flags so that -config is honoured: adduser
+	// must write to the database the server reads, and an account created
+	// somewhere else is one the server will never see.
+	if args := flag.Args(); len(args) > 0 {
+		switch args[0] {
+		case "adduser":
+			if len(args) != 2 {
+				return errors.New("usage: qsp [-config path] adduser <username>")
+			}
+			return adduser(context.Background(), cfg, args[1])
+		default:
+			return fmt.Errorf("unknown command %q; the only one is \"adduser\"", args[0])
+		}
 	}
 
 	if *printConfig {

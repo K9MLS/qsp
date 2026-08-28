@@ -126,6 +126,23 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **`qsp adduser` creates an administrator**, and per
+  [ADR-0026](docs/adr/ADR-0026-authentication.md) it is the only thing that
+  does. It reads the same configuration the server does, so it writes to the
+  same database, runs the migrations so a fresh install needs no separate step,
+  and refuses rather than falling back to somewhere writable — an account in an
+  unexpected database is one the server never sees.
+
+  The password is prompted twice and never echoed. **Echo is turned off with
+  `stty` rather than a library**, because the standard library exposes no way to
+  do it and `golang.org/x/term` would be QSP's second direct dependency; ADR-0004
+  and ADR-0017 are careful about that count, and a dependency is a poor trade
+  for a program already required to run on a Unix host with a terminal attached.
+
+  `stty` doubles as the terminal check, and is a better one than inspecting the
+  mode of standard input: `/dev/null` is a character device too, so a password
+  piped from it would have looked like somebody typing.
+
 - **The SQL behind the login flow**, `auth.SQLRepository`. Six statements and
   nothing else: every decision — lockout, timing, expiry, revocation — is in
   `Service` and tested without a database, so the part that cannot be executed
