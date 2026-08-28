@@ -1,7 +1,6 @@
 package console
 
 import (
-	"fmt"
 	"math"
 	"regexp"
 	"strconv"
@@ -280,9 +279,9 @@ func TestContrastReport(t *testing.T) {
 		for _, text := range []string{
 			"--color-foreground", "--color-foreground-muted", "--color-foreground-subtle",
 		} {
-			t.Log(fmt.Sprintf("%-16s %-26s %.2f:1", r.plane, text, contrast(opaque[text], r.c)))
+			t.Logf("%-16s %-26s %.2f:1", r.plane, text, contrast(opaque[text], r.c))
 		}
 	}
-	t.Log(fmt.Sprintf("%-16s %-26s %.2f:1", "separation", "surface vs background",
-		contrast(surface, opaque["--color-background"])))
+	t.Logf("%-16s %-26s %.2f:1", "separation", "surface vs background",
+		contrast(surface, opaque["--color-background"]))
 }
