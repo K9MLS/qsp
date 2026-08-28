@@ -118,12 +118,16 @@
 
   <main class="main" id="main">
     <h1 class="page__title">Overview</h1>
-    <p class="page__lede">
-      QSP is a DMR master. Peers on a talkgroup hear each other, and bridges
-      additionally move traffic between talkgroups, on a schedule or on PTT.
-      Forwarding and scheduling are configured per instance and may be switched
-      off; the panels below show what this instance is actually doing.
-    </p>
+    <details class="lede">
+      <summary class="lede__summary">What this instance does</summary>
+      <p class="lede__body">
+        QSP is a DMR master. Peers on a talkgroup hear each other, and bridges
+        additionally move traffic between talkgroups, on a schedule or on PTT.
+        Forwarding and scheduling are configured per instance and may be
+        switched off; the panels below show what this instance is actually
+        doing.
+      </p>
+    </details>
 
     <section class="panel" id="traffic" aria-labelledby="traffic-title">
       <div class="panel__head">

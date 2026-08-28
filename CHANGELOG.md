@@ -73,6 +73,16 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **The console uses two columns on a wide screen.** Above 1280px, traffic,
+  connected peers, last heard and health fit on one screen without scrolling;
+  below it, nothing changes. Panels in a row size to their own content, so a
+  short peer list does not stretch to match a long call list.
+
+- **The page description collapses.** It is read once and scrolled past
+  forever, and it was occupying the top of a page an operator is monitoring. It
+  stays in the markup and in the accessibility tree; it just no longer takes the
+  best space on the screen by default.
+
 - **The console's panels are separated from the page.** Surface and background
   differed by 1.09:1, which is not a difference anyone can see, so a column of
   panels read as one continuous area with hairlines drawn on it — reported by an

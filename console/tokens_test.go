@@ -224,15 +224,17 @@ func TestPanelsCarryAShadow(t *testing.T) {
 	}
 	css := string(body)
 
-	panel := strings.Index(css, ".panel {")
-	if panel < 0 {
-		t.Fatal("console.css no longer has a .panel rule")
+	// Anchored to the start of a line, so it matches the .panel rule itself
+	// rather than a descendant selector that happens to end in the same text.
+	// A substring search found ".main > .panel {" the moment one was added
+	// above it, read that rule's body, and reported a shadow missing that was
+	// three rules further down.
+	rule := regexp.MustCompile(`(?m)^\.panel\s*\{([^}]*)\}`)
+	m := rule.FindStringSubmatch(css)
+	if m == nil {
+		t.Fatal("console.css no longer has a top-level .panel rule; this test is now blind")
 	}
-	end := strings.Index(css[panel:], "}")
-	if end < 0 {
-		t.Fatal(".panel rule is unterminated")
-	}
-	if !strings.Contains(css[panel:panel+end], "box-shadow") {
+	if !strings.Contains(m[1], "box-shadow") {
 		t.Error(".panel has no box-shadow; surface and background are too close " +
 			"for the fill alone to separate them")
 	}

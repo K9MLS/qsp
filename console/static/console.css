@@ -193,18 +193,79 @@ body {
   grid-area: main;
   padding: var(--space-6) var(--space-5);
   max-width: var(--layout-max);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-content: start;
+}
+
+/* Above this width a single column wastes most of the screen and pushes the
+   things an operator watches below the fold. Two columns put traffic, peers,
+   last heard and health on one screen without scrolling.
+   The breakpoint is min-width while the rest of this file is max-width; the
+   stylesheet is desktop-first and rewriting that wholesale for one rule would
+   be a larger change than the rule is worth. */
+@media (min-width: 1280px) {
+  .main {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Traffic is a strip of metrics and reads better wide. Health is a long
+     table and belongs under the live panels rather than beside them. The
+     heading, the description and the forwarding notice are page-level. */
+  .main > .page__title,
+  .main > .lede,
+  .main > #traffic,
+  .main > #health,
+  .main > #routing-empty {
+    grid-column: 1 / -1;
+  }
+
+  /* Panels in a row size to their own content rather than to the tallest
+     sibling, so a short peer list does not stretch to match a long call list. */
+  .main > .panel {
+    align-self: start;
+  }
 }
 
 .page__title {
-  margin: 0 0 var(--space-2);
+  margin: 0;
   font-size: var(--text-2xl);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
 }
 
-.page__lede {
-  margin: 0 0 var(--space-6);
+/* The description is read once and scrolled past forever, so it collapses.
+   It stays in the markup and in the accessibility tree either way; what it
+   stops doing is occupying the top of a page an operator is monitoring. */
+.lede {
+  margin: 0;
   max-width: 62ch;
+}
+
+.lede__summary {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  transition: color var(--duration-fast) var(--ease-out-expo);
+}
+
+.lede__summary:hover {
+  color: var(--color-foreground);
+}
+
+.lede__summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.lede__body {
+  margin: 0 0 var(--space-2);
   color: var(--color-foreground-muted);
 }
 
@@ -361,19 +422,10 @@ body {
   overflow: hidden;
 }
 
-/* Panels space themselves rather than each carrying an inline margin.
-   Spacing was set per-panel in the markup, so every new panel had to remember
-   to bring its own, and two of them disagreed about whether it went above or
+/* Panels are spaced by the grid gap on .main rather than by margins. Spacing
+   used to be set per-panel in the markup, so every new panel had to remember to
+   bring its own and two of them disagreed about whether it went above or
    below. */
-.main > .panel,
-.main > .empty {
-  margin-block: 0 var(--space-5);
-}
-
-.main > .panel:last-child,
-.main > .empty:last-child {
-  margin-block-end: 0;
-}
 
 .panel__head {
   display: flex;
