@@ -126,6 +126,34 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **[ADR-0026](docs/adr/ADR-0026-authentication.md) decides authentication**,
+  which is what the admin interface has been waiting on, and
+  `migrations/0003_users.sql` adds the accounts and sessions it needs.
+
+  **The first administrator is created from the command line and there is no
+  other way.** A setup page open until the first account exists is a race an
+  instance loses silently — restarted with an empty database and reachable from
+  the internet, it belongs to whoever loads it first, and the result looks
+  exactly like a working setup. `qsp adduser` needs shell access on the host,
+  which whoever installed QSP has and nobody else should. The web surface
+  therefore never has an unauthenticated path that writes anything, at any point
+  in the instance's life.
+
+  Sessions are rows rather than signed tokens, so removing an administrator
+  takes effect on the next request; a self-contained token cannot be revoked
+  without a list of revoked ones, which is the sessions table arriving by a
+  worse route. `Secure` on the cookie follows `server.behind_proxy`, because
+  setting it unconditionally silently breaks a club on plain HTTP over a LAN and
+  omitting it leaks a session on a public instance.
+
+  Failed attempts are counted on the account rather than in memory, since a
+  restart would otherwise be a free reset for whoever is guessing, and a wrong
+  password and an unknown username answer identically — a login that replies
+  faster for a name nobody holds is a list of valid callsigns.
+
+  Deliberately not decided: roles, and password reset by email. **No code yet
+  beyond the schema.**
+
 - **The console has a map**, and QSP vendors nothing to draw it.
   [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). A slippy map is Web Mercator
   arithmetic, a grid of image elements and a drag handler — about a hundred and
