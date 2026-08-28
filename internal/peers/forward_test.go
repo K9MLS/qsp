@@ -146,13 +146,33 @@ func TestTrafficIsRelayedBetweenTwoRealPeers(t *testing.T) {
 	// The sender must not hear itself.
 	sender.silence(300 * time.Millisecond)
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && l.Stats().Forwarded == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForForwarded(t, l, 1)
 	if s := l.Stats(); s.Forwarded != 1 {
 		t.Errorf("forwarded = %d, want 1", s.Forwarded)
 	}
+}
+
+// waitForForwarded polls until the counter reaches n, or fails.
+//
+// **The counter lags the delivery**, and that is correct: Listener writes the
+// frame to the socket and increments afterwards, so that a write which failed
+// is not counted. A receiver can therefore have the frame in hand before the
+// number moves, and a test that reads Stats immediately is racing a window it
+// did not know was there — which is how TestUnbridgedTrafficIsRepeatedToOtherPeers
+// failed under the race detector on CI while passing everywhere else.
+//
+// Two tests here already polled and two did not. This is the same loop, named,
+// so the next one written cannot forget.
+func waitForForwarded(t *testing.T, l *peers.Listener, n uint64) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if l.Stats().Forwarded >= n {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("forwarded = %d after 2s, want %d", l.Stats().Forwarded, n)
 }
 
 // TestUnbridgedTrafficIsNotRelayed.
@@ -193,6 +213,7 @@ func TestUnbridgedTrafficIsRepeatedToOtherPeers(t *testing.T) {
 	if got.RepeaterID != peerTwo {
 		t.Errorf("frame carries repeater ID %d, want it rewritten to %d", got.RepeaterID, peerTwo)
 	}
+	waitForForwarded(t, l, 1)
 	if s := l.Stats(); s.Forwarded != 1 {
 		t.Errorf("forwarded = %d, want 1", s.Forwarded)
 	}
@@ -254,10 +275,7 @@ func TestWholeTransmissionIsRelayed(t *testing.T) {
 	}
 
 	// The terminator released the destination, so the next keyup works.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && l.Stats().Forwarded < uint64(len(frames)) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	waitForForwarded(t, l, uint64(len(frames)))
 	if s := l.Stats(); s.Forwarded != uint64(len(frames)) {
 		t.Errorf("forwarded = %d, want %d", s.Forwarded, len(frames))
 	}

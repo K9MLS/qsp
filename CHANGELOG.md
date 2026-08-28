@@ -126,6 +126,17 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+### Fixed
+- **A flaky test that CI caught and no local run did.**
+  `TestUnbridgedTrafficIsRepeatedToOtherPeers` read the forwarded counter the
+  instant the receiving peer had the frame. The counter deliberately lags: the
+  listener writes to the socket and increments afterwards, so a write that
+  failed is not counted — which leaves a window the race detector's slowdown
+  widened enough to lose.
+
+  Two tests in that file already polled before asserting and two did not, so the
+  loop is now a named helper the next one cannot forget.
+
 - **Login, logout and session endpoints**, with the middleware that will guard
   every write endpoint that follows. `POST /api/login` exchanges credentials for
   a session cookie, `POST /api/logout` ends it, and `GET /api/session` reports
