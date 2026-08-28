@@ -257,25 +257,39 @@ func TestCloseFromAnUnregisteredPeerIsIgnored(t *testing.T) {
 
 func TestHandshakeCannotBeSkipped(t *testing.T) {
 	// Every out-of-order step must be refused. This is the property that stops
-	// an unregistered station injecting traffic.
-	cases := map[string]hbp.Message{
-		"config without login": hbp.Config{RepeaterID: testID, Callsign: "K9MLS"},
-		"key without login":    hbp.Key{RepeaterID: testID},
-		"ping without login":   hbp.Ping{RepeaterID: testID},
-		"data without login":   hbp.Data{RepeaterID: testID, SourceID: uint32(testID), TargetID: 3100},
+	// an unregistered station injecting traffic, and it is about Data and
+	// Dropped rather than about whether the master says anything back.
+	//
+	// A keepalive is answered with MSTNAK, which carries no traffic and confers
+	// nothing: it tells a stale peer to log in again. See handlePing.
+	cases := map[string]struct {
+		msg       hbp.Message
+		responses int
+		why       string
+	}{
+		"config without login": {hbp.Config{RepeaterID: testID, Callsign: "K9MLS"}, 0, ""},
+		"key without login":    {hbp.Key{RepeaterID: testID}, 0, ""},
+		"ping without login": {hbp.Ping{RepeaterID: testID}, 1,
+			"a keepalive from an unregistered peer is answered with MSTNAK so it logs in again"},
+		"data without login": {hbp.Data{RepeaterID: testID, SourceID: uint32(testID), TargetID: 3100}, 0,
+			"voice arrives every 60 ms; answering each would put hundreds of datagrams on the wire"},
 	}
-	for name, msg := range cases {
+	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			h := newHarness(t)
-			out := h.send(msg, addrA)
-			if len(out.Responses) != 0 {
-				t.Errorf("produced %d responses, want 0", len(out.Responses))
+			out := h.send(tc.msg, addrA)
+			if len(out.Responses) != tc.responses {
+				t.Errorf("produced %d responses, want %d: %s", len(out.Responses), tc.responses, tc.why)
 			}
 			if out.Data != nil {
 				t.Error("a frame was accepted from an unregistered station")
 			}
 			if out.Dropped == "" {
 				t.Error("the datagram was discarded without an explanation")
+			}
+			// Whatever is said back, no registration may result from it.
+			if h.m.Count() != 0 {
+				t.Error("an out-of-order message created a registration")
 			}
 		})
 	}

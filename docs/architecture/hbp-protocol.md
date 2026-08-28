@@ -288,7 +288,7 @@ Timeouts: an incomplete handshake expires after 30 s, a configured peer after
 
 | Gap | What would close it |
 |---|---|
-| `MSTNAK` implemented but never seen on a wire | A login with a wrong password. `RPTCL` is no longer in this row: a WPSD hotspot sent one on 2026-08-28 and the master logged `peer disconnected cleanly`, which is the behaviour this implementation was written for. A capture would still be worth keeping |
+| `MSTNAK` on a refused login never seen on a wire | A login with a wrong password. The stale-peer use is exercised on every master restart. `RPTCL` is no longer in this row: a WPSD hotspot sent one on 2026-08-28 and the master logged `peer disconnected cleanly`, which is the behaviour this implementation was written for. A capture would still be worth keeping |
 | Relay repeater-ID rewrite unverified against hardware | Two physical hotspots. Verified against synthetic peers in `internal/peers/fanout_test.go`, which replays the captured frames through the real protocol stack — the rewrite is correct, but no second radio has received the result |
 | `description` / `slots` split unverified | A hotspot configured for one timeslot |
 | `RPTO` options string | Capture a hotspot configured with options |

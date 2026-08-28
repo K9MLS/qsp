@@ -74,6 +74,22 @@ All notable changes to QSP. Dates are UTC.
   destinations the list would have allowed.
 
 ### Fixed
+- **A master restart cost a minute of dead network.** QSP dropped keepalives
+  from a peer it no longer had a registration for, in silence, so the peer only
+  discovered it had been forgotten when its own timeout fired. Observed on the
+  soak VM: a restart at 13:37:36, the peer back at 13:38:37, and 25 datagrams
+  dropped in between.
+
+  A stale keepalive is now answered with MSTNAK, which is what
+  `docs/architecture/hbp-protocol.md` has always said the message is for — it
+  both refuses a login and tells a stale peer to log in again, and only the
+  first half was used.
+
+  Voice frames from a stale peer are still dropped silently. They arrive every
+  60 ms, so answering each would put hundreds of datagrams on the wire for one
+  transmission; a keepalive arrives every ten seconds and is the peer's own
+  liveness check.
+
 - **The console told operators forwarding was off while it was relaying.** The
   notice was static markup with no condition on it, so it rendered
   unconditionally — a soak instance that had been repeating for eleven hours

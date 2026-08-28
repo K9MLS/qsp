@@ -256,3 +256,63 @@ func TestTalkgroupListsAreNotConsultedHere(t *testing.T) {
 		t.Fatalf("the master refused on a talkgroup list: %s", out.Dropped)
 	}
 }
+
+// TestAStalePeerIsToldToLogInAgain is the restart case, observed live on
+// 2026-08-28: the master restarted, the peer kept sending keepalives to a
+// registry that no longer held it, and every one was dropped in silence. The
+// network was dead for the minute it took the peer's own timeout to fire.
+func TestAStalePeerIsToldToLogInAgain(t *testing.T) {
+	h := newHarness(t)
+	h.login(addrA)
+
+	// A new master, as if the process had restarted. The peer knows nothing
+	// about it and carries on as before.
+	restarted := newHarness(t)
+
+	out := restarted.send(hbp.Ping{RepeaterID: testID}, addrA)
+	if len(out.Responses) != 1 {
+		t.Fatalf("a stale keepalive produced %d responses; it must be answered so the peer re-logs in",
+			len(out.Responses))
+	}
+	msg, err := hbp.Parse(out.Responses[0].Payload)
+	if err != nil {
+		t.Fatalf("the answer is unparseable: %v", err)
+	}
+	nak, ok := msg.(hbp.Nak)
+	if !ok {
+		t.Fatalf("a stale keepalive was answered with %s, want MSTNAK", msg.Kind())
+	}
+	if nak.RepeaterID != testID {
+		t.Errorf("the NAK names repeater %d, want %d", nak.RepeaterID, testID)
+	}
+	if out.Dropped == "" {
+		t.Error("the keepalive was discarded without an explanation")
+	}
+	if restarted.m.Count() != 0 {
+		t.Error("answering a stale keepalive created a registration")
+	}
+
+	// And the peer can then log in again, which is the whole point.
+	restarted.login(addrA)
+	if restarted.m.Count() != 1 {
+		t.Error("the peer could not re-register after being told to")
+	}
+}
+
+// TestStaleVoiceFramesAreNotAnswered is the measured half of the same
+// decision. Voice arrives at roughly one frame every 60 ms, so answering each
+// would put hundreds of datagrams on the wire for one transmission. The
+// keepalive is the peer's own liveness check and is enough.
+func TestStaleVoiceFramesAreNotAnswered(t *testing.T) {
+	h := newHarness(t)
+	for seq := uint8(0); seq < 5; seq++ {
+		out := h.send(voice(3121001, 0xEEEE, seq), addrA)
+		if len(out.Responses) != 0 {
+			t.Fatalf("a stale voice frame produced %d responses; only keepalives are answered",
+				len(out.Responses))
+		}
+		if out.Dropped == "" {
+			t.Error("a stale voice frame was discarded without an explanation")
+		}
+	}
+}

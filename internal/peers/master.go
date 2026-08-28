@@ -373,7 +373,24 @@ func (m *Master) handleConfig(msg hbp.Config, from netip.AddrPort, now time.Time
 func (m *Master) handlePing(msg hbp.Ping, from netip.AddrPort, now time.Time) Outcome {
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
-		return dropped("keepalive from repeater ID %d at %s, which is not registered", msg.RepeaterID, from)
+		// **Tell it to log in again rather than dropping in silence.**
+		//
+		// This is the case after a master restart: the peer's registration is
+		// gone, the peer does not know, and it keeps sending keepalives into
+		// nothing. Dropping them costs a minute of dead network on every
+		// deploy, because the peer only re-logs in when its own timeout fires.
+		// MSTNAK is exactly the message for it — docs/architecture has always
+		// said it both refuses a login and tells a stale peer to log in again,
+		// and only the first half was used.
+		//
+		// Only keepalives are answered this way. A stale peer also sends voice
+		// frames, at roughly one every 60 ms, and answering each would put five
+		// hundred datagrams on the wire for one transmission. A keepalive
+		// arrives every ten seconds and is the peer's own liveness check, which
+		// makes it the right place to say "you are not registered here".
+		return m.reject(msg.RepeaterID, from,
+			fmt.Sprintf("keepalive from repeater ID %d at %s, which is not registered; "+
+				"answered with MSTNAK so it logs in again", msg.RepeaterID, from))
 	}
 	if !p.State.CanPassTraffic() {
 		return dropped("keepalive from repeater ID %d while %s", msg.RepeaterID, p.State)
