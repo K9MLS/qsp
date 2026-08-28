@@ -244,6 +244,7 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		ConsoleAssets:       assets,
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
+		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Join:                joinSettings(cfg),
 	})
 	if err != nil {

@@ -74,6 +74,21 @@ All notable changes to QSP. Dates are UTC.
   destinations the list would have allowed.
 
 ### Fixed
+- **The console told operators forwarding was off while it was relaying.** The
+  notice was static markup with no condition on it, so it rendered
+  unconditionally — a soak instance that had been repeating for eleven hours
+  displayed it the whole time. `/api/peers` now reports `forwarding`, and the
+  notice and the Last heard caption follow it.
+
+  The Overview text was stale in the same way: it described QSP as relaying
+  "between bridged talkgroups on a schedule", which was the whole model before
+  ADR-0019 and has not been since. It now leads with peers on a talkgroup
+  hearing each other, and treats bridges as the additional thing they are.
+
+  The documentation accuracy gate scans Markdown, so it could catch none of
+  this. Three stale claims in HTML and JavaScript, all describing a QSP that
+  stopped existing when the master learned to repeat.
+
 - **`internal/peers` claimed two things were absent that are built.** Its
   package doc said RPTCL could not be parsed and that a refused peer was
   dropped rather than answered — both true when it was written, both false

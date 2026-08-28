@@ -27,6 +27,8 @@
   var trafficBody = document.getElementById("traffic-body");
   var trafficNote = document.getElementById("traffic-note");
 
+  var routingEmpty = document.getElementById("routing-empty");
+
   var callsBody = document.getElementById("calls-body");
   var callsCount = document.getElementById("calls-count");
 
@@ -248,6 +250,32 @@
     );
   }
 
+  // callsCaption says what this instance does with what it hears.
+  //
+  // It was static text reading "Nothing is forwarded", which was true when
+  // written and became a lie the day the master learned to repeat. An
+  // instance that had been relaying for eleven hours still displayed it.
+  function callsCaption(payload) {
+    if (payload && payload.forwarding) {
+      return "Transmissions observed by this master, and relayed to other peers " +
+        "on the same talkgroup.";
+    }
+    return "Transmissions observed by this master. Nothing is forwarded.";
+  }
+
+  // showRouting reveals the forwarding-is-off notice only when it is true.
+  //
+  // The notice was unconditional markup. Hiding it when forwarding is on
+  // matters more than it sounds: an operator reading "Forwarding is off" on a
+  // working master will go looking for a fault that is not there.
+  function showRouting(payload) {
+    if (!routingEmpty) {
+      return;
+    }
+    var off = !payload || !payload.enabled || !payload.forwarding;
+    routingEmpty.style.display = off ? "" : "none";
+  }
+
   function renderCalls(payload) {
     if (!callsBody) {
       return;
@@ -291,7 +319,7 @@
 
     callsBody.innerHTML =
       '<div class="table-scroll"><table class="table">' +
-      "<caption>Transmissions observed by this master. Nothing is forwarded.</caption>" +
+      "<caption>" + callsCaption(payload) + "</caption>" +
       "<thead><tr>" +
       '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
       '<th scope="col">Slot</th><th scope="col">Duration</th>' +
@@ -308,6 +336,7 @@
         renderPeers(payload);
         renderCalls(payload);
         renderTraffic(payload);
+        showRouting(payload);
       })
       .catch(function () {
         if (trafficBody) {

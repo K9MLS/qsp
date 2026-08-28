@@ -119,10 +119,10 @@
   <main class="main" id="main">
     <h1 class="page__title">Overview</h1>
     <p class="page__lede">
-      QSP accepts DMR peers, observes their traffic, and relays it between
-      bridged talkgroups on a schedule. Forwarding and scheduling are configured
-      per instance and may be switched off; the panels below show what this
-      instance is actually doing.
+      QSP is a DMR master. Peers on a talkgroup hear each other, and bridges
+      additionally move traffic between talkgroups, on a schedule or on PTT.
+      Forwarding and scheduling are configured per instance and may be switched
+      off; the panels below show what this instance is actually doing.
     </p>
 
     <section class="panel" id="traffic" aria-labelledby="traffic-title" style="margin-bottom: var(--space-5)">
@@ -171,7 +171,8 @@
       </div>
     </section>
 
-    <section class="empty" aria-labelledby="routing-title" style="margin-top: var(--space-5)">
+    <section class="empty" id="routing-empty" aria-labelledby="routing-title"
+             style="margin-top: var(--space-5); display: none">
       <svg class="empty__icon" viewBox="0 0 32 32" fill="none" stroke="currentColor"
            stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
            aria-hidden="true" focusable="false">
@@ -181,8 +182,8 @@
       <h2 class="empty__title" id="routing-title">Forwarding is off</h2>
       <p class="empty__body">
         Transmissions above are observed and discarded, not relayed. Set
-        <code>dmr.forwarding</code> and configure at least one bridge to link
-        talkgroups between peers.
+        <code>dmr.forwarding</code> to let peers on a talkgroup hear each other;
+        bridges are additional, and link one talkgroup to another.
       </p>
     </section>
   </main>

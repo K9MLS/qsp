@@ -104,6 +104,13 @@ type peersResponse struct {
 	Enabled bool `json:"enabled"`
 	// Reason explains a disabled listener. Empty when enabled.
 	Reason string `json:"reason,omitempty"`
+	// Forwarding reports whether this instance relays traffic.
+	//
+	// It exists because the console cannot otherwise tell a master that is
+	// observing from one that is repeating, and it told the operator the wrong
+	// one: the banner was static markup that always said forwarding was off,
+	// including on an instance that had been repeating for eleven hours.
+	Forwarding bool `json:"forwarding"`
 	// Peers is the current list, ordered by ID. Never null.
 	Peers []PeerView `json:"peers"`
 	// Active are transmissions in progress right now. Never null.
@@ -139,6 +146,7 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Enabled = true
+	body.Forwarding = s.opts.Forwarding
 	if views := s.opts.Peers.PeerViews(now); len(views) > 0 {
 		body.Peers = views
 	}

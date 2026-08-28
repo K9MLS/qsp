@@ -52,6 +52,11 @@ type Options struct {
 	Peers PeerSource
 	// PeersDisabledReason explains a nil Peers, and is shown to the operator.
 	PeersDisabledReason string
+	// Forwarding reports whether this instance relays traffic, for the
+	// console. It is a plain bool rather than part of PeerSource because it is
+	// fixed at startup and asking the listener for it every poll would imply
+	// otherwise.
+	Forwarding bool
 	// Join supplies the connection details shown to a member onboarding a
 	// hotspot. The server does not read configuration itself, so the binary
 	// fills this in.
