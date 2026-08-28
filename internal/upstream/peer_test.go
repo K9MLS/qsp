@@ -100,6 +100,13 @@ func (m *fakeMaster) serve() {
 		switch v := msg.(type) {
 		case hbp.Login:
 			if refuse {
+				// staticcheck suggests hbp.Nak(v), which compiles only because
+				// RPTL and MSTNAK happen to share a shape today. They are
+				// distinct wire messages and the coincidence is not a
+				// contract; a conversion would silently start copying any
+				// field later added to both. Same reasoning as the Ping/Pong
+				// case in internal/peers.
+				//lint:ignore S1016 Login and Nak are distinct messages that share a shape by coincidence
 				reply = hbp.Nak{RepeaterID: v.RepeaterID}.Marshal()
 			} else {
 				reply = hbp.Ack{Payload: [4]byte{1, 2, 3, 4}}.Marshal()
