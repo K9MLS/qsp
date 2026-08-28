@@ -284,6 +284,32 @@ code are still unknown.
 Timeouts: an incomplete handshake expires after 30 s, a configured peer after
 60 s of silence — five missed keepalives at the observed 10 s interval.
 
+## DMRGateway blanks the announced position
+
+**A hotspot behind DMRGateway announces latitude and longitude of zero, and
+there is nothing QSP can do about it.**
+
+Observed on 2026-08-28 against a WPSD hotspot. `/etc/mmdvmhost` held
+`Latitude=33.1481` and `Longitude=-97.1201`; the `RPTC` arriving at QSP carried
+`0.000000` and `00.000000` in those fields, with the location text `Denton,
+EM13kd` intact immediately after them — which is also what confirms the field
+offsets, since a shifted layout would have corrupted the place name too.
+
+DMRGateway builds its own `RPTC` for each upstream rather than forwarding the
+one MMDVMHost produced. Setting `Enabled=1` in its `[Info]` block, with correct
+coordinates already present there, changed nothing across a service restart.
+
+Two consequences worth stating plainly:
+
+- **QSP's position handling is correct and its map will be empty for most WPSD
+  users**, because DMRGateway is the common configuration. A hotspot pointed
+  straight at a master, with no gateway in between, is the case where a position
+  arrives.
+- The Null Island rule in `internal/peers/position.go` was a guess when it was
+  written: 0,0 is what an unset field looks like rather than a place. This is
+  the hardware that confirms it. Without it, the first pin QSP ever drew would
+  have been in the Gulf of Guinea.
+
 ## Gaps
 
 | Gap | What would close it |
@@ -293,3 +319,4 @@ Timeouts: an incomplete handshake expires after 30 s, a configured peer after
 | `description` / `slots` split unverified | A hotspot configured for one timeslot |
 | `RPTO` options string | Capture a hotspot configured with options |
 | Trailer bytes uninterpreted | Correlate with MMDVMHost's reported BER/RSSI |
+| Whether any gateway forwards a position | A hotspot connected directly to a master, with no DMRGateway between. DMRGateway is known to blank it; nothing else has been tried |

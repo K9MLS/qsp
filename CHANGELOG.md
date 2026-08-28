@@ -126,6 +126,18 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **`docs/architecture/hbp-protocol.md` records that DMRGateway blanks the
+  announced position.** A WPSD hotspot with correct coordinates in
+  `/etc/mmdvmhost` sends `0.000000` and `00.000000` to QSP, because DMRGateway
+  builds its own `RPTC` per upstream rather than forwarding the one MMDVMHost
+  produced. Setting `Enabled=1` in its `[Info]` block, with the coordinates
+  already there, changed nothing.
+
+  So **the map will be empty for most WPSD users**, since DMRGateway is the
+  common configuration, and there is no QSP-side fix. That is worth knowing
+  before anyone relies on the map, and it is recorded rather than left looking
+  like something a later version might address.
+
 - **The map says why a peer has no pin.** "No peer has announced a position"
   read the same whether a hotspot sent nothing or sent something QSP refused,
   and those need different things done about them: the first is a hotspot nobody
