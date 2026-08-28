@@ -22,6 +22,26 @@
     "enabled": true,
     "listen_address": "0.0.0.0:62031",
     "password_file": "/var/lib/qsp/peer.pass",
+    "access": {
+      "registration": {
+        "mode": "deny",
+        "ids": []
+      },
+      "subscribers": {
+        "mode": "deny",
+        "ids": []
+      },
+      "talkgroups": {
+        "timeslot_1": {
+          "mode": "deny",
+          "ids": []
+        },
+        "timeslot_2": {
+          "mode": "deny",
+          "ids": []
+        }
+      }
+    },
     "peer_timeout": "60s",
     "login_timeout": "30s",
     "max_peers": 16,

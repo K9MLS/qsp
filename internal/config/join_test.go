@@ -10,6 +10,9 @@ import (
 func withJoin(tgs []JoinTalkgroup, bridges []Bridge) Config {
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "peer.pass"
 	c.DMR.Bridges = bridges
 	c.DMR.Join = Join{
@@ -143,6 +146,9 @@ func TestJoinRequiresNameAndNumber(t *testing.T) {
 func TestJoinIsOptional(t *testing.T) {
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "peer.pass"
 
 	if msg := problems(t, c); msg != "" {

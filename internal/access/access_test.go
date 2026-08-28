@@ -24,7 +24,7 @@ func TestZeroValuePermitsEverything(t *testing.T) {
 }
 
 func TestDenyWithNoEntriesPermitsEverything(t *testing.T) {
-	l, err := Parse(Talkgroup, ModeDeny, nil)
+	l, err := Parse("dmr.access.test", Talkgroup, ModeDeny, nil)
 	if err != nil {
 		t.Fatalf("deny with no entries should be accepted: %v", err)
 	}
@@ -34,7 +34,7 @@ func TestDenyWithNoEntriesPermitsEverything(t *testing.T) {
 }
 
 func TestPermitWithNoEntriesIsRefused(t *testing.T) {
-	_, err := Parse(Talkgroup, ModePermit, nil)
+	_, err := Parse("dmr.access.test", Talkgroup, ModePermit, nil)
 	if err == nil {
 		t.Fatal("permit with no entries refuses every station and must not be accepted silently")
 	}
@@ -46,11 +46,11 @@ func TestPermitWithNoEntriesIsRefused(t *testing.T) {
 }
 
 func TestPermitAndDeny(t *testing.T) {
-	permit, err := Parse(Talkgroup, ModePermit, []string{"9", "3100-3199"})
+	permit, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"9", "3100-3199"})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	deny, err := Parse(Talkgroup, ModeDeny, []string{"9", "3100-3199"})
+	deny, err := Parse("dmr.access.test", Talkgroup, ModeDeny, []string{"9", "3100-3199"})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -84,16 +84,16 @@ func TestPermitAndDeny(t *testing.T) {
 // that carry a talkgroup. One shared ceiling would refuse every hotspot.
 func TestRegistrationCeilingAdmitsHotspots(t *testing.T) {
 	const hotspot = "312100101" // a nine-digit hotspot ID
-	if _, err := Parse(Registration, ModePermit, []string{hotspot}); err != nil {
+	if _, err := Parse("dmr.access.test", Registration, ModePermit, []string{hotspot}); err != nil {
 		t.Fatalf("a registration list must accept a nine-digit hotspot ID: %v", err)
 	}
-	if _, err := Parse(Subscriber, ModePermit, []string{hotspot}); err == nil {
+	if _, err := Parse("dmr.access.test", Subscriber, ModePermit, []string{hotspot}); err == nil {
 		t.Fatal("a subscriber ID travels in 24 bits and cannot be nine digits; it must be refused")
 	}
-	if _, err := Parse(Talkgroup, ModePermit, []string{"16777215"}); err != nil {
+	if _, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"16777215"}); err != nil {
 		t.Fatalf("16777215 is the largest 24-bit value and must be accepted: %v", err)
 	}
-	if _, err := Parse(Talkgroup, ModePermit, []string{"16777216"}); err == nil {
+	if _, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"16777216"}); err == nil {
 		t.Fatal("16777216 does not fit in 24 bits and must be refused")
 	}
 }
@@ -118,7 +118,7 @@ func TestRejectedEntries(t *testing.T) {
 		{"above the ceiling", "99999999", "above the largest value"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := Parse(Talkgroup, ModePermit, []string{tc.entry})
+			_, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{tc.entry})
 			if err == nil {
 				t.Fatalf("%q was accepted", tc.entry)
 			}
@@ -127,7 +127,7 @@ func TestRejectedEntries(t *testing.T) {
 			}
 			// Every error names the setting, so it is actionable without
 			// reading the documentation. ADR-0012 set that precedent.
-			if !strings.Contains(err.Error(), Talkgroup.Setting()) {
+			if !strings.Contains(err.Error(), "dmr.access.test") {
 				t.Errorf("error for %q does not name the setting: %v", tc.entry, err)
 			}
 		})
@@ -137,7 +137,7 @@ func TestRejectedEntries(t *testing.T) {
 func TestBackwardsRangeIsNotSilentlySwapped(t *testing.T) {
 	// Swapping would accept a range the operator did not write. On a permit
 	// list the two readings differ by everything.
-	_, err := Parse(Talkgroup, ModePermit, []string{"3199-3100"})
+	_, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"3199-3100"})
 	if err == nil {
 		t.Fatal("a backwards range was accepted")
 	}
@@ -147,7 +147,7 @@ func TestBackwardsRangeIsNotSilentlySwapped(t *testing.T) {
 }
 
 func TestSurroundingWhitespaceIsTolerated(t *testing.T) {
-	l, err := Parse(Talkgroup, ModePermit, []string{"  9  ", "\t3100-3199\n"})
+	l, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"  9  ", "\t3100-3199\n"})
 	if err != nil {
 		t.Fatalf("a hand-edited file accumulates whitespace around entries: %v", err)
 	}
@@ -157,11 +157,11 @@ func TestSurroundingWhitespaceIsTolerated(t *testing.T) {
 }
 
 func TestBadMode(t *testing.T) {
-	if _, err := Parse(Talkgroup, "allow", []string{"9"}); err == nil {
+	if _, err := Parse("dmr.access.test", Talkgroup, "allow", []string{"9"}); err == nil {
 		t.Fatal(`"allow" is not a mode and must be refused`)
 	}
 	// An empty mode is the zero value and means deny.
-	l, err := Parse(Talkgroup, "", []string{"9"})
+	l, err := Parse("dmr.access.test", Talkgroup, "", []string{"9"})
 	if err != nil {
 		t.Fatalf("an empty mode should default to deny: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestOverlappingEntriesMerge(t *testing.T) {
 		{"a range of one", []string{"9-9"}, "9"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			l, err := Parse(Talkgroup, ModePermit, tc.entries)
+			l, err := Parse("dmr.access.test", Talkgroup, ModePermit, tc.entries)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
@@ -200,11 +200,11 @@ func TestOverlappingEntriesMerge(t *testing.T) {
 // diffed. A document QSP has loaded and re-saved must be one the operator still
 // recognises, and must not drift on each save.
 func TestEntriesRoundTrip(t *testing.T) {
-	first, err := Parse(Talkgroup, ModePermit, []string{"3100-3199", "9", "91"})
+	first, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"3100-3199", "9", "91"})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	second, err := Parse(Talkgroup, ModePermit, first.Entries())
+	second, err := Parse("dmr.access.test", Talkgroup, ModePermit, first.Entries())
 	if err != nil {
 		t.Fatalf("reparsing what Entries produced failed: %v", err)
 	}
@@ -231,7 +231,7 @@ func TestPermissive(t *testing.T) {
 		{"permit the whole range", ModePermit, []string{"1-16777215"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			l, err := Parse(Talkgroup, tc.mode, tc.entries)
+			l, err := Parse("dmr.access.test", Talkgroup, tc.mode, tc.entries)
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
@@ -246,7 +246,7 @@ func TestPermissive(t *testing.T) {
 // An operator who writes out the whole range has said what they mean, and the
 // startup check is about silence rather than about the resulting behaviour.
 func TestPermitEverythingByRangeIsNotPermissive(t *testing.T) {
-	l, err := Parse(Talkgroup, ModePermit, []string{"1-16777215"})
+	l, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"1-16777215"})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -273,11 +273,11 @@ func TestAdvisories(t *testing.T) {
 		{"a subscriber is not checked", Subscriber, "3121001", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			l, err := Parse(tc.kind, ModePermit, []string{tc.entry})
+			l, err := Parse("dmr.access.test", tc.kind, ModePermit, []string{tc.entry})
 			if err != nil {
 				t.Fatalf("parse: %v", err)
 			}
-			got := l.Advisories(tc.kind)
+			got := l.Advisories("dmr.access.registration", tc.kind)
 			if (len(got) > 0) != tc.want {
 				t.Errorf("advisories for %s %q = %v, want any = %v", tc.kind, tc.entry, got, tc.want)
 			}
@@ -289,14 +289,14 @@ func TestAdvisories(t *testing.T) {
 // a registry convention rather than a rule of the protocol, so a list that
 // trips one still parses and still works.
 func TestAdvisoriesAreNotErrors(t *testing.T) {
-	l, err := Parse(Registration, ModePermit, []string{"3121001"})
+	l, err := Parse("dmr.access.test", Registration, ModePermit, []string{"3121001"})
 	if err != nil {
 		t.Fatalf("an advisory must not become an error: %v", err)
 	}
 	if !l.Allows(3121001) {
 		t.Error("an entry that trips an advisory must still be honoured")
 	}
-	if len(l.Advisories(Registration)) == 0 {
+	if len(l.Advisories("dmr.access.registration", Registration)) == 0 {
 		t.Error("expected an advisory for a seven-digit registration entry")
 	}
 }
@@ -306,7 +306,7 @@ func TestString(t *testing.T) {
 	if got := zero.String(); got != "permit everything" {
 		t.Errorf("the zero value renders as %q", got)
 	}
-	l, err := Parse(Talkgroup, ModePermit, []string{"9", "3100-3199"})
+	l, err := Parse("dmr.access.test", Talkgroup, ModePermit, []string{"9", "3100-3199"})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -315,11 +315,59 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestSettingIsNamedForEveryKind(t *testing.T) {
-	for _, k := range []Kind{Registration, Subscriber, Talkgroup} {
-		if !strings.HasPrefix(k.Setting(), "access") {
-			t.Errorf("kind %d names setting %q, which does not point at the access block", k, k.Setting())
+func TestZeroListsPermitEverything(t *testing.T) {
+	var l Lists
+	if !l.Permissive() {
+		t.Error("the zero Lists does not report itself permissive, so the startup check would not fire")
+	}
+	for _, ts := range []int{1, 2} {
+		if !l.Talkgroups(ts).Allows(3100) {
+			t.Errorf("the zero Lists refused a talkgroup on timeslot %d", ts)
 		}
+	}
+	if !l.Registration.Allows(312100) || !l.Subscriber.Allows(3121001) {
+		t.Error("the zero Lists refused a registration or a subscriber")
+	}
+}
+
+func TestListsTalkgroupsPerTimeslot(t *testing.T) {
+	one, err := Parse("dmr.access.talkgroups.timeslot_1", Talkgroup, ModePermit, []string{"9"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	two, err := Parse("dmr.access.talkgroups.timeslot_2", Talkgroup, ModePermit, []string{"3100"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	l := Lists{Talkgroup1: one, Talkgroup2: two}
+
+	if !l.Talkgroups(1).Allows(9) || l.Talkgroups(1).Allows(3100) {
+		t.Error("timeslot 1 is not using its own list")
+	}
+	if !l.Talkgroups(2).Allows(3100) || l.Talkgroups(2).Allows(9) {
+		t.Error("timeslot 2 is not using its own list")
+	}
+	if l.Permissive() {
+		t.Error("a set with a configured list is not permissive")
+	}
+	// An unrecognised timeslot is a protocol problem, refused where protocol
+	// problems are refused rather than disguised as an access decision.
+	if !l.Talkgroups(3).Allows(9) {
+		t.Error("an unrecognised timeslot should get a permissive list, not a refusal")
+	}
+}
+
+// TestErrorsNameTheFieldTheyCameFrom is why the field is threaded through: the
+// talkgroup lists are per timeslot, so an error saying only "talkgroups" would
+// not tell the operator which of the two to edit.
+func TestErrorsNameTheFieldTheyCameFrom(t *testing.T) {
+	const field = "dmr.access.talkgroups.timeslot_2"
+	_, err := Parse(field, Talkgroup, ModePermit, []string{"nope"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.HasPrefix(err.Error(), field) {
+		t.Errorf("the error does not lead with the field: %v", err)
 	}
 }
 
@@ -329,7 +377,7 @@ func FuzzParse(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, entry string) {
 		for _, kind := range []Kind{Registration, Subscriber, Talkgroup} {
-			l, err := Parse(kind, ModePermit, []string{entry})
+			l, err := Parse("dmr.access.test", kind, ModePermit, []string{entry})
 			if err != nil {
 				continue
 			}
@@ -337,7 +385,7 @@ func FuzzParse(f *testing.F) {
 			// must round-trip.
 			l.Allows(0)
 			l.Allows(kind.Ceiling())
-			again, err := Parse(kind, ModePermit, l.Entries())
+			again, err := Parse("dmr.access.test", kind, ModePermit, l.Entries())
 			if err != nil {
 				t.Fatalf("%q parsed but its own Entries() did not: %v", entry, err)
 			}

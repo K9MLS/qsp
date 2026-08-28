@@ -108,13 +108,50 @@ Then in the configuration:
 "dmr": {
   "enabled": true,
   "listen_address": "0.0.0.0:62031",
-  "password_file": "/etc/qsp/peer.pass"
+  "password_file": "/etc/qsp/peer.pass",
+  "access": {
+    "registration": {"mode": "deny", "ids": []}
+  }
 }
 ```
 
 The password is a **file path, never a value** — configuration is versioned,
 exported and diffed, and a secret in it would land in all three. See
 [ADR-0012](docs/adr/ADR-0012-peer-password-file.md).
+
+### Access control
+
+**A listener on an address reachable from beyond this host must have an
+`access` block, or QSP refuses to start.** The block above is the permissive
+one: deny nobody, so everything is permitted. It exists so that permitting
+everything is something an operator wrote down rather than something that
+happened, and so it appears in a diff.
+
+Four lists decide who is carried. Each has a `mode` of `permit`, which refuses
+anything not named, or `deny`, which allows anything not named. An entry is an
+ID or an inclusive range.
+
+```json
+"access": {
+  "registration": {"mode": "permit", "ids": ["312100", "312100101"]},
+  "subscribers":  {"mode": "deny",   "ids": []},
+  "talkgroups": {
+    "timeslot_1": {"mode": "permit", "ids": ["3100-3199"]},
+    "timeslot_2": {"mode": "permit", "ids": ["9", "91"]}
+  }
+}
+```
+
+`registration` names repeater IDs permitted to log in — six digits for a
+repeater, nine for a hotspot using an operator's ID and a two-digit suffix.
+`subscribers` names radio IDs permitted to transmit, and refusing one does not
+disconnect the hotspot carrying it. `talkgroups` names what is carried on each
+timeslot, checked both when a frame arrives and again for each peer it would
+reach, so that traffic from a bridge or a link is subject to the same list.
+
+**QSP ships no network's talkgroup numbers.** They differ between networks, and
+a list copied into this repository would be stale within the week. The lists are
+yours to write. See [ADR-0020](docs/adr/ADR-0020-access-control.md).
 
 ### Bridging talkgroups
 

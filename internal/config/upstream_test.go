@@ -23,6 +23,9 @@ func validUpstream() Upstream {
 func withUpstreams(us ...Upstream) Config {
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "peer.pass"
 	c.DMR.Upstreams = us
 	return c
@@ -182,6 +185,9 @@ func TestUpstreamRejectsNegativeStaleAfter(t *testing.T) {
 func TestUpstreamsAreOptional(t *testing.T) {
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "peer.pass"
 
 	if msg := upstreamProblems(t, c); msg != "" {

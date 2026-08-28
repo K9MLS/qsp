@@ -109,6 +109,61 @@ type DMR struct {
 	Schedule []Window `json:"schedule"`
 	// Upstreams are links to other DMR networks over OpenBridge.
 	Upstreams []Upstream `json:"upstreams"`
+	// Access decides which repeaters may register, which subscribers may
+	// transmit, and which talkgroups are carried on each timeslot.
+	//
+	// **Its absence is meaningful, which is why it is a pointer.** An empty
+	// block and no block at all behave identically — both permit everything —
+	// but only the operator who wrote a block has said that is what they
+	// meant. A listener reachable from beyond this host with no block at all
+	// refuses to start. See docs/adr/ADR-0020-access-control.md.
+	Access *Access `json:"access,omitempty"`
+}
+
+// Access holds the four lists that decide who QSP carries.
+//
+// Each list permits everything when absent, so an empty Access is exactly as
+// permissive as no Access. What differs is that writing one is a statement of
+// intent, and the startup check is about silence rather than about behaviour.
+type Access struct {
+	// Registration names the repeater IDs permitted to register.
+	Registration ACL `json:"registration"`
+	// Subscribers names the subscriber IDs permitted to transmit.
+	//
+	// A refused subscriber does not disconnect the peer carrying it. On DMR a
+	// hotspot is shared infrastructure and the offending party is a radio.
+	Subscribers ACL `json:"subscribers"`
+	// Talkgroups names the talkgroups carried, per timeslot.
+	Talkgroups Talkgroups `json:"talkgroups"`
+}
+
+// Talkgroups holds one list per DMR timeslot.
+//
+// The two are separate because repeaters are configured per slot, and an
+// operator who carries a statewide talkgroup on one slot and local traffic on
+// the other cannot express that with a single list.
+type Talkgroups struct {
+	Timeslot1 ACL `json:"timeslot_1"`
+	Timeslot2 ACL `json:"timeslot_2"`
+}
+
+// ACL is one access control list.
+//
+// The zero value permits everything: "deny" naming nobody refuses nobody. That
+// is what lets an absent block behave exactly as QSP did before access control
+// existed, so that upgrading cannot silently disconnect a running club.
+type ACL struct {
+	// Mode is "permit" or "deny". Empty means "deny".
+	//
+	// A permit list refuses anything it does not name; a deny list allows
+	// anything it does not name.
+	Mode string `json:"mode"`
+	// IDs are single IDs ("3100") or inclusive ranges ("3100-3199").
+	//
+	// Ranges are strings rather than objects because every list is hand-edited
+	// until the admin interface exists, a real talkgroup list is mostly ranges,
+	// and this is what an operator arriving from HBlink already types.
+	IDs []string `json:"ids"`
 }
 
 // Upstream is a link to another DMR server over OpenBridge.
@@ -383,6 +438,10 @@ func Default() Config {
 			Bridges:       nil,
 			Triggers:      nil,
 			Schedule:      nil,
+			// Nil, not an empty block. The listener is off by default, so
+			// nothing is exposed; when an operator enables it on a reachable
+			// address, the absence is what makes QSP ask them to decide.
+			Access: nil,
 		},
 	}
 }
@@ -784,6 +843,8 @@ func (c Config) Validate() error {
 		"use 256; this is how many events a reconnecting console client can replay")
 	v.positive("events.subscriber_buffer", c.Events.SubscriberBuffer,
 		"use 64; a client exceeding this is marked lagged and resynchronises")
+
+	c.validateAccess(v)
 
 	if len(v.errs) == 0 {
 		return nil

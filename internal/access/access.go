@@ -34,20 +34,17 @@ const (
 	Talkgroup
 )
 
-// Setting returns the configuration field this list is loaded from.
-func (k Kind) Setting() string {
+func (k Kind) String() string {
 	switch k {
 	case Registration:
-		return "access.registration"
+		return "registration"
 	case Subscriber:
-		return "access.subscribers"
+		return "subscriber"
 	case Talkgroup:
-		return "access.talkgroups"
+		return "talkgroup"
 	}
-	return "access"
+	return "unknown"
 }
-
-func (k Kind) String() string { return k.Setting() }
 
 // Ceiling is the largest ID this list can hold, taken from the width of the
 // field the ID travels in rather than from any network's conventions.
@@ -102,14 +99,18 @@ type List struct {
 // Whitespace around an entry is tolerated because a hand-edited JSON file
 // accumulates it; whitespace inside one is not, since "3100 - 3199" more often
 // means a mistake than a preference.
-func Parse(kind Kind, mode Mode, entries []string) (List, error) {
+//
+// field is the configuration path this list was read from, and appears at the
+// front of every error so that the operator is told which line to edit. The
+// talkgroup lists are per timeslot, so the path cannot be derived from the kind.
+func Parse(field string, kind Kind, mode Mode, entries []string) (List, error) {
 	switch mode {
 	case "", ModeDeny:
 		mode = ModeDeny
 	case ModePermit:
 	default:
 		return List{}, fmt.Errorf("%s: mode is %q; it must be %q or %q",
-			kind.Setting(), mode, ModePermit, ModeDeny)
+			field, mode, ModePermit, ModeDeny)
 	}
 
 	if mode == ModePermit && len(entries) == 0 {
@@ -117,12 +118,12 @@ func Parse(kind Kind, mode Mode, entries []string) (List, error) {
 		// configures that deliberately, and discovering it by having the
 		// network go silent is a poor way to find out.
 		return List{}, fmt.Errorf("%s: mode is %q with no entries, which refuses every station; "+
-			`use {"mode": "deny", "ids": []} to permit everything`, kind.Setting(), ModePermit)
+			`use {"mode": "deny", "ids": []} to permit everything`, field, ModePermit)
 	}
 
 	spans := make([]span, 0, len(entries))
 	for _, raw := range entries {
-		s, err := parseEntry(kind, raw)
+		s, err := parseEntry(field, kind, raw)
 		if err != nil {
 			return List{}, err
 		}
@@ -132,23 +133,23 @@ func Parse(kind Kind, mode Mode, entries []string) (List, error) {
 	return List{mode: mode, spans: merge(spans)}, nil
 }
 
-func parseEntry(kind Kind, raw string) (span, error) {
+func parseEntry(field string, kind Kind, raw string) (span, error) {
 	entry := strings.TrimSpace(raw)
 	if entry == "" {
-		return span{}, fmt.Errorf("%s: an entry is empty; each entry is an ID or a range such as \"3100-3199\"", kind.Setting())
+		return span{}, fmt.Errorf("%s: an entry is empty; each entry is an ID or a range such as \"3100-3199\"", field)
 	}
 
 	lo, hi, isRange := strings.Cut(entry, "-")
 	if !isRange {
-		id, err := parseID(kind, entry, entry)
+		id, err := parseID(field, kind, entry, entry)
 		return span{lo: id, hi: id}, err
 	}
 
-	low, err := parseID(kind, lo, entry)
+	low, err := parseID(field, kind, lo, entry)
 	if err != nil {
 		return span{}, err
 	}
-	high, err := parseID(kind, hi, entry)
+	high, err := parseID(field, kind, hi, entry)
 	if err != nil {
 		return span{}, err
 	}
@@ -157,31 +158,31 @@ func parseEntry(kind Kind, raw string) (span, error) {
 		// write, and the two readings differ by a great deal when the list
 		// is a permit list.
 		return span{}, fmt.Errorf("%s: range %q runs backwards; write it as %d-%d",
-			kind.Setting(), entry, high, low)
+			field, entry, high, low)
 	}
 	return span{lo: low, hi: high}, nil
 }
 
-func parseID(kind Kind, field, entry string) (uint32, error) {
-	if field == "" {
-		return 0, fmt.Errorf("%s: range %q is missing a number on one side", kind.Setting(), entry)
+func parseID(field string, kind Kind, num, entry string) (uint32, error) {
+	if num == "" {
+		return 0, fmt.Errorf("%s: range %q is missing a number on one side", field, entry)
 	}
 	// ParseUint accepts a leading plus and underscores; neither belongs in a
 	// radio ID, and accepting them would mean two spellings of one value in a
 	// document that is versioned and diffed.
-	for _, r := range field {
+	for _, r := range num {
 		if r < '0' || r > '9' {
 			return 0, fmt.Errorf("%s: %q is not a number; entries are digits, optionally as a range such as \"3100-3199\"",
-				kind.Setting(), entry)
+				field, entry)
 		}
 	}
-	id, err := strconv.ParseUint(field, 10, 64)
+	id, err := strconv.ParseUint(num, 10, 64)
 	if err != nil || id > uint64(kind.Ceiling()) {
 		return 0, fmt.Errorf("%s: %s is above the largest value this field can carry (%d)",
-			kind.Setting(), field, kind.Ceiling())
+			field, num, kind.Ceiling())
 	}
 	if id == 0 {
-		return 0, fmt.Errorf("%s: 0 is not a valid station", kind.Setting())
+		return 0, fmt.Errorf("%s: 0 is not a valid station", field)
 	}
 	return uint32(id), nil
 }
@@ -282,7 +283,7 @@ func (l List) String() string {
 // underlying value is a flat 24-bit number and nothing enforces the structure —
 // so QSP says what it noticed and carries on. Refusing on a convention would
 // make QSP wrong the day the convention changed.
-func (l List) Advisories(kind Kind) []string {
+func (l List) Advisories(field string, kind Kind) []string {
 	if kind != Registration {
 		return nil
 	}
@@ -298,14 +299,55 @@ func (l List) Advisories(kind Kind) []string {
 			out = append(out, fmt.Sprintf(
 				"%s names %d, a seven-digit ID: the registry issues those to operators, "+
 					"while repeaters register with six digits and hotspots with a "+
-					"seven-digit ID plus a two-digit suffix", kind.Setting(), s.lo))
+					"seven-digit ID plus a two-digit suffix", field, s.lo))
 		case 8:
 			out = append(out, fmt.Sprintf(
 				"%s names %d, an eight-digit ID: a hotspot suffix is two digits, so this is "+
-					"most likely a nine-digit ID with one missing", kind.Setting(), s.lo))
+					"most likely a nine-digit ID with one missing", field, s.lo))
 		}
 	}
 	return out
 }
 
 func digits(id uint32) int { return len(strconv.FormatUint(uint64(id), 10)) }
+
+// Lists is the full set QSP evaluates: who may register, who may transmit, and
+// which talkgroups are carried on each timeslot.
+//
+// **The zero value permits everything**, for the same reason a zero List does.
+// It is a value rather than a pointer so that a caller cannot hold a nil set by
+// accident and skip the checks without noticing.
+type Lists struct {
+	Registration List
+	Subscriber   List
+	// Talkgroup1 and Talkgroup2 are separate fields rather than a map keyed by
+	// timeslot, because this is consulted per destination per frame and a map
+	// lookup on that path buys nothing over two fields.
+	Talkgroup1 List
+	Talkgroup2 List
+}
+
+// Talkgroups returns the list governing a timeslot.
+//
+// An unrecognised timeslot gets a permissive list rather than a refusal. A
+// frame whose timeslot QSP does not recognise is a protocol problem and is
+// refused where protocol problems are refused; silently swallowing it here
+// would hide it behind an access decision it has nothing to do with.
+func (l Lists) Talkgroups(timeslot int) List {
+	switch timeslot {
+	case 1:
+		return l.Talkgroup1
+	case 2:
+		return l.Talkgroup2
+	}
+	return List{}
+}
+
+// Permissive reports whether every list permits everything.
+//
+// This is what the startup check consults: an instance reachable from beyond
+// its host, with nothing configured, is the case ADR-0020 refuses to start.
+func (l Lists) Permissive() bool {
+	return l.Registration.Permissive() && l.Subscriber.Permissive() &&
+		l.Talkgroup1.Permissive() && l.Talkgroup2.Permissive()
+}

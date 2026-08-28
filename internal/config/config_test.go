@@ -300,6 +300,9 @@ func TestForwardingWithoutBridgesIsRejected(t *testing.T) {
 	// never comes.
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
 	c.DMR.Forwarding = true
 
@@ -316,6 +319,9 @@ func TestBridgeValidation(t *testing.T) {
 	base := func() Config {
 		c := Default()
 		c.DMR.Enabled = true
+		// An empty block is the deliberate permit-everything of ADR-0020: the
+		// operator has said so, which is what the startup check is about.
+		c.DMR.Access = &Access{}
 		c.DMR.PasswordFile = "/etc/qsp/peer.pass"
 		return c
 	}
@@ -363,6 +369,9 @@ func TestBridgeValidation(t *testing.T) {
 func TestBridgesRoundTripThroughJSON(t *testing.T) {
 	c := Default()
 	c.DMR.Enabled = true
+	// An empty block is the deliberate permit-everything of ADR-0020: the
+	// operator has said so, which is what the startup check is about.
+	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
 	c.DMR.Forwarding = true
 	c.DMR.Bridges = []Bridge{{

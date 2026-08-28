@@ -33,7 +33,24 @@ All notable changes to QSP. Dates are UTC.
   an error, because the registry's numbering is a convention and not a rule of
   the protocol.
 
-  Not yet wired into `config`, `peers` or `routing`.
+  Not yet enforced: `peers` and `routing` do not consult the lists yet.
+
+- **The `access` block in the configuration**, with validation that names the
+  exact field — including which timeslot — so an error points at the line to
+  edit rather than at the block.
+
+### Changed
+- **A DMR listener on an address reachable from beyond its host now refuses to
+  start without an `access` block.** This is a breaking change for any instance
+  bound to `0.0.0.0` or a LAN address, which is most of them.
+
+  The fix is one line, and the validation error contains it: an empty `"access":
+  {}`, or the `{"registration": {"mode": "deny", "ids": []}}` the message
+  suggests, both mean deny nobody and permit everything — exactly the behaviour
+  of 0.1.9. What changes is that permitting everything is now something an
+  operator wrote down, in a document that is versioned and diffed, rather than
+  something that happened silently. A listener on loopback is unaffected, and so
+  is a disabled one.
 
 ## [0.1.9] — 2026-08-27
 
