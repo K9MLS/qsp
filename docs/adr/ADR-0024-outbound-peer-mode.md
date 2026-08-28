@@ -18,6 +18,11 @@ from the other end — `RPTL`, `RPTK` with the digest, `RPTC` with the station's
 configuration, then `RPTPING` for as long as the link lasts. Nothing new has to
 be decoded.
 
+*State machine built 2026-08-28* in `internal/protocol/homebrew`, pure and
+clock-injected like `peers.Master`, so reconnection and every timeout are
+testable without a network. The transport that drives it is not written, and
+neither is the wiring into routing.
+
 **This record exists mostly for two things that are not the protocol**: the
 configuration shape, which the admin interface has to be built around, and a
 constraint on where the capability may be pointed.

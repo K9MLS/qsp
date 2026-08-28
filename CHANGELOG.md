@@ -126,6 +126,28 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The outbound link state machine**, `internal/protocol/homebrew`. QSP has
+  spoken the master side of this handshake since phase 1; this is the same
+  conversation from the other end, which is what reaches XLX, DMR+, IPSC2 and
+  another QSP.
+
+  It is pure and clock-injected like `peers.Master`, so reconnection, backoff
+  and every timeout are testable without a network — and the events that matter
+  most are the ones that happen when *nothing* arrives, which a test driven only
+  by incoming datagrams never reaches.
+
+  **A link that has never connected and a link that has dropped are different
+  things** and read differently, because the first is usually a wrong password
+  and the second is usually the network. Backoff doubles and is bounded, and
+  resets only on a completed handshake — resetting it earlier would let a link
+  that authenticates and then fails at the configuration step retry at the
+  minimum delay forever. Frames are dropped rather than queued while
+  disconnected: one arriving after the transmission it belonged to had ended is
+  worse than one that never arrives.
+
+  Eighteen tests and a fuzz target; 1.3 million executions found nothing. **The
+  transport that drives it is not written**, so nothing connects anywhere yet.
+
 - **[ADR-0024](docs/adr/ADR-0024-outbound-peer-mode.md) decides outbound peer
   mode**, the last structural gap in ADR-0019's model, and its configuration is
   accepted now so the admin interface can be built against a schema that will
