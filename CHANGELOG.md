@@ -18,6 +18,42 @@ All notable changes to QSP. Dates are UTC.
   restart after a configuration change counts, and a number with no note beside
   it cannot be told from a crash at day fourteen.
 
+## [Unreleased]
+
+### Added
+- **The master repeats.** A group call on a talkgroup now reaches every other
+  peer on that talkgroup and timeslot, with no bridge involved. Four hotspots on
+  TG 9 hearing each other — the thing a DMR network is for — had no
+  configuration in QSP until now. See
+  [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
+
+  Repeat is on by default and switched off with `NoRepeat`, because a master
+  that does not repeat is inert and nobody wants one by accident.
+
+  Ten tests, including a hundred hotspots on one talkgroup, contention between
+  two simultaneous talkers, one copy per peer when a talkgroup is also bridged,
+  and that private calls are not broadcast.
+
+### Fixed
+- **A contention hole found while building repeat.** Deduplicating a delivery
+  also skipped its reservation, so a destination reached by both a bridge and
+  repeat looked free to the next transmission and two people's audio could
+  interleave on it. The reservation is now taken whether or not a second copy is
+  sent.
+- **`TestUnbridgedTrafficIsNotRelayed` asserted the bug.** It expected a
+  talkgroup no bridge covers to reach nobody. It is now
+  `TestUnbridgedTrafficIsRepeatedToOtherPeers` and checks the opposite over real
+  sockets.
+
+### Changed
+- Four routing tests had expectations that the new model supersedes, each
+  updated with the reason stated: reservation counts include repeat, a nil table
+  still repeats, and a disabled bridge stops traffic crossing to another
+  talkgroup without stopping peers hearing each other.
+- The schedule and PTT gating tests now build their core with `NoRepeat`,
+  because they measure bridge gating and repeat would deliver regardless —
+  correctly, since a closed window closes a bridge and not a talkgroup.
+
 ## [0.1.8] — 2026-08-27
 
 OpenBridge, end to end.

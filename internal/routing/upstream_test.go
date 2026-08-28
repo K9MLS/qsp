@@ -68,14 +68,14 @@ func TestLocalTrafficReachesTheUpstream(t *testing.T) {
 			up.Frame.SourceID)
 	}
 
-	// No local deliveries, and that is correct rather than a gap. The local
-	// endpoint is AnyPeer on TG 3148, which is what the transmitting peer is
-	// already on, and a call is never sent back where it came from. Peers on a
-	// shared talkgroup hear each other through the master repeating, not
-	// through this bridge.
-	if len(res.Deliveries) != 0 {
-		t.Errorf("local deliveries were %v; a bridge should not echo a call to its own talkgroup",
-			res.Deliveries)
+	// The other local peer hears it, because the master repeats TG 3148 — not
+	// because the bridge carries it. That is ADR-0019's layer 1, and before it
+	// existed this assertion was for zero deliveries.
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("%d local deliveries, want 1: peers on a talkgroup hear each other", len(res.Deliveries))
+	}
+	if got := res.Deliveries[0].Peer; got != 3132911 {
+		t.Errorf("repeated to peer %d, want 3132911", got)
 	}
 }
 

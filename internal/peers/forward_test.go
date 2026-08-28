@@ -156,7 +156,13 @@ func TestTrafficIsRelayedBetweenTwoRealPeers(t *testing.T) {
 }
 
 // TestUnbridgedTrafficIsNotRelayed.
-func TestUnbridgedTrafficIsNotRelayed(t *testing.T) {
+// TestUnbridgedTrafficIsRepeatedToOtherPeers, over real sockets.
+//
+// This test used to assert the opposite, and asserting it was the bug: a
+// talkgroup no bridge covers was expected to reach nobody. Two hotspots on one
+// master, one transmitting, the other hearing it, is what a DMR network is for
+// — and it needs no bridge. See docs/adr/ADR-0019-master-repeats.md.
+func TestUnbridgedTrafficIsRepeatedToOtherPeers(t *testing.T) {
 	l := startForwarding(t)
 	addr := l.Address()
 
@@ -170,12 +176,25 @@ func TestUnbridgedTrafficIsNotRelayed(t *testing.T) {
 		StreamID: 0x1234, Trailing: []byte{0, 0},
 	})
 
-	receiver.silence(300 * time.Millisecond)
-	if s := l.Stats(); s.Forwarded != 0 {
-		t.Errorf("forwarded = %d, want 0 for an unbridged talkgroup", s.Forwarded)
+	msg := receiver.recv()
+	got, ok := msg.(hbp.Data)
+	if !ok {
+		t.Fatalf("the second hotspot received %s, want a DMRD frame", msg.Kind())
 	}
-	if s := l.Stats(); s.Frames != 1 {
-		t.Errorf("frames accepted = %d, want 1: the frame is accepted, just not relayed", s.Frames)
+	if got.TargetID != 31673 {
+		t.Errorf("repeated on TG %d, want 31673 — the talkgroup it arrived on", got.TargetID)
+	}
+	if got.Timeslot != hbp.Timeslot1 {
+		t.Errorf("repeated on %s, want TS1", got.Timeslot)
+	}
+	if got.SourceID != 3132910 {
+		t.Errorf("the originating radio's ID became %d", got.SourceID)
+	}
+	if got.RepeaterID != peerTwo {
+		t.Errorf("frame carries repeater ID %d, want it rewritten to %d", got.RepeaterID, peerTwo)
+	}
+	if s := l.Stats(); s.Forwarded != 1 {
+		t.Errorf("forwarded = %d, want 1", s.Forwarded)
 	}
 }
 
@@ -273,7 +292,14 @@ func TestScheduleGatesForwarding(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)
 	}
-	core, err := routing.NewCore(routing.CoreOptions{Table: closed, Peers: readyFromMaster{m: master}})
+	// NoRepeat because this test is about the bridge being gated, not about the
+	// master's own repeat behaviour. Repeat would deliver on TG 3148 whatever
+	// the schedule said — correctly, since a closed window closes a bridge and
+	// not a talkgroup — and would drown the signal this test is looking for.
+	// internal/routing/repeat_test.go covers repeat itself.
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: closed, Peers: readyFromMaster{m: master}, NoRepeat: true,
+	})
 	if err != nil {
 		t.Fatalf("NewCore: %v", err)
 	}
@@ -382,7 +408,14 @@ func TestPTTOpensTheBridgeAndCarriesTheOpeningFrame(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewTable: %v", err)
 	}
-	core, err := routing.NewCore(routing.CoreOptions{Table: closed, Peers: readyFromMaster{m: master}})
+	// NoRepeat because this test is about the bridge being gated, not about the
+	// master's own repeat behaviour. Repeat would deliver on TG 3148 whatever
+	// the schedule said — correctly, since a closed window closes a bridge and
+	// not a talkgroup — and would drown the signal this test is looking for.
+	// internal/routing/repeat_test.go covers repeat itself.
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: closed, Peers: readyFromMaster{m: master}, NoRepeat: true,
+	})
 	if err != nil {
 		t.Fatalf("NewCore: %v", err)
 	}

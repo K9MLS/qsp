@@ -243,18 +243,20 @@ func TestAbandonedTransmissionReleasesAfterTimeout(t *testing.T) {
 		t.Fatalf("NewCore: %v", err)
 	}
 
-	// Two reservations: the destination, and the transmission's own origin.
+	// Three reservations: the origin, the bridged destination, and the peer
+	// the master repeats to on the same talkgroup. Repeat takes reservations
+	// like any other destination — see ADR-0019.
 	c.Route(peerA, voiceFrame(0x5555, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0)
-	if c.BusyCount() != 2 {
-		t.Fatalf("busy = %d, want 2 (origin plus destination)", c.BusyCount())
+	if c.BusyCount() != 3 {
+		t.Fatalf("busy = %d, want 3 (origin, bridged destination, repeat)", c.BusyCount())
 	}
 
 	if freed := c.Expire(t0.Add(900 * time.Millisecond)); len(freed) != 0 {
 		t.Fatalf("released early: %v", freed)
 	}
 	freed := c.Expire(t0.Add(1100 * time.Millisecond))
-	if len(freed) != 2 {
-		t.Fatalf("released %d endpoints, want 2", len(freed))
+	if len(freed) != 3 {
+		t.Fatalf("released %d endpoints, want 3 (origin, bridged destination, repeat)", len(freed))
 	}
 	if c.BusyCount() != 0 {
 		t.Error("a destination is still reserved after the timeout")
@@ -288,8 +290,8 @@ func TestConfigurationChangeDoesNotCutOffAnActiveTransmission(t *testing.T) {
 	c := newCore(t, simpleBridge(t), peerA, peerB)
 
 	c.Route(peerA, voiceFrame(0x8888, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0)
-	if c.BusyCount() != 2 {
-		t.Fatalf("busy = %d, want 2 (origin plus destination)", c.BusyCount())
+	if c.BusyCount() != 3 {
+		t.Fatalf("busy = %d, want 3 (origin, bridged destination, repeat)", c.BusyCount())
 	}
 
 	// The operator disables the bridge mid-transmission.
@@ -300,25 +302,62 @@ func TestConfigurationChangeDoesNotCutOffAnActiveTransmission(t *testing.T) {
 		},
 	}))
 
-	if c.BusyCount() != 2 {
+	if c.BusyCount() != 3 {
 		t.Error("in-flight reservations were discarded by a configuration change")
 	}
-	// New frames follow the new table.
+
+	// New frames follow the new table: nothing crosses the disabled bridge.
+	//
+	// The master still repeats, and that is not the bridge carrying traffic.
+	// Disabling a bridge stops TG 3148 reaching TG 91; it does not stop peers
+	// on TG 3148 hearing each other, which is the master's own job and is
+	// switched off with dmr.forwarding rather than with a bridge.
 	res := c.Route(peerA, voiceFrame(0x8888, 3148, hbp.Timeslot1, hbp.FrameTypeVoice), t0.Add(60*time.Millisecond))
-	if len(res.Deliveries) != 0 {
-		t.Error("the disabled bridge kept carrying traffic")
+	for _, d := range res.Deliveries {
+		if d.Frame.TargetID != 3148 {
+			t.Errorf("the disabled bridge carried traffic to TG %d", d.Frame.TargetID)
+		}
 	}
 }
 
-// TestNilTableRoutesNothingButExplains.
-func TestNilTableRoutesNothingButExplains(t *testing.T) {
+// TestNilTableStillRepeats is the club case, and the one QSP could not express
+// before ADR-0019.
+//
+// A master with no bridges configured at all is the ordinary starting point: a
+// club stands one up, members point hotspots at it, and they talk to each other
+// on one talkgroup. That must work without anybody writing a routing rule.
+func TestNilTableStillRepeats(t *testing.T) {
 	c := newCore(t, nil, peerA, peerB)
+
+	res := c.Route(peerA, voiceFrame(0x9999, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("%d deliveries with no bridges, want 1 — peers on a talkgroup must hear each other (%s)",
+			len(res.Deliveries), res.Reason)
+	}
+	if got := res.Deliveries[0].Peer; got != peerB {
+		t.Errorf("delivered to peer %d, want %d", got, peerB)
+	}
+	if got := res.Deliveries[0].Frame.TargetID; got != 3148 {
+		t.Errorf("repeated on TG %d, want the talkgroup it arrived on, 3148", got)
+	}
+}
+
+// TestNoRepeatRoutesNothingWithoutBridges. A master that does not repeat is a
+// deliberate choice, and it explains itself rather than falling silent.
+func TestNoRepeatRoutesNothingWithoutBridges(t *testing.T) {
+	c, err := routing.NewCore(routing.CoreOptions{
+		Peers: peersReady(peerA, peerB), NoRepeat: true,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
 	res := c.Route(peerA, voiceFrame(0x9999, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0)
 	if len(res.Deliveries) != 0 {
-		t.Error("a nil table delivered frames")
+		t.Error("a core with repeat off and no bridges delivered frames")
 	}
 	if res.Reason == "" {
-		t.Error("a nil table gave no reason")
+		t.Error("nothing was delivered and no reason was given")
 	}
 }
 

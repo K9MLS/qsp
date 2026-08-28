@@ -175,12 +175,32 @@ the constraint. The UDP send path is untested at that rate.
 hundred, an admin needs to know which callsign belongs to which member and how
 to remove someone. Nothing addresses that today.
 
+## 7a. The layers, and which exist
+
+Recorded after [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
+
+| Layer | What it is | State |
+|---|---|---|
+| **1. Repeat** | a group call reaches every other peer on the same talkgroup | **built 2026-08-27** |
+| **2. Access control** | which talkgroups, which repeaters, which subscribers | missing |
+| **3. Subscription** | which peers receive which talkgroups | schedule and triggers exist; per-peer attachment does not |
+| **4. Bridging** | connect this master to other systems | built, including OpenBridge |
+| **5. Outbound peer** | connect *out* to XLX, DMR+, IPSC2, another QSP | missing |
+
+QSP built layer 4 first and mistook it for the model. Layer 1 — four hotspots on
+TG 9 hearing each other — had no configuration until it was built.
+
+**Layer 2 is now the most pressing gap.** With repeat on and no access control,
+every peer receives every talkgroup any peer transmits on. That is workable for
+a club and is not workable on the open internet.
+
 ## 8. Where the build actually is
 
 | | |
 |---|---|
 | Protocol (HBP) | **done, hardware-validated** — 556 live frames, 0 dropped |
-| Relay between peers | **done** — verified over real sockets, and at 100 peers |
+| Repeat within a talkgroup | **done 2026-08-27** — verified over real sockets and at 100 peers |
+| Bridged relay between talkgroups | done — verified over real sockets, and at 100 peers |
 | Peer lifecycle, routing, scheduler, PTT | built and tested |
 | Member onboarding (`/api/join`, `/join`) | **done**, ungated |
 | Console | read-only, four panels, functional and plain |

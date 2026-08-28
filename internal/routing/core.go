@@ -45,6 +45,16 @@ type UpstreamDelivery struct {
 	Bridge string
 }
 
+// routeTarget is a destination and how it was chosen.
+//
+// Repeat and bridging differ in one rule — whether a call may return to the
+// peer that sent it — so the two cannot be flattened into one list of
+// endpoints.
+type routeTarget struct {
+	Endpoint
+	repeat bool
+}
+
 // Drop explains a frame that was not forwarded.
 //
 // Constitution §18 forbids silently dropping traffic. Every refusal produces
@@ -111,6 +121,8 @@ type sourceKey struct {
 // the socket, consistent with ADR-0002. The routing decision itself stays pure;
 // this type adds only the state that decision cannot have — what is in flight.
 type Core struct {
+	repeat bool
+
 	table   *Table
 	peers   PeerLookup
 	timeout time.Duration
@@ -125,6 +137,14 @@ type Core struct {
 
 // CoreOptions configures a Core.
 type CoreOptions struct {
+	// NoRepeat turns off the master's repeat behaviour.
+	//
+	// The zero value repeats, because a master that does not is inert and
+	// nobody wants one by accident. HBlink spells this the other way round,
+	// with REPEAT defaulting true in every published configuration; the
+	// negative here means an empty CoreOptions behaves correctly.
+	NoRepeat bool
+
 	// Table is the routing table. May be nil, meaning nothing is routed.
 	Table *Table
 	// Peers resolves destinations. Required.
@@ -143,6 +163,7 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		opts.Timeout = StreamTimeout
 	}
 	return &Core{
+		repeat:  !opts.NoRepeat,
 		table:   opts.Table,
 		peers:   opts.Peers,
 		timeout: opts.Timeout,
@@ -212,8 +233,35 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	from := origin.Peer
 	fromUpstream := origin.Upstream != ""
 	decision := c.table.Route(origin)
-	if !decision.Routed() {
-		return Result{Reason: decision.Reason}
+
+	// Repeat: the master's own job, and the reason a DMR network exists.
+	//
+	// A group call on TG X, TS Y is heard by every other peer on TG X, TS Y.
+	// No bridge is involved and none is needed — bridging moves traffic
+	// *between* talkgroups, which is a different and additional thing.
+	//
+	// QSP was built with bridging as its whole model and had no way to express
+	// four hotspots on one talkgroup hearing each other. See ADR-0019.
+	targets := make([]routeTarget, 0, len(decision.Targets)+1)
+	for _, t := range decision.Targets {
+		targets = append(targets, routeTarget{Endpoint: t})
+	}
+	if c.repeat && frame.CallType == hbp.CallGroup {
+		targets = append(targets, routeTarget{
+			Endpoint: Endpoint{
+				Peer:      AnyPeer,
+				Talkgroup: frame.TargetID,
+				Timeslot:  frame.Timeslot,
+			},
+			repeat: true,
+		})
+	}
+
+	if len(targets) == 0 {
+		if decision.Reason != "" {
+			return Result{Reason: decision.Reason}
+		}
+		return Result{Reason: "nothing is configured to carry this talkgroup"}
 	}
 
 	src := sourceKey{peer: from, stream: frame.StreamID, slot: frame.Timeslot}
@@ -254,22 +302,40 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	}
 
 	var res Result
-	for _, target := range decision.Targets {
+
+	// One copy per peer, whatever combination of repeat and bridges named it.
+	// A member on a talkgroup that is also bridged must not hear two of
+	// everything.
+	delivered := make(map[hbp.RepeaterID]bool, 8)
+
+	for _, target := range targets {
 		if target.Upstream != "" {
 			// The loop rule. See RouteFromUpstream.
 			if fromUpstream {
 				res.Drops = append(res.Drops, Drop{
-					To: target,
+					To: target.Endpoint,
 					Reason: fmt.Sprintf("arrived from upstream %s; a frame from a link is never "+
 						"sent to a link", origin.Upstream),
 				})
 				continue
 			}
-			c.deliverUpstream(&res, target, frame, src, bridge, now)
+			c.deliverUpstream(&res, target.Endpoint, frame, src, bridge, now)
 			continue
 		}
 
-		for _, peer := range c.resolve(target) {
+		for _, peer := range c.resolve(target.Endpoint) {
+			// Repeat never sends a call back to the peer that transmitted it:
+			// a hotspot hearing its own audio sounds exactly like a fault.
+			//
+			// Bridges are different and must not be given this rule. A member
+			// on TG 9 bridged to TG 91 should hear TG 91 on their own hotspot,
+			// including traffic they originated on TG 9 — that is the bridge
+			// working, and the table already excludes an endpoint identical to
+			// the origin.
+			if target.repeat && peer == from {
+				continue
+			}
+
 			dest := Endpoint{Peer: peer, Talkgroup: target.Talkgroup, Timeslot: target.Timeslot}
 
 			held, occupied := c.busy[dest]
@@ -306,6 +372,16 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 				out.Trailing = append([]byte(nil), frame.Trailing...)
 			}
 
+			// One copy per peer. A member whose talkgroup is also bridged must
+			// not hear two of everything.
+			//
+			// The reservation above is taken regardless, which matters: if
+			// deduplication skipped it, that destination would look free to the
+			// next transmission and two people's audio would interleave on it.
+			if delivered[peer] {
+				continue
+			}
+			delivered[peer] = true
 			res.Deliveries = append(res.Deliveries, Delivery{Peer: peer, Frame: out, Bridge: bridge})
 		}
 	}

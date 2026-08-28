@@ -83,6 +83,12 @@ type DMR struct {
 	// run QSP as a master and watch peers connect before it starts putting
 	// audio on anybody's repeater. Turning it on is the moment QSP stops
 	// observing and starts transmitting.
+	//
+	// With it on, the master **repeats**: a group call on a talkgroup reaches
+	// every other peer on that talkgroup and timeslot, with no bridge involved.
+	// That is the ordinary behaviour of a DMR network and needs no
+	// configuration. Bridges are additional, and move traffic *between*
+	// talkgroups. See docs/adr/ADR-0019-master-repeats.md.
 	Forwarding bool `json:"forwarding"`
 	// Join is what a club member needs in order to point a hotspot at this
 	// network. Optional: an empty Join means /api/join reports what it can and

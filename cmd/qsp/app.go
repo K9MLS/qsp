@@ -145,7 +145,7 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 			if err != nil {
 				return nil, err
 			}
-			log.Info("forwarding enabled",
+			log.Info("forwarding enabled; peers on a talkgroup hear each other",
 				slog.Int("bridges", len(cfg.DMR.Bridges)),
 				slog.Int("enabled_bridges", table.EnabledCount()),
 			)
