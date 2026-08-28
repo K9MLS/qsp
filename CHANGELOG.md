@@ -73,15 +73,23 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
-- **The console uses two columns on a wide screen.** Above 1280px, traffic,
-  connected peers, last heard and health fit on one screen without scrolling;
-  below it, nothing changes. Panels in a row size to their own content, so a
-  short peer list does not stretch to match a long call list.
+- **The console uses two columns on a wide screen.** Above 1280px, traffic and
+  connected peers take full rows and last heard sits beside health, so all four
+  fit on one screen without scrolling. Below it, nothing changes.
+
+- **Wide tables scroll instead of clipping.** `.table` was `width: 100%`, so a
+  table squeezed itself into whatever space it was given and the cells
+  overflowed instead — the scroll container never engaged and the panel's
+  `overflow: hidden` cut the text off. A peer's address rendered as `192.168.`
+  with no way to see the rest. Each scroll region is now reachable by keyboard
+  and named for a screen reader.
 
 - **The page description collapses.** It is read once and scrolled past
   forever, and it was occupying the top of a page an operator is monitoring. It
   stays in the markup and in the accessibility tree; it just no longer takes the
-  best space on the screen by default.
+  best space on the screen by default. A chevron marks it as openable, since
+  laying the summary out with flex suppresses the browser's own marker and it
+  rendered as plain text with nothing to say it could be clicked.
 
 - **The console's panels are separated from the page.** Surface and background
   differed by 1.09:1, which is not a difference anyone can see, so a column of

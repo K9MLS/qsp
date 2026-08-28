@@ -210,13 +210,14 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  /* Traffic is a strip of metrics and reads better wide. Health is a long
-     table and belongs under the live panels rather than beside them. The
-     heading, the description and the forwarding notice are page-level. */
+  /* Traffic is a strip of metrics and reads better wide. Connected peers
+     carries an address column and is the widest table here, so it takes a full
+     row rather than being made to scroll sideways for one field. Last heard and
+     health both hold short values and sit together below. */
   .main > .page__title,
   .main > .lede,
   .main > #traffic,
-  .main > #health,
+  .main > #peers,
   .main > #routing-empty {
     grid-column: 1 / -1;
   }
@@ -252,6 +253,25 @@ body {
   color: var(--color-foreground-muted);
   font-size: var(--text-sm);
   transition: color var(--duration-fast) var(--ease-out-expo);
+  /* display:flex suppresses the default disclosure marker, so the summary
+     rendered as plain text with nothing to say it could be opened. The
+     chevron below replaces it. */
+  list-style: none;
+}
+
+.lede__summary::-webkit-details-marker {
+  display: none;
+}
+
+.lede__chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.lede[open] .lede__chevron {
+  transform: rotate(90deg);
 }
 
 .lede__summary:hover {
@@ -455,10 +475,25 @@ body {
 
 .table-scroll {
   overflow-x: auto;
+  /* A keyboard user must be able to reach a scrollable region, and a region
+     that scrolls needs an accessible name for a screen reader to announce. */
+  scrollbar-width: thin;
+}
+
+.table-scroll:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 
 .table {
-  width: 100%;
+  /* **min-width, not width.** With width:100% the table squeezed itself into
+     whatever space it was given and the cells overflowed instead, so the scroll
+     container never engaged and the panel's overflow:hidden simply cut the text
+     off — a peer's address rendered as "192.168." with no way to see the rest.
+     Sizing to content means the table overflows, which is the thing
+     .table-scroll exists to handle. */
+  min-width: 100%;
+  width: max-content;
   border-collapse: collapse;
   font-size: var(--text-sm);
 }

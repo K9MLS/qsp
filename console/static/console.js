@@ -101,7 +101,7 @@
     }
 
     healthBody.innerHTML =
-      '<div class="table-scroll"><table class="table">' +
+      '<div class="table-scroll" tabindex="0" role="group" aria-label="Health, scrollable"><table class="table">' +
       "<caption>Every subsystem reports its own verdict. " +
       "Unavailable names the phase that brings it.</caption>" +
       "<thead><tr>" +
@@ -236,7 +236,7 @@
     }
 
     peersBody.innerHTML =
-      '<div class="table-scroll"><table class="table">' +
+      '<div class="table-scroll" tabindex="0" role="group" aria-label="Connected peers, scrollable"><table class="table">' +
       "<caption>Peers currently registered with this master.</caption>" +
       "<thead><tr>" +
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
@@ -400,7 +400,7 @@
     }
 
     callsBody.innerHTML =
-      '<div class="table-scroll"><table class="table">' +
+      '<div class="table-scroll" tabindex="0" role="group" aria-label="Last heard, scrollable"><table class="table">' +
       "<caption>" + callsCaption(payload) + "</caption>" +
       "<thead><tr>" +
       '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
