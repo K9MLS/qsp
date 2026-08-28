@@ -39,6 +39,20 @@ All notable changes to QSP. Dates are UTC.
   exact field — including which timeslot — so an error points at the line to
   edit rather than at the block.
 
+- **[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md)**, which states
+  a commercial DMR server's architecture in a commercial DMR server's own vocabulary, maps it onto QSP's
+  layers, and says where the line is today. QSP is ahead on scheduling, on the
+  repeat model and on being free; behind on access control, per-peer
+  subscription, and being administrable without SSH.
+
+  It also names three things a commercial DMR server parity does not cover: outbound peer
+  mode, which is the single largest gap by reach and is what would let QSP
+  dial XLX, DMR+ or IPSC2 rather than only accept connections; IPSC, which is
+  what makes QSP a drop-in for clubs running Motorola repeaters rather than a
+  reason to replace them; and data calls, which sit outside the layer model
+  entirely because the layers describe where a frame goes and data is a
+  question of what a frame is.
+
 ### Changed
 - **A DMR listener on an address reachable from beyond its host now refuses to
   start without an `access` block.** This is a breaking change for any instance
