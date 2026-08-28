@@ -51,6 +51,9 @@ type MasterConfig struct {
 	LoginTimeout time.Duration
 	// MaxPeers bounds the registry. Zero selects DefaultMaxPeers.
 	MaxPeers int
+	// SubscriberTimeout is how long a radio's location is trusted after it was
+	// last heard. Zero selects DefaultSubscriberTimeout.
+	SubscriberTimeout time.Duration
 	// Access decides which repeaters may register and which subscribers may
 	// transmit.
 	//
@@ -134,6 +137,9 @@ type Master struct {
 	cfg   MasterConfig
 	log   *slog.Logger
 	peers map[hbp.RepeaterID]*Peer
+	// subscribers maps a radio ID to where it was last heard. Learned from
+	// traffic, never configured; see subscribers.go.
+	subscribers map[uint32]*Location
 }
 
 // NewMaster constructs a Master.
@@ -150,6 +156,9 @@ func NewMaster(log *slog.Logger, cfg MasterConfig) (*Master, error) {
 	if cfg.MaxPeers <= 0 {
 		cfg.MaxPeers = DefaultMaxPeers
 	}
+	if cfg.SubscriberTimeout <= 0 {
+		cfg.SubscriberTimeout = DefaultSubscriberTimeout
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -157,9 +166,10 @@ func NewMaster(log *slog.Logger, cfg MasterConfig) (*Master, error) {
 		cfg.Salt = randomSalt
 	}
 	return &Master{
-		cfg:   cfg,
-		log:   logging.Subsystem(log, "peers"),
-		peers: make(map[hbp.RepeaterID]*Peer),
+		cfg:         cfg,
+		log:         logging.Subsystem(log, "peers"),
+		peers:       make(map[hbp.RepeaterID]*Peer),
+		subscribers: make(map[uint32]*Location),
 	}, nil
 }
 
@@ -447,6 +457,12 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 	}
 	p.refused = refusedStream{}
 
+	// Remember where this radio is, after the access check rather than before.
+	// A subscriber refused permission to transmit must not become reachable as
+	// a private call destination — ADR-0021 wanted one list governing both, and
+	// the order of these two lines is how that happens.
+	m.observe(msg.SourceID, p.ID, msg.Timeslot, now)
+
 	frame := msg
 	return Outcome{Data: &frame, From: p.ID}
 }
@@ -533,6 +549,13 @@ func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome
 // because a half-open registration holds a slot without providing service.
 func (m *Master) Expire() []Event {
 	now := m.cfg.Now().UTC()
+
+	for _, loc := range m.expireSubscribers(now) {
+		m.log.Debug("forgot where a radio is",
+			slog.Uint64("subscriber", uint64(loc.Subscriber)),
+			slog.String("idle", loc.Idle(now).Truncate(time.Second).String()),
+		)
+	}
 
 	var stale []hbp.RepeaterID
 	for id, p := range m.peers {

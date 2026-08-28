@@ -54,6 +54,15 @@ every accepted frame and aged out on a timeout. It belongs beside the peer
 registry, which already owns per-peer state and is already single-writer under
 ADR-0002.
 
+*Built 2026-08-28.* `Master.Locate` answers the routing question and
+`Master.Locations` the operator one; they differ deliberately, since a radio
+whose peer has left is still worth showing and is not somewhere a call can be
+sent. The observation happens after the subscriber access check rather than
+before, which is how one list ends up governing both transmission and
+reachability. `dmr.subscriber_timeout` defaults to two hours: a working shift,
+and a guess informed by nothing but plausibility, which is why it is a field
+rather than a constant.
+
 **2. The layer model gains no layer.** Private calls are not a sixth layer;
 they are the same question — *who else should hear this?* — with a different
 kind of answer. Repeat resolves a talkgroup to every other peer on it; a private

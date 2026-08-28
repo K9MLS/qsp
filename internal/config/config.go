@@ -77,6 +77,14 @@ type DMR struct {
 	LoginTimeout Duration `json:"login_timeout"`
 	// MaxPeers bounds the registry.
 	MaxPeers int `json:"max_peers"`
+	// SubscriberTimeout is how long a radio's location is trusted after it was
+	// last heard.
+	//
+	// It is deliberately far longer than peer_timeout, because the two answer
+	// different questions. A peer that stops sending keepalives is gone; a
+	// radio that stops transmitting is merely quiet, and quiet is a radio's
+	// normal state.
+	SubscriberTimeout Duration `json:"subscriber_timeout"`
 	// Forwarding turns audio relaying on.
 	//
 	// It is separate from Enabled, and off by default, so that an operator can
@@ -434,10 +442,14 @@ func Default() Config {
 			PeerTimeout:   Duration(60 * time.Second),
 			LoginTimeout:  Duration(30 * time.Second),
 			MaxPeers:      200,
-			Forwarding:    false,
-			Bridges:       nil,
-			Triggers:      nil,
-			Schedule:      nil,
+			// Two hours: a working shift. Long enough that a private call to
+			// somebody who spoke this morning still reaches them, short enough
+			// that it does not follow them to yesterday's hotspot.
+			SubscriberTimeout: Duration(2 * time.Hour),
+			Forwarding:        false,
+			Bridges:           nil,
+			Triggers:          nil,
+			Schedule:          nil,
 			// Nil, not an empty block. The listener is off by default, so
 			// nothing is exposed; when an operator enables it on a reachable
 			// address, the absence is what makes QSP ask them to decide.
@@ -611,6 +623,10 @@ func (c Config) Validate() error {
 			"use \"30s\"; this bounds how long an unfinished login may hold a slot")
 		v.positive("dmr.max_peers", c.DMR.MaxPeers,
 			"use 200; this bounds memory and the size of a routing decision")
+		v.positiveDuration("dmr.subscriber_timeout", c.DMR.SubscriberTimeout,
+			"use \"2h\"; this is how long a radio's location is trusted after it last "+
+				"transmitted, and is much longer than peer_timeout because a quiet radio "+
+				"is not a departed one")
 
 		names := make(map[string]bool, len(c.DMR.Bridges))
 		for i, b := range c.DMR.Bridges {

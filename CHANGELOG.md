@@ -73,6 +73,26 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **QSP now knows where radios are**, the prerequisite
+  [ADR-0021](docs/adr/ADR-0021-private-calls-and-data.md) named for private
+  calls and radio-to-radio text. A private call's destination is a radio rather
+  than a talkgroup, and a radio's whereabouts is a property of where somebody is
+  standing, so it is learned from traffic and never configured.
+
+  The newest sighting wins with no confirmation step: a radio moving between
+  hotspots is somebody driving, and preferring the older record would send calls
+  to the hotspot they have just left. `dmr.subscriber_timeout` defaults to two
+  hours, far longer than `peer_timeout`, because a peer that stops sending
+  keepalives is gone while a radio that stops transmitting is merely quiet.
+
+  A radio refused by the subscriber access list is not recorded, so it does not
+  become reachable as a private call destination — one list governing both, as
+  ADR-0021 asked. A radio whose peer has since disconnected is listed but not
+  routable, since routing to a departed peer would be silence with no
+  explanation.
+
+  Ten tests. **Nothing routes on this yet**; private call routing is next.
+
 ### Fixed
 - **A master restart cost a minute of dead network.** QSP dropped keepalives
   from a peer it no longer had a registration for, in silence, so the peer only

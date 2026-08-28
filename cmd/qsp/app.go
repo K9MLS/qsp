@@ -297,6 +297,9 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		LoginTimeout: cfg.DMR.LoginTimeout.AsDuration(),
 		MaxPeers:     cfg.DMR.MaxPeers,
 		Access:       lists,
+		// Where radios are, learned from traffic. Nothing routes on it yet;
+		// see docs/adr/ADR-0021-private-calls-and-data.md.
+		SubscriberTimeout: cfg.DMR.SubscriberTimeout.AsDuration(),
 	})
 	if err != nil {
 		return nil, "", err

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/access"
 )
@@ -352,5 +353,54 @@ func TestAccessKindsCoverEveryList(t *testing.T) {
 		if l.Permissive() {
 			t.Errorf("the %s list was configured but came through permissive", name)
 		}
+	}
+}
+
+// TestSubscriberTimeoutIsValidatedAndDefaulted covers the setting that decides
+// how long a radio's location is trusted. It is separate from peer_timeout on
+// purpose: a quiet radio is not a departed peer.
+func TestSubscriberTimeoutIsValidatedAndDefaulted(t *testing.T) {
+	if got := Default().DMR.SubscriberTimeout.AsDuration(); got != 2*time.Hour {
+		t.Errorf("the default subscriber timeout is %s, want 2h", got)
+	}
+	// It must be much longer than the peer timeout, or a private call to
+	// somebody who spoke a few minutes ago would fail for no visible reason.
+	if Default().DMR.SubscriberTimeout <= Default().DMR.PeerTimeout {
+		t.Error("the subscriber timeout is not longer than the peer timeout")
+	}
+
+	c := enabledDMR()
+	c.DMR.SubscriberTimeout = 0
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a zero subscriber timeout was accepted")
+	}
+	var found bool
+	for _, fe := range err.(*ValidationError).Errors {
+		if fe.Field == "dmr.subscriber_timeout" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("want an error on dmr.subscriber_timeout, got %v", err.(*ValidationError).Fields())
+	}
+}
+
+// TestAConfigurationWithoutSubscriberTimeoutStillLoads is the upgrade
+// guarantee. Load starts from Default and decodes over it, so a document
+// written before the field existed keeps the default rather than failing
+// validation with a zero — which would stop every existing instance starting.
+func TestAConfigurationWithoutSubscriberTimeoutStillLoads(t *testing.T) {
+	const doc = `{
+	  "version": 1,
+	  "dmr": {"enabled": true, "password_file": "peer.pass",
+	          "access": {"registration": {"mode": "deny", "ids": []}}}
+	}`
+	got, err := Load(strings.NewReader(doc))
+	if err != nil {
+		t.Fatalf("a configuration predating subscriber_timeout failed to load: %v", err)
+	}
+	if got.DMR.SubscriberTimeout.AsDuration() != 2*time.Hour {
+		t.Errorf("the omitted field is %s, want the 2h default", got.DMR.SubscriberTimeout)
 	}
 }
