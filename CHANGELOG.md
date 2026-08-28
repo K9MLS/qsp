@@ -126,6 +126,30 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **[ADR-0024](docs/adr/ADR-0024-outbound-peer-mode.md) decides outbound peer
+  mode**, the last structural gap in ADR-0019's model, and its configuration is
+  accepted now so the admin interface can be built against a schema that will
+  not move. **The protocol is not written yet**, and an enabled homebrew link
+  refuses startup with a message saying so rather than being handed to the
+  OpenBridge builder or silently skipped.
+
+  It is a `protocol` option on the existing `upstreams` block rather than a new
+  one, because an upstream is already "a link to another network" and how it is
+  carried is not what it is for. An absent protocol means OpenBridge, so every
+  existing document keeps meaning what it meant.
+
+  **It must not be pointed at BrandMeister.**
+  [ADR-0018](docs/adr/ADR-0018-openbridge.md) records that their operators
+  define peer bridging as prohibited and ask that nobody build software without
+  an onboard radio that impersonates those protocols. A capability existing is
+  not permission to use it where its use has been refused, and this does not
+  shorten the wait for a bridge. QSP does not enforce it: detecting one
+  network's addresses would mean carrying their hostnames in the codebase, which
+  is what §0 refused for talkgroup lists and for the same reasons.
+
+  What it does reach is XLX, DMR+, IPSC2 — and another QSP, which lets two clubs
+  link directly without either asking a third party for anything.
+
 - **Peers attach talkgroups, which is layer 3.**
   [ADR-0023](docs/adr/ADR-0023-talkgroup-subscription.md). Repeat sent every
   talkgroup to every peer, so a member sitting on their local talkgroup had a

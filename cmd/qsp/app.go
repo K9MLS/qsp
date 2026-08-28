@@ -800,9 +800,21 @@ func upstreamSender(links *upstream.Set) peers.UpstreamSender {
 func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hbp.Data)) (*upstream.Set, error) {
 	var enabled []config.Upstream
 	for _, u := range cfg.DMR.Upstreams {
-		if u.Enabled {
-			enabled = append(enabled, u)
+		if !u.Enabled {
+			continue
 		}
+		// The schema for outbound peer mode is decided (ADR-0024) and the
+		// protocol is not written yet. Refusing at startup is the honest
+		// answer: handing a homebrew link to the OpenBridge builder would
+		// construct something that speaks the wrong protocol at the far end,
+		// and silently skipping it would leave an operator watching for
+		// traffic on a link QSP never attempted.
+		if u.HomebrewProtocol() {
+			return nil, fmt.Errorf("upstream %q: outbound peer mode is not implemented yet; "+
+				"its configuration is accepted so it can be written down, but the link "+
+				"cannot be enabled. See docs/adr/ADR-0024-outbound-peer-mode.md", u.Name)
+		}
+		enabled = append(enabled, u)
 	}
 	if len(enabled) == 0 {
 		return nil, nil

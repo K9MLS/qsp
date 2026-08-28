@@ -33,3 +33,4 @@ conclusion.
 | [0021](ADR-0021-private-calls-and-data.md) | Private calls and data are in scope, and share one missing thing | Proposed |
 | [0022](ADR-0022-timeslot-contention.md) | Contention belongs to the timeslot, not the talkgroup | Proposed |
 | [0023](ADR-0023-talkgroup-subscription.md) | Peers attach talkgroups, and mostly attach them by talking | Proposed |
+| [0024](ADR-0024-outbound-peer-mode.md) | Outbound peer mode, and the network it must not be used against | Proposed |

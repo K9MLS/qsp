@@ -135,3 +135,64 @@ func reachableBeyondHost(listen string) bool {
 	}
 	return !addr.IsLoopback()
 }
+
+// HomebrewProtocol reports whether this link logs into another master as a peer
+// rather than bridging over OpenBridge.
+//
+// An empty protocol is OpenBridge, so a document written before outbound peer
+// mode existed keeps meaning what it meant.
+func (u Upstream) HomebrewProtocol() bool {
+	return strings.EqualFold(strings.TrimSpace(u.Protocol), UpstreamHomebrew)
+}
+
+// validateHomebrewUpstream checks a link that logs into another master.
+//
+// It needs different things from an OpenBridge link: an address and a password,
+// no listen address, and an identity, because the far end shows that identity to
+// its own users. See ADR-0024.
+func (c Config) validateHomebrewUpstream(v *validator, field string, u Upstream, localPeers map[uint32]bool) {
+	if u.RepeaterID == 0 {
+		v.add(field+".repeater_id", "must not be 0 for a homebrew link",
+			"use the DMR ID this link should present; it is what the far end registers")
+	} else if localPeers[u.RepeaterID] {
+		// One ID meaning two stations would make a private call to it routable
+		// to two places, which surfaces as intermittent misrouting rather than
+		// as an error.
+		v.add(field+".repeater_id",
+			fmt.Sprintf("%d is also used by a locally configured peer", u.RepeaterID),
+			"give the link its own DMR ID; one ID cannot mean two stations")
+	}
+
+	if strings.TrimSpace(u.PasswordFile) == "" {
+		v.add(field+".password_file", "must not be empty when a homebrew link is enabled",
+			"create a file containing the login password for the far end, mode 0600, and give "+
+				"its path here; the password is never stored in this configuration")
+	}
+
+	if u.Identity == nil || strings.TrimSpace(u.Identity.Callsign) == "" {
+		// A blank callsign appears on the far end's dashboard as an
+		// unidentified station.
+		v.add(field+".identity.callsign", "must not be empty for a homebrew link",
+			"the far end shows this to its own users; use the callsign of the station "+
+				"responsible for this link")
+	}
+
+	if u.Identity != nil {
+		if cc := u.Identity.ColourCode; cc < 0 || cc > 15 {
+			v.add(field+".identity.colour_code", fmt.Sprintf("is %d; DMR colour codes are 0 to 15", cc),
+				"use the colour code the far end expects, or leave it out")
+		}
+		if ts := u.Identity.Timeslots; ts != 0 && ts != 1 && ts != 2 {
+			v.add(field+".identity.timeslots", fmt.Sprintf("is %d; DMR has one or two", ts),
+				"use 2 for a duplex link, 1 for simplex, or leave it out")
+		}
+		if lat := u.Identity.Latitude; lat < -90 || lat > 90 {
+			v.add(field+".identity.latitude", fmt.Sprintf("is %g, outside -90 to 90", lat),
+				"use decimal degrees, or leave it out")
+		}
+		if lon := u.Identity.Longitude; lon < -180 || lon > 180 {
+			v.add(field+".identity.longitude", fmt.Sprintf("is %g, outside -180 to 180", lon),
+				"use decimal degrees, or leave it out")
+		}
+	}
+}

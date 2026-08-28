@@ -1,8 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 // validUpstream is a link an administrator would plausibly write.
@@ -192,5 +194,196 @@ func TestUpstreamsAreOptional(t *testing.T) {
 
 	if msg := upstreamProblems(t, c); msg != "" {
 		t.Errorf("a configuration with no upstreams was rejected:\n%s", msg)
+	}
+}
+
+// Outbound peer mode. See ADR-0024.
+
+func homebrewUpstream() Upstream {
+	return Upstream{
+		Name:         "xlx950",
+		Protocol:     "homebrew",
+		Enabled:      true,
+		Address:      "xlx950.example.org:62030",
+		RepeaterID:   3132910,
+		PasswordFile: "/var/lib/qsp/xlx950.pass",
+		Identity:     &UpstreamIdentity{Callsign: "K9MLS"},
+		Export:       []UpstreamTalkgroup{{Talkgroup: 9, Timeslot: 2}},
+		Import:       []UpstreamTalkgroup{{Talkgroup: 9, Timeslot: 2}},
+	}
+}
+
+// TestAnEmptyProtocolIsOpenBridge is the upgrade guarantee. Every document
+// written before outbound peer mode must keep meaning what it meant.
+func TestAnEmptyProtocolIsOpenBridge(t *testing.T) {
+	var u Upstream
+	if u.HomebrewProtocol() {
+		t.Error("an unset protocol was read as homebrew")
+	}
+	if !(Upstream{Protocol: "openbridge"}).HomebrewProtocol() == false {
+		t.Error("openbridge was read as homebrew")
+	}
+	if !(Upstream{Protocol: "HomeBrew"}).HomebrewProtocol() {
+		t.Error("the protocol comparison is case sensitive; a hand-edited file will not match")
+	}
+}
+
+func TestHomebrewUpstreamIsAccepted(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	c.DMR.Upstreams = []Upstream{homebrewUpstream()}
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a well-formed homebrew link was rejected: %v", err)
+	}
+}
+
+// TestHomebrewDoesNotNeedOpenBridgeFields. Requiring a listen address and a
+// passphrase of a link that uses neither would be asking an operator for
+// values that go nowhere.
+func TestHomebrewDoesNotNeedOpenBridgeFields(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	u := homebrewUpstream()
+	u.ListenAddress = ""
+	u.PassphraseFile = ""
+	u.NetworkID = 0
+	c.DMR.Upstreams = []Upstream{u}
+
+	if err := c.Validate(); err != nil {
+		t.Errorf("a homebrew link was asked for OpenBridge's fields: %v", err)
+	}
+}
+
+func TestHomebrewValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*Upstream)
+		field  string
+	}{
+		{"no repeater ID", func(u *Upstream) { u.RepeaterID = 0 },
+			"dmr.upstreams[0].repeater_id"},
+		{"no password file", func(u *Upstream) { u.PasswordFile = "" },
+			"dmr.upstreams[0].password_file"},
+		{"no identity", func(u *Upstream) { u.Identity = nil },
+			"dmr.upstreams[0].identity.callsign"},
+		{"blank callsign", func(u *Upstream) { u.Identity.Callsign = "  " },
+			"dmr.upstreams[0].identity.callsign"},
+		{"colour code 16", func(u *Upstream) { u.Identity.ColourCode = 16 },
+			"dmr.upstreams[0].identity.colour_code"},
+		{"three timeslots", func(u *Upstream) { u.Identity.Timeslots = 3 },
+			"dmr.upstreams[0].identity.timeslots"},
+		{"latitude off the planet", func(u *Upstream) { u.Identity.Latitude = 200 },
+			"dmr.upstreams[0].identity.latitude"},
+		{"longitude off the planet", func(u *Upstream) { u.Identity.Longitude = -300 },
+			"dmr.upstreams[0].identity.longitude"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := enabledDMR()
+			c.DMR.Access = &Access{}
+			u := homebrewUpstream()
+			tc.mutate(&u)
+			c.DMR.Upstreams = []Upstream{u}
+
+			err := c.Validate()
+			if err == nil {
+				t.Fatal("an invalid homebrew link was accepted")
+			}
+			var found bool
+			for _, fe := range err.(*ValidationError).Errors {
+				if fe.Field == tc.field {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("want an error on %s, got %v", tc.field, err.(*ValidationError).Fields())
+			}
+		})
+	}
+}
+
+// TestARepeaterIDCannotBeUsedTwice. One ID meaning two stations makes a private
+// call to it routable to two places, which shows up as intermittent misrouting
+// rather than as an error.
+func TestARepeaterIDCannotBeUsedTwice(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	c.DMR.Subscription = Subscription{
+		Enabled: true,
+		Timeout: Duration(time.Minute),
+		Static:  []StaticAttachment{{Peer: 3132910, Talkgroup: 9, Timeslot: 2}},
+	}
+	c.DMR.Upstreams = []Upstream{homebrewUpstream()} // also 3132910
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a link claimed a DMR ID a local peer already uses")
+	}
+	var found bool
+	for _, fe := range err.(*ValidationError).Errors {
+		if fe.Field == "dmr.upstreams[0].repeater_id" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("want a repeater_id collision error, got %v", err.(*ValidationError).Fields())
+	}
+}
+
+func TestUnknownProtocolIsRefused(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	u := homebrewUpstream()
+	u.Protocol = "ipsc"
+	c.DMR.Upstreams = []Upstream{u}
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("an unknown protocol was accepted")
+	}
+	if !strings.Contains(err.Error(), "protocol") {
+		t.Errorf("the error should name the protocol field: %v", err)
+	}
+}
+
+// TestADisabledHomebrewLinkIsBarelyChecked lets an operator write down a
+// configuration before they have the password, the same way a disabled
+// OpenBridge link is treated.
+func TestADisabledHomebrewLinkIsBarelyChecked(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	c.DMR.Upstreams = []Upstream{{Name: "xlx950", Protocol: "homebrew", Enabled: false}}
+
+	if err := c.Validate(); err != nil {
+		t.Errorf("a disabled homebrew link was rejected: %v", err)
+	}
+}
+
+func TestHomebrewUpstreamRoundTripsThroughJSON(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	u := homebrewUpstream()
+	u.Identity.Location = "Denton, TX"
+	u.Identity.Latitude = 33.2148
+	u.Identity.Longitude = -97.1331
+	c.DMR.Upstreams = []Upstream{u}
+
+	var buf bytes.Buffer
+	if err := Save(&buf, c); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := Load(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(got.DMR.Upstreams) != 1 || got.DMR.Upstreams[0].Identity == nil {
+		t.Fatal("the identity did not survive the round trip")
+	}
+	if got.DMR.Upstreams[0].Identity.Callsign != "K9MLS" {
+		t.Errorf("the callsign was lost: %+v", got.DMR.Upstreams[0].Identity)
+	}
+	// A secret must never be written into the document.
+	if strings.Contains(buf.String(), "passw") && !strings.Contains(buf.String(), "password_file") {
+		t.Error("something password-like reached the configuration document")
 	}
 }

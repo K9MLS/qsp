@@ -113,6 +113,12 @@ where the far end expects to be dialled rather than to dial. It is layer 5, it
 is the honest equivalent of a Conference Connection, and it is the largest
 single missing capability by reach.
 
+*Decided but not built.* [ADR-0024](adr/ADR-0024-outbound-peer-mode.md) settles
+the configuration, which is accepted now so the admin interface can be built
+against it; the protocol follows. It must not be pointed at BrandMeister, whose
+operators define peer bridging as prohibited — see
+[ADR-0018](adr/ADR-0018-openbridge.md).
+
 ### IPSC
 
 Homebrew covers MMDVM. **A club running MMDVM boards on its repeaters can

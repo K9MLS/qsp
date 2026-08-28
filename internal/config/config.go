@@ -212,6 +212,17 @@ type ACL struct {
 type Upstream struct {
 	// Name identifies this link on the console and in the health report.
 	Name string `json:"name"`
+	// Protocol is how the link is carried: "openbridge" or "homebrew".
+	//
+	// Empty means openbridge, so every document written before outbound peer
+	// mode existed keeps working and keeps meaning what it already meant.
+	//
+	// **openbridge** is a bridge between two networks, agreed out of band.
+	// **homebrew** logs into somebody else's master as a peer, which is how
+	// XLX, DMR+, IPSC2 and another QSP are reached. See ADR-0024 — and note
+	// that ADR-0018 forbids pointing a homebrew link at BrandMeister, whose
+	// operators define peer bridging as prohibited.
+	Protocol string `json:"protocol,omitempty"`
 	// Enabled turns the link on.
 	//
 	// It defaults to false deliberately. Enabling an upstream puts a club's
@@ -248,6 +259,19 @@ type Upstream struct {
 	// talkgroup down. Collapsing them makes the asymmetric case unexpressible
 	// and the symmetric case look safer than it is.
 	Import []UpstreamTalkgroup `json:"import"`
+	// RepeaterID is the ID QSP presents when logging into a master, used by
+	// the homebrew protocol instead of NetworkID.
+	//
+	// It must not collide with a peer registered locally: QSP would then hold
+	// one ID meaning two stations, and a private call to it would be routable
+	// to two places.
+	RepeaterID uint32 `json:"repeater_id,omitempty"`
+	// PasswordFile holds the login password for a homebrew link, mode 0600.
+	// A path rather than a value, for the reason in ADR-0012.
+	PasswordFile string `json:"password_file,omitempty"`
+	// Identity is what QSP tells the far end about itself. Required for a
+	// homebrew link, ignored for OpenBridge.
+	Identity *UpstreamIdentity `json:"identity,omitempty"`
 	// StaleAfter is how long without traffic before the link is reported as
 	// possibly broken.
 	//
@@ -256,6 +280,44 @@ type Upstream struct {
 	// rather than claiming to know. Zero disables the warning.
 	StaleAfter Duration `json:"stale_after"`
 }
+
+// UpstreamIdentity is what QSP announces when it logs into another master.
+//
+// **It is not decoration.** A master a peer logs into shows these fields to its
+// own users, and a blank callsign makes QSP appear on somebody else's dashboard
+// as an unidentified station — discourteous at best, and on a network that
+// requires identification, grounds for removal.
+type UpstreamIdentity struct {
+	// Callsign is required. Everything else has a working default, because a
+	// reflector does not care about transmit power and an operator should not
+	// have to invent one.
+	Callsign string `json:"callsign"`
+	// RXFrequency and TXFrequency are in hertz. Zero for a link with no radio,
+	// which is what QSP is.
+	RXFrequency uint32 `json:"rx_frequency,omitempty"`
+	TXFrequency uint32 `json:"tx_frequency,omitempty"`
+	// ColourCode is 0 to 15.
+	ColourCode int `json:"colour_code,omitempty"`
+	// Latitude and Longitude are decimal degrees, and Height is metres.
+	Latitude  float64 `json:"latitude,omitempty"`
+	Longitude float64 `json:"longitude,omitempty"`
+	Height    int     `json:"height,omitempty"`
+	// Location and Description are free text shown on the far end's dashboard.
+	Location    string `json:"location,omitempty"`
+	Description string `json:"description,omitempty"`
+	// URL is shown beside the station on the far end's dashboard.
+	URL string `json:"url,omitempty"`
+	// Timeslots is 1 for a simplex link or 2 for duplex.
+	Timeslots int `json:"timeslots,omitempty"`
+}
+
+// UpstreamProtocol values.
+const (
+	// UpstreamOpenBridge bridges two networks over an agreed passphrase.
+	UpstreamOpenBridge = "openbridge"
+	// UpstreamHomebrew logs into another master as a peer.
+	UpstreamHomebrew = "homebrew"
+)
 
 // UpstreamTalkgroup is one talkgroup carried over a link, named as it exists
 // locally.
@@ -719,8 +781,23 @@ func (c Config) Validate() error {
 		// Upstreams. Each link puts a club's audio on somebody else's network,
 		// so the errors here name the consequence rather than the field.
 		upstreamNames := make(map[string]bool, len(c.DMR.Upstreams))
+		// Static attachments name local peers; a homebrew upstream must not
+		// claim an ID one of them already uses.
+		localPeerIDs := make(map[uint32]bool, len(c.DMR.Subscription.Static))
+		for _, a := range c.DMR.Subscription.Static {
+			localPeerIDs[a.Peer] = true
+		}
+
 		for i, u := range c.DMR.Upstreams {
 			field := fmt.Sprintf("dmr.upstreams[%d]", i)
+
+			switch strings.ToLower(strings.TrimSpace(u.Protocol)) {
+			case "", UpstreamOpenBridge, UpstreamHomebrew:
+			default:
+				v.add(field+".protocol", fmt.Sprintf("%q is not a protocol QSP speaks", u.Protocol),
+					"use \"openbridge\" to bridge two networks, or \"homebrew\" to log into "+
+						"another master as a peer")
+			}
 
 			if strings.TrimSpace(u.Name) == "" {
 				v.add(field+".name", "must not be empty",
@@ -746,6 +823,14 @@ func (c Config) Validate() error {
 			} else if _, _, err := net.SplitHostPort(u.Address); err != nil {
 				v.add(field+".address", fmt.Sprintf("%q is not host:port", u.Address),
 					"OpenBridge conventionally uses port 62035")
+			}
+
+			// The two protocols need different things, and requiring
+			// OpenBridge's fields of a homebrew link would be asking for a
+			// listen address and a passphrase that link will never use.
+			if u.HomebrewProtocol() {
+				c.validateHomebrewUpstream(v, field, u, localPeerIDs)
+				continue
 			}
 
 			if strings.TrimSpace(u.ListenAddress) == "" {
