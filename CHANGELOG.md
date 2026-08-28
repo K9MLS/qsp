@@ -7,13 +7,17 @@ All notable changes to QSP. Dates are UTC.
 ### Added
 - **[ADR-0020](docs/adr/ADR-0020-access-control.md) decides access control**,
   the layer 2 gap ADR-0019 named. Four lists in HBlink's vocabulary; a pure
-  access package that neither `peers` nor `routing` has to own; the
+  `internal/access` package that neither `peers` nor `routing` has to own; the
   talkgroup list checked on egress as well as ingress, because an ingress-only
   check permits bridged and upstream traffic while stopping a club's own
   members; and a zero value that permits everything, so upgrading does not
   disconnect a running club.
 
-  No code yet.
+  A listener reachable from beyond the host, with no access block written at
+  all, now refuses to start. Saying `{"mode": "deny", "ids": []}` — deny nobody
+  — starts without complaint. A startup warning would have been read once by
+  whoever was watching the journal, which is a weak mitigation for the moment
+  UDP 62031 is forwarded at the router.
 
 ## [0.1.9] — 2026-08-27
 
