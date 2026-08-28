@@ -118,6 +118,10 @@ type peersResponse struct {
 	Enabled bool `json:"enabled"`
 	// Reason explains a disabled listener. Empty when enabled.
 	Reason string `json:"reason,omitempty"`
+	// Map is how the console should draw peer positions. It travels with the
+	// peer list because that is the only response that needs it, and a second
+	// endpoint for three fields would be three fields and an endpoint.
+	Map MapSettings `json:"map"`
 	// Forwarding reports whether this instance relays traffic.
 	//
 	// It exists because the console cannot otherwise tell a master that is
@@ -135,6 +139,18 @@ type peersResponse struct {
 	Traffic Traffic `json:"traffic"`
 	// GeneratedAt is when the snapshot was taken, in UTC.
 	GeneratedAt time.Time `json:"generated_at"`
+}
+
+// MapSettings is what the console needs to draw a map.
+type MapSettings struct {
+	// TileURL is a slippy-map template. Empty draws pins on no background,
+	// which is the right answer on a network with no route out.
+	TileURL string `json:"tile_url,omitempty"`
+	// Attribution is rendered over the map whenever tiles are. It is a licence
+	// condition of the data rather than a courtesy.
+	Attribution string `json:"attribution,omitempty"`
+	// MaxZoom bounds how far in the map will go.
+	MaxZoom int `json:"max_zoom,omitempty"`
 }
 
 // handlePeers serves the current peer list.
@@ -161,6 +177,7 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 
 	body.Enabled = true
 	body.Forwarding = s.opts.Forwarding
+	body.Map = s.opts.Map
 	if views := s.opts.Peers.PeerViews(now); len(views) > 0 {
 		body.Peers = views
 	}

@@ -300,3 +300,64 @@ func TestContrastReport(t *testing.T) {
 	t.Logf("%-16s %-26s %.2f:1", "separation", "surface vs background",
 		contrast(surface, opaque["--color-background"]))
 }
+
+// TestMapIsServed keeps the map's script reachable. It is a separate file so it
+// can be lifted out, which also means it can be forgotten.
+func TestMapIsServed(t *testing.T) {
+	for _, name := range []string{"static/map.js", "static/console.js", "static/index.html"} {
+		if _, err := assets.ReadFile(name); err != nil {
+			t.Errorf("%s is not embedded: %v", name, err)
+		}
+	}
+	index, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatalf("reading index.html: %v", err)
+	}
+	// map.js defines what console.js uses, so it has to be loaded first.
+	body := string(index)
+	mapAt := strings.Index(body, "/map.js")
+	consoleAt := strings.Index(body, "/console.js")
+	if mapAt < 0 {
+		t.Fatal("index.html does not load map.js")
+	}
+	if consoleAt < 0 {
+		t.Fatal("index.html does not load console.js")
+	}
+	if mapAt > consoleAt {
+		t.Error("map.js is loaded after console.js, which uses it")
+	}
+}
+
+// TestTheMapVendorsNothing is the property ADR-0025 is about. A script tag
+// pointing at a CDN, or a vendored library appearing in static/, would end the
+// console's no-dependency guarantee quietly.
+func TestTheMapVendorsNothing(t *testing.T) {
+	index, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatalf("reading index.html: %v", err)
+	}
+	for _, tag := range regexp.MustCompile(`(?i)<(script|link)[^>]*>`).FindAllString(string(index), -1) {
+		if strings.Contains(tag, "//") && !strings.Contains(tag, `"/`) {
+			t.Errorf("the console loads something from off the instance: %s", tag)
+		}
+	}
+
+	// Every script in static/ is one QSP wrote. Naming them rather than
+	// counting them: a count says "three" when a library arrives and somebody
+	// updates the number, while a name says which file nobody recognises.
+	ours := map[string]bool{"console.js": true, "map.js": true, "join.js": true}
+	entries, err := assets.ReadDir("static")
+	if err != nil {
+		t.Fatalf("reading static: %v", err)
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, ".js") {
+			continue
+		}
+		if !ours[name] {
+			t.Errorf("static/%s is a script the console did not write; vendoring a library "+
+				"ends the no-dependency guarantee ADR-0025 turns on", name)
+		}
+	}
+}

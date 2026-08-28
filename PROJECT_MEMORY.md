@@ -328,7 +328,7 @@ This is a thin product and it is worth saying so plainly.
 | **Per-peer talkgroup subscription (layer 3)** | a member cannot choose what they hear |
 | **Authentication** | no login anywhere; `/api/peers` discloses callsigns, radio IDs and source addresses |
 | **Persistence in use** | the schema exists and migrates; nothing writes to it |
-| **Live map** | **not planned as a QSP feature** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). Positions are parsed, exposed on `/api/peers` and shown in the console, and coordinates link out to a map. Shipping a tile source would make one club's usage every club's risk |
+| **Live map** | **built** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). Drawn by QSP with no library vendored; the tile source is `server.map.tile_url`, defaulting to OpenStreetMap and clearable for an instance with no route out |
 | **IPSC** | unblocked by ADR-0008; needs a capture |
 | **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
 

@@ -453,9 +453,36 @@ type Server struct {
 	// BehindProxy indicates the console is served behind a reverse proxy that
 	// terminates TLS. It affects which forwarding headers are trusted.
 	BehindProxy bool `json:"behind_proxy"`
+	// Map configures the console's peer map. See ADR-0025.
+	Map Map `json:"map"`
 }
 
 // Database configures persistent storage.
+// Map configures the console's peer map.
+//
+// QSP draws the map itself and vendors no library, so what is configurable here
+// is where the tiles come from — and whose name goes under them.
+type Map struct {
+	// TileURL is a slippy-map template, with {z}, {x} and {y}.
+	//
+	// It defaults to OpenStreetMap. **An instance large enough to matter should
+	// point this somewhere else**: those servers are funded by donations and
+	// their policy asks heavy users to run their own.
+	//
+	// Empty disables tiles without disabling the map. The pins still draw, on
+	// nothing, which is the right answer on a network with no route out.
+	TileURL string `json:"tile_url"`
+	// Attribution is rendered over the map whenever tiles are.
+	//
+	// **It is a licence condition of the data, not a courtesy.** An operator
+	// who changes TileURL changes this to match; leaving somebody else's
+	// attribution over another provider's tiles is worse than none.
+	Attribution string `json:"attribution"`
+	// MaxZoom bounds how far in the map will go. Tile servers stop at some
+	// level and requesting past it fetches nothing but 404s.
+	MaxZoom int `json:"max_zoom"`
+}
+
 type Database struct {
 	// Driver is the database/sql driver name to open. It must already be
 	// registered by the binary; see docs/adr/ADR-0005.
@@ -508,6 +535,11 @@ func Default() Config {
 			IdleTimeout:       Duration(120 * time.Second),
 			ShutdownTimeout:   Duration(15 * time.Second),
 			BehindProxy:       false,
+			Map: Map{
+				TileURL:     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+				Attribution: "© OpenStreetMap contributors",
+				MaxZoom:     18,
+			},
 		},
 		Database: Database{
 			Driver:          "sqlite",
@@ -672,6 +704,30 @@ func (c Config) Validate() error {
 	v.positiveDuration("server.read_timeout", c.Server.ReadTimeout, "use \"30s\"")
 	v.positiveDuration("server.write_timeout", c.Server.WriteTimeout, "use \"30s\"")
 	v.positiveDuration("server.idle_timeout", c.Server.IdleTimeout, "use \"120s\"")
+	if c.Server.Map.TileURL != "" {
+		if !strings.Contains(c.Server.Map.TileURL, "{z}") ||
+			!strings.Contains(c.Server.Map.TileURL, "{x}") ||
+			!strings.Contains(c.Server.Map.TileURL, "{y}") {
+			v.add("server.map.tile_url",
+				fmt.Sprintf("%q is not a slippy-map template", c.Server.Map.TileURL),
+				"it must contain {z}, {x} and {y}, for example "+
+					"\"https://tile.openstreetmap.org/{z}/{x}/{y}.png\"; leave it empty to "+
+					"draw the map without tiles")
+		}
+		if strings.TrimSpace(c.Server.Map.Attribution) == "" {
+			// Using somebody's tiles without their attribution is a licence
+			// breach, and the operator who changed the URL is the only one who
+			// knows what belongs here.
+			v.add("server.map.attribution", "must not be empty when tiles are configured",
+				"name whoever provides the tiles and the data; for OpenStreetMap that is "+
+					"\"© OpenStreetMap contributors\"")
+		}
+		if z := c.Server.Map.MaxZoom; z < 1 || z > 22 {
+			v.add("server.map.max_zoom", fmt.Sprintf("is %d; slippy maps run from 1 to 22", z),
+				"use 18, which is as far as most tile servers go")
+		}
+	}
+
 	v.positiveDuration("server.shutdown_timeout", c.Server.ShutdownTimeout,
 		"use \"15s\"; this bounds how long in-flight requests may finish during shutdown")
 

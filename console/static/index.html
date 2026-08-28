@@ -182,6 +182,19 @@
       </div>
     </section>
 
+    <section class="panel" id="map" aria-labelledby="map-title">
+      <div class="panel__head">
+        <h2 class="panel__title" id="map-title">Where peers are</h2>
+        <span class="panel__count" id="map-count">&mdash;</span>
+      </div>
+      <div id="map-body" aria-live="polite">
+        <div class="empty">
+          <h3 class="empty__title">Loading</h3>
+          <p class="empty__body">Looking for peers that announced a position.</p>
+        </div>
+      </div>
+    </section>
+
     <section class="panel" id="health" aria-labelledby="health-title">
       <div class="panel__head">
         <h2 class="panel__title" id="health-title">Health</h2>
@@ -213,6 +226,7 @@
 
 </div>
 
+<script src="/map.js"></script>
 <script src="/console.js"></script>
 </body>
 </html>

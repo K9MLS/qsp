@@ -643,3 +643,117 @@ body {
 .hint--neutral {
   color: var(--color-foreground-muted);
 }
+
+/* ---- Peer map -------------------------------------------------------- */
+/* QSP draws its own map rather than vendoring one; see
+   docs/adr/ADR-0025-no-bundled-map.md. These are the styles that map needs. */
+
+.map-frame,
+.map {
+  position: relative;
+  height: 360px;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  /* A visible surface under the tiles, so a map whose tile URL is empty — or
+     whose tile server is unreachable — reads as a map with no background
+     rather than as a panel that failed to render. */
+  background: var(--color-surface-sunken);
+}
+
+.map__canvas {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.map--dragging .map__canvas {
+  cursor: grabbing;
+}
+
+.map__tile {
+  position: absolute;
+  width: 256px;
+  height: 256px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.map__pin {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The dot marks the coordinate, so the pin is centred on it vertically and
+     the label sits beside it rather than over it. */
+  transform: translate(-5px, -50%);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.map__pin-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--color-primary);
+  /* A ring, so a pin stays findable over a dark tile and over a light one. */
+  box-shadow: 0 0 0 2px var(--color-background), 0 1px 3px rgba(0, 0, 0, 0.6);
+}
+
+.map__pin-label {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  /* Its own backing, because the label sits over map tiles whose colour is
+     nobody's to predict and the contrast tokens cannot reason about them. */
+  background: var(--color-over-tiles);
+}
+
+.map__controls {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.map__zoom {
+  width: var(--target-min);
+  height: var(--target-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+  font-size: var(--text-lg);
+  line-height: 1;
+  transition: background var(--duration-fast) var(--ease-out-expo);
+}
+
+.map__zoom:hover {
+  background: var(--color-row-hover);
+  border-color: var(--color-primary);
+}
+
+.map__zoom:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.map__attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  padding: 2px var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-foreground);
+  background: var(--color-over-tiles);
+  border-top-left-radius: var(--radius-sm);
+}

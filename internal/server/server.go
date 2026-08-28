@@ -52,6 +52,8 @@ type Options struct {
 	Peers PeerSource
 	// PeersDisabledReason explains a nil Peers, and is shown to the operator.
 	PeersDisabledReason string
+	// Map configures the console's peer map.
+	Map MapSettings
 	// Forwarding reports whether this instance relays traffic, for the
 	// console. It is a plain bool rather than part of PeerSource because it is
 	// fixed at startup and asking the listener for it every poll would imply

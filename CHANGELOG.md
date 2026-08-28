@@ -126,22 +126,41 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
-- **[ADR-0025](docs/adr/ADR-0025-no-bundled-map.md): QSP ships no map.** A
-  located peer's coordinates link out to one instead, so a station is one click
-  from a real map and **QSP fetches no tiles and nothing leaves until somebody
-  clicks**.
+- **The console has a map**, and QSP vendors nothing to draw it.
+  [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). A slippy map is Web Mercator
+  arithmetic, a grid of image elements and a drag handler — about a hundred and
+  fifty lines. Leaflet is a fine library and most of it is features this does
+  not need, and writing the arithmetic keeps the console what it is: markup, one
+  stylesheet, scripts, no build step, servable from a LAN.
 
-  The obstacle recorded in §8 was the map library. The binding constraint turns
-  out to be tiles: OpenStreetMap's servers are funded by donations, are
-  explicitly not a free API for applications, and block heavy users without
-  notice. A tile URL compiled into self-hosted software is the same request from
-  every install, so a block would land on every QSP at once — a shared risk
-  created by a default, which is what §0 exists to refuse. A per-instance tile
-  setting stays possible; a default does not.
+  `server.map.tile_url` chooses the tile source and defaults to OpenStreetMap,
+  because a map needing setup before it shows anything is one most operators
+  never see. **Clearing it leaves a working map with no background** — the pins
+  still draw, which is the right answer on a network with no route out. An
+  instance large enough to matter should point it elsewhere: those servers are
+  funded by donations.
 
-  There is a second objection worth recording: a club map is a pin per member's
-  house, on an endpoint with no authentication. That should be an operator's
-  deliberate choice, not a feature that arrives switched on.
+  Attribution renders whenever tiles do and cannot be configured away, because
+  it is a licence condition of the data rather than a courtesy.
+
+  The map is created on first use, so an instance whose peers never announce a
+  position fetches no tiles at all. A peer without usable coordinates is absent
+  from it rather than placed somewhere, and the count says how many of the
+  connected peers are shown so the gap is visible.
+
+  A test fails if any script appears in `static/` that QSP did not write, since
+  vendoring a library is how the no-dependency guarantee ends quietly.
+
+### Changed
+- **[ADR-0025](docs/adr/ADR-0025-no-bundled-map.md) is amended, and its first
+  version was wrong twice.** It argued that a compiled-in tile URL made every
+  QSP install share one blast radius; tiles are fetched by the browser carrying
+  each instance's own `Referer`, so a tile server sees many small sites rather
+  than one application. And it withheld the map on privacy grounds — the same
+  positions are published by the networks these operators already use, every
+  station chooses what its hotspot announces, and declining to draw data QSP
+  already serves as text is paternalism rather than privacy. Both arguments are
+  kept in the record rather than deleted.
 
 - **Peers report where they say they are**, which is the map's foundation.
   PROJECT_MEMORY §8 says QSP discards the coordinates hotspots send in `RPTC`.

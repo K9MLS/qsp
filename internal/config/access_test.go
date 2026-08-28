@@ -516,3 +516,69 @@ func TestAConfigurationWithoutSubscriptionStillLoads(t *testing.T) {
 		t.Error("an omitted subscription block came back enabled")
 	}
 }
+
+// The console map. See ADR-0025.
+
+func TestMapDefaultsToOpenStreetMap(t *testing.T) {
+	m := Default().Server.Map
+	if m.TileURL == "" {
+		t.Error("no default tile URL; a map needing setup before it shows anything is one most operators never see")
+	}
+	for _, token := range []string{"{z}", "{x}", "{y}"} {
+		if !strings.Contains(m.TileURL, token) {
+			t.Errorf("the default tile URL lacks %s: %q", token, m.TileURL)
+		}
+	}
+	if m.Attribution == "" {
+		t.Error("no default attribution; it is a licence condition of the data")
+	}
+	if err := Default().Validate(); err != nil {
+		t.Errorf("the default configuration must validate: %v", err)
+	}
+}
+
+func TestMapValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		m     Map
+		field string
+	}{
+		{"not a template", Map{TileURL: "https://example.org/tiles.png",
+			Attribution: "x", MaxZoom: 18}, "server.map.tile_url"},
+		{"missing y", Map{TileURL: "https://example.org/{z}/{x}.png",
+			Attribution: "x", MaxZoom: 18}, "server.map.tile_url"},
+		{"no attribution", Map{TileURL: "https://example.org/{z}/{x}/{y}.png",
+			MaxZoom: 18}, "server.map.attribution"},
+		{"zoom too far", Map{TileURL: "https://example.org/{z}/{x}/{y}.png",
+			Attribution: "x", MaxZoom: 30}, "server.map.max_zoom"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Default()
+			c.Server.Map = tc.m
+
+			err := c.Validate()
+			if err == nil {
+				t.Fatal("an invalid map configuration was accepted")
+			}
+			var found bool
+			for _, fe := range err.(*ValidationError).Errors {
+				if fe.Field == tc.field {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("want an error on %s, got %v", tc.field, err.(*ValidationError).Fields())
+			}
+		})
+	}
+}
+
+// TestNoTilesIsValid. An instance on a LAN with no route out should draw its
+// pins on nothing rather than be refused a configuration.
+func TestNoTilesIsValid(t *testing.T) {
+	c := Default()
+	c.Server.Map = Map{}
+	if err := c.Validate(); err != nil {
+		t.Errorf("an empty map block was rejected: %v", err)
+	}
+}

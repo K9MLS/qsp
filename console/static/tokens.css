@@ -34,6 +34,12 @@
   /* The row under the pointer, distinct from both a striped and an unstriped
      row so it reads the same whichever it lands on. */
   --color-row-hover: rgba(0, 0, 0, 0.28);
+  /* Backing for text drawn over map tiles.
+     **It cannot be derived from the surface tokens**, because what it sits on
+     is somebody else's imagery and no contrast ratio here can reason about it.
+     Near-opaque and near-black is the one thing that works over a snowfield
+     and a forest alike. */
+  --color-over-tiles: rgba(8, 12, 24, 0.82);
   --color-muted: #1f1e27;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);

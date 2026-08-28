@@ -1,6 +1,8 @@
-# ADR-0025: QSP shows where peers are without shipping a map
+# ADR-0025: A map with no library, and a tile source that is configuration
 
 **Status:** Proposed
+**Amended 2026-08-28**, before anything was built on the first version. Two of
+its three arguments did not survive contact with the details.
 
 ## Context
 
@@ -25,58 +27,74 @@ application's usage degrades the service. Applications making heavy use are
 asked to run their own tile servers, and several that did not have been blocked
 outright.
 
-**QSP is the shape of software that gets blocked.** It is self-hosted and
-shipped to many clubs. A tile URL compiled into the console is the same request
-from every instance, indistinguishable in aggregate from one heavy
-application, and a block would land on every QSP install at once, including the
-ones running a map for four hotspots. That is a shared blast radius created by
-a default, which is the sort of thing §0 exists to refuse.
+**The first version of this record claimed QSP was the shape of software that
+gets blocked**, on the grounds that a tile URL compiled into self-hosted
+software is one application in aggregate and a block would land on every
+install at once.
 
-Vendoring the library into the repository solves the build step and none of
-this. A CDN adds a second third party and makes the console stop working on a
-LAN with no route out, which is exactly where a club server often lives.
+That was overstated. Tiles are fetched by the *browser*, carrying each
+instance's own `Referer`, so a tile server sees many distinct low-volume sites
+rather than one application. The blocked cases are mobile and desktop
+applications sharing one identity across millions of users. A club console
+loaded a few times a day by a few dozen people is ordinary small-site traffic,
+which is what these servers are for.
 
-## The other objection: it is member home addresses
+The real constraint is narrower and still worth respecting: **a large instance
+should not point at a donated tile server by default**, and attribution is a
+licence condition rather than a courtesy.
 
-A club map is a pin per member's house.
+## The privacy objection, withdrawn
 
-That information is already on `/api/peers`, and this record does not pretend
-otherwise. But a table row saying "Denton, TX" and a pin somebody can zoom into
-are not the same act, and the endpoint has no authentication. Making member
-locations visually browsable to anyone who finds the URL deserves to be a
-deliberate choice by the operator rather than a feature that arrives switched
-on.
+The first version argued that a club map is a pin per member's house and should
+therefore wait for authentication.
+
+**That was not QSP's call to make.** The same positions are published by the
+networks these operators already use, every station chooses what coordinates its
+hotspot announces, and an operator who would rather not be pinned can move or
+omit them — which is the arrangement amateur radio has had for as long as
+callbooks have existed. Declining to draw data QSP already serves as text, on
+behalf of people who did not ask for the protection, is paternalism rather than
+privacy.
+
+It remains true that the endpoint has no authentication, and that is worth
+fixing for its own reasons. It is not a reason to withhold the map.
 
 ## Decision
 
-**QSP ships no map, no map library, and no tile URL.**
+**QSP has a map, and it vendors nothing to get one.**
 
-The console links a located peer's coordinates out to a map, so one click gets
-an operator a real map of that station. **No tiles are fetched by QSP and no
-request leaves until somebody clicks**, at which point it is an ordinary
-browser navigation to a site the person chose to visit.
+The library objection dissolves rather than being accepted. A slippy map is
+Web Mercator arithmetic, a grid of image elements, and a drag handler — about a
+hundred and fifty lines. Leaflet is a fine library and most of it is features
+this does not need. Writing the arithmetic keeps the console what it
+is: markup, one stylesheet, one script, no build step, servable from a LAN.
 
-That gets most of the value. "Where is this station" is a question about one
-peer far more often than it is a question about all of them, and the answer is
-now one click away without QSP depending on anything.
+**The tile source is configuration with a default.** `console.map.tile_url`
+points at OpenStreetMap out of the box, because a map needing setup before it
+shows anything is a map most operators never see. An instance large enough to
+matter, or one that would rather not depend on a donated service, changes one
+field.
 
-**The door stays open, as configuration rather than as a default.** A club that
-runs its own tile server, or holds a commercial key, can be given a tile URL
-setting and a real map built against it — nothing here forecloses that, and
-`/api/peers` already carries everything such a map would need. What is refused
-is a *default* tile source, because a default is what turns one club's map into
-every club's shared risk.
+**Attribution is not optional and is not configurable away.** It renders
+whenever the map does. That is a licence condition of the data rather than a
+courtesy, and an operator supplying their own tile URL supplies its attribution
+with it.
+
+**The map draws nothing until it is opened.** No tiles are fetched for an
+operator watching the peers table, which keeps the common case free of requests
+to anybody.
 
 ## Consequences
 
-- A club that wants a real map can build one against `/api/peers` today. The
-  data is public on the instance and the shape is stable.
-- The map stays off the roadmap as a QSP feature until either a tile source is
-  configured per instance or somebody self-hosts one. That is a smaller promise
-  than PROJECT_MEMORY §8 currently makes, and the honest one.
-- Nothing about the console's no-dependency property changes. It remains vanilla
-  markup, one stylesheet and one script, servable from a LAN with no route out.
-- **If a map is built later, authentication should come first.** A pin map of
-  members' homes on an unauthenticated endpoint is a different exposure from a
-  column of text, and the admin interface brings the authentication that would
-  make it a considered choice.
+- Nothing about the console's no-dependency property changes. It remains
+  vanilla markup, one stylesheet and one script, servable from a LAN with no
+  route out, and with the tile URL cleared the map still draws its pins.
+- **QSP owns a map implementation**, which is a hundred and fifty lines to
+  maintain and a class of bug it did not have. That is the price of not
+  vendoring, and it is paid deliberately rather than discovered.
+- A station with no coordinates, or coordinates that did not parse, is absent
+  from the map rather than placed somewhere. ADR-0021's rule applies here too:
+  a pin in the wrong place is believed.
+- **This record's first version was wrong twice**, and is kept rather than
+  replaced so that both are visible. Overstating a risk to avoid work is a
+  failure mode worth being able to recognise later.

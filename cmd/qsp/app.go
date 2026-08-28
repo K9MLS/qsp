@@ -251,7 +251,12 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
-		Join:                joinSettings(cfg),
+		Map: server.MapSettings{
+			TileURL:     cfg.Server.Map.TileURL,
+			Attribution: cfg.Server.Map.Attribution,
+			MaxZoom:     cfg.Server.Map.MaxZoom,
+		},
+		Join: joinSettings(cfg),
 	})
 	if err != nil {
 		return nil, err
