@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
@@ -447,5 +448,38 @@ func TestErrNoSessionIsNotLeaked(t *testing.T) {
 	}
 	if errors.Is(errors.New(rec.Body.String()), auth.ErrInvalidCredentials) {
 		t.Error("the internal error was returned verbatim")
+	}
+}
+
+// TestSignInPageIsReachable. /signin exists for the same reason /join does: a
+// URL an operator types or bookmarks should not end in .html.
+func TestSignInPageIsReachable(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/signin", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/signin returned %d, want a redirect", rec.Code)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/signin.html" {
+		t.Errorf("/signin redirects to %q", loc)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/signin.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/signin.html returned %d", rec.Code)
 	}
 }

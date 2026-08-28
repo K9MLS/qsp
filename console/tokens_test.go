@@ -345,7 +345,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// Every script in static/ is one QSP wrote. Naming them rather than
 	// counting them: a count says "three" when a library arrives and somebody
 	// updates the number, while a name says which file nobody recognises.
-	ours := map[string]bool{"console.js": true, "map.js": true, "join.js": true}
+	ours := map[string]bool{"console.js": true, "map.js": true, "join.js": true, "signin.js": true}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
 		t.Fatalf("reading static: %v", err)
@@ -359,5 +359,35 @@ func TestTheMapVendorsNothing(t *testing.T) {
 			t.Errorf("static/%s is a script the console did not write; vendoring a library "+
 				"ends the no-dependency guarantee ADR-0025 turns on", name)
 		}
+	}
+}
+
+// TestSignInPageIsServed. It is reached by a redirect rather than by a link
+// from the console's markup, so nothing else would notice it going missing.
+func TestSignInPageIsServed(t *testing.T) {
+	for _, name := range []string{"static/signin.html", "static/signin.js"} {
+		if _, err := assets.ReadFile(name); err != nil {
+			t.Errorf("%s is not embedded: %v", name, err)
+		}
+	}
+	page, err := assets.ReadFile("static/signin.html")
+	if err != nil {
+		t.Fatalf("reading signin.html: %v", err)
+	}
+	body := string(page)
+	if !strings.Contains(body, "/signin.js") {
+		t.Error("signin.html does not load signin.js")
+	}
+	// The page styles itself from the shared sheets rather than its own, so a
+	// change to the tokens reaches it.
+	for _, sheet := range []string{"/tokens.css", "/console.css"} {
+		if !strings.Contains(body, sheet) {
+			t.Errorf("signin.html does not load %s", sheet)
+		}
+	}
+	// A password field must not be a text field, whatever else changes.
+	if !strings.Contains(body, `id="password" type="password"`) &&
+		!strings.Contains(body, `type="password"`) {
+		t.Error("the password field is not type=password")
 	}
 }

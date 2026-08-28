@@ -126,6 +126,23 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **A sign-in page.** The login API existed with no way to use it — an
+  omission spotted by looking at the console rather than at the code. `/signin`
+  has a form, and the console's topbar shows who is signed in with a link to
+  sign in or out.
+
+  **The console still needs no account**, and saying "Sign in" rather than
+  demanding it is the difference: everything it shows is readable without one,
+  and this is a way in for the administrator rather than a gate in front of
+  everybody. An instance with no accounts says so and gives the `adduser`
+  command, because a form that cannot succeed is worse than no form.
+
+  The password field is cleared on every outcome, not only on success, since a
+  failed attempt otherwise leaves it in a form on a screen somebody may walk
+  away from. A disabled button is muted rather than translucent: an opacity
+  there would drop its label under the contrast floor, which is a mistake this
+  project has already made once.
+
 - **`qsp unlock <username>` clears a lockout**, and expired sessions are now
   swept hourly. Both were gaps noticed while the login was being tested by hand:
   five wrong passwords meant a real fifteen-minute wait with no way out, and

@@ -29,6 +29,8 @@
 
   var routingEmpty = document.getElementById("routing-empty");
 
+  var authState = document.getElementById("auth-state");
+
   var mapBody = document.getElementById("map-body");
   var mapCount = document.getElementById("map-count");
   var peerMap = null;
@@ -130,6 +132,41 @@
       parts.push(keys[i] + " " + detail[keys[i]]);
     }
     return parts.join(", ");
+  }
+
+  // renderAuth shows who is signed in, or offers to.
+  //
+  // The console works without an account and always has: everything it shows is
+  // readable without one. This is a way in for the administrator, not a gate,
+  // and saying "Sign in" rather than demanding it is the difference.
+  function renderAuth() {
+    if (!authState) {
+      return;
+    }
+    fetch("/api/session", { headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (body) {
+        if (body && body.authenticated) {
+          authState.innerHTML =
+            '<span class="topbar__who">' + escapeText(body.username) + "</span> " +
+            '<button class="topbar__link" id="sign-out" type="button">Sign out</button>';
+          var out = document.getElementById("sign-out");
+          if (out) {
+            out.addEventListener("click", function () {
+              fetch("/api/logout", { method: "POST", credentials: "same-origin" })
+                .then(renderAuth)
+                .catch(renderAuth);
+            });
+          }
+          return;
+        }
+        authState.innerHTML = '<a class="topbar__link" href="/signin">Sign in</a>';
+      })
+      .catch(function () {
+        // Left empty rather than guessing. An instance that cannot answer is
+        // not one to invite somebody to type a password into.
+        authState.innerHTML = "";
+      });
   }
 
   function setStream(label) {
@@ -565,7 +602,8 @@
      * genuinely new, so the next render must not animate arrivals. */
     knownPeerIds = {};
     firstPeerLoad = true;
-    refreshHealth();
+  renderAuth();
+  refreshHealth();
     refreshPeers();
   }
 

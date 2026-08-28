@@ -757,3 +757,203 @@ body {
   background: var(--color-over-tiles);
   border-top-left-radius: var(--radius-sm);
 }
+
+/* ---- Shared notice --------------------------------------------------- */
+/* Moved here from join.css when the sign-in page needed it. Both pages load
+   this file; neither loads the other's. */
+
+.notice {
+  border: 1px solid var(--color-border-strong);
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-5);
+  background: var(--color-surface);
+}
+
+.notice--warn {
+  border-left-color: var(--color-degraded);
+}
+
+.notice__title {
+  font-weight: var(--weight-semibold);
+  margin: 0 0 var(--space-2);
+}
+
+.notice__body {
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  margin: 0;
+}
+
+
+/* ---- Sign in --------------------------------------------------------- */
+
+.signin-body {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5);
+}
+
+.signin {
+  width: 100%;
+  max-width: 26rem;
+}
+
+.signin__head {
+  text-align: center;
+  margin-bottom: var(--space-6);
+}
+
+.signin__mark {
+  width: 40px;
+  height: 40px;
+  color: var(--color-primary);
+}
+
+.signin__title {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-semibold);
+}
+
+.signin__lede {
+  margin: 0;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.signin__panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-raised);
+  padding: var(--space-5);
+}
+
+.signin__who {
+  margin: 0 0 var(--space-4);
+}
+
+.signin__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.field {
+  margin-bottom: var(--space-4);
+}
+
+.field__label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+}
+
+.field__input {
+  width: 100%;
+  /* 44px, the minimum interactive target the blueprint's checklist requires,
+     rather than whatever the browser's default happens to be. */
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: inherit;
+  font-size: var(--text-base);
+}
+
+.field__input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  border-color: var(--color-primary);
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-5);
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+  transition: background var(--duration-fast) var(--ease-out-expo);
+}
+
+.button:hover {
+  background: var(--color-primary-hover);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.button[disabled] {
+  cursor: default;
+  opacity: 1;
+  /* Muted rather than translucent: an opacity here would drop the label's
+     contrast below the floor tokens.css promises, which is the mistake made
+     once already on this project. */
+  background: var(--color-muted);
+  color: var(--color-foreground-muted);
+}
+
+.button--quiet {
+  background: transparent;
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground);
+}
+
+.button--quiet:hover {
+  background: var(--color-row-hover);
+}
+
+/* ---- Sign-in state in the topbar ------------------------------------- */
+
+.topbar__auth {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.topbar__who {
+  font-family: var(--font-mono);
+  color: var(--color-foreground);
+}
+
+.topbar__link {
+  /* A button and a link share this class because they look the same and mean
+     the same to somebody using them; only one of them navigates. */
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.topbar__link:hover {
+  color: var(--color-primary-hover);
+}
+
+.topbar__link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
