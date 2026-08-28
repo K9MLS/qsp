@@ -505,6 +505,16 @@ body {
   font-size: var(--text-xs);
 }
 
+/* Columns holding prose wrap; columns holding identifiers, times and statuses
+   do not. nowrap on every cell is right for a radio ID or a duration, where a
+   break mid-value is worse than a wider table, and wrong for a sentence — the
+   health summaries and details are sentences, and they pushed the table past
+   its panel until it had to be scrolled sideways to be read. */
+.table .cell--wrap {
+  white-space: normal;
+  max-width: 34ch;
+}
+
 .table th {
   padding: var(--space-3) var(--space-5);
   text-align: left;

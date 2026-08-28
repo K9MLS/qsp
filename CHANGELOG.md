@@ -84,6 +84,11 @@ All notable changes to QSP. Dates are UTC.
   with no way to see the rest. Each scroll region is now reachable by keyboard
   and named for a screen reader.
 
+  Columns holding prose wrap; columns holding identifiers, times and statuses do
+  not. `nowrap` on every cell is right for a radio ID, where a break mid-value is
+  worse than a wider table, and wrong for the health summaries, which are
+  sentences and pushed that table past its panel.
+
 - **The page description collapses.** It is read once and scrolled past
   forever, and it was occupying the top of a page an operator is monitoring. It
   stays in the markup and in the accessibility tree; it just no longer takes the

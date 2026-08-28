@@ -96,8 +96,8 @@
         "<tr><td>" + escapeText(r.name || "") + "</td>" +
         '<td><span class="status status--' + escapeText(status) + '">' +
         escapeText(status) + "</span></td>" +
-        "<td>" + escapeText(r.summary || "") + "</td>" +
-        "<td>" + escapeText(detailText(r.detail)) + "</td></tr>";
+        '<td class="cell--wrap">' + escapeText(r.summary || "") + "</td>" +
+        '<td class="cell--wrap">' + escapeText(detailText(r.detail)) + "</td></tr>";
     }
 
     healthBody.innerHTML =
@@ -106,7 +106,8 @@
       "Unavailable names the phase that brings it.</caption>" +
       "<thead><tr>" +
       '<th scope="col">Subsystem</th><th scope="col">Status</th>' +
-      '<th scope="col">Summary</th><th scope="col">Detail</th>' +
+      '<th scope="col" class="cell--wrap">Summary</th>' +
+      '<th scope="col" class="cell--wrap">Detail</th>' +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
 
     if (healthCount) {
