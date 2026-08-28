@@ -62,8 +62,13 @@ func realMain() error {
 				return errors.New("usage: qsp [-config path] adduser <username>")
 			}
 			return adduser(context.Background(), cfg, args[1])
+		case "unlock":
+			if len(args) != 2 {
+				return errors.New("usage: qsp [-config path] unlock <username>")
+			}
+			return unlock(context.Background(), cfg, args[1])
 		default:
-			return fmt.Errorf("unknown command %q; the only one is \"adduser\"", args[0])
+			return fmt.Errorf("unknown command %q; the commands are \"adduser\" and \"unlock\"", args[0])
 		}
 	}
 

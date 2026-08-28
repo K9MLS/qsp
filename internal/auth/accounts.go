@@ -293,6 +293,26 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 	return session, nil
 }
 
+// Unlock clears an account's failed attempts and its lock.
+//
+// **The recovery path is the host, as it is for the password.** Fifteen minutes
+// is a short wait for somebody guessing and a long one for an operator who
+// fat-fingered their own passphrase five times, and the person with shell
+// access on the machine is already trusted with more than this.
+//
+// It reports whether there was such an account, so the caller can say "no such
+// user" rather than silently doing nothing.
+func (s *Service) Unlock(ctx context.Context, username string) (bool, error) {
+	account, found, err := s.repo.AccountByUsername(ctx, NormaliseUsername(username))
+	if err != nil || !found {
+		return false, err
+	}
+	if err := s.repo.UpdateAttempts(ctx, account.ID, 0, time.Time{}, account.LastLoginAt); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Session returns the session a token names, if it is still good.
 //
 // **Expiry is checked here rather than trusted to the cookie.** A cookie's own

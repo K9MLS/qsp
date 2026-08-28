@@ -126,6 +126,17 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **`qsp unlock <username>` clears a lockout**, and expired sessions are now
+  swept hourly. Both were gaps noticed while the login was being tested by hand:
+  five wrong passwords meant a real fifteen-minute wait with no way out, and
+  `SweepSessions` existed with nothing calling it, so the table grew one row per
+  login for the life of the instance.
+
+  Unlock clears attempts and nothing else — an operator running it must not find
+  their passphrase reset. The sweep is hourly because nothing depends on it
+  being prompt: an expired session is already refused and deleted on sight, so
+  this only reclaims rows.
+
 ### Fixed
 - **A flaky test that CI caught and no local run did.**
   `TestUnbridgedTrafficIsRepeatedToOtherPeers` read the forwarded counter the

@@ -81,7 +81,9 @@ the instance's life.
 produce one.
 
 A wrong password and an unknown username give the same answer and take the same
-time. Failed attempts are counted on the account and lock it briefly. The cookie
+time. Failed attempts are counted on the account and lock it briefly;
+`qsp unlock <username>` clears that from the host, which is the same recovery
+path the password itself has. The cookie
 is `HttpOnly` and `SameSite=Lax`, and carries `Secure` when `server.behind_proxy`
 says QSP is behind TLS — setting it unconditionally would silently break a club
 running plain HTTP on a LAN.

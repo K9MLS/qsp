@@ -506,3 +506,70 @@ func TestNewServiceRequiresARepository(t *testing.T) {
 		t.Error("a service was built with no repository")
 	}
 }
+
+// TestUnlockLetsALockedOperatorBackIn. Fifteen minutes is a short wait for
+// somebody guessing and a long one for an operator who fat-fingered their own
+// passphrase, and the host is the recovery path for the password already.
+func TestUnlockLetsALockedOperatorBackIn(t *testing.T) {
+	repo := newRepo()
+	svc, _ := newService(t, repo, auth.Policy{MaxFailures: 2, Lockout: time.Hour})
+	ctx := context.Background()
+	if _, err := svc.CreateAccount(ctx, "K9MLS", goodPassword); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	svc.Authenticate(ctx, "K9MLS", "wrong", "", "")
+	svc.Authenticate(ctx, "K9MLS", "wrong", "", "")
+	if _, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", ""); !errors.Is(err, auth.ErrLockedOut) {
+		t.Fatalf("the account was not locked: %v", err)
+	}
+
+	found, err := svc.Unlock(ctx, "k9mls") // folded, like every other lookup
+	if err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	if !found {
+		t.Fatal("Unlock did not find the account")
+	}
+	if _, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", ""); err != nil {
+		t.Errorf("the account is still locked: %v", err)
+	}
+}
+
+// TestUnlockReportsAnUnknownAccount. Unlocking a typo must not report success
+// and leave the real account locked.
+func TestUnlockReportsAnUnknownAccount(t *testing.T) {
+	repo := newRepo()
+	svc, _ := newService(t, repo, auth.Policy{})
+	found, err := svc.Unlock(context.Background(), "NOBODY")
+	if err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	if found {
+		t.Error("Unlock reported success for an account that does not exist")
+	}
+}
+
+// TestUnlockDoesNotChangeThePassword. It clears attempts and nothing else; an
+// operator running it should not find their passphrase reset.
+func TestUnlockDoesNotChangeThePassword(t *testing.T) {
+	repo := newRepo()
+	svc, _ := newService(t, repo, auth.Policy{})
+	ctx := context.Background()
+	if _, err := svc.CreateAccount(ctx, "K9MLS", goodPassword); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	before, _, _ := repo.AccountByUsername(ctx, "k9mls")
+
+	if _, err := svc.Unlock(ctx, "K9MLS"); err != nil {
+		t.Fatalf("Unlock: %v", err)
+	}
+	after, _, _ := repo.AccountByUsername(ctx, "k9mls")
+
+	if after.PasswordHash != before.PasswordHash {
+		t.Error("Unlock changed the password hash")
+	}
+	if _, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", ""); err != nil {
+		t.Errorf("the password stopped working: %v", err)
+	}
+}

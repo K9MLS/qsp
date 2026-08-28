@@ -105,8 +105,14 @@ anybody has asked means guessing which distinctions matter. The audit trail
 already records who did what, which is the part that settles arguments.
 
 **Password reset by email.** QSP sends no mail and adding an SMTP dependency to
-recover an account is out of proportion. `qsp adduser` on an existing name
-resets that account's password, from the shell, by the person who owns the host.
+recover an account is out of proportion. The host is the recovery path, as it is
+for creating the account in the first place.
+
+*Amended 2026-08-28.* `qsp unlock <username>` clears a lockout the same way.
+Fifteen minutes is a short wait for somebody guessing and a long one for an
+operator who fat-fingered their own passphrase five times, and whoever has shell
+access is already trusted with more than this. It clears attempts and nothing
+else — running it must not reset a password by surprise.
 
 **Any of this being enough for the open internet.** Authentication is the floor,
 not the ceiling; nothing here is a substitute for the console being behind a

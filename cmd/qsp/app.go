@@ -45,6 +45,10 @@ type app struct {
 	dmr       *peers.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
+	// auth is the concrete login service, kept alongside the interface the
+	// server holds because the session sweep is not something an HTTP handler
+	// ever needs and does not belong on that interface.
+	auth *auth.Service
 	// closers are run in reverse order during shutdown.
 	closers []func(context.Context) error
 }
@@ -255,6 +259,7 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 			return nil, serr
 		}
 		authService = svc
+		a.auth = svc
 	}
 
 	srv, err := server.New(log, registry, a.bus, server.Options{
@@ -392,8 +397,44 @@ func (a *app) run(ctx context.Context) error {
 		a.log.Warn("cannot record startup in the audit trail", slog.String("error", err.Error()))
 	}
 
+	// Expired sessions are swept periodically. Service.Session already refuses
+	// and deletes one it is shown, so this is about the rows nobody presents
+	// again: without it the table grows by one row per login, for ever, on an
+	// instance that may run for years.
+	if a.auth != nil {
+		go a.sweepSessions(ctx)
+	}
+
 	<-ctx.Done()
 	return nil
+}
+
+// sessionSweepInterval is how often expired sessions are removed.
+//
+// Nothing depends on the sweep being prompt — an expired session is already
+// refused on sight, so this only reclaims rows. Hourly costs one statement an
+// hour and keeps the table proportional to the sessions that exist rather than
+// to every login ever made.
+const sessionSweepInterval = time.Hour
+
+func (a *app) sweepSessions(ctx context.Context) {
+	ticker := time.NewTicker(sessionSweepInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := a.auth.SweepSessions(ctx)
+			if err != nil {
+				a.log.Warn("cannot sweep expired sessions", slog.String("error", err.Error()))
+				continue
+			}
+			if n > 0 {
+				a.log.Debug("swept expired sessions", slog.Int("removed", n))
+			}
+		}
+	}
 }
 
 // shutdown closes every subsystem in reverse construction order.

@@ -99,6 +99,51 @@ func adduser(ctx context.Context, cfg config.Config, username string) error {
 	return nil
 }
 
+// unlock clears an account's failed attempts.
+//
+// **Fifteen minutes is a short wait for somebody guessing and a long one for an
+// operator who fat-fingered their own passphrase five times.** The recovery
+// path is the host, as it is for the password itself, and whoever has shell
+// access there is already trusted with more than this.
+func unlock(ctx context.Context, cfg config.Config, username string) error {
+	if err := auth.ValidateUsername(username); err != nil {
+		return err
+	}
+
+	db, err := database.Open(ctx, logging.Discard(), database.Options{
+		Driver:          cfg.Database.Driver,
+		DSN:             cfg.Database.DSN,
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
+	})
+	if err != nil {
+		return fmt.Errorf("cannot open the database this instance uses: %w", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	repo, err := auth.NewSQLRepository(db.SQL())
+	if err != nil {
+		return err
+	}
+	svc, err := auth.NewService(repo, auth.Policy{}, nil)
+	if err != nil {
+		return err
+	}
+
+	found, err := svc.Unlock(ctx, username)
+	if err != nil {
+		return err
+	}
+	if !found {
+		// Named rather than silently succeeding: unlocking a typo would
+		// otherwise report success and leave the real account still locked.
+		return fmt.Errorf("no administrator named %q", username)
+	}
+
+	fmt.Fprintf(os.Stderr, "Unlocked %q\n", username)
+	return nil
+}
+
 // readPassword prompts twice without echoing.
 //
 // Twice, because a mistyped password on an account nobody has logged into yet
