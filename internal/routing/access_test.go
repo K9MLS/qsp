@@ -608,3 +608,158 @@ func TestAPrivateCallIsNotSentBackToItsCaller(t *testing.T) {
 		}
 	}
 }
+
+// Layer 3, subscription at the routing core. See ADR-0023.
+
+// stubAttached is a fixed set of peer/talkgroup/slot attachments.
+type stubAttached map[attachKey]bool
+
+type attachKey struct {
+	peer      hbp.RepeaterID
+	talkgroup uint32
+	slot      hbp.Timeslot
+}
+
+func (s stubAttached) Attached(p hbp.RepeaterID, tg uint32, slot hbp.Timeslot) bool {
+	return s[attachKey{p, tg, slot}]
+}
+
+func coreWithAttachments(t *testing.T, a stubAttached, table *routing.Table, peers ...hbp.RepeaterID) *routing.Core {
+	t.Helper()
+	c, err := routing.NewCore(routing.CoreOptions{
+		Table:    table,
+		Peers:    peersReady(peers...),
+		Attached: a,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	return c
+}
+
+// TestNilSubscriptionsDeliverEverything is the compatibility guarantee at the
+// core: an instance not using this behaves exactly as it did before.
+func TestNilSubscriptionsDeliverEverything(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := noBridges(t, a, b, c)
+
+	res := core.Route(a, groupCall(0x1111, 3148, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 2 {
+		t.Errorf("a core with no subscriptions delivered %d copies, want 2", len(res.Deliveries))
+	}
+}
+
+// TestRepeatOnlyReachesAttachedPeers is the feature: a member sitting on their
+// local talkgroup should not have a statewide net arrive on the same hotspot.
+func TestRepeatOnlyReachesAttachedPeers(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	// Only b wants TG 3148.
+	core := coreWithAttachments(t, stubAttached{
+		{b, 3148, hbp.Timeslot2}: true,
+	}, nil, a, b, c)
+
+	res := core.Route(a, groupCall(0x2222, 3148, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("delivered to %d peers, want 1", len(res.Deliveries))
+	}
+	if res.Deliveries[0].Peer != b {
+		t.Errorf("delivered to peer %d, want %d", res.Deliveries[0].Peer, b)
+	}
+	// The unattached peer is refused with a reason, not skipped in silence.
+	var explained bool
+	for _, d := range res.Drops {
+		if d.To.Peer == c && strings.Contains(d.Reason, "not attached") {
+			explained = true
+		}
+	}
+	if !explained {
+		t.Errorf("the unattached peer was skipped without an explanation: %+v", res.Drops)
+	}
+}
+
+// TestABridgeIgnoresAttachment. An operator who bridged a talkgroup to somebody
+// has already said it should arrive; making them also attach it would mean
+// configuring the same thing twice.
+func TestABridgeIgnoresAttachment(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "net",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Peer: b, Talkgroup: 91, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	// b is attached to nothing at all.
+	core := coreWithAttachments(t, stubAttached{}, table, a, b)
+
+	res := core.Route(a, groupCall(0x3333, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	var reached bool
+	for _, d := range res.Deliveries {
+		if d.Peer == b && d.Frame.TargetID == 91 {
+			reached = true
+		}
+	}
+	if !reached {
+		t.Errorf("a bridged talkgroup was refused for want of an attachment: %+v", res.Drops)
+	}
+}
+
+// TestAccessControlOutranksAttachment. Access decides what the instance is
+// willing to carry; attachment decides what a member wants. Nobody may
+// subscribe their way past a refusal.
+func TestAccessControlOutranksAttachment(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	c, err := routing.NewCore(routing.CoreOptions{
+		Access:   talkgroups(t, 2, access.ModePermit, "9"),
+		Peers:    peersReady(a, b),
+		Attached: stubAttached{{b, 3148, hbp.Timeslot2}: true},
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	// b is attached to 3148, but the instance does not carry it.
+	res := c.Route(a, groupCall(0x4444, 3148, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Error("an attachment delivered a talkgroup the access list refuses")
+	}
+	if !strings.Contains(res.Reason, "dmr.access.talkgroups") {
+		t.Errorf("the refusal should come from access control: %q", res.Reason)
+	}
+}
+
+// TestAnUnattachedPeerTakesNoReservation. A peer that is not a destination must
+// not hold a slot, or subscription would quietly become a denial of service.
+func TestAnUnattachedPeerTakesNoReservation(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := coreWithAttachments(t, stubAttached{
+		{b, 9, hbp.Timeslot2}: true,
+	}, nil, a, b, c)
+
+	core.Route(a, groupCall(0x5555, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for _, busy := range core.Busy() {
+		if busy.Peer == c {
+			t.Errorf("an unattached peer holds a reservation: %s", busy)
+		}
+	}
+}
+
+// TestAttachmentIsPerTimeslot. A peer's two slots are independent paths.
+func TestAttachmentIsPerTimeslot(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithAttachments(t, stubAttached{
+		{b, 9, hbp.Timeslot2}: true,
+	}, nil, a, b)
+
+	if res := core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(res.Deliveries) != 1 {
+		t.Errorf("TS2 was attached and did not receive: %+v", res.Drops)
+	}
+	if res := core.Route(a, groupCall(0x7777, 9, hbp.Timeslot1, hbp.FrameTypeSync), t0); len(res.Deliveries) != 0 {
+		t.Error("TS1 received although only TS2 is attached")
+	}
+}

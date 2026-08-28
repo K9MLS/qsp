@@ -117,6 +117,12 @@ type DMR struct {
 	Schedule []Window `json:"schedule"`
 	// Upstreams are links to other DMR networks over OpenBridge.
 	Upstreams []Upstream `json:"upstreams"`
+	// Subscription decides which peers receive which talkgroups.
+	//
+	// Absent, or present and disabled, every peer receives every talkgroup —
+	// which is what QSP did before per-peer attachment existed, and what a club
+	// running on one talkgroup wants. See ADR-0023.
+	Subscription Subscription `json:"subscription"`
 	// Access decides which repeaters may register, which subscribers may
 	// transmit, and which talkgroups are carried on each timeslot.
 	//
@@ -126,6 +132,30 @@ type DMR struct {
 	// meant. A listener reachable from beyond this host with no block at all
 	// refuses to start. See docs/adr/ADR-0020-access-control.md.
 	Access *Access `json:"access,omitempty"`
+}
+
+// Subscription is layer 3: which peers receive which talkgroups.
+type Subscription struct {
+	// Enabled turns per-peer attachment on. Off by default, because turning it
+	// on with nothing configured leaves a network where nobody hears anything
+	// until they transmit, and that is a surprising thing to happen on upgrade.
+	Enabled bool `json:"enabled"`
+	// Timeout is how long a talkgroup a peer attached by transmitting keeps
+	// being delivered after they stop.
+	Timeout Duration `json:"timeout"`
+	// Static are attachments that never lapse, for the cases transmitting
+	// cannot serve: a calling channel that must be there before anybody speaks,
+	// and a repeater that should always carry its regional talkgroup.
+	Static []StaticAttachment `json:"static,omitempty"`
+}
+
+// StaticAttachment is one talkgroup a peer always receives.
+type StaticAttachment struct {
+	// Peer is the repeater or hotspot ID.
+	Peer uint32 `json:"peer"`
+	// Talkgroup and Timeslot identify what it receives.
+	Talkgroup uint32 `json:"talkgroup"`
+	Timeslot  int    `json:"timeslot"`
 }
 
 // Access holds the four lists that decide who QSP carries.
@@ -454,6 +484,8 @@ func Default() Config {
 			// nothing is exposed; when an operator enables it on a reachable
 			// address, the absence is what makes QSP ask them to decide.
 			Access: nil,
+			// Off, so every peer receives every talkgroup, as before.
+			Subscription: Subscription{Enabled: false, Timeout: Duration(15 * time.Minute)},
 		},
 	}
 }
@@ -859,6 +891,27 @@ func (c Config) Validate() error {
 		"use 256; this is how many events a reconnecting console client can replay")
 	v.positive("events.subscriber_buffer", c.Events.SubscriberBuffer,
 		"use 64; a client exceeding this is marked lagged and resynchronises")
+
+	if c.DMR.Enabled && c.DMR.Subscription.Enabled {
+		v.positiveDuration("dmr.subscription.timeout", c.DMR.Subscription.Timeout,
+			"use \"15m\"; this is how long a talkgroup a member attached by transmitting "+
+				"keeps arriving after they stop")
+		for i, a := range c.DMR.Subscription.Static {
+			field := fmt.Sprintf("dmr.subscription.static[%d]", i)
+			if a.Peer == 0 {
+				v.add(field+".peer", "must name a repeater or hotspot ID",
+					"use the ID the peer registers with; 0 is not a station")
+			}
+			if a.Talkgroup == 0 {
+				v.add(field+".talkgroup", "must name a talkgroup",
+					"use the talkgroup this peer should always receive")
+			}
+			if a.Timeslot != 1 && a.Timeslot != 2 {
+				v.add(field+".timeslot", fmt.Sprintf("is %d; DMR has two timeslots", a.Timeslot),
+					"use 1 or 2")
+			}
+		}
+	}
 
 	c.validateAccess(v)
 

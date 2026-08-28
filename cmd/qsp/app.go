@@ -155,6 +155,8 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 				// Where radios are, so a private call can reach one. The
 				// master learns this from traffic; see ADR-0021.
 				Subscribers: master,
+				// Which talkgroups each peer wants; see ADR-0023.
+				Attached: master,
 			})
 			if err != nil {
 				return nil, err
@@ -300,14 +302,40 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		LoginTimeout: cfg.DMR.LoginTimeout.AsDuration(),
 		MaxPeers:     cfg.DMR.MaxPeers,
 		Access:       lists,
-		// Where radios are, learned from traffic. Nothing routes on it yet;
-		// see docs/adr/ADR-0021-private-calls-and-data.md.
+		// Where radios are, learned from traffic; see ADR-0021.
 		SubscriberTimeout: cfg.DMR.SubscriberTimeout.AsDuration(),
+		// Which talkgroups each peer receives; see ADR-0023.
+		Subscription: subscriptionFrom(cfg),
 	})
 	if err != nil {
 		return nil, "", err
 	}
 	return master, "", nil
+}
+
+// subscriptionFrom converts the configured subscription into the master's form.
+//
+// The timeslot is validated as 1 or 2 before it reaches here, so an unexpected
+// value would be a bug rather than bad input; it is mapped defensively anyway,
+// because a static attachment silently landing on the wrong slot is the kind of
+// fault an operator would spend an evening on.
+func subscriptionFrom(cfg config.Config) peers.SubscriptionConfig {
+	out := peers.SubscriptionConfig{
+		Enabled: cfg.DMR.Subscription.Enabled,
+		Timeout: cfg.DMR.Subscription.Timeout.AsDuration(),
+	}
+	for _, a := range cfg.DMR.Subscription.Static {
+		slot := hbp.Timeslot1
+		if a.Timeslot == 2 {
+			slot = hbp.Timeslot2
+		}
+		out.Static = append(out.Static, peers.Attachment{
+			Peer:      hbp.RepeaterID(a.Peer),
+			Talkgroup: a.Talkgroup,
+			Timeslot:  slot,
+		})
+	}
+	return out
 }
 
 // run starts the application and blocks until ctx is cancelled.

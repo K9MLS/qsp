@@ -107,6 +107,18 @@ type PeerLookup interface {
 	ReadyPeers() []hbp.RepeaterID
 }
 
+// Subscriptions reports which peers want which talkgroups.
+//
+// It is separate from PeerLookup because it answers a question about the
+// member's wishes rather than the peer's readiness, and because an instance
+// that does not use it still routes correctly: a nil Subscriptions delivers
+// every talkgroup to every ready peer, which is what QSP did before per-peer
+// attachment existed. See ADR-0023.
+type Subscriptions interface {
+	// Attached reports whether a peer should receive a talkgroup on a slot.
+	Attached(peer hbp.RepeaterID, talkgroup uint32, slot hbp.Timeslot) bool
+}
+
 // reservation records a destination currently receiving a transmission.
 type reservation struct {
 	// source identifies the transmission holding this destination.
@@ -171,7 +183,9 @@ type Core struct {
 	// subscribers locates a radio for a private call. Nil means private calls
 	// are not routed, which is a working configuration rather than a fault.
 	subscribers SubscriberLookup
-	timeout     time.Duration
+	// attached reports which talkgroups a peer wants. Nil means all of them.
+	attached Subscriptions
+	timeout  time.Duration
 
 	// busy maps a destination endpoint to the transmission holding it.
 	//
@@ -200,6 +214,9 @@ type CoreOptions struct {
 	// Subscribers locates a radio for a private call. Optional: nil means
 	// private calls are refused with an explanation rather than routed.
 	Subscribers SubscriberLookup
+	// Attached reports which talkgroups a peer wants. Optional: nil delivers
+	// every talkgroup to every ready peer.
+	Attached Subscriptions
 	// Timeout is how long a destination stays reserved after its last frame.
 	// Zero selects StreamTimeout.
 	Timeout time.Duration
@@ -219,6 +236,7 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		table:       opts.Table,
 		peers:       opts.Peers,
 		subscribers: opts.Subscribers,
+		attached:    opts.Attached,
 		timeout:     opts.Timeout,
 		busy:        make(map[Endpoint]*reservation),
 	}, nil
@@ -464,6 +482,23 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 					To: dest,
 					Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by "+
 						"dmr.access.talkgroups", dest.Talkgroup, dest.Timeslot),
+				})
+				continue
+			}
+
+			// Layer 3. Access control decides what this instance is willing to
+			// carry; this decides what the member wants to hear, and it runs
+			// second so that nobody can subscribe their way past a refusal.
+			//
+			// A bridge is a separate route to the same peer and is not subject
+			// to it: an operator who bridged a talkgroup to somebody has
+			// already said it should arrive. Only repeat consults attachment.
+			if target.repeat && c.attached != nil &&
+				!c.attached.Attached(peer, dest.Talkgroup, dest.Timeslot) {
+				res.Drops = append(res.Drops, Drop{
+					To: dest,
+					Reason: fmt.Sprintf("peer %d is not attached to talkgroup %d on TS%d",
+						peer, dest.Talkgroup, dest.Timeslot),
 				})
 				continue
 			}

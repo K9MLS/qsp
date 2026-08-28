@@ -54,6 +54,10 @@ type MasterConfig struct {
 	// SubscriberTimeout is how long a radio's location is trusted after it was
 	// last heard. Zero selects DefaultSubscriberTimeout.
 	SubscriberTimeout time.Duration
+	// Subscription decides which peers receive which talkgroups. The zero
+	// value delivers everything to everybody, which is what QSP did before
+	// per-peer attachment existed. See ADR-0023.
+	Subscription SubscriptionConfig
 	// Access decides which repeaters may register and which subscribers may
 	// transmit.
 	//
@@ -140,6 +144,9 @@ type Master struct {
 	// subscribers maps a radio ID to where it was last heard. Learned from
 	// traffic, never configured; see subscribers.go.
 	subscribers map[uint32]*Location
+	// attachments records which talkgroups each peer receives. Mostly learned
+	// from traffic; see attachments.go.
+	attachments map[attachmentKey]*Attachment
 }
 
 // NewMaster constructs a Master.
@@ -159,18 +166,24 @@ func NewMaster(log *slog.Logger, cfg MasterConfig) (*Master, error) {
 	if cfg.SubscriberTimeout <= 0 {
 		cfg.SubscriberTimeout = DefaultSubscriberTimeout
 	}
+	if cfg.Subscription.Timeout <= 0 {
+		cfg.Subscription.Timeout = DefaultAttachmentTimeout
+	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
 	if cfg.Salt == nil {
 		cfg.Salt = randomSalt
 	}
-	return &Master{
+	m := &Master{
 		cfg:         cfg,
 		log:         logging.Subsystem(log, "peers"),
 		peers:       make(map[hbp.RepeaterID]*Peer),
 		subscribers: make(map[uint32]*Location),
-	}, nil
+		attachments: make(map[attachmentKey]*Attachment),
+	}
+	m.seedStaticAttachments()
+	return m, nil
 }
 
 func randomSalt() ([4]byte, error) {
@@ -463,6 +476,16 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 	// the order of these two lines is how that happens.
 	m.observe(msg.SourceID, p.ID, msg.Timeslot, now)
 
+	// Attach the talkgroup the peer is using, before the frame is routed
+	// rather than after. Attaching afterwards would leave this frame
+	// undelivered and clip the first syllable of every transmission onto a
+	// newly attached talkgroup — the mistake ADR-0016 records making with PTT
+	// triggers. Group calls only: a private call is addressed to a radio and
+	// says nothing about which talkgroups its peer wants.
+	if msg.CallType == hbp.CallGroup {
+		m.attach(p.ID, msg.TargetID, msg.Timeslot, now)
+	}
+
 	frame := msg
 	return Outcome{Data: &frame, From: p.ID}
 }
@@ -549,6 +572,14 @@ func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome
 // because a half-open registration holds a slot without providing service.
 func (m *Master) Expire() []Event {
 	now := m.cfg.Now().UTC()
+
+	for _, a := range m.expireAttachments(now) {
+		m.log.Debug("talkgroup attachment lapsed",
+			logging.PeerID(uint32(a.Peer)),
+			logging.Talkgroup(a.Talkgroup),
+			slog.String("idle", now.Sub(a.LastUsed).Truncate(time.Second).String()),
+		)
+	}
 
 	for _, loc := range m.expireSubscribers(now) {
 		m.log.Debug("forgot where a radio is",

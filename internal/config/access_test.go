@@ -404,3 +404,115 @@ func TestAConfigurationWithoutSubscriberTimeoutStillLoads(t *testing.T) {
 		t.Errorf("the omitted field is %s, want the 2h default", got.DMR.SubscriberTimeout)
 	}
 }
+
+// Layer 3, subscription. See ADR-0023.
+
+// TestSubscriptionIsOffByDefault is the upgrade guarantee: an instance that
+// configures nothing must not notice this feature exists.
+func TestSubscriptionIsOffByDefault(t *testing.T) {
+	d := Default()
+	if d.DMR.Subscription.Enabled {
+		t.Error("subscription is on by default; a club on one talkgroup would suddenly hear nothing")
+	}
+	if got := d.DMR.Subscription.Timeout.AsDuration(); got != 15*time.Minute {
+		t.Errorf("the default attachment timeout is %s, want 15m", got)
+	}
+	if err := d.Validate(); err != nil {
+		t.Errorf("the default configuration must validate: %v", err)
+	}
+}
+
+func TestSubscriptionValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		sub   Subscription
+		field string
+	}{
+		{"zero timeout", Subscription{Enabled: true}, "dmr.subscription.timeout"},
+		{"peer 0", Subscription{
+			Enabled: true, Timeout: Duration(time.Minute),
+			Static: []StaticAttachment{{Talkgroup: 9, Timeslot: 2}},
+		}, "dmr.subscription.static[0].peer"},
+		{"talkgroup 0", Subscription{
+			Enabled: true, Timeout: Duration(time.Minute),
+			Static: []StaticAttachment{{Peer: 312100, Timeslot: 2}},
+		}, "dmr.subscription.static[0].talkgroup"},
+		{"timeslot 3", Subscription{
+			Enabled: true, Timeout: Duration(time.Minute),
+			Static: []StaticAttachment{{Peer: 312100, Talkgroup: 9, Timeslot: 3}},
+		}, "dmr.subscription.static[0].timeslot"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := enabledDMR()
+			c.DMR.Subscription = tc.sub
+
+			err := c.Validate()
+			if err == nil {
+				t.Fatal("an invalid subscription was accepted")
+			}
+			var found bool
+			for _, fe := range err.(*ValidationError).Errors {
+				if fe.Field == tc.field {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("want an error on %s, got %v", tc.field, err.(*ValidationError).Fields())
+			}
+		})
+	}
+}
+
+// TestDisabledSubscriptionIsBarelyChecked lets an operator leave a
+// half-finished block in place while it is switched off, the same way a
+// disabled upstream is treated.
+func TestDisabledSubscriptionIsBarelyChecked(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	c.DMR.Subscription = Subscription{Enabled: false, Timeout: 0}
+	if err := c.Validate(); err != nil {
+		t.Errorf("a disabled subscription block was rejected: %v", err)
+	}
+}
+
+func TestSubscriptionRoundTripsThroughJSON(t *testing.T) {
+	c := enabledDMR()
+	c.DMR.Access = &Access{}
+	c.DMR.Subscription = Subscription{
+		Enabled: true,
+		Timeout: Duration(20 * time.Minute),
+		Static:  []StaticAttachment{{Peer: 312100101, Talkgroup: 9, Timeslot: 2}},
+	}
+
+	var buf bytes.Buffer
+	if err := Save(&buf, c); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got, err := Load(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !got.DMR.Subscription.Enabled || len(got.DMR.Subscription.Static) != 1 {
+		t.Fatal("the subscription block did not survive the round trip")
+	}
+	if got.DMR.Subscription.Static[0].Peer != 312100101 {
+		t.Errorf("the static attachment lost its peer: %+v", got.DMR.Subscription.Static[0])
+	}
+}
+
+// TestAConfigurationWithoutSubscriptionStillLoads is the other half of the
+// upgrade guarantee: a document written before this field existed must load.
+func TestAConfigurationWithoutSubscriptionStillLoads(t *testing.T) {
+	const doc = `{
+	  "version": 1,
+	  "dmr": {"enabled": true, "password_file": "peer.pass",
+	          "access": {"registration": {"mode": "deny", "ids": []}}}
+	}`
+	got, err := Load(strings.NewReader(doc))
+	if err != nil {
+		t.Fatalf("a configuration predating subscription failed to load: %v", err)
+	}
+	if got.DMR.Subscription.Enabled {
+		t.Error("an omitted subscription block came back enabled")
+	}
+}

@@ -13,3 +13,8 @@ import (
 func TestMasterSatisfiesSubscriberLookup(t *testing.T) {
 	var _ routing.SubscriberLookup = (*peers.Master)(nil)
 }
+
+// Master must also satisfy routing.Subscriptions, for the same reason.
+func TestMasterSatisfiesSubscriptions(t *testing.T) {
+	var _ routing.Subscriptions = (*peers.Master)(nil)
+}

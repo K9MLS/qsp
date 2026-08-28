@@ -118,6 +118,29 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **Peers attach talkgroups, which is layer 3.**
+  [ADR-0023](docs/adr/ADR-0023-talkgroup-subscription.md). Repeat sent every
+  talkgroup to every peer, so a member sitting on their local talkgroup had a
+  statewide net arriving on the same hotspot — and on a simplex hotspot with one
+  timeslot they cannot have both anyway.
+
+  **A peer attaches a talkgroup by transmitting on it**, and the attachment
+  lapses after fifteen minutes of silence. That is the half that matters: a
+  configured-only list would mean asking an administrator to edit a file every
+  time somebody wanted to work a talkgroup for ten minutes. Static attachments
+  remain for what transmitting cannot serve — a calling channel that must be
+  there before anybody speaks.
+
+  The attaching frame is itself delivered. Attaching after routing would clip
+  the first syllable of every transmission onto a newly attached talkgroup,
+  which is the mistake [ADR-0016](docs/adr/ADR-0016-ptt-triggered-bridging.md)
+  records making with PTT triggers.
+
+  **Off by default**, so a club that configures nothing notices no change.
+  Bridges ignore attachment, since an operator who bridged a talkgroup to
+  somebody has already said it should arrive. Access control runs first, so
+  nobody can subscribe their way past a refusal. Twenty tests.
+
 - **Private calls are routed.** Radio-to-radio calling is used constantly on DMR
   and QSP routed none of it: repeat fired only on group calls, and nothing
   handled a call whose target is a radio rather than a talkgroup. A private call
