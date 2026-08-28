@@ -94,6 +94,31 @@ All notable changes to QSP. Dates are UTC.
   Ten tests. **Nothing routes on this yet**; private call routing is next.
 
 ### Fixed
+- **Two talkgroups could be delivered to one peer's timeslot at the same
+  moment.** A DMR timeslot is one TDMA channel and carries one call; sending two
+  down it is interleaved audio nobody can understand — exactly what
+  [ADR-0014](docs/adr/ADR-0014-contention.md) exists to prevent, missed because
+  reservations were keyed on `(peer, talkgroup, timeslot)` and the two
+  talkgroups therefore looked like separate destinations.
+
+  A peer destination is now reserved by `(peer, timeslot)`.
+  [ADR-0022](docs/adr/ADR-0022-timeslot-contention.md) records it.
+
+  **Repeat made this ordinary rather than exotic.** Before ADR-0019 a peer
+  received only the talkgroups a bridge named; a master that repeats sends every
+  talkgroup any peer transmits on to every other peer, so several converging on
+  one slot is now the normal shape of a busy club network.
+
+  **A link keeps the old key**, deliberately. Contention models a physical
+  constraint and an OpenBridge link is an IP socket rather than a radio channel;
+  BrandMeister carries several talkgroups over one, and applying the timeslot
+  rule there would refuse deliverable traffic.
+
+  Some traffic that used to be delivered is now refused, which is the point — it
+  was going to a slot that could not carry it. Refusals name the talkgroup
+  already on the slot, since "busy" alone tells an operator nothing. Six tests,
+  and every routing test that predates this passes unchanged.
+
 - **A master restart cost a minute of dead network.** QSP dropped keepalives
   from a peer it no longer had a registration for, in silence, so the peer only
   discovered it had been forgotten when its own timeout fired. Observed on the

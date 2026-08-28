@@ -298,3 +298,141 @@ func TestADenyListRefusesOneTalkgroupAndCarriesTheRest(t *testing.T) {
 		t.Errorf("a talkgroup outside the deny list was refused: %q", res.Reason)
 	}
 }
+
+// Timeslot contention. See docs/adr/ADR-0022-timeslot-contention.md.
+
+// TestTwoTalkgroupsCannotShareOneTimeslot is the bug ADR-0022 records. A DMR
+// timeslot is one TDMA channel; two talkgroups down it is interleaved audio
+// nobody can understand. Reservations were keyed on the talkgroup, so the two
+// looked like separate destinations and both were delivered.
+func TestTwoTalkgroupsCannotShareOneTimeslot(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := noBridges(t, a, b, c)
+
+	core.Route(a, groupCall(0x1111, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	res := core.Route(b, groupCall(0x2222, 91, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+
+	for _, d := range res.Deliveries {
+		if d.Peer == c {
+			t.Errorf("peer %d received TG %d on TS2 while TG 9 was already there",
+				c, d.Frame.TargetID)
+		}
+	}
+	var named bool
+	for _, d := range res.Drops {
+		if strings.Contains(d.Reason, "TG 9") {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("no drop named the talkgroup already on the slot: %+v", res.Drops)
+	}
+}
+
+// TestTheOtherTimeslotIsUnaffected keeps the fix from becoming a blunt refusal.
+// A repeater has two slots and they are independent paths.
+func TestTheOtherTimeslotIsUnaffected(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := noBridges(t, a, b, c)
+
+	core.Route(a, groupCall(0x3333, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	res := core.Route(b, groupCall(0x4444, 91, hbp.Timeslot1, hbp.FrameTypeSync), t0)
+
+	var reached bool
+	for _, d := range res.Deliveries {
+		if d.Peer == c && d.Frame.Timeslot == hbp.Timeslot1 {
+			reached = true
+		}
+	}
+	if !reached {
+		t.Errorf("TS1 was refused because TS2 was busy: %+v", res.Drops)
+	}
+}
+
+// TestTheSameTransmissionKeepsItsSlot guards against the widened key refusing
+// a transmission's own continuation frames.
+func TestTheSameTransmissionKeepsItsSlot(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := noBridges(t, a, b)
+
+	core.Route(a, groupCall(0x5555, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for seq := 0; seq < 5; seq++ {
+		res := core.Route(a, groupCall(0x5555, 9, hbp.Timeslot2, hbp.FrameTypeVoice), t0)
+		if len(res.Deliveries) != 1 {
+			t.Fatalf("frame %d of a transmission was refused its own slot: %+v", seq, res.Drops)
+		}
+	}
+}
+
+// TestTheSlotIsReleasedByATerminator keeps ADR-0014's rule under the new key.
+// Waiting out the timeout after a clean unkey would make every exchange feel
+// broken.
+func TestTheSlotIsReleasedByATerminator(t *testing.T) {
+	const a, b, c hbp.RepeaterID = 3100001, 3100002, 3100003
+	core := noBridges(t, a, b, c)
+
+	core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+
+	if core.BusyCount() != 0 {
+		t.Fatalf("a terminator left %d reservations behind", core.BusyCount())
+	}
+	// Another talkgroup can now use the slot immediately.
+	res := core.Route(b, groupCall(0x7777, 91, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) == 0 {
+		t.Errorf("the slot was not free after a terminator: %+v", res.Drops)
+	}
+}
+
+// TestBusyStillNamesTheTalkgroup matters because the contention key drops it.
+// An operator told a nameless slot is busy learns nothing.
+func TestBusyStillNamesTheTalkgroup(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := noBridges(t, a, b)
+
+	core.Route(a, groupCall(0x8888, 3148, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	busy := core.Busy()
+	if len(busy) == 0 {
+		t.Fatal("nothing was reserved")
+	}
+	for _, e := range busy {
+		if e.Talkgroup != 3148 {
+			t.Errorf("a reservation reports TG %d, want 3148: %s", e.Talkgroup, e)
+		}
+	}
+}
+
+// TestALinkCarriesSeveralTalkgroupsAtOnce is the deliberate asymmetry.
+// Contention models a physical constraint; an OpenBridge link is an IP socket
+// rather than a radio channel, and BrandMeister carries several talkgroups over
+// one. Applying the timeslot rule here would refuse deliverable traffic.
+func TestALinkCarriesSeveralTalkgroupsAtOnce(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	table, err := routing.NewTable([]routing.Bridge{
+		{Name: "one", Enabled: true, Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Upstream: "brandmeister", Talkgroup: 3148, Timeslot: hbp.Timeslot2},
+		}},
+		{Name: "two", Enabled: true, Endpoints: []routing.Endpoint{
+			{Peer: b, Talkgroup: 91, Timeslot: hbp.Timeslot2},
+			{Upstream: "brandmeister", Talkgroup: 3100, Timeslot: hbp.Timeslot2},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: peersReady(a, b)})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	first := core.Route(a, groupCall(0x9999, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(first.Upstreams) != 1 {
+		t.Fatalf("the first talkgroup did not reach the link: %+v", first.Drops)
+	}
+	second := core.Route(b, groupCall(0xAAAA, 91, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(second.Upstreams) != 1 {
+		t.Errorf("a second talkgroup was refused the link, which is an IP socket "+
+			"and not a radio channel: %+v", second.Drops)
+	}
+}

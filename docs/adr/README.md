@@ -31,3 +31,4 @@ conclusion.
 | [0019](ADR-0019-master-repeats.md) | A master repeats; bridging is a layer on top | Accepted |
 | [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Proposed |
 | [0021](ADR-0021-private-calls-and-data.md) | Private calls and data are in scope, and share one missing thing | Proposed |
+| [0022](ADR-0022-timeslot-contention.md) | Contention belongs to the timeslot, not the talkgroup | Proposed |

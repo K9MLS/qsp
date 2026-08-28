@@ -100,6 +100,31 @@ type reservation struct {
 	source   sourceKey
 	lastSeen time.Time
 	bridge   string
+	// endpoint is the destination in full, including the talkgroup that the
+	// contention key deliberately leaves out. Kept so that a drop can name what
+	// is already on the slot, and so Busy stays useful to an operator.
+	endpoint Endpoint
+}
+
+// contend reduces a destination to the thing that can carry one transmission at
+// a time.
+//
+// **For a peer that is the timeslot, not the talkgroup.** A DMR timeslot is one
+// TDMA channel; two talkgroups arriving on it produce interleaved audio nobody
+// can understand. Keying reservations on the talkgroup made those two separate
+// destinations and delivered both. See ADR-0022.
+//
+// **A link keeps the talkgroup in its key.** Contention models a physical
+// constraint, and an OpenBridge link is an IP socket rather than a radio
+// channel — BrandMeister carries several talkgroups concurrently over one. This
+// asymmetry is deliberate; the ADR is the reasoning to read before unifying
+// them for tidiness.
+func contend(e Endpoint) Endpoint {
+	if e.Upstream != "" {
+		return e
+	}
+	e.Talkgroup = 0
+	return e
 }
 
 // sourceKey identifies one transmission at its origin.
@@ -329,11 +354,12 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	// partial delivery of a collision, which is worse than either refusing it
 	// outright or letting it through. On the air, two people keying the same
 	// talkgroup are doubling, and exactly one of them should be relayed.
+	originKey := contend(origin)
 	if opening {
-		if held, occupied := c.busy[origin]; !occupied || now.Sub(held.lastSeen) > c.timeout {
-			c.busy[origin] = &reservation{source: src, lastSeen: now, bridge: bridge}
+		if held, occupied := c.busy[originKey]; !occupied || now.Sub(held.lastSeen) > c.timeout {
+			c.busy[originKey] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: origin}
 		}
-	} else if held, ok := c.busy[origin]; ok && held.source == src {
+	} else if held, ok := c.busy[originKey]; ok && held.source == src {
 		held.lastSeen = now
 	}
 
@@ -392,24 +418,30 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 				continue
 			}
 
-			held, occupied := c.busy[dest]
+			destKey := contend(dest)
+			held, occupied := c.busy[destKey]
 			switch {
 			case occupied && held.source != src:
 				if now.Sub(held.lastSeen) <= c.timeout {
-					// Somebody else is already talking here. Interleaving two
-					// transmissions produces audio nobody can understand, so
-					// the later one is refused and counted.
+					// Somebody else is already talking on this slot.
+					// Interleaving two transmissions produces audio nobody can
+					// understand, so the later one is refused and counted.
+					//
+					// The reason names the talkgroup already there, which is
+					// often a different one from this frame's — that is the
+					// whole point of ADR-0022, and an operator seeing only
+					// "busy" would have no idea what took the slot.
 					res.Drops = append(res.Drops, Drop{
 						To: dest,
-						Reason: fmt.Sprintf("already carrying a transmission from peer %d",
-							held.source.peer),
+						Reason: fmt.Sprintf("timeslot already carrying TG %d from peer %d",
+							held.endpoint.Talkgroup, held.source.peer),
 					})
 					continue
 				}
 				// The previous transmission went silent without a terminator.
 				fallthrough
 			case !occupied:
-				c.busy[dest] = &reservation{source: src, lastSeen: now, bridge: bridge}
+				c.busy[destKey] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: dest}
 				res.StartedStreams = append(res.StartedStreams, dest)
 			default:
 				held.lastSeen = now
@@ -471,7 +503,10 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 		return
 	}
 
-	held, occupied := c.busy[target]
+	// A link keeps the talkgroup in its contention key: it is an IP socket
+	// rather than a radio channel and can carry several talkgroups at once.
+	key := contend(target)
+	held, occupied := c.busy[key]
 	switch {
 	case occupied && held.source != src:
 		if now.Sub(held.lastSeen) <= c.timeout {
@@ -483,7 +518,7 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 		}
 		fallthrough
 	case !occupied:
-		c.busy[target] = &reservation{source: src, lastSeen: now, bridge: bridge}
+		c.busy[key] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: target}
 	default:
 		held.lastSeen = now
 	}
@@ -530,9 +565,9 @@ func (c *Core) holdsAnyFor(src sourceKey) bool {
 
 // release frees every destination held by a transmission.
 func (c *Core) release(src sourceKey) {
-	for dest, held := range c.busy {
+	for key, held := range c.busy {
 		if held.source == src {
-			delete(c.busy, dest)
+			delete(c.busy, key)
 		}
 	}
 }
@@ -544,10 +579,13 @@ func (c *Core) release(src sourceKey) {
 // talkgroup open.
 func (c *Core) Expire(now time.Time) []Endpoint {
 	var freed []Endpoint
-	for dest, held := range c.busy {
+	for key, held := range c.busy {
 		if now.Sub(held.lastSeen) > c.timeout {
-			freed = append(freed, dest)
-			delete(c.busy, dest)
+			// The stored endpoint, not the key: the key omits the talkgroup
+			// for a peer, and an operator told a nameless slot was freed
+			// learns nothing.
+			freed = append(freed, held.endpoint)
+			delete(c.busy, key)
 		}
 	}
 	sortEndpoints(freed)
@@ -560,8 +598,8 @@ func (c *Core) BusyCount() int { return len(c.busy) }
 // Busy returns the destinations currently carrying traffic, ordered.
 func (c *Core) Busy() []Endpoint {
 	out := make([]Endpoint, 0, len(c.busy))
-	for dest := range c.busy {
-		out = append(out, dest)
+	for _, held := range c.busy {
+		out = append(out, held.endpoint)
 	}
 	sortEndpoints(out)
 	return out

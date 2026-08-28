@@ -1,6 +1,6 @@
 # ADR-0014: A transmission occupies its origin as well as its destinations
 
-**Status:** Accepted
+**Status:** Accepted — the reservation key is amended by [ADR-0022](ADR-0022-timeslot-contention.md)
 
 ## Context
 
