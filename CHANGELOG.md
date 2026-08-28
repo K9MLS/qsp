@@ -126,6 +126,26 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The login flow**, in `internal/auth`. Accounts, sessions, lockout and
+  revocation, behind a `Repository` interface so the behaviour worth testing is
+  testable without a database — the SQL is a thin adapter over six methods and
+  none of the interesting parts live in it.
+
+  **An unknown username costs the same as a wrong password.** It is answered
+  with the same error, and a decoy hash is verified so it takes the same time;
+  without that it returns in a microsecond against twelve milliseconds for a
+  real account, which turns the login form into a way of asking which callsigns
+  hold accounts here. There is a test that fails if the decoy is removed.
+
+  Lockout counts on the account rather than in memory, and the counter resets
+  with the lock so an account is not one mistake from relocking forever. A
+  success clears it. Session expiry is checked server-side, because a cookie's
+  lifetime is a hint the browser may ignore, and a session seen to be dead is
+  deleted rather than left for the sweep.
+
+  Seventeen tests. **The SQL adapter is not written**, and is the part that
+  cannot be verified in the development container.
+
 - **`docs/architecture/hbp-protocol.md` records that DMRGateway blanks the
   announced position.** A WPSD hotspot with correct coordinates in
   `/etc/mmdvmhost` sends `0.000000` and `00.000000` to QSP, because DMRGateway
