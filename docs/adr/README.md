@@ -29,3 +29,4 @@ conclusion.
 | [0017](ADR-0017-first-dependency.md) | Adopting modernc.org/sqlite, the first dependency | Accepted |
 | [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed |
 | [0019](ADR-0019-master-repeats.md) | A master repeats; bridging is a layer on top | Accepted |
+| [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Proposed |

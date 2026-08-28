@@ -2,6 +2,19 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [Unreleased]
+
+### Added
+- **[ADR-0020](docs/adr/ADR-0020-access-control.md) decides access control**,
+  the layer 2 gap ADR-0019 named. Four lists in HBlink's vocabulary; a pure
+  access package that neither `peers` nor `routing` has to own; the
+  talkgroup list checked on egress as well as ingress, because an ingress-only
+  check permits bridged and upstream traffic while stopping a club's own
+  members; and a zero value that permits everything, so upgrading does not
+  disconnect a running club.
+
+  No code yet.
+
 ## [0.1.9] — 2026-08-27
 
 The master repeats. QSP does the thing a DMR network is for.
