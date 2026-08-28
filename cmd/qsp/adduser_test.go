@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 
@@ -63,5 +64,33 @@ func TestPasswordsAreNotReadFromAPipe(t *testing.T) {
 		t.Fatal("a password was read from something that is not a terminal")
 	} else if !strings.Contains(err.Error(), "terminal") {
 		t.Errorf("the refusal should say why: %v", err)
+	}
+}
+
+// TestATakenNameIsRefusedBeforeThePasswordIsAsked. Found on the first real run
+// of the command: it prompted twice and then said the name was taken, which is
+// the wrong order to discover that in.
+//
+// The check cannot be reached here without a database, so what is asserted is
+// the order in the source — crude, and it catches the regression that matters,
+// which is somebody moving the prompt back above the lookup.
+func TestATakenNameIsRefusedBeforeThePasswordIsAsked(t *testing.T) {
+	body, err := os.ReadFile("adduser.go")
+	if err != nil {
+		t.Fatalf("reading adduser.go: %v", err)
+	}
+	src := string(body)
+
+	lookup := strings.Index(src, "repo.AccountByUsername(ctx")
+	prompt := strings.Index(src, "readPassword()")
+	if lookup < 0 {
+		t.Fatal("adduser no longer looks the username up before creating it")
+	}
+	if prompt < 0 {
+		t.Fatal("adduser no longer prompts for a password")
+	}
+	if lookup > prompt {
+		t.Error("the password is asked for before the username is checked; an operator " +
+			"types it twice to be told the name was taken")
 	}
 }

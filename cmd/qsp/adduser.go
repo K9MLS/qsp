@@ -62,6 +62,26 @@ func adduser(ctx context.Context, cfg config.Config, username string) error {
 		return err
 	}
 
+	// **Checked before the password is asked for.** CreateAccount refuses a
+	// duplicate anyway, but by then the operator has typed a password twice to
+	// be told the name was taken — which is how this read on the first real
+	// run of the command.
+	//
+	// It is not a substitute for the check inside CreateAccount: two of these
+	// running at once would both pass here, and the folded unique index is
+	// what actually decides. This exists to fail early and politely, not to
+	// fail correctly.
+	if _, taken, err := repo.AccountByUsername(ctx, auth.NormaliseUsername(username)); err != nil {
+		return err
+	} else if taken {
+		// Resetting an existing account is the documented recovery path, so it
+		// should not read as a mistake — but it is not silently implied
+		// either, because typing a name that already exists is just as often a
+		// typo.
+		return fmt.Errorf("%w: %s (to reset it, remove the account first; "+
+			"see docs/adr/ADR-0026-authentication.md)", auth.ErrUsernameTaken, username)
+	}
+
 	password, err := readPassword()
 	if err != nil {
 		return err
@@ -70,12 +90,7 @@ func adduser(ctx context.Context, cfg config.Config, username string) error {
 	account, err := svc.CreateAccount(ctx, username, password)
 	if err != nil {
 		if errors.Is(err, auth.ErrUsernameTaken) {
-			// Resetting an existing account is the documented recovery path,
-			// so it should not read as a mistake — but it is not silently
-			// implied either, because typing a name that already exists is
-			// just as often a typo.
-			return fmt.Errorf("%w (to reset it, remove the account first; "+
-				"see docs/adr/ADR-0026-authentication.md)", err)
+			return fmt.Errorf("%w (created by something else while this was running)", err)
 		}
 		return err
 	}

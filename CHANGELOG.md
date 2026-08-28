@@ -126,6 +126,13 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **`qsp adduser` checks the name before asking for a password.** Found on the
+  first real run: it prompted twice and then said the name was taken, which is
+  the wrong order to discover that in. `CreateAccount` still refuses a
+  duplicate, since two of these running at once would both pass the early check
+  and the folded unique index is what actually decides — the new check exists to
+  fail early and politely, not to fail correctly.
+
 - **`qsp adduser` creates an administrator**, and per
   [ADR-0026](docs/adr/ADR-0026-authentication.md) it is the only thing that
   does. It reads the same configuration the server does, so it writes to the
