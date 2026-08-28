@@ -126,6 +126,28 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The configuration writer and the restart check**, the first code
+  [ADR-0027](docs/adr/ADR-0027-configuration-writes.md) calls for.
+
+  A save is a temporary file in the same directory and a rename, so an instance
+  that restarts mid-write starts with a whole configuration or the old one, and
+  never with half of either. The file's mode is preserved — a configuration that
+  was 0600 must not become world-readable because somebody pressed save — and an
+  invalid configuration is never written at all, since one that cannot be loaded
+  again strands the operator at the next restart.
+
+  `Writable` reports whether a save could succeed without attempting one, so the
+  console can say it is read-only up front rather than after a form has been
+  filled in. It checks the directory, not just the file: the write is a rename,
+  so a writable file in a read-only directory still cannot be saved.
+
+  `NeedsRestart` returns the fields that changed and cannot take effect live,
+  rather than a boolean. "Restart required" tells an operator to interrupt their
+  network without saying what for, and they will reasonably want to know whether
+  it can wait until the net is over. Upstreams are compared by encoding rather
+  than field by field, so a field added to them later is noticed without anybody
+  remembering to update the check.
+
 - **[ADR-0027](docs/adr/ADR-0027-configuration-writes.md) decides the
   configuration write path**, which is what the admin interface needs before any
   of its forms are worth building. Three questions, none of them about forms.
