@@ -19,6 +19,22 @@ All notable changes to QSP. Dates are UTC.
   whoever was watching the journal, which is a weak mitigation for the moment
   UDP 62031 is forwarded at the router.
 
+- **`internal/access`, the lists themselves.** Parsing, merging and evaluation,
+  with no I/O and no state, so `peers` and `routing` can both depend on it
+  without `routing` acquiring an edge to `peers`. Twenty tests and a fuzz
+  target.
+
+  **The three lists do not share a ceiling, and this was nearly a field bug.** A
+  talkgroup and a subscriber ID travel in 24 bits, but a repeater ID travels in
+  32, and a hotspot registers with its owner's seven-digit ID plus a two-digit
+  suffix. One shared ceiling would have refused every hotspot on the network.
+
+  Registration entries of seven or eight digits produce an advisory rather than
+  an error, because the registry's numbering is a convention and not a rule of
+  the protocol.
+
+  Not yet wired into `config`, `peers` or `routing`.
+
 ## [0.1.9] — 2026-08-27
 
 The master repeats. QSP does the thing a DMR network is for.
