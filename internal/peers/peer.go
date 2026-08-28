@@ -5,19 +5,22 @@
 // because that capture contains both halves of a real conversation — a peer
 // logging in to BrandMeister, and BrandMeister's replies.
 //
-// # What is deliberately absent
+// # What is implemented from the specification rather than from a capture
 //
-// Two paths a complete master needs were never captured, and per
-// docs/adr/ADR-0008 they are not guessed at:
+// Two paths a complete master needs appear in no capture QSP holds, and were
+// implemented from the published Homebrew specification under the interim
+// rules in docs/adr/ADR-0008:
 //
-//   - There is no clean-disconnect path. A peer signals it with RPTCL, which
-//     this build cannot parse. Peers therefore leave only by timing out.
-//   - There is no explicit rejection. A master signals it with MSTNAK. QSP
-//     drops the datagram instead, which is a real behaviour but a worse one:
-//     the peer learns nothing and retries until it gives up.
+//   - The clean-disconnect path. A peer signals it with RPTCL, and handleClose
+//     removes the registration rather than waiting for the timeout.
+//   - Explicit rejection. A refused peer is answered with MSTNAK, so its
+//     operator sees a rejection in their own log rather than silence.
 //
-// Both are recorded in docs/architecture/hbp-protocol.md with the capture that
-// would close them. Neither is stubbed, and neither silently pretends to work.
+// **Neither has been seen on a wire.** Their provenance is recorded per message
+// type, and docs/architecture/hbp-protocol.md names the captures that would
+// confirm them: a hotspot disconnecting, and a login with a wrong password. A
+// live "peer disconnected cleanly" is evidence for the first, and one was
+// observed on 2026-08-28.
 //
 // # Shape
 //

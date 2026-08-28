@@ -73,6 +73,20 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+### Fixed
+- **`internal/peers` claimed two things were absent that are built.** Its
+  package doc said RPTCL could not be parsed and that a refused peer was
+  dropped rather than answered — both true when it was written, both false
+  since ADR-0008's specification pass. `handleClose` removes a cleanly
+  disconnecting peer, and `reject` answers with MSTNAK.
+
+  The documentation accuracy gate scans Markdown, not Go doc comments, so CI
+  could not have caught this. A live log did: a WPSD hotspot disconnected on
+  2026-08-28 and the master recorded `peer disconnected cleanly`, which is
+  the path the doc said did not exist. `docs/architecture/hbp-protocol.md` now
+  records RPTCL as observed rather than merely implemented; MSTNAK is still
+  unverified and still wants a wrong-password capture.
+
 - **Talkgroup access control is enforced in the routing core**, which completes
   layer 2. The list is checked twice, which is ADR-0020's substantive decision:
   once when a frame arrives, and once per destination it would reach.
