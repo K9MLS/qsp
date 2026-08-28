@@ -245,6 +245,16 @@ All notable changes to QSP. Dates are UTC.
   this only reclaims rows.
 
 ### Fixed
+- **`Writable` called a writable instance read-only.** It checked the
+  configuration file's permission bits, which do not gate the operation: saving
+  replaces the file by renaming a temporary one over it, and `rename(2)` needs
+  write permission on the *directory*. A root-owned `0444` file in a writable
+  directory is replaced without complaint.
+
+  Found on a live server, where the check happened to pass and the reasoning
+  behind it turned out to be wrong anyway — the comment claimed it caught an
+  immutable attribute, which does not appear in the permission bits at all.
+
 - **A flaky test that CI caught and no local run did.**
   `TestUnbridgedTrafficIsRepeatedToOtherPeers` read the forwarded counter the
   instant the receiving peer had the frame. The counter deliberately lags: the

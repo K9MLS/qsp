@@ -350,3 +350,42 @@ func TestSaveFailsLoudlyOnAMissingDirectory(t *testing.T) {
 		t.Error("a file appeared where the directory does not exist")
 	}
 }
+
+// TestAReadOnlyFileInAWritableDirectoryIsStillWritable.
+//
+// Saving replaces the file by renaming a temporary one over it, and rename(2)
+// needs write permission on the directory rather than on the file. An earlier
+// version of Writable checked the file's mode bits and would have reported a
+// perfectly writable instance as read-only — found on a live server, where the
+// configuration was root-owned in a directory the service could write.
+func TestAReadOnlyFileInAWritableDirectoryIsStillWritable(t *testing.T) {
+	path, w := writable(t)
+	if err := os.Chmod(path, 0o444); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	if err := w.Writable(); err != nil {
+		t.Errorf("a read-only file in a writable directory reported as unwritable: %v", err)
+	}
+
+	// And a save actually succeeds, which is the claim Writable is making.
+	cfg := config.Default()
+	cfg.Events.HistorySize = 256
+	if err := w.Save(cfg); err != nil {
+		t.Fatalf("Save failed on a read-only file: %v", err)
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = f.Close() }()
+	got, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got.Events.HistorySize != 256 {
+		t.Error("the save did not take effect")
+	}
+}

@@ -83,12 +83,16 @@ func (w *Writer) Writable() error {
 	_ = probe.Close()
 	_ = os.Remove(name)
 
-	// An existing file must also be replaceable. On most systems the directory
-	// permission decides that, but checking the file catches an immutable
-	// attribute or a mount that lies about the directory.
-	if info, err := os.Stat(w.path); err == nil && info.Mode().Perm()&0o200 == 0 {
-		return fmt.Errorf("%w: %s is read-only (mode %v)", ErrNotWritable, w.path, info.Mode().Perm())
-	}
+	// **The file's own permissions are deliberately not checked.** Saving
+	// replaces it by renaming a temporary file over it, and rename(2) needs
+	// write permission on the directory rather than on the file — a 0444 file
+	// owned by somebody else is replaced without complaint if the directory
+	// allows it.
+	//
+	// An earlier version checked the mode bits here and would have reported a
+	// perfectly writable instance as read-only. It was also wrong about its
+	// own justification: an immutable attribute does not appear in the
+	// permission bits, so the check did not catch what it claimed to.
 	return nil
 }
 
