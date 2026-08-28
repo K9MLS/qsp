@@ -2,7 +2,10 @@
 
 All notable changes to QSP. Dates are UTC.
 
-## [Unreleased]
+## [0.1.9] — 2026-08-27
+
+The master repeats. QSP does the thing a DMR network is for.
+
 
 ### Fixed
 - **Successful polls are logged at debug rather than info.** The join page polls
@@ -18,7 +21,6 @@ All notable changes to QSP. Dates are UTC.
   restart after a configuration change counts, and a number with no note beside
   it cannot be told from a crash at day fourteen.
 
-## [Unreleased]
 
 ### Added
 - **The master repeats.** A group call on a talkgroup now reaches every other

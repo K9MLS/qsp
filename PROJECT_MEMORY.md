@@ -6,6 +6,31 @@ repository went to GitHub.
 
 ---
 
+## 0. Read this before proposing work
+
+**QSP is built for the amateur radio community, not for one club.** Talkgroup
+numbers, upstream masters, repeater IDs, passwords and timezones are all
+administrator configuration. When a question sounds like "which talkgroup does
+the club want?", the answer is "that is a field, not a decision". K9MLS's club
+(BCARA) is the test bed, not the specification.
+
+**The layers, in order. Build downward before upward.**
+
+| Layer | What it is | State |
+|---|---|---|
+| **1. Repeat** | a group call reaches every other peer on that talkgroup | **built 2026-08-27** |
+| **2. Access control** | which talkgroups, repeaters, subscribers are permitted | **missing — next** |
+| **3. Subscription** | which peers receive which talkgroups | partial: schedule and triggers; no per-peer attachment |
+| **4. Bridging** | connect this master to other systems | built, including OpenBridge |
+| **5. Outbound peer** | connect *out* to XLX, DMR+, IPSC2 | missing |
+
+QSP spent two days building layer 4 before layer 1 existed, because bridging was
+mistaken for the routing model. See
+[ADR-0019](docs/adr/ADR-0019-master-repeats.md). That is the single most
+important thing to understand about this codebase's history: **the work is
+sound, the order was wrong**, and the way it was caught was a user asking why
+four hotspots on one talkgroup could not hear each other.
+
 ## 1. What QSP is
 
 A free, self-hosted DMR linking server for amateur radio. GPL-3.0. Copyright
@@ -24,8 +49,8 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.8 |
-| Tests | 368, all passing |
+| Version | 0.1.9 |
+| Tests | 381, all passing |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -283,27 +308,77 @@ and a derivative-work notice.
 **Deployment targets a server or VM.** The Pi remains the proven minimum and
 stays in CI.
 
-## 8. Immediate next steps
+## 8. Where the next session starts
 
-**The critical path is the Phase 3 soak**, because two weeks of wall-clock time
-is the only thing here that cannot be compressed by working harder. Everything
-else can proceed alongside it.
+### What actually works today
 
-1. **Start the soak.** A Pi or small VM beside the hotspot, console bound to
-   `127.0.0.1` and reached over a tunnel; only UDP 62031 faces the network.
-   Configure a schedule that links and unlinks daily so the fortnight actually
-   exercises the scheduler rather than merely staying up.
-2. **Console visual design** (Phase 2) — runs concurrently with the soak. The
-   gate is a newcomer running unassisted in ten minutes, which is a usability
-   claim and needs a person who has not seen it before.
-3. **Capture `RPTCL`.** Thirty seconds of `tcpdump` while the custom network is
-   disabled in the WPSD dashboard. The cheapest remaining gap.
-4. **An IPSC capture.** The only thing standing between here and IPSC.
-   `tcpdump` between a club XPR8300 and whatever it registers with today: a
-   registration sequence from a cold power-cycle, ten minutes of steady state,
-   and one transmission. Sanitise before committing, as for the HBP captures.
-5. **A BrandMeister bridge request.** OpenBridge is code complete and has never
-   run against a real far end. Approval is BrandMeister's to grant and takes as
-   long as it takes, so the request is worth starting before it is needed.
-6. **P25** (Phase 4) — also needs a capture containing an actual P25
-   transmission; `testdata/p25/` holds polling traffic only.
+A master that accepts hotspots, repeats a talkgroup between them, bridges
+between talkgroups on a schedule or on PTT, links outward over OpenBridge, and
+serves a read-only console plus a member onboarding page. Protocol validated
+against real hardware; 381 tests; CI green.
+
+### What is honestly missing
+
+This is a thin product and it is worth saying so plainly.
+
+| Missing | Consequence |
+|---|---|
+| **Admin interface** | every change is SSH and a text editor. No talkgroup can be added without an operator on the command line |
+| **Access control (layer 2)** | every peer receives every talkgroup any peer transmits on. Fine for a club; unsafe facing the internet |
+| **Per-peer talkgroup subscription (layer 3)** | a member cannot choose what they hear |
+| **Authentication** | no login anywhere; `/api/peers` discloses callsigns, radio IDs and source addresses |
+| **Persistence in use** | the schema exists and migrates; nothing writes to it |
+| **Live map** | wanted, and closer than it looks: hotspots already send lat/long/height in `RPTC` and QSP discards them |
+| **IPSC** | unblocked by ADR-0008; needs a capture |
+| **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
+
+### Order I would take it
+
+1. **Prove audio between two real hotspots.** Never done. Twenty minutes with a
+   second radio, and it either confirms layer 1 or finds what no test can.
+2. **Layer 2, access control.** `TGID_ACL`, `REG_ACL`, `SUB_ACL` in HBlink's
+   terms. Needed before any instance faces the internet, and needed before a
+   club with strangers on it.
+3. **Admin interface (Phase 2b).** Needs authentication and a config write path.
+   `configuration_versions` already has `author`, `summary` and `document`
+   columns waiting, so this is also what finally gives the database a writer.
+4. **The live map.** Store the coordinates already arriving, expose them, draw
+   them. The obstacle is that a map library means a build step or a CDN, which
+   cuts against the console's no-dependency rule — worth an ADR.
+5. **IPSC**, once a capture exists.
+
+### Immediate, small
+
+- Real BCARA talkgroups in `/var/lib/qsp/qsp.json`; `11 → 9` is a placeholder.
+- The join page needs one path prefix so a reverse proxy needs one rule, not
+  seven.
+- A BrandMeister bridge request, since approval takes as long as it takes.
+
+## 9. The soak, in progress
+
+Started 2026-08-27 12:44 UTC on the Ubuntu VM at `192.168.1.247`, as service
+`qsp`, bridge named `bcara`.
+
+- **Baseline:** `NRestarts=0`, `MemoryCurrent` 2.66 MB.
+- **Memory after 12 samples over 5.5 h:** flat, oscillating 3.91–4.21 MB. The
+  early rise was allocation settling, not a leak. Sampled every 30 minutes by
+  `/etc/cron.d/qsp-memory`, readable with `journalctl -t qsp-memory`.
+- **Scheduler:** windows opened and closed on time at 17:00 and 17:30 UTC.
+- **Restarts:** six on day one, all explained — the systemd unit fix, config
+  edits, the club rename, and three binary deploys. The pass criterion is no
+  *unexplained* restarts.
+
+`docs/SOAK.md` has the procedure, the weekly check, and what `start-limit-hit`
+means.
+
+## 10. Deployment as it stands
+
+| | |
+|---|---|
+| Host | Ubuntu 24.04 VM, `192.168.1.247`, 4 vCPU / 16 GB |
+| Service | `/etc/systemd/system/qsp.service`, user `qsp`, state in `/var/lib/qsp` |
+| Binary | `/usr/local/bin/qsp`, built on Fedora and copied over — the VM has no Go |
+| DMR | UDP 62031, all interfaces |
+| Console | `192.168.1.247:8080` |
+| Public | `qsp.hopto.me` via Nginx Proxy Manager to :8080. **Needs UDP 62031 forwarded on the router for remote hotspots** |
+| Join page | `https://qsp.hopto.me/join` — needs seven Custom Locations until the path prefix is fixed |

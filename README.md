@@ -18,6 +18,16 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
 > what those runs confirmed and what they did not.
 >
+> **The master repeats.** A group call on a talkgroup reaches every other peer
+> on that talkgroup, with no bridge and no configuration — the ordinary
+> behaviour of a DMR network. Bridges are additional, and move traffic between
+> talkgroups. This was built on 2026-08-27; before that, QSP had bridging and
+> no repeat. See [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
+>
+> **No access control yet.** Every connected peer receives every talkgroup any
+> peer transmits on. That suits a club whose members know each other and does
+> not suit an instance facing the internet.
+>
 > **Linking to other networks** is implemented over OpenBridge, which is what
 > BrandMeister requires for interconnecting a network. No link has yet run
 > against a real far end — that needs a bridge granted by the network being
