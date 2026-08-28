@@ -133,6 +133,19 @@ All notable changes to QSP. Dates are UTC.
   Ten tests. **Nothing routes on this yet**; private call routing is next.
 
 ### Fixed
+- **The traffic hint cried wolf.** A peer connected and sending keepalives with
+  no voice frames drew an amber warning saying its transmissions were not
+  reaching QSP. But a hotspot sends identical keepalives whether its owner is
+  misconfigured or simply not talking, so nothing on this page can tell the two
+  apart — and the message picked one and stated it as fact. On a quiet club
+  network, and for several minutes after every restart, that is an alarm about a
+  fault that does not exist.
+
+  The hint now names both possibilities and asserts neither, and is muted rather
+  than amber. Amber is a promise that something needs attention; spending it on
+  a condition that is usually fine teaches an operator to ignore amber, which
+  costs more than the hint was worth.
+
 - **`tokens.css` promised 4.5:1 and nothing checked it.** The promise had been
   broken twice: once by an opacity applied to muted text, once while widening
   the gap between panels and the page. Both were caught by somebody doing the

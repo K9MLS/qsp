@@ -552,3 +552,10 @@ body {
   color: var(--color-degraded);
   font-size: var(--text-sm);
 }
+
+/* A hint that describes something possibly ordinary is not a warning.
+   Amber is a promise that something needs attention, and spending it on a
+   condition that is usually fine teaches an operator to ignore amber. */
+.hint--neutral {
+  color: var(--color-foreground-muted);
+}

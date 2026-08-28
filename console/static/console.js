@@ -288,13 +288,26 @@
 
     /* The case that cost an evening: a peer connected and sending keepalives,
      * whose voice frames never arrive. The peer table looks healthy and Last
-     * heard looks empty, which is indistinguishable from nobody talking. */
-    if (peers > 0 && inCount > 20 && frames === 0) {
+     * heard looks empty, which is indistinguishable from nobody talking.
+     *
+     * **And that is the point — it really is indistinguishable.** A hotspot
+     * sends the same keepalives whether its owner is misconfigured or simply
+     * not talking, so nothing here can tell the two apart. The earlier wording
+     * picked one and stated it: "its transmissions are not reaching QSP". On a
+     * quiet club network, and for several minutes after every restart, that is
+     * an alarm about a fault that does not exist, and an operator who learns to
+     * disbelieve one warning stops reading all of them.
+     *
+     * So the hint names both possibilities and asserts neither. The threshold
+     * is a few minutes of keepalives rather than one, which keeps it out of the
+     * window after a restart while still appearing early enough to help
+     * somebody setting a hotspot up for the first time. */
+    if (peers > 0 && inCount > 30 && frames === 0) {
       trafficBody.innerHTML +=
-        '<p class="hint">Datagrams are arriving but no voice frames have been ' +
-        "accepted. That pattern is keepalives only \u2014 the peer is connected, but " +
-        "its transmissions are not reaching QSP. Check that the sending side is " +
-        "configured to route a talkgroup to this network.</p>";
+        '<p class="hint hint--neutral">No voice frames yet, only keepalives. ' +
+        "If nobody has transmitted, that is exactly what this should look like. " +
+        "If somebody has, their hotspot is probably not routing a talkgroup to " +
+        "this network \u2014 check the sending side.</p>";
     }
   }
 
