@@ -73,6 +73,12 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **The console has a health page.** The Health link went to `/healthz` and
+  showed the operator raw JSON. The report was already being fetched every few
+  seconds for the status pill, with everything else thrown away; it now renders
+  as a table of subsystems, each with its own verdict, and an unavailable one
+  names the phase that brings it — a roadmap rather than a fault.
+
 - **Private calls are routed.** Radio-to-radio calling is used constantly on DMR
   and QSP routed none of it: repeat fired only on group calls, and nothing
   handled a call whose target is a radio rather than a talkgroup. A private call
@@ -111,6 +117,17 @@ All notable changes to QSP. Dates are UTC.
   Ten tests. **Nothing routes on this yet**; private call routing is next.
 
 ### Fixed
+- **The routing health check called a working master degraded.** It reported
+  degraded whenever no bridges were configured, which was right while bridging
+  was the whole routing model and wrong from the moment the master learned to
+  repeat. A club whose members all sit on one talkgroup configures no bridges
+  and is working exactly as intended; telling their operator the instance is
+  degraded sends them hunting a fault that is not there.
+
+  The summaries now lead with what routing mostly does — peers on a talkgroup
+  hearing each other — and mention bridges as the additional thing. Switching
+  forwarding off says what is lost rather than only that a flag is unset.
+
 - **Two talkgroups could be delivered to one peer's timeslot at the same
   moment.** A DMR timeslot is one TDMA channel and carries one call; sending two
   down it is interleaved audio nobody can understand — exactly what

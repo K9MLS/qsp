@@ -629,15 +629,24 @@ func (routingCheck) Name() string { return "routing" }
 
 func (c routingCheck) Check(context.Context) health.Result {
 	if !c.enabled {
-		return health.Unavailable("forwarding is off; set dmr.forwarding to relay traffic between peers")
+		return health.Unavailable(
+			"forwarding is off, so peers on a talkgroup cannot hear each other; " +
+				"set dmr.forwarding")
 	}
+	// **A master with no bridges is healthy, not degraded.**
+	//
+	// This reported degraded until now, which was correct while bridging was
+	// the whole routing model and became wrong the day the master learned to
+	// repeat. A club whose members all sit on one talkgroup configures no
+	// bridges at all and is working exactly as intended; telling their operator
+	// the instance is degraded sends them looking for a fault. See ADR-0019.
 	if c.bridges == 0 {
-		return health.Degraded(
-			"forwarding is on but no bridges are configured",
-			"add a bridge under dmr.bridges, or turn dmr.forwarding off",
-		)
+		res := health.Healthy("peers on a talkgroup hear each other; no bridges configured")
+		res.Detail = map[string]string{"bridges": "0"}
+		return res
 	}
-	res := health.Healthy(fmt.Sprintf("forwarding across %d bridge(s)", c.bridges))
+	res := health.Healthy(fmt.Sprintf(
+		"peers on a talkgroup hear each other, across %d bridge(s)", c.bridges))
 	res.Detail = map[string]string{"bridges": strconv.Itoa(c.bridges)}
 	return res
 }

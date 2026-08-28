@@ -29,6 +29,9 @@
 
   var routingEmpty = document.getElementById("routing-empty");
 
+  var healthBody = document.getElementById("health-body");
+  var healthCount = document.getElementById("health-count");
+
   var callsBody = document.getElementById("calls-body");
   var callsCount = document.getElementById("calls-count");
 
@@ -59,6 +62,71 @@
     healthText.textContent = label;
   }
 
+  // renderHealth shows every subsystem's own verdict.
+  //
+  // The report was already being fetched every few seconds and everything but
+  // the top-level status thrown away, while the console's Health link sent the
+  // operator to a page of raw JSON. A subsystem that is unavailable says which
+  // phase brings it, which is a roadmap the operator can read rather than a
+  // fault they cannot act on.
+  function renderHealth(report) {
+    if (!healthBody) {
+      return;
+    }
+    var results = (report && report.results) || [];
+    if (!results.length) {
+      healthBody.innerHTML =
+        '<div class="empty"><h3 class="empty__title">No checks</h3>' +
+        '<p class="empty__body">This instance registered no health checks.</p></div>';
+      if (healthCount) {
+        healthCount.textContent = "\u2014";
+      }
+      return;
+    }
+
+    var running = 0;
+    var rows = "";
+    for (var i = 0; i < results.length; i++) {
+      var r = results[i];
+      var status = r.status || "unavailable";
+      if (status === "healthy") {
+        running++;
+      }
+      rows +=
+        "<tr><td>" + escapeText(r.name || "") + "</td>" +
+        '<td><span class="status status--' + escapeText(status) + '">' +
+        escapeText(status) + "</span></td>" +
+        "<td>" + escapeText(r.summary || "") + "</td>" +
+        "<td>" + escapeText(detailText(r.detail)) + "</td></tr>";
+    }
+
+    healthBody.innerHTML =
+      '<div class="table-scroll"><table class="table">' +
+      "<caption>Every subsystem reports its own verdict. " +
+      "Unavailable names the phase that brings it.</caption>" +
+      "<thead><tr>" +
+      '<th scope="col">Subsystem</th><th scope="col">Status</th>' +
+      '<th scope="col">Summary</th><th scope="col">Detail</th>' +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+
+    if (healthCount) {
+      healthCount.textContent = running + " of " + results.length + " healthy";
+    }
+  }
+
+  // detailText flattens a check's detail map into one readable line.
+  function detailText(detail) {
+    if (!detail) {
+      return "";
+    }
+    var parts = [];
+    var keys = Object.keys(detail).sort();
+    for (var i = 0; i < keys.length; i++) {
+      parts.push(keys[i] + " " + detail[keys[i]]);
+    }
+    return parts.join(", ");
+  }
+
   function setStream(label) {
     if (streamState) {
       streamState.textContent = "Event stream: " + label;
@@ -73,6 +141,7 @@
       .then(function (report) {
         var status = report && report.status ? report.status : "unavailable";
         setHealth(status, status);
+        renderHealth(report);
       })
       .catch(function () {
         // The instance is unreachable. Say that, rather than leaving a stale

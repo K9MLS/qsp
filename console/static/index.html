@@ -88,7 +88,7 @@
         </a>
       </li>
       <li>
-        <a class="nav__link" href="/healthz">
+        <a class="nav__link" href="#health">
           <svg class="nav__icon" viewBox="0 0 20 20" fill="none" stroke="currentColor"
                stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
                aria-hidden="true" focusable="false">
@@ -167,6 +167,20 @@
           </svg>
           <h3 class="empty__title">Loading</h3>
           <p class="empty__body">Fetching recent activity.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="health" aria-labelledby="health-title"
+             style="margin-top: var(--space-5)">
+      <div class="panel__head">
+        <h2 class="panel__title" id="health-title">Health</h2>
+        <span class="panel__count" id="health-count">&mdash;</span>
+      </div>
+      <div id="health-body" aria-live="polite">
+        <div class="empty">
+          <h3 class="empty__title">Loading</h3>
+          <p class="empty__body">Checking subsystems.</p>
         </div>
       </div>
     </section>
