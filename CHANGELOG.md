@@ -126,6 +126,23 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The SQL behind the login flow**, `auth.SQLRepository`. Six statements and
+  nothing else: every decision — lockout, timing, expiry, revocation — is in
+  `Service` and tested without a database, so the part that cannot be executed
+  in a container with no SQL driver is also the part with the least in it.
+
+  **It is checked against the schema rather than run.** A column named
+  `last_login` where the migration says `last_login_at` compiles, lints, and
+  fails at the first login; so does an `INSERT` whose value list is a different
+  length from its column list. Two tests read the statements and the migration
+  and compare them, and both were confirmed by introducing exactly those errors.
+
+  Times are stored as RFC 3339 in UTC because the expiry sweep compares text: a
+  format where `2026-9-30` sorts after `2026-10-01` would leave expired sessions
+  alive and delete live ones, quietly, and only around a month boundary. The
+  zero time stores as empty, since never-locked and never-logged-in are the
+  common cases and a timestamp in year one would read as a date.
+
 - **The login flow**, in `internal/auth`. Accounts, sessions, lockout and
   revocation, behind a `Repository` interface so the behaviour worth testing is
   testable without a database — the SQL is a thin adapter over six methods and
