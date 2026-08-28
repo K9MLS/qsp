@@ -269,11 +269,28 @@
       return escapeText(name);
     }
     var coords = p.latitude.toFixed(4) + ", " + p.longitude.toFixed(4);
+    var pin = mapLink(p.latitude, p.longitude, coords);
     if (!name) {
-      return '<span class="mono">' + escapeText(coords) + "</span>";
+      return pin;
     }
-    return escapeText(name) +
-      ' <span class="mono muted">' + escapeText(coords) + "</span>";
+    return escapeText(name) + " " + pin;
+  }
+
+  // mapLink turns coordinates into a link to a map.
+  //
+  // **QSP fetches no tiles and embeds no map**, which is ADR-0025: every slippy
+  // map pulls tiles from somebody else's server, and a tile URL compiled into
+  // self-hosted software is the same request from every install — the pattern
+  // OpenStreetMap asks applications not to create and blocks when they do. A
+  // link costs nothing until somebody clicks it, at which point it is an
+  // ordinary navigation to a site they chose to visit.
+  function mapLink(lat, lon, label) {
+    var url =
+      "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(lat) +
+      "&mlon=" + encodeURIComponent(lon) +
+      "#map=13/" + encodeURIComponent(lat) + "/" + encodeURIComponent(lon);
+    return '<a class="mono muted" href="' + escapeText(url) +
+      '" target="_blank" rel="noopener noreferrer">' + escapeText(label) + "</a>";
   }
 
   function metric(value, label, cls) {

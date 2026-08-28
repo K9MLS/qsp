@@ -34,3 +34,4 @@ conclusion.
 | [0022](ADR-0022-timeslot-contention.md) | Contention belongs to the timeslot, not the talkgroup | Proposed |
 | [0023](ADR-0023-talkgroup-subscription.md) | Peers attach talkgroups, and mostly attach them by talking | Proposed |
 | [0024](ADR-0024-outbound-peer-mode.md) | Outbound peer mode, and the network it must not be used against | Proposed |
+| [0025](ADR-0025-no-bundled-map.md) | QSP shows where peers are without shipping a map | Proposed |

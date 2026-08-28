@@ -126,6 +126,23 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **[ADR-0025](docs/adr/ADR-0025-no-bundled-map.md): QSP ships no map.** A
+  located peer's coordinates link out to one instead, so a station is one click
+  from a real map and **QSP fetches no tiles and nothing leaves until somebody
+  clicks**.
+
+  The obstacle recorded in §8 was the map library. The binding constraint turns
+  out to be tiles: OpenStreetMap's servers are funded by donations, are
+  explicitly not a free API for applications, and block heavy users without
+  notice. A tile URL compiled into self-hosted software is the same request from
+  every install, so a block would land on every QSP at once — a shared risk
+  created by a default, which is what §0 exists to refuse. A per-instance tile
+  setting stays possible; a default does not.
+
+  There is a second objection worth recording: a club map is a pin per member's
+  house, on an endpoint with no authentication. That should be an operator's
+  deliberate choice, not a feature that arrives switched on.
+
 - **Peers report where they say they are**, which is the map's foundation.
   PROJECT_MEMORY §8 says QSP discards the coordinates hotspots send in `RPTC`.
   It does not: they have been parsed and kept on the peer all along and simply
