@@ -108,10 +108,21 @@ func withLogging(log *slog.Logger) middleware {
 				status = http.StatusOK
 			}
 			level := slog.LevelInfo
-			if status >= 500 {
+			switch {
+			case status >= 500:
 				level = slog.LevelError
-			} else if status >= 400 {
+			case status >= 400:
 				level = slog.LevelWarn
+			case polled(r.URL.Path):
+				// A page that polls produces one line every few seconds, per
+				// open browser. One member watching the join page overnight is
+				// roughly 28,000 lines; a club's worth during a net would
+				// rotate away the evidence an operator actually needs, which on
+				// a fourteen-day soak is the whole record.
+				//
+				// A successful poll carries no information. A failing one still
+				// logs at warning or error, which is the case worth seeing.
+				level = slog.LevelDebug
 			}
 
 			log.LogAttrs(r.Context(), level, "http request",
@@ -123,6 +134,19 @@ func withLogging(log *slog.Logger) middleware {
 				logging.RequestID(RequestIDFromContext(r.Context())),
 			)
 		})
+	}
+}
+
+// polled reports whether a path is fetched repeatedly by a page left open.
+//
+// These are logged at debug when they succeed. Everything else, and any of
+// these that fails, is logged normally.
+func polled(path string) bool {
+	switch path {
+	case "/api/join", "/api/peers", "/api/events", "/healthz", "/readyz":
+		return true
+	default:
+		return false
 	}
 }
 

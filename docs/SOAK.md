@@ -145,11 +145,35 @@ exactly the class of fault a soak exists to find and a test suite cannot.
 
 ---
 
+## When systemd refuses to start it
+
+```
+qsp.service: Start request repeated too quickly.
+qsp.service: Failed with result 'start-limit-hit'.
+```
+
+**This is not a QSP fault and the message does not say so.** The unit allows five
+starts in five minutes; beyond that systemd stops trying, so a genuinely broken
+service stays visibly failed rather than thrashing for a fortnight. Editing
+configuration and restarting a few times in quick succession hits it.
+
+```sh
+sudo systemctl reset-failed qsp
+sudo systemctl start qsp
+```
+
+Worth knowing before it happens at an awkward moment, because the obvious
+reading of that message is that QSP crashed.
+
 ## Pass criteria
 
 All four, at day fourteen:
 
-1. **`NRestarts` is 0.** Any restart needs explaining before the run counts. A
+1. **`NRestarts` is 0**, or every restart has an explanation.
+
+   A `systemctl restart` after a configuration change counts. Note them as they
+   happen; the criterion is no *unexplained* restarts, and a number with no
+   record beside it is indistinguishable from a crash at day fourteen. Any restart needs explaining before the run counts. A
    restart QSP recovered from cleanly may still be acceptable — but that is a
    judgement to make with the journal open, not a box to tick.
 2. **Every scheduled transition happened, at the right local time.** 112 of

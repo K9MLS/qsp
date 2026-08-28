@@ -2,6 +2,22 @@
 
 All notable changes to QSP. Dates are UTC.
 
+## [Unreleased]
+
+### Fixed
+- **Successful polls are logged at debug rather than info.** The join page polls
+  `/api/join` every three seconds per open browser — one member watching
+  overnight is roughly 28,000 lines. A club's worth during a net would rotate a
+  500 MB journal past the evidence an operator needs, which during a fourteen-day
+  soak is the entire record of whether it passed. A poll that *fails* still logs
+  at warning or error, because that is the case worth seeing.
+- `docs/SOAK.md` explains `start-limit-hit`. Five restarts in five minutes trips
+  systemd's rate limiter, which is correct behaviour for an unattended run and
+  reads exactly like a crash. `systemctl reset-failed` is the answer and is not
+  obvious. The pass criterion is also corrected to no *unexplained* restarts: a
+  restart after a configuration change counts, and a number with no note beside
+  it cannot be told from a crash at day fourteen.
+
 ## [0.1.8] — 2026-08-27
 
 OpenBridge, end to end.
