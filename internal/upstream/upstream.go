@@ -219,6 +219,15 @@ type Status struct {
 	Stale bool
 	// Summary is a sentence for an operator.
 	Summary string
+	// Advice is what to do about it, empty when there is nothing wrong.
+	//
+	// **It comes from the link rather than from the health check**, because
+	// what to check differs entirely between the two protocols. OpenBridge has
+	// no keep-alive, so its advice is about addresses and quiet talkgroups; a
+	// homebrew link has one, so silence there is a fault and the advice is
+	// about credentials. A single hardcoded string would be wrong for one of
+	// them, and wrong advice is worse than none.
+	Advice string
 
 	Stats Stats
 }
@@ -246,6 +255,8 @@ func (l *Link) Status() Status {
 		st.Summary = "the link is not open"
 
 	case !st.EverReceived && l.stats.Rejected > 0:
+		st.Advice = "check the passphrase file matches what the far end was given; " +
+			"both ends must hold the same secret"
 		// The most useful thing this package can say. A link that has received
 		// only unverifiable datagrams is one where both ends are configured and
 		// talking, and disagree about the passphrase — otherwise
@@ -256,6 +267,8 @@ func (l *Link) Status() Status {
 	case !st.EverReceived:
 		st.Summary = "no traffic has ever arrived on this link; " +
 			"check the far end has this server's address and that UDP is reaching it"
+		st.Advice = "confirm the far end has this server's current public address and that " +
+			"UDP reaches this port; an address change breaks an OpenBridge link silently"
 
 	default:
 		st.Since = l.now().Sub(l.lastReceived).Truncate(time.Second)
@@ -263,6 +276,8 @@ func (l *Link) Status() Status {
 		if st.Stale {
 			st.Summary = fmt.Sprintf("no traffic received for %s; "+
 				"this may be a quiet talkgroup or a broken link", st.Since)
+			st.Advice = "if the talkgroup is genuinely quiet, raise stale_after; if not, " +
+				"check the link with the far end's operator"
 		} else {
 			st.Summary = fmt.Sprintf("last traffic %s ago", st.Since)
 		}
@@ -318,3 +333,10 @@ func (l *Link) serve(ctx context.Context) {
 		l.cfg.Receive(l.cfg.Name, frame)
 	}
 }
+
+// Degraded reports whether the link is working but not well.
+//
+// It is derived from Advice rather than restated: a link that has something to
+// advise is one with a problem, and keeping the two in step by hand is how they
+// drift apart.
+func (s Status) Degraded() bool { return s.Advice != "" }

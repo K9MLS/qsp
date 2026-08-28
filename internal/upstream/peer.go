@@ -306,11 +306,13 @@ func (l *PeerLink) Status() Status {
 		// The distinction the state machine keeps, surfaced. A link that has
 		// never worked is usually a credential or an address; one that has
 		// worked and stopped is usually the far end.
-		st.Summary = fmt.Sprintf("has never connected (%s); check the repeater ID, "+
-			"the password file and the address", state)
+		st.Summary = fmt.Sprintf("has never connected (%s)", state)
+		st.Advice = "check the repeater ID, the password file and the address; a link that " +
+			"has never completed a handshake is almost always one of those three"
 	default:
-		st.Summary = fmt.Sprintf("disconnected (%s); it has connected before, so the far end "+
-			"or the network between is the likelier cause", state)
+		st.Summary = fmt.Sprintf("disconnected (%s)", state)
+		st.Advice = "this link has connected before, so the far end or the network between " +
+			"is the likelier cause than anything configured here; it retries on its own"
 	}
 	return st
 }

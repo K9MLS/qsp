@@ -21,6 +21,7 @@ import (
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/protocol/homebrew"
 	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/scheduler"
 	"github.com/k9mls/qsp/internal/server"
@@ -800,21 +801,9 @@ func upstreamSender(links *upstream.Set) peers.UpstreamSender {
 func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hbp.Data)) (*upstream.Set, error) {
 	var enabled []config.Upstream
 	for _, u := range cfg.DMR.Upstreams {
-		if !u.Enabled {
-			continue
+		if u.Enabled {
+			enabled = append(enabled, u)
 		}
-		// The schema for outbound peer mode is decided (ADR-0024) and the
-		// protocol is not written yet. Refusing at startup is the honest
-		// answer: handing a homebrew link to the OpenBridge builder would
-		// construct something that speaks the wrong protocol at the far end,
-		// and silently skipping it would leave an operator watching for
-		// traffic on a link QSP never attempted.
-		if u.HomebrewProtocol() {
-			return nil, fmt.Errorf("upstream %q: outbound peer mode is not implemented yet; "+
-				"its configuration is accepted so it can be written down, but the link "+
-				"cannot be enabled. See docs/adr/ADR-0024-outbound-peer-mode.md", u.Name)
-		}
-		enabled = append(enabled, u)
 	}
 	if len(enabled) == 0 {
 		return nil, nil
@@ -822,23 +811,15 @@ func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hb
 
 	set := upstream.NewSet(log)
 	for _, u := range enabled {
-		passphrase, err := config.LoadPeerPassword(os.ReadFile, u.PassphraseFile)
-		if err != nil {
-			return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+		var (
+			link upstream.Connection
+			err  error
+		)
+		if u.HomebrewProtocol() {
+			link, err = buildPeerLink(log, u, receive)
+		} else {
+			link, err = buildOpenBridgeLink(log, u, receive)
 		}
-		if err := checkPasswordFileMode(u.PassphraseFile); err != nil {
-			return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
-		}
-
-		link, err := upstream.New(log, upstream.Config{
-			Name:          u.Name,
-			ListenAddress: u.ListenAddress,
-			TargetAddress: u.Address,
-			NetworkID:     hbp.RepeaterID(u.NetworkID),
-			Passphrase:    passphrase,
-			StaleAfter:    time.Duration(u.StaleAfter),
-			Receive:       receive,
-		})
 		if err != nil {
 			return nil, err
 		}
@@ -847,4 +828,81 @@ func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hb
 		}
 	}
 	return set, nil
+}
+
+// buildOpenBridgeLink creates a bridge between two networks.
+func buildOpenBridgeLink(log *slog.Logger, u config.Upstream, receive func(string, hbp.Data)) (upstream.Connection, error) {
+	passphrase, err := config.LoadPeerPassword(os.ReadFile, u.PassphraseFile)
+	if err != nil {
+		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+	}
+	if err := checkPasswordFileMode(u.PassphraseFile); err != nil {
+		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+	}
+
+	return upstream.New(log, upstream.Config{
+		Name:          u.Name,
+		ListenAddress: u.ListenAddress,
+		TargetAddress: u.Address,
+		NetworkID:     hbp.RepeaterID(u.NetworkID),
+		Passphrase:    passphrase,
+		StaleAfter:    time.Duration(u.StaleAfter),
+		Receive:       receive,
+	})
+}
+
+// buildPeerLink creates an outbound link that logs into another master.
+//
+// **This must not be pointed at BrandMeister**, whose operators define peer
+// bridging as prohibited. ADR-0018 records that and ADR-0024 records that
+// building the capability did not change it. QSP does not detect the far end,
+// because carrying one network's hostnames in the codebase is what §0 refused
+// for talkgroup lists and for the same reasons.
+func buildPeerLink(log *slog.Logger, u config.Upstream, receive func(string, hbp.Data)) (upstream.Connection, error) {
+	password, err := config.LoadPeerPassword(os.ReadFile, u.PasswordFile)
+	if err != nil {
+		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+	}
+	if err := checkPasswordFileMode(u.PasswordFile); err != nil {
+		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+	}
+
+	// Validate requires an identity for an enabled homebrew link, so a nil one
+	// here means Validate and this disagree. Failing is better than sending a
+	// blank callsign, which appears on the far end's dashboard as an
+	// unidentified station.
+	if u.Identity == nil {
+		return nil, fmt.Errorf("upstream %q: no identity is configured; the far end shows "+
+			"it to its own users", u.Name)
+	}
+
+	hb, err := homebrew.New(homebrew.Config{
+		Name:       u.Name,
+		RepeaterID: hbp.RepeaterID(u.RepeaterID),
+		Password:   password,
+		Identity: homebrew.Identity{
+			Callsign:    u.Identity.Callsign,
+			RXFrequency: u.Identity.RXFrequency,
+			TXFrequency: u.Identity.TXFrequency,
+			ColourCode:  u.Identity.ColourCode,
+			Latitude:    u.Identity.Latitude,
+			Longitude:   u.Identity.Longitude,
+			Height:      u.Identity.Height,
+			Location:    u.Identity.Location,
+			Description: u.Identity.Description,
+			URL:         u.Identity.URL,
+			Timeslots:   u.Identity.Timeslots,
+			SoftwareID:  "QSP " + buildVersion(),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
+	}
+
+	return upstream.NewPeer(log, upstream.PeerConfig{
+		Name:          u.Name,
+		TargetAddress: u.Address,
+		Link:          hb,
+		Receive:       receive,
+	})
 }

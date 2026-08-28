@@ -123,3 +123,30 @@ question in [ADR-0008](../adr/ADR-0008-protocol-licensing.md).
 
 See [`testdata/README.md`](../../testdata/README.md) for what a contributed
 capture must include.
+
+## Building `cmd/qsp` without the module proxy
+
+A development environment that cannot reach the Go module proxy cannot build
+`cmd/qsp`, because it imports `modernc.org/sqlite`. That has been treated as
+meaning `cmd/qsp` is unbuildable there, and it does not: **exactly one file
+imports the driver.**
+
+```sh
+mv cmd/qsp/driver_sqlite.go /tmp/hold.go
+go build ./cmd/qsp/ && go vet ./cmd/qsp/ && staticcheck ./cmd/qsp/
+go test ./cmd/qsp/
+mv /tmp/hold.go cmd/qsp/driver_sqlite.go
+```
+
+`ADR-0005` is what makes this work: the binary registers a driver as a
+deliberate, isolated act, and `internal/database` resolves whatever name the
+configuration asks for through `database/sql` without knowing which drivers
+exist. A file whose only job is one blank import can be lifted out.
+
+**Four tests fail while it is held aside, and only those four.** Three ask for
+persistence that a build with no driver cannot provide; the fourth is the
+documentation gate noticing that a file the documents name is missing. Any
+*other* failure is a real one.
+
+The file must be restored before anything is committed. `git status` showing it
+deleted is the signal that it was not.

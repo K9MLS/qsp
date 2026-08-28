@@ -344,8 +344,11 @@ func TestARefusedLinkSaysWhatToCheck(t *testing.T) {
 	if !strings.Contains(st.Summary, "never connected") {
 		t.Errorf("the summary should distinguish never-connected from dropped: %q", st.Summary)
 	}
-	if !strings.Contains(st.Summary, "password") {
-		t.Errorf("the summary should say what to check: %q", st.Summary)
+	if !strings.Contains(st.Advice, "password") {
+		t.Errorf("the advice should say what to check: %q", st.Advice)
+	}
+	if !st.Degraded() {
+		t.Error("a link that has never connected did not report itself degraded")
 	}
 }
 

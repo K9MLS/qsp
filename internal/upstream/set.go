@@ -160,20 +160,11 @@ func (h HealthCheck) Check(context.Context) health.Result {
 	case !st.Open:
 		return health.Unavailable(st.Summary)
 
-	case !st.EverReceived && st.Stats.Rejected > 0:
-		return health.Degraded(st.Summary,
-			"check the passphrase file matches what the far end was given; "+
-				"the two must be byte-identical, including any trailing newline")
-
-	case !st.EverReceived:
-		return health.Degraded(st.Summary,
-			"confirm the far end has this server's current public address and that "+
-				"UDP reaches this port; an address change breaks an OpenBridge link silently")
-
-	case st.Stale:
-		return health.Degraded(st.Summary,
-			"if the talkgroup is genuinely quiet, raise stale_after; if not, "+
-				"check the link with the far end's operator")
+	case st.Degraded():
+		// The advice comes from the link. What to check differs entirely
+		// between a bridge with no keep-alive and a login that has one, and a
+		// single hardcoded string would be wrong for one of them.
+		return health.Degraded(st.Summary, st.Advice)
 
 	default:
 		return health.Healthy(st.Summary)

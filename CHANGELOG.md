@@ -126,6 +126,18 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **Outbound peer mode is wired into startup.** A homebrew upstream now builds
+  a `PeerLink`, registers a health check like any other link, and no longer
+  refuses startup. It still must not be pointed at BrandMeister; see
+  [ADR-0018](docs/adr/ADR-0018-openbridge.md).
+
+  **Health advice now comes from the link rather than the health check.** What
+  to check differs entirely between the two protocols: OpenBridge has no
+  keep-alive, so its advice is about addresses and quiet talkgroups, while a
+  homebrew link has one, so silence is a fault and the advice is about
+  credentials. One hardcoded string was wrong for one of them, and wrong advice
+  is worse than none.
+
 - **The outbound link's transport**, `upstream.PeerLink`. It drives the
   handshake over a connected UDP socket — connected rather than merely bound,
   because QSP is dialling out and the kernel can then discard datagrams from
