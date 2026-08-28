@@ -126,6 +126,29 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **[ADR-0027](docs/adr/ADR-0027-configuration-writes.md) decides the
+  configuration write path**, which is what the admin interface needs before any
+  of its forms are worth building. Three questions, none of them about forms.
+
+  **The file stays the source of truth and a save writes it.** The database
+  becoming authoritative after the first save would silently ignore a
+  hand-edited file from then on — a trap laid for exactly the operator this
+  project is written for, who would edit, restart, and find the change gone with
+  no error. `configuration_versions` is history, and a rollback works by writing
+  the file again.
+
+  **An HTTP handler cannot apply a change.** `routing.Core` is single-writer and
+  owned by the listener's goroutine ([ADR-0002](docs/adr/ADR-0002-single-writer-routing-core.md)),
+  so calling `SetTable` from a handler is a data race the detector would only
+  sometimes catch. A save hands the configuration over and the listener applies
+  it on its next sweep, within a second.
+
+  **Some settings cannot apply at all** — listen addresses, the password file,
+  the database, the sockets an upstream holds. Those are saved and not applied,
+  and the save says so and names the field. Refusing to save them would make the
+  interface unable to configure half of QSP; pretending they took effect would
+  be worse than either.
+
 - **A sign-in page.** The login API existed with no way to use it — an
   omission spotted by looking at the console rather than at the code. `/signin`
   has a form, and the console's topbar shows who is signed in with a link to

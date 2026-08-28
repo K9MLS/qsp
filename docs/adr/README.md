@@ -36,3 +36,4 @@ conclusion.
 | [0024](ADR-0024-outbound-peer-mode.md) | Outbound peer mode, and the network it must not be used against | Proposed |
 | [0025](ADR-0025-no-bundled-map.md) | A map with no library, and a tile source that is configuration | Proposed |
 | [0026](ADR-0026-authentication.md) | The first administrator is made from a shell, not a browser | Proposed |
+| [0027](ADR-0027-configuration-writes.md) | The file stays the source of truth, and the owner applies the change | Proposed |
