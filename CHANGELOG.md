@@ -126,6 +126,22 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The map says why a peer has no pin.** "No peer has announced a position"
+  read the same whether a hotspot sent nothing or sent something QSP refused,
+  and those need different things done about them: the first is a hotspot nobody
+  configured, the second is one configured wrongly, and only its owner can tell
+  which if nothing says.
+
+  Found on real hardware. A WPSD hotspot with DMRGateway's `[Info]` block
+  disabled announces latitude `0.000000` and longitude `00.000000` — not blanks,
+  zeros — so the Null Island rule refused them correctly and the console then
+  reported the wrong reason. `/api/peers` now carries the refusal and the map
+  shows it, naming the peer and what it announced.
+
+  The rule itself is vindicated rather than changed: an unconfigured hotspot in
+  the field sends exactly 0,0, and without that check the pin would have been in
+  the Gulf of Guinea.
+
 - **[ADR-0026](docs/adr/ADR-0026-authentication.md) decides authentication**,
   which is what the admin interface has been waiting on, and
   `migrations/0003_users.sql` adds the accounts and sessions it needs.

@@ -43,6 +43,12 @@ type PeerView struct {
 	Longitude *float64 `json:"longitude,omitempty"`
 	// Height is metres above ground, omitted when zero or unannounced.
 	Height int `json:"height,omitempty"`
+	// PositionRefused explains coordinates that arrived and were not used.
+	//
+	// A peer that announced nothing and one that announced 0,0 both produce no
+	// pin, and an operator can only act on the second if somebody says which
+	// happened.
+	PositionRefused string `json:"position_refused,omitempty"`
 }
 
 // CallView is one transmission as the console sees it.

@@ -1,6 +1,7 @@
 package peers_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/k9mls/qsp/internal/peers"
@@ -162,5 +163,64 @@ func TestABadHeightIsZeroRatherThanAnError(t *testing.T) {
 	}
 	if pos.Height != 0 {
 		t.Errorf("height is %d, want 0", pos.Height)
+	}
+}
+
+// TestSilenceAndRubbishAreDifferentProblems. A hotspot nobody configured and a
+// hotspot configured wrongly both produce no pin, and only the second is
+// something its owner can fix — if anybody says which happened.
+func TestSilenceAndRubbishAreDifferentProblems(t *testing.T) {
+	h := newHarness(t)
+	p := h.withConfig(hbp.Config{Location: "Denton"})
+	if got := p.Position().Refused; got != "" {
+		t.Errorf("a peer that announced nothing reported a refusal: %q", got)
+	}
+
+	h2 := newHarness(t)
+	p2 := h2.withConfig(hbp.Config{Latitude: "north", Longitude: "west"})
+	if p2.Position().Refused == "" {
+		t.Error("a peer that announced rubbish reported no refusal")
+	}
+}
+
+// TestNullIslandSaysSo is the case a real hotspot produced. A WPSD hotspot with
+// DMRGateway's [Info] block disabled sends "0.000000" and "00.000000", and the
+// console said only that nothing had been announced — which was true of the
+// position and useless about the cause.
+func TestNullIslandSaysSo(t *testing.T) {
+	h := newHarness(t)
+	// The exact bytes observed on the wire from a WPSD hotspot on 2026-08-28.
+	p := h.withConfig(hbp.Config{
+		Latitude: "0.000000", Longitude: "00.000000", Height: "000",
+		Location: "Denton, EM13kd",
+	})
+
+	pos := p.Position()
+	if pos.Located {
+		t.Fatal("0,0 was drawn as a position")
+	}
+	if pos.Refused == "" {
+		t.Fatal("0,0 was refused without saying so")
+	}
+	if !strings.Contains(pos.Refused, "hotspot") {
+		t.Errorf("the refusal should say where to fix it: %q", pos.Refused)
+	}
+	// The place name is still worth having.
+	if pos.Location != "Denton, EM13kd" {
+		t.Errorf("the location text was lost: %q", pos.Location)
+	}
+}
+
+// TestAGoodPositionIsNotRefused guards the obvious regression.
+func TestAGoodPositionIsNotRefused(t *testing.T) {
+	h := newHarness(t)
+	p := h.withConfig(hbp.Config{Latitude: "33.1481", Longitude: "-97.1201"})
+
+	pos := p.Position()
+	if !pos.Located {
+		t.Fatal("a real position was refused")
+	}
+	if pos.Refused != "" {
+		t.Errorf("a usable position carried a refusal: %q", pos.Refused)
 	}
 }

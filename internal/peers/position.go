@@ -1,6 +1,7 @@
 package peers
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -24,6 +25,15 @@ type Position struct {
 	// whether or not the coordinates parsed: "Denton, TX" is useful to an
 	// operator even when the latitude field holds rubbish.
 	Location string
+	// Refused explains coordinates that arrived and were not used, and is
+	// empty when none arrived or when they were fine.
+	//
+	// **A peer that sent nothing and a peer that sent something unusable need
+	// different things done about them**, and they looked identical from the
+	// console: both produced no pin and the same empty state. The first is a
+	// hotspot nobody has configured; the second is a hotspot configured wrongly,
+	// and only its owner can tell which if nobody says.
+	Refused string
 }
 
 // Position reports where the peer says it is.
@@ -42,18 +52,29 @@ func (p *Peer) Position() Position {
 		Height:   parseHeight(p.Config.Height),
 	}
 
-	lat, latOK := parseDegrees(p.Config.Latitude, 90)
-	lon, lonOK := parseDegrees(p.Config.Longitude, 180)
+	rawLat := strings.TrimSpace(p.Config.Latitude)
+	rawLon := strings.TrimSpace(p.Config.Longitude)
+
+	lat, latOK := parseDegrees(rawLat, 90)
+	lon, lonOK := parseDegrees(rawLon, 180)
 	if !latOK || !lonOK {
+		// Silence and rubbish are different problems. Only say something was
+		// refused when something arrived.
+		if rawLat != "" || rawLon != "" {
+			pos.Refused = fmt.Sprintf("announced latitude %q and longitude %q, which are not "+
+				"usable coordinates", rawLat, rawLon)
+		}
 		return pos
 	}
 
 	// Null Island. Zero is a real coordinate in the Gulf of Guinea and is
 	// almost never where a hotspot is; it is what a field left at its default
-	// looks like. Refusing it costs one station in the Atlantic the pin they
-	// were never going to have, and saves every unconfigured hotspot from
-	// claiming to be there.
+	// looks like — a WPSD hotspot with DMRGateway's [Info] block disabled
+	// sends exactly "0.000000" and "00.000000", which is how this was
+	// confirmed rather than guessed.
 	if lat == 0 && lon == 0 {
+		pos.Refused = "announced 0, 0, which is what an unconfigured position field looks " +
+			"like rather than a place; set the latitude and longitude on the hotspot"
 		return pos
 	}
 

@@ -328,11 +328,27 @@
 
     if (!points.length) {
       peerMap = null;
-      mapBody.innerHTML = emptyState(
-        "No peer has announced a position",
-        "A hotspot sends its latitude and longitude when it registers. Set them " +
-          "in the hotspot's configuration and it appears here."
-      );
+      // Two different problems used to render as one sentence: a hotspot
+      // nobody has configured, and a hotspot configured wrongly. Only the
+      // operator can tell them apart, and only if something says which.
+      var refused = [];
+      for (var j = 0; j < list.length; j++) {
+        if (list[j].position_refused) {
+          refused.push((list[j].callsign || list[j].id) + " " + list[j].position_refused);
+        }
+      }
+      if (refused.length) {
+        mapBody.innerHTML = emptyState(
+          "No peer has a usable position",
+          refused.join(". ") + "."
+        );
+      } else {
+        mapBody.innerHTML = emptyState(
+          "No peer has announced a position",
+          "A hotspot sends its latitude and longitude when it registers. Set them " +
+            "in the hotspot's configuration and it appears here."
+        );
+      }
       return;
     }
 
