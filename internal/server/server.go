@@ -79,6 +79,9 @@ type Options struct {
 
 // Server owns the HTTP listener and its lifecycle.
 type Server struct {
+	// live holds the options a saved configuration can change. See live.go.
+	live live
+
 	opts   Options
 	log    *slog.Logger
 	health Registry

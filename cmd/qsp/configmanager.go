@@ -22,7 +22,11 @@ type configManager struct {
 	store  config.VersionStore
 	// apply hands the change to the goroutine that owns the routing core. Nil
 	// on an instance with no listener, which is a working state.
-	apply func(cfg config.Config) error
+	apply func(cfg config.Config, author, summary string) error
+	// applyServer updates the settings the HTTP server can change under
+	// itself. Separate from apply because the two have different owners: one
+	// is the listener's goroutine, the other is every handler at once.
+	applyServer func(cfg config.Config)
 
 	// mu guards current, and serialises saves. Two administrators pressing
 	// save at the same instant would otherwise interleave a read of the
@@ -81,8 +85,14 @@ func (m *configManager) Save(ctx context.Context, cfg config.Config, author, sum
 	}
 
 	m.current = cfg
+	// The server first: it holds settings that need no coordination, and a
+	// failure to reach the listener should not leave the join page stale as
+	// well as the routing table.
+	if m.applyServer != nil {
+		m.applyServer(cfg)
+	}
 	if m.apply != nil {
-		if err := m.apply(cfg); err != nil {
+		if err := m.apply(cfg, author, summary); err != nil {
 			// Written and not applied. Reporting success would leave the
 			// operator believing a change is live when the next restart is
 			// what will make it so.
@@ -114,8 +124,8 @@ func (m *configManager) Version(ctx context.Context, number int64) (config.Versi
 
 // applyToListener builds the runtime pieces a configuration implies and queues
 // them for the listener's own goroutine.
-func applyToListener(listener *peers.Listener, author, summary string) func(config.Config) error {
-	return func(cfg config.Config) error {
+func applyToListener(listener *peers.Listener) func(config.Config, string, string) error {
+	return func(cfg config.Config, author, summary string) error {
 		sched, err := buildSchedule(cfg)
 		if err != nil {
 			return err

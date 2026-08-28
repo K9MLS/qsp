@@ -182,8 +182,8 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Enabled = true
-	body.Forwarding = s.opts.Forwarding
-	body.Map = s.opts.Map
+	body.Forwarding = s.Forwarding()
+	body.Map = s.MapSettings()
 	if views := s.opts.Peers.PeerViews(now); len(views) > 0 {
 		body.Peers = views
 	}

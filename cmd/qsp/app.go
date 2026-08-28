@@ -299,17 +299,20 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Auth:                authService,
 		Config:              manager,
 		Audit:               a.audit,
-		Map: server.MapSettings{
-			TileURL:     cfg.Server.Map.TileURL,
-			Attribution: cfg.Server.Map.Attribution,
-			MaxZoom:     cfg.Server.Map.MaxZoom,
-		},
-		Join: joinSettings(cfg),
+		Map:                 mapSettings(cfg),
+		Join:                joinSettings(cfg),
 	})
 	if err != nil {
 		return nil, err
 	}
 	a.srv = srv
+	// The join page, the map and the forwarding flag are derived from the
+	// configuration and were captured once at construction, so a saved change
+	// to any of them applied to nothing while NeedsRestart reported that no
+	// restart was needed.
+	manager.applyServer = func(c config.Config) {
+		srv.ApplyConfig(joinSettings(c), mapSettings(c), c.DMR.Enabled && c.DMR.Forwarding)
+	}
 	a.closers = append(a.closers, srv.Shutdown)
 
 	return a, nil
@@ -433,9 +436,10 @@ func (a *app) run(ctx context.Context) error {
 	// the routing core. Wired here rather than in build because the listener
 	// is constructed after the server that will call it.
 	if a.dmr != nil && a.configManager != nil {
-		a.configManager.apply = func(cfg config.Config) error {
-			return applyToListener(a.dmr, "console", "")(cfg)
-		}
+		// The author travels with the change, so the line the listener logs
+		// names the administrator rather than "console" — the version row
+		// could attribute a live change and the log could not.
+		a.configManager.apply = applyToListener(a.dmr)
 	}
 
 	<-ctx.Done()
@@ -1014,4 +1018,16 @@ func buildPeerLink(log *slog.Logger, u config.Upstream, receive func(string, hbp
 		Link:          hb,
 		Receive:       receive,
 	})
+}
+
+// mapSettings translates the configuration's map block for the console.
+//
+// A function rather than an inline literal because a saved configuration
+// rebuilds it, and two copies of the translation would drift.
+func mapSettings(cfg config.Config) server.MapSettings {
+	return server.MapSettings{
+		TileURL:     cfg.Server.Map.TileURL,
+		Attribution: cfg.Server.Map.Attribution,
+		MaxZoom:     cfg.Server.Map.MaxZoom,
+	}
 }

@@ -406,3 +406,94 @@ func TestSaveRejectsMalformedJSON(t *testing.T) {
 		t.Error("malformed JSON reached the writer")
 	}
 }
+
+// TestSavedJoinSettingsTakeEffectWithoutARestart is the bug this file's
+// sibling exposed on a live server: the join page kept the old network name
+// after a save that reported no restart was needed.
+//
+// Two individually reasonable statements that together were a lie — the
+// operator was told the change was live, and it was not.
+func TestSavedJoinSettingsTakeEffectWithoutARestart(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          JoinSettings{NetworkName: "Old Name"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Before: the constructed value.
+	if got := srv.Join().NetworkName; got != "Old Name" {
+		t.Fatalf("network name is %q before any save", got)
+	}
+
+	srv.ApplyConfig(JoinSettings{NetworkName: "BCARA"}, MapSettings{TileURL: "x"}, true)
+
+	if got := srv.Join().NetworkName; got != "BCARA" {
+		t.Errorf("network name is %q after a save, want BCARA", got)
+	}
+	if got := srv.MapSettings().TileURL; got != "x" {
+		t.Errorf("map settings did not update: %q", got)
+	}
+	if !srv.Forwarding() {
+		t.Error("the forwarding flag did not update")
+	}
+}
+
+// TestTheJoinEndpointServesTheAppliedSettings covers the path a member
+// actually reads, rather than the accessor alone.
+func TestTheJoinEndpointServesTheAppliedSettings(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          JoinSettings{NetworkName: "Old Name"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	srv.ApplyConfig(JoinSettings{NetworkName: "BCARA"}, MapSettings{}, false)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/join", nil))
+
+	var body struct {
+		Settings struct {
+			NetworkName string `json:"network_name"`
+		} `json:"settings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Settings.NetworkName != "BCARA" {
+		t.Errorf("the join page serves %q", body.Settings.NetworkName)
+	}
+}
+
+// TestNothingAppliedMeansTheConstructedValues. An instance that has never
+// saved must behave exactly as it did before any of this existed.
+func TestNothingAppliedMeansTheConstructedValues(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		Join:          JoinSettings{NetworkName: "Configured"},
+		Map:           MapSettings{TileURL: "tiles"},
+		Forwarding:    true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if srv.Join().NetworkName != "Configured" {
+		t.Error("the constructed join settings were lost")
+	}
+	if srv.MapSettings().TileURL != "tiles" {
+		t.Error("the constructed map settings were lost")
+	}
+	if !srv.Forwarding() {
+		t.Error("the constructed forwarding flag was lost")
+	}
+}

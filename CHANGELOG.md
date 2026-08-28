@@ -245,6 +245,22 @@ All notable changes to QSP. Dates are UTC.
   this only reclaims rows.
 
 ### Fixed
+- **A saved join or map setting applied to nothing.** Both are derived from the
+  configuration and were captured once when the server was constructed, so a
+  save changed the file and the routing table and left the join page serving the
+  old network name — while the response reported that no restart was needed.
+  Two individually reasonable statements that together were a lie: the operator
+  was told the change was live, and it was not.
+
+  Found by changing the network name through the API on a live instance and
+  watching the join page keep the old one. The server now picks up the settings
+  a running instance can change, through atomics rather than a mutex the
+  handlers would take on every request.
+
+- **A live configuration change logged "console" as its author.** The version
+  row could attribute it and the log line could not; the author now travels with
+  the change.
+
 - **`Writable` called a writable instance read-only.** It checked the
   configuration file's permission bits, which do not gate the operation: saving
   replaces the file by renaming a temporary one over it, and `rename(2)` needs

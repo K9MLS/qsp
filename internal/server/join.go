@@ -94,7 +94,7 @@ type joinResponse struct {
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	body := joinResponse{
-		Settings:    s.opts.Join,
+		Settings:    s.Join(),
 		GeneratedAt: now,
 	}
 	if body.Settings.Talkgroups == nil {
