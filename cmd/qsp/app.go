@@ -138,9 +138,20 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 					)
 				}
 			}
+			// Recomputed rather than threaded out of buildDMR: it is a pure
+			// function of the configuration, and returning it would widen
+			// buildDMR's signature for one caller. Validate has already
+			// accepted the same document, so an error here means the two
+			// disagree and is worth failing on rather than defaulting to
+			// lists that permit everything.
+			lists, aerr := cfg.AccessLists()
+			if aerr != nil {
+				return nil, fmt.Errorf("cannot apply the access lists: %w", aerr)
+			}
 			core, err = routing.NewCore(routing.CoreOptions{
-				Table: table,
-				Peers: readyPeers{master: master},
+				Access: lists,
+				Table:  table,
+				Peers:  readyPeers{master: master},
 			})
 			if err != nil {
 				return nil, err

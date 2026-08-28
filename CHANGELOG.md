@@ -73,6 +73,26 @@ All notable changes to QSP. Dates are UTC.
   the master would drop a frame before any destination was known, including
   destinations the list would have allowed.
 
+- **Talkgroup access control is enforced in the routing core**, which completes
+  layer 2. The list is checked twice, which is ADR-0020's substantive decision:
+  once when a frame arrives, and once per destination it would reach.
+
+  The second check is not redundant. A bridge translates, so a frame arriving on
+  TG 9 and leaving on TG 91 is tested against two different entries — and
+  traffic arriving over a bridge or an OpenBridge link never crossed the first
+  check at all, which is precisely the traffic an operator can least vouch for.
+  Exports to a link are subject to the same lists, so a talkgroup this instance
+  does not carry is not handed to somebody else's network.
+
+  A refused destination becomes a `Drop` with a reason, which the console
+  already renders, and is **not reserved** — reserving it would make it look
+  busy to the next transmission, quietly turning an access list into a denial of
+  service on everybody else.
+
+  `SetAccess` takes effect on the next frame rather than the next transmission,
+  deliberately unlike `SetTable`. Ten tests, and every routing test that
+  predates this passes unchanged.
+
 - **[ADR-0021](docs/adr/ADR-0021-private-calls-and-data.md): private calls and
   data are in scope, and share one missing thing.** Private calls do not work at
   all — repeat fires only on a group call, and nothing routes a call whose

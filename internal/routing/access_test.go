@@ -1,0 +1,300 @@
+package routing_test
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/k9mls/qsp/internal/access"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
+)
+
+// Layer 2 at the routing core. See docs/adr/ADR-0020-access-control.md.
+//
+// The registration and subscriber lists are enforced at the master, where the
+// sender is known. The talkgroup lists are enforced here, where destinations
+// are known — and they are enforced twice, which is the substantive decision
+// ADR-0020 records.
+
+func talkgroups(t *testing.T, slot int, mode access.Mode, ids ...string) access.Lists {
+	t.Helper()
+	l, err := access.Parse("dmr.access.talkgroups.test", access.Talkgroup, mode, ids)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	var lists access.Lists
+	switch slot {
+	case 1:
+		lists.Talkgroup1 = l
+	case 2:
+		lists.Talkgroup2 = l
+	}
+	return lists
+}
+
+func coreWithAccess(t *testing.T, lists access.Lists, table *routing.Table, peers ...hbp.RepeaterID) *routing.Core {
+	t.Helper()
+	c, err := routing.NewCore(routing.CoreOptions{
+		Access: lists,
+		Table:  table,
+		Peers:  peersReady(peers...),
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	return c
+}
+
+// TestPermissiveListsChangeNothing is the compatibility guarantee at the core.
+// Every routing test that predates access control asserts this implicitly; this
+// one asserts it on purpose.
+func TestPermissiveListsChangeNothing(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithAccess(t, access.Lists{}, nil, a, b)
+
+	res := core.Route(a, groupCall(0x1111, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("a permissive core delivered %d copies, want 1 (reason: %q)", len(res.Deliveries), res.Reason)
+	}
+	if len(res.Drops) != 0 {
+		t.Errorf("a permissive core dropped destinations: %+v", res.Drops)
+	}
+}
+
+func TestIngressRefusesAnUnpermittedTalkgroup(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	// TS2 carries TG 3100 only.
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "3100"), nil, a, b)
+
+	res := core.Route(a, groupCall(0x2222, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Fatalf("a refused talkgroup was delivered to %d peers", len(res.Deliveries))
+	}
+	if !strings.Contains(res.Reason, "dmr.access.talkgroups") {
+		t.Errorf("the reason should name the list that refused: %q", res.Reason)
+	}
+	// Nothing was reserved, so the next transmission finds the core free.
+	if core.BusyCount() != 0 {
+		t.Errorf("a refused frame reserved %d destinations", core.BusyCount())
+	}
+
+	// The permitted talkgroup on the same slot still flows.
+	res = core.Route(a, groupCall(0x3333, 3100, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 1 {
+		t.Fatalf("a permitted talkgroup was refused: %q", res.Reason)
+	}
+}
+
+// TestTheListsArePerTimeslot is why the configuration has two of them.
+// Repeaters are configured per slot, and an operator carrying statewide traffic
+// on one and local traffic on the other cannot say so with a single list.
+func TestTheListsArePerTimeslot(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	// TS1 permits 3100 only. TS2 is unconfigured, so it permits everything.
+	core := coreWithAccess(t, talkgroups(t, 1, access.ModePermit, "3100"), nil, a, b)
+
+	if res := core.Route(a, groupCall(0x4444, 9, hbp.Timeslot1, hbp.FrameTypeSync), t0); len(res.Deliveries) != 0 {
+		t.Error("TG 9 was carried on TS1, which permits 3100 only")
+	}
+	if res := core.Route(a, groupCall(0x5555, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(res.Deliveries) != 1 {
+		t.Errorf("TG 9 was refused on TS2, which has no list: %q", res.Reason)
+	}
+}
+
+// TestEgressRefusesTrafficThatNeverCrossedIngress is the case ADR-0020 exists
+// for. A frame arriving over a link never passes the ingress test for the
+// talkgroup it is translated *to*, so an ingress-only check would permit
+// exactly the traffic an operator can least vouch for.
+func TestEgressRefusesATranslatedTalkgroup(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+
+	// A bridge carrying TG 9 on TS2 across to TG 91 on TS2.
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "translate",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Peer: b, Talkgroup: 91, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+
+	// TS2 permits 9 but not 91: the arriving talkgroup passes ingress, and the
+	// destination talkgroup must still be refused.
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "9"), table, a, b)
+
+	res := core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for _, d := range res.Deliveries {
+		if d.Frame.TargetID == 91 {
+			t.Error("a translated talkgroup that no list permits was delivered")
+		}
+	}
+	var refused bool
+	for _, d := range res.Drops {
+		if strings.Contains(d.Reason, "dmr.access.talkgroups") {
+			refused = true
+		}
+	}
+	if !refused {
+		t.Errorf("the refused destination was not reported as a drop: %+v", res.Drops)
+	}
+}
+
+// TestARefusedDestinationIsADropRatherThanSilence keeps Constitution §18. The
+// console already renders drops, so access control needs no new plumbing to be
+// visible to an operator.
+func TestARefusedDestinationIsADropRatherThanSilence(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "translate",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Peer: b, Talkgroup: 91, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "9"), table, a, b)
+
+	res := core.Route(a, groupCall(0x7777, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Drops) == 0 {
+		t.Fatal("a destination was refused without a drop being recorded")
+	}
+	for _, d := range res.Drops {
+		if d.Reason == "" {
+			t.Errorf("a drop carries no reason: %+v", d)
+		}
+	}
+}
+
+// TestARefusedDestinationIsNotReserved matters more than it looks. Reserving a
+// destination the access list refused would make it appear busy to the next
+// transmission, so an access list would silently become a denial of service on
+// everybody else.
+func TestARefusedDestinationIsNotReserved(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "translate",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Peer: b, Talkgroup: 91, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "9"), table, a, b)
+
+	core.Route(a, groupCall(0x8888, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	for _, busy := range core.Busy() {
+		if busy.Talkgroup == 91 {
+			t.Errorf("a refused destination was reserved: %s", busy)
+		}
+	}
+}
+
+// TestSetAccessTakesEffectOnTheNextFrame is the deliberate difference from
+// SetTable. An operator removing a talkgroup is intervening in something
+// happening now, and a refusal that waits for the offender to stop is not a
+// refusal.
+func TestSetAccessTakesEffectOnTheNextFrame(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithAccess(t, access.Lists{}, nil, a, b)
+
+	// A transmission is under way and being carried.
+	if res := core.Route(a, groupCall(0x9999, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(res.Deliveries) != 1 {
+		t.Fatalf("the opening frame was not carried: %q", res.Reason)
+	}
+
+	// The operator removes TG 9 mid-transmission.
+	core.SetAccess(talkgroups(t, 2, access.ModePermit, "3100"))
+
+	res := core.Route(a, groupCall(0x9999, 9, hbp.Timeslot2, hbp.FrameTypeVoice), t0.Add(60_000_000))
+	if len(res.Deliveries) != 0 {
+		t.Error("a talkgroup removed mid-transmission was still carried; SetTable's rule was applied")
+	}
+	if !strings.Contains(res.Reason, "dmr.access.talkgroups") {
+		t.Errorf("the reason should name the list: %q", res.Reason)
+	}
+}
+
+// TestUpstreamExportIsSubjectToTheLists stops a talkgroup this instance does
+// not carry being handed to somebody else's network.
+func TestUpstreamExportIsSubjectToTheLists(t *testing.T) {
+	const a hbp.RepeaterID = 3100001
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "export",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+			{Upstream: "brandmeister", Talkgroup: 91, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "9"), table, a)
+
+	res := core.Route(a, groupCall(0xAAAA, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Upstreams) != 0 {
+		t.Errorf("TG 91 was exported to a link although no list permits it: %+v", res.Upstreams)
+	}
+	var refused bool
+	for _, d := range res.Drops {
+		if d.To.Upstream == "brandmeister" && strings.Contains(d.Reason, "dmr.access.talkgroups") {
+			refused = true
+		}
+	}
+	if !refused {
+		t.Errorf("the refused link was not reported as a drop: %+v", res.Drops)
+	}
+}
+
+// TestTrafficFromALinkIsSubjectToIngress is the other half of the same
+// argument: a frame arriving from another network is exactly the traffic an
+// operator most wants their lists to govern.
+func TestTrafficFromALinkIsSubjectToIngress(t *testing.T) {
+	const a hbp.RepeaterID = 3100001
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "import",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Upstream: "brandmeister", Talkgroup: 91, Timeslot: hbp.Timeslot2},
+			{Peer: a, Talkgroup: 9, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	// The local talkgroup is permitted; the one the link carries is not.
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModePermit, "9"), table, a)
+
+	res := core.RouteFromUpstream("brandmeister",
+		groupCall(0xBBBB, 91, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	if len(res.Deliveries) != 0 {
+		t.Errorf("a talkgroup no list permits was accepted from a link: %+v", res.Deliveries)
+	}
+	if !strings.Contains(res.Reason, "dmr.access.talkgroups") {
+		t.Errorf("the reason should name the list: %q", res.Reason)
+	}
+}
+
+// TestADenyListRefusesOneTalkgroupAndCarriesTheRest covers the mode a club
+// actually reaches for first: everything works except the one thing that does
+// not.
+func TestADenyListRefusesOneTalkgroupAndCarriesTheRest(t *testing.T) {
+	const a, b hbp.RepeaterID = 3100001, 3100002
+	core := coreWithAccess(t, talkgroups(t, 2, access.ModeDeny, "3100-3199"), nil, a, b)
+
+	if res := core.Route(a, groupCall(0xCCCC, 3150, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(res.Deliveries) != 0 {
+		t.Error("a denied talkgroup was carried")
+	}
+	if res := core.Route(a, groupCall(0xDDDD, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0); len(res.Deliveries) != 1 {
+		t.Errorf("a talkgroup outside the deny list was refused: %q", res.Reason)
+	}
+}

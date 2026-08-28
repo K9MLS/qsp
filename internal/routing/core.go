@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/k9mls/qsp/internal/access"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 )
 
@@ -123,6 +124,10 @@ type sourceKey struct {
 type Core struct {
 	repeat bool
 
+	// access holds the talkgroup lists. The registration and subscriber lists
+	// are in the same value and are not consulted here: they are questions
+	// about who is talking, answered at the master where the sender is known.
+	access  access.Lists
 	table   *Table
 	peers   PeerLookup
 	timeout time.Duration
@@ -145,6 +150,8 @@ type CoreOptions struct {
 	// negative here means an empty CoreOptions behaves correctly.
 	NoRepeat bool
 
+	// Access holds the talkgroup lists. The zero value permits everything.
+	Access access.Lists
 	// Table is the routing table. May be nil, meaning nothing is routed.
 	Table *Table
 	// Peers resolves destinations. Required.
@@ -164,6 +171,7 @@ func NewCore(opts CoreOptions) (*Core, error) {
 	}
 	return &Core{
 		repeat:  !opts.NoRepeat,
+		access:  opts.Access,
 		table:   opts.Table,
 		peers:   opts.Peers,
 		timeout: opts.Timeout,
@@ -178,6 +186,20 @@ func NewCore(opts CoreOptions) (*Core, error) {
 // the new table, so the change takes effect at the next transmission boundary
 // (clarification R4).
 func (c *Core) SetTable(t *Table) { c.table = t }
+
+// SetAccess swaps in new talkgroup lists.
+//
+// **Unlike SetTable, this takes effect on the next frame rather than the next
+// transmission.** A configuration change must not cut somebody off
+// mid-sentence, but an operator removing a talkgroup from a permit list is
+// intervening in something happening now, and a refusal that waits politely for
+// the offender to stop is not a refusal. ADR-0020 records the difference so it
+// does not later read as an inconsistency to be tidied away.
+//
+// Existing reservations are left alone. A destination that stops being
+// permitted mid-transmission simply receives nothing further, and its
+// reservation expires on the ordinary timeout.
+func (c *Core) SetAccess(l access.Lists) { c.access = l }
 
 // Table returns the active routing table.
 //
@@ -232,6 +254,20 @@ func (c *Core) RouteFromUpstream(name string, frame hbp.Data, now time.Time) Res
 func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	from := origin.Peer
 	fromUpstream := origin.Upstream != ""
+
+	// Ingress. A talkgroup this instance does not carry on this timeslot goes
+	// no further, whether it arrived from a peer or over a link.
+	//
+	// This is not made redundant by the egress check below. A bridge
+	// translates, so a frame arriving on TG 9 and leaving on TG 91 is tested
+	// against two different entries — and the arriving talkgroup is the one an
+	// operator means when they say which talkgroups their network carries.
+	if !c.access.Talkgroups(int(origin.Timeslot)).Allows(origin.Talkgroup) {
+		return Result{Reason: fmt.Sprintf(
+			"talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
+			origin.Talkgroup, origin.Timeslot)}
+	}
+
 	decision := c.table.Route(origin)
 
 	// Repeat: the master's own job, and the reason a DMR network exists.
@@ -338,6 +374,24 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 
 			dest := Endpoint{Peer: peer, Talkgroup: target.Talkgroup, Timeslot: target.Timeslot}
 
+			// Egress. Checked per destination because the destination's
+			// talkgroup is not necessarily the one the frame arrived on, and
+			// because traffic reaching this point from a bridge or a link
+			// never crossed the ingress test at all.
+			//
+			// The refusal is recorded as a Drop rather than skipped, so the
+			// console shows it the way it shows any other refused destination.
+			// Nothing is reserved: a destination refused by an access list is
+			// not carrying this transmission and must stay free for the next.
+			if !c.access.Talkgroups(int(dest.Timeslot)).Allows(dest.Talkgroup) {
+				res.Drops = append(res.Drops, Drop{
+					To: dest,
+					Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by "+
+						"dmr.access.talkgroups", dest.Talkgroup, dest.Timeslot),
+				})
+				continue
+			}
+
 			held, occupied := c.busy[dest]
 			switch {
 			case occupied && held.source != src:
@@ -406,6 +460,17 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 // but everything else holds: a link already carrying somebody else's
 // transmission refuses this one, and the refusal is counted rather than silent.
 func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src sourceKey, bridge string, now time.Time) {
+	// A link is a destination like any other, and a talkgroup this instance
+	// does not carry should not be exported to somebody else's network either.
+	if !c.access.Talkgroups(int(target.Timeslot)).Allows(target.Talkgroup) {
+		res.Drops = append(res.Drops, Drop{
+			To: target,
+			Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
+				target.Talkgroup, target.Timeslot),
+		})
+		return
+	}
+
 	held, occupied := c.busy[target]
 	switch {
 	case occupied && held.source != src:

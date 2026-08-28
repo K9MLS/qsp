@@ -85,8 +85,8 @@ rules whatsoever.
 | Hold-off between competing transmissions | 4 | **built** — ADR-0014, per talkgroup per slot |
 | Frames relayed without transcoding | — | **built** — source, target and sync preserved verbatim |
 | Live call telemetry | — | **built** — console and event bus |
-| Which talkgroups a repeater may use | 2 | **partial** — configuration and lists exist, nothing enforces them yet |
-| Which repeaters may register | 2 | **partial** — same |
+| Which talkgroups a repeater may use | 2 | **built** — checked on arrival and per destination |
+| Which repeaters may register | 2 | **built** — checked at login, before the password |
 | Per-peer talkgroup attachment | 3 | **missing** — a member cannot choose what they hear |
 | Trunking to another bridge | 4, 5 | **partial** — OpenBridge links outward; QSP cannot yet dial out |
 | Motorola repeater support | — | **missing** — IPSC; see §4 |
@@ -95,8 +95,8 @@ rules whatsoever.
 | Text messaging, GPS, data | — | **missing** — ADR-0021 |
 
 QSP is ahead of a commercial DMR server on scheduling, on being free and self-hosted, and on
-the repeat model. It is behind on access control, on per-peer subscription, and
-on being administrable by anyone who is not comfortable with SSH.
+the repeat model. It is behind on per-peer subscription and on being administrable by anyone who
+is not comfortable with SSH.
 
 ---
 
