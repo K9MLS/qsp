@@ -17,24 +17,44 @@ import (
 // an administrator wrote in the configuration — rather than holding pointers.
 // A bridge naming a link that does not exist is a configuration error, and the
 // error says which name was not found rather than failing silently.
+// Connection is one link to another network, however it is carried.
+//
+// OpenBridge and an outbound homebrew peer differ entirely in how they reach
+// the far end and not at all in what a caller wants from them: a name, a
+// lifecycle, somewhere to put a frame, and something honest to say about
+// themselves. The interface is what lets one Set hold both.
+type Connection interface {
+	// Name is the link's configured name, unique within a Set.
+	Name() string
+	// Start begins the link. It returns once the link is running.
+	Start(ctx context.Context) error
+	// Close stops it.
+	Close() error
+	// Send writes a frame to the far end.
+	Send(frame hbp.Data) error
+	// Status reports what is known about the link, which is deliberately less
+	// than an operator would like.
+	Status() Status
+}
+
 type Set struct {
 	log   *slog.Logger
 	mu    sync.RWMutex
-	links map[string]*Link
+	links map[string]Connection
 	order []string
 }
 
 // NewSet creates an empty set.
 func NewSet(log *slog.Logger) *Set {
-	return &Set{log: log, links: make(map[string]*Link)}
+	return &Set{log: log, links: make(map[string]Connection)}
 }
 
 // Add registers a link. Names must be unique.
-func (s *Set) Add(l *Link) error {
+func (s *Set) Add(l Connection) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	name := l.cfg.Name
+	name := l.Name()
 	if _, exists := s.links[name]; exists {
 		return fmt.Errorf("upstream: two links are named %q", name)
 	}
@@ -122,11 +142,11 @@ func (s *Set) Statuses() []Status {
 // "degraded" and leave them to work out which.
 type HealthCheck struct {
 	// Link is the link to report on.
-	Link *Link
+	Link Connection
 }
 
 // Name implements health.Checker.
-func (h HealthCheck) Name() string { return "upstream:" + h.Link.cfg.Name }
+func (h HealthCheck) Name() string { return "upstream:" + h.Link.Name() }
 
 // Check implements health.Checker.
 //

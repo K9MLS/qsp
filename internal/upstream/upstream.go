@@ -116,6 +116,9 @@ func New(log *slog.Logger, cfg Config) (*Link, error) {
 	return &Link{cfg: cfg, log: log.With("subsystem", "upstream", "link", cfg.Name), now: now}, nil
 }
 
+// Name implements Connection.
+func (l *Link) Name() string { return l.cfg.Name }
+
 // Start binds the socket and begins receiving.
 func (l *Link) Start(ctx context.Context) error {
 	dest, err := net.ResolveUDPAddr("udp", l.cfg.TargetAddress)

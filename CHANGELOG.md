@@ -126,6 +126,29 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The outbound link's transport**, `upstream.PeerLink`. It drives the
+  handshake over a connected UDP socket — connected rather than merely bound,
+  because QSP is dialling out and the kernel can then discard datagrams from
+  anywhere else before they reach any of this.
+
+  **It owns the state machine's concurrency**, which is the part worth stating.
+  `homebrew.Link` is deliberately single-writer in the style of
+  [ADR-0002](docs/adr/ADR-0002-single-writer-routing-core.md), and three things
+  want to touch it: the socket reader, the ticker, and whichever goroutine is
+  routing a frame outward. Serialising them here is what lets the state machine
+  stay a pure function and be tested without any of this.
+
+  `upstream.Connection` lets one `Set` hold both link kinds. OpenBridge and a
+  homebrew peer differ entirely in how they reach the far end and not at all in
+  what a caller wants from them: a name, a lifecycle, somewhere to put a frame,
+  and something honest to say about themselves.
+
+  Unlike OpenBridge, a homebrew link has a keep-alive, so silence is a fault
+  rather than the ambiguity between a quiet talkgroup and a dead link that
+  OpenBridge leaves. The status says so.
+
+  Nine tests against a fake master over real sockets, race clean.
+
 - **The outbound link state machine**, `internal/protocol/homebrew`. QSP has
   spoken the master side of this handshake since phase 1; this is the same
   conversation from the other end, which is what reaches XLX, DMR+, IPSC2 and

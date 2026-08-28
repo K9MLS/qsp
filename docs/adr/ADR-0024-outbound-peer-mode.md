@@ -18,10 +18,17 @@ from the other end — `RPTL`, `RPTK` with the digest, `RPTC` with the station's
 configuration, then `RPTPING` for as long as the link lasts. Nothing new has to
 be decoded.
 
-*State machine built 2026-08-28* in `internal/protocol/homebrew`, pure and
+*Built 2026-08-28.* The state machine is `internal/protocol/homebrew`, pure and
 clock-injected like `peers.Master`, so reconnection and every timeout are
-testable without a network. The transport that drives it is not written, and
-neither is the wiring into routing.
+testable without a network. `upstream.PeerLink` drives it over a connected UDP
+socket and owns its concurrency: the state machine is deliberately
+single-writer, and the reader, the ticker and whichever goroutine is routing a
+frame outward all want it. `upstream.Connection` lets one `Set` hold both link
+kinds, since OpenBridge and a homebrew peer differ entirely in how they reach
+the far end and not at all in what a caller wants from them.
+
+Not yet wired into `cmd/qsp`, so an enabled homebrew upstream still refuses
+startup.
 
 **This record exists mostly for two things that are not the protocol**: the
 configuration shape, which the admin interface has to be built around, and a
