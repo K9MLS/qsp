@@ -98,7 +98,9 @@ func realMain() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	a, err := build(ctx, cfg, log)
+	// The path travels with the configuration so that a save writes the file
+	// this instance was started from, and not one it guessed at.
+	a, err := build(ctx, cfg, *configPath, log)
 	if err != nil {
 		return err
 	}

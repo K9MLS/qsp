@@ -126,6 +126,32 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The configuration endpoints.** `GET /api/config` reads the running
+  configuration, `POST /api/config` saves a new one, and
+  `GET /api/config/versions` lists the history. All three require a logged-in
+  administrator and refuse a cross-origin write. **QSP can now be reconfigured
+  without SSH**, which is the last thing the parity document marks against it.
+
+  A save validates, records a version, writes the file, and queues the change
+  for the goroutine that owns the routing core, in that order. A bridge added
+  from a browser is live within a second and nobody mid-transmission is cut off.
+
+  The response says what changed and names any setting that was saved and cannot
+  take effect until a restart — a bare "restart required" would tell an operator
+  to interrupt their network without saying what for. An invalid configuration
+  reports every problem at once with a suggested fix for each, because somebody
+  fixing a form should see all of it rather than discovering the next one on
+  each attempt. A read-only instance says so when the console asks, before a
+  form is filled in, rather than at the moment somebody presses save.
+
+  Every save is an audit event naming the administrator, **including a save that
+  failed** — an operator who could not save is a fact worth having, and no
+  record would look as though nobody tried. That is what `audit_events.actor`
+  has been waiting for since it was created.
+
+  Saving an unchanged configuration records nothing, so a form saved without an
+  edit does not fill the history with identical versions.
+
 - **The reload handoff and the version store.** A configuration change is
   queued with `Listener.Apply` and installed by the listener's own goroutine at
   the top of its next sweep — because `routing.Core` is single-writer and owned

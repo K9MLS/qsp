@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
@@ -57,6 +58,12 @@ type Options struct {
 	// endpoint that changes anything for its first several phases, and an
 	// instance that only observes still does not need one.
 	Auth Authenticator
+	// Config exposes the running configuration for reading and saving. Nil
+	// means this instance was started without one, which is a working state:
+	// it runs on defaults and cannot be reconfigured from a browser.
+	Config ConfigManager
+	// Audit records administrative actions. Nil records nothing.
+	Audit audit.Recorder
 	// Map configures the console's peer map.
 	Map MapSettings
 	// Forwarding reports whether this instance relays traffic, for the
@@ -157,6 +164,12 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"POST /api/login", s.handleLogin},
 		{"POST /api/logout", s.handleLogout},
 		{"GET /api/session", s.handleSession},
+		// Behind requireSession, which also enforces the origin check: the two
+		// questions are asked of the same requests, and separating them is how
+		// one gets forgotten on a new endpoint.
+		{"GET /api/config", s.requireSession(s.handleGetConfig)},
+		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
+		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},
 	}
 }
 

@@ -292,7 +292,7 @@ var subsystemAliases = map[string][]string{
 func builtSubsystems(t *testing.T) []string {
 	t.Helper()
 
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestNothingClaimsABuiltSubsystemIsAbsent(t *testing.T) {
 // setting that would enable them, which is a different and equally honest
 // statement. app_test.go covers that case.
 func TestUnbuiltSubsystemsSayWhichPhaseBringsThem(t *testing.T) {
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}

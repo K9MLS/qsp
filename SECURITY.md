@@ -92,11 +92,35 @@ Roles are deliberately absent: there is one kind of account and it can do
 everything. The audit trail records who did what, which is the part that settles
 arguments.
 
+### Configuration endpoints
+
+`/api/config` reads the running configuration and saves a new one.
+`/api/config/versions` lists the history. All three require a logged-in
+administrator and refuse a cross-origin write.
+
+**These are the endpoints that change what QSP does.** A save is validated,
+recorded as a version, written to the configuration file, and handed to the
+goroutine that owns the routing core — in that order, so that a change which
+fails to reach the disk is still one an operator can find and attribute. See
+[ADR-0027](docs/adr/ADR-0027-configuration-writes.md).
+
+Reading the configuration needs a session too. The document is not a set of
+secrets — the peer password lives in a file it merely names — but it is a map of
+the host, and an unauthenticated reader has no business with it.
+
+Every save is an audit event naming the administrator, whether it succeeded or
+not. An operator who could not save is a fact worth having later, and no record
+would make it look as though nobody tried.
+
+Some settings are saved and cannot take effect until QSP restarts: listen
+addresses, the peer password file, the database, the logging format, and the
+links an upstream holds. A save names them rather than reporting a bare
+"restart required".
+
 ### Read-only endpoints
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
-console assets are unauthenticated and read-only. **There are still no
-state-changing endpoints** beyond login and logout themselves.
+console assets are unauthenticated and read-only.
 
 `/api/peers` returns callsigns, radio IDs, peer source addresses, and the
 position a hotspot announces. It is unauthenticated, which is a further reason

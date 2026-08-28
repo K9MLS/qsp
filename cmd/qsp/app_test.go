@@ -47,7 +47,7 @@ func TestBuildSucceedsWithoutADatabaseDriver(t *testing.T) {
 	// pretending. This binary registers sqlite, so the case is reached by
 	// configuring a driver that does not exist — which is exactly what an
 	// operator pointing at postgres would hit.
-	a, err := build(context.Background(), testConfigNoDriver(t), logging.Discard())
+	a, err := build(context.Background(), testConfigNoDriver(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestBuildSucceedsWithoutADatabaseDriver(t *testing.T) {
 }
 
 func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -167,7 +167,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 }
 
 func TestConsoleIsServedFromEmbeddedAssets(t *testing.T) {
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestConsoleIsServedFromEmbeddedAssets(t *testing.T) {
 }
 
 func TestRunStopsOnContextCancellation(t *testing.T) {
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestRunStopsOnContextCancellation(t *testing.T) {
 }
 
 func TestShutdownIsCleanWithoutStart(t *testing.T) {
-	a, err := build(context.Background(), testConfig(t), logging.Discard())
+	a, err := build(context.Background(), testConfig(t), "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestDMRListenerStartsWhenEnabled(t *testing.T) {
 	cfg.DMR.ListenAddress = "127.0.0.1:0"
 	cfg.DMR.PasswordFile = passwordFile
 
-	a, err := build(context.Background(), cfg, logging.Discard())
+	a, err := build(context.Background(), cfg, "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestDMREnabledWithoutAPasswordFileIsFatal(t *testing.T) {
 	cfg.DMR.Enabled = true
 	cfg.DMR.PasswordFile = filepath.Join(t.TempDir(), "does-not-exist")
 
-	if _, err := build(context.Background(), cfg, logging.Discard()); err == nil {
+	if _, err := build(context.Background(), cfg, "", logging.Discard()); err == nil {
 		t.Fatal("startup succeeded with an unreadable peer password file")
 	}
 }
@@ -328,7 +328,7 @@ func TestDMREnabledWithAnEmptyPasswordFileIsFatal(t *testing.T) {
 	cfg.DMR.Enabled = true
 	cfg.DMR.PasswordFile = empty
 
-	_, err := build(context.Background(), cfg, logging.Discard())
+	_, err := build(context.Background(), cfg, "", logging.Discard())
 	if err == nil {
 		t.Fatal("startup succeeded with an empty peer password file")
 	}
@@ -366,7 +366,7 @@ func TestHealthSummariesDescribeTheInstanceNotAPlan(t *testing.T) {
 		t.Helper()
 		cfg := testConfig(t)
 		mutate(&cfg)
-		a, err := build(context.Background(), cfg, logging.Discard())
+		a, err := build(context.Background(), cfg, "", logging.Discard())
 		if err != nil {
 			t.Fatalf("build: %v", err)
 		}
@@ -434,7 +434,7 @@ func TestHealthSummariesDescribeTheInstanceNotAPlan(t *testing.T) {
 func TestPersistenceIsRealNow(t *testing.T) {
 	cfg := testConfig(t)
 
-	a, err := build(context.Background(), cfg, logging.Discard())
+	a, err := build(context.Background(), cfg, "", logging.Discard())
 	if err != nil {
 		t.Fatalf("build: %v", err)
 	}
@@ -459,7 +459,7 @@ func TestPersistenceIsRealNow(t *testing.T) {
 func TestSchemaSurvivesARestart(t *testing.T) {
 	cfg := testConfig(t)
 
-	first, err := build(context.Background(), cfg, logging.Discard())
+	first, err := build(context.Background(), cfg, "", logging.Discard())
 	if err != nil {
 		t.Fatalf("first build: %v", err)
 	}
@@ -467,7 +467,7 @@ func TestSchemaSurvivesARestart(t *testing.T) {
 		t.Fatalf("first shutdown: %v", err)
 	}
 
-	second, err := build(context.Background(), cfg, logging.Discard())
+	second, err := build(context.Background(), cfg, "", logging.Discard())
 	if err != nil {
 		t.Fatalf("second build against an existing database: %v", err)
 	}

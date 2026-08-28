@@ -49,6 +49,8 @@ type app struct {
 	// server holds because the session sweep is not something an HTTP handler
 	// ever needs and does not belong on that interface.
 	auth *auth.Service
+	// configManager holds the running configuration and saves a new one.
+	configManager *configManager
 	// closers are run in reverse order during shutdown.
 	closers []func(context.Context) error
 }
@@ -61,7 +63,7 @@ type app struct {
 // fails with ErrDriverNotRegistered, which is a declared condition rather than a
 // fault: startup continues and the health check reports the database as
 // unavailable with the reason. Any other database error is fatal.
-func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, error) {
+func build(ctx context.Context, cfg config.Config, configPath string, log *slog.Logger) (*app, error) {
 	a := &app{cfg: cfg, log: log}
 
 	a.bus = events.NewBus(log, events.Options{
@@ -262,6 +264,26 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		a.auth = svc
 	}
 
+	// The configuration manager. A nil writer is a working state: an instance
+	// started without -config runs on defaults and cannot be reconfigured from
+	// a browser, which the console reports rather than discovering at save.
+	manager := &configManager{current: cfg}
+	a.configManager = manager
+	if configPath != "" {
+		writer, werr := config.NewWriter(configPath)
+		if werr != nil {
+			return nil, werr
+		}
+		manager.writer = writer
+	}
+	if a.db != nil {
+		store, serr := config.NewSQLVersionStore(a.db.SQL())
+		if serr != nil {
+			return nil, serr
+		}
+		manager.store = store
+	}
+
 	srv, err := server.New(log, registry, a.bus, server.Options{
 		ListenAddress:       cfg.Server.ListenAddress,
 		ReadHeaderTimeout:   cfg.Server.ReadHeaderTimeout.AsDuration(),
@@ -275,6 +297,8 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		PeersDisabledReason: dmrDisabledReason,
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
+		Config:              manager,
+		Audit:               a.audit,
 		Map: server.MapSettings{
 			TileURL:     cfg.Server.Map.TileURL,
 			Attribution: cfg.Server.Map.Attribution,
@@ -403,6 +427,15 @@ func (a *app) run(ctx context.Context) error {
 	// instance that may run for years.
 	if a.auth != nil {
 		go a.sweepSessions(ctx)
+	}
+
+	// The listener exists by now, so a save can reach the goroutine that owns
+	// the routing core. Wired here rather than in build because the listener
+	// is constructed after the server that will call it.
+	if a.dmr != nil && a.configManager != nil {
+		a.configManager.apply = func(cfg config.Config) error {
+			return applyToListener(a.dmr, "console", "")(cfg)
+		}
 	}
 
 	<-ctx.Done()
