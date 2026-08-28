@@ -143,7 +143,7 @@ func withLogging(log *slog.Logger) middleware {
 // these that fails, is logged normally.
 func polled(path string) bool {
 	switch path {
-	case "/api/join", "/api/peers", "/api/events", "/healthz", "/readyz":
+	case "/api/join", "/api/peers", "/api/events", "/api/session", "/healthz", "/readyz":
 		return true
 	default:
 		return false

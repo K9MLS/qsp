@@ -52,6 +52,11 @@ type Options struct {
 	Peers PeerSource
 	// PeersDisabledReason explains a nil Peers, and is shown to the operator.
 	PeersDisabledReason string
+	// Auth is the login flow. Nil means this instance has no administrator
+	// accounts, which is a working state rather than a fault: QSP exposed no
+	// endpoint that changes anything for its first several phases, and an
+	// instance that only observes still does not need one.
+	Auth Authenticator
 	// Map configures the console's peer map.
 	Map MapSettings
 	// Forwarding reports whether this instance relays traffic, for the
@@ -149,6 +154,9 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/events", s.handleEvents},
 		{"GET /api/peers", s.handlePeers},
 		{"GET /api/join", s.handleJoin},
+		{"POST /api/login", s.handleLogin},
+		{"POST /api/logout", s.handleLogout},
+		{"GET /api/session", s.handleSession},
 	}
 }
 

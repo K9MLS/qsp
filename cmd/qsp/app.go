@@ -14,6 +14,7 @@ import (
 
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/database"
@@ -239,6 +240,23 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		peerSource = peerViews{listener: a.dmr}
 	}
 
+	// Nil when there is no database, which is a working state: an instance
+	// that only observes needs no accounts, and ADR-0026 keeps the web surface
+	// free of any unauthenticated path that writes. The handlers say so rather
+	// than returning a 404 that would read like a missing feature.
+	var authService server.Authenticator
+	if a.db != nil {
+		repo, rerr := auth.NewSQLRepository(a.db.SQL())
+		if rerr != nil {
+			return nil, rerr
+		}
+		svc, serr := auth.NewService(repo, auth.Policy{}, nil)
+		if serr != nil {
+			return nil, serr
+		}
+		authService = svc
+	}
+
 	srv, err := server.New(log, registry, a.bus, server.Options{
 		ListenAddress:       cfg.Server.ListenAddress,
 		ReadHeaderTimeout:   cfg.Server.ReadHeaderTimeout.AsDuration(),
@@ -251,6 +269,7 @@ func build(ctx context.Context, cfg config.Config, log *slog.Logger) (*app, erro
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
+		Auth:                authService,
 		Map: server.MapSettings{
 			TileURL:     cfg.Server.Map.TileURL,
 			Attribution: cfg.Server.Map.Attribution,

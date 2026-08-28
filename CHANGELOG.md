@@ -126,6 +126,32 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **Login, logout and session endpoints**, with the middleware that will guard
+  every write endpoint that follows. `POST /api/login` exchanges credentials for
+  a session cookie, `POST /api/logout` ends it, and `GET /api/session` reports
+  who the caller is — answering "nobody" with a 200 rather than an error, so a
+  console loading normally does not produce one in the browser.
+
+  `Secure` on the cookie follows `server.behind_proxy`. Setting it
+  unconditionally would silently break a club on plain HTTP over a LAN: the
+  browser drops the cookie and the login appears to succeed and do nothing.
+
+  A wrong password and an unknown username give identical responses, byte for
+  byte, and neither sets a cookie. A locked account says so plainly, because an
+  operator told only "incorrect" keeps trying and extends a lockout they cannot
+  see. Logout answers the same with or without a session, since "you were not
+  logged in" tells whoever sent it something about a cookie they may not own.
+
+  **`requireSession` also enforces the origin check**, because the two questions
+  are asked of exactly the same requests and separating them is how one gets
+  forgotten on a new endpoint. `SameSite=Lax` is honoured by browsers rather
+  than guaranteed by them; this is the second lock on the same door. A request
+  with no `Origin` passes, since curl and scripts are not what CSRF protects
+  against.
+
+  Nineteen tests. `SECURITY.md` gains the three endpoints, which the
+  documentation gate requires.
+
 - **`qsp adduser` checks the name before asking for a password.** Found on the
   first real run: it prompted twice and then said the name was taken, which is
   the wrong order to discover that in. `CreateAccount` still refuses a

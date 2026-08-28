@@ -66,16 +66,40 @@ be upgraded without invalidating existing passwords; see
 Work per verification attempt is bounded so that an unauthenticated caller
 cannot force arbitrary CPU consumption.
 
-### Not yet implemented
+### Authentication
 
-Sessions, roles and authorisation are designed before any state-changing
-endpoint exists. **There are none today** — the current build exposes only
+Administrator accounts exist, and **the only way one is created is
+`qsp adduser` on the host**. See
+[ADR-0026](docs/adr/ADR-0026-authentication.md): a setup page open until the
+first account exists is a race an instance loses silently, so there is none, and
+the web surface has no unauthenticated path that writes anything at any point in
+the instance's life.
+
+`/api/login` exchanges a username and password for a session cookie.
+`/api/logout` ends it. `/api/session` reports who the caller is, answering
+"nobody" rather than an error so that a console loading normally does not
+produce one.
+
+A wrong password and an unknown username give the same answer and take the same
+time. Failed attempts are counted on the account and lock it briefly. The cookie
+is `HttpOnly` and `SameSite=Lax`, and carries `Secure` when `server.behind_proxy`
+says QSP is behind TLS — setting it unconditionally would silently break a club
+running plain HTTP on a LAN.
+
+Roles are deliberately absent: there is one kind of account and it can do
+everything. The audit trail records who did what, which is the part that settles
+arguments.
+
+### Read-only endpoints
+
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
-console assets, all read-only.
+console assets are unauthenticated and read-only. **There are still no
+state-changing endpoints** beyond login and logout themselves.
 
-`/api/peers` returns callsigns, radio IDs and peer source addresses. Like every
-other endpoint it is unauthenticated, which is a further reason to follow the
-deployment guidance below rather than exposing the console directly.
+`/api/peers` returns callsigns, radio IDs, peer source addresses, and the
+position a hotspot announces. It is unauthenticated, which is a further reason
+to follow the deployment guidance below rather than exposing the console
+directly.
 
 `/api/join` returns the network's address, port and talkgroups — what a club
 member needs to point a hotspot at it. It deliberately does **not** return the
