@@ -162,3 +162,27 @@ func (m *Master) seedStaticAttachments() {
 			}
 	}
 }
+
+// SetSubscription replaces the attachment settings.
+//
+// Called from the listener's goroutine when a configuration is applied, which
+// is the only goroutine that touches a Master. Static attachments are re-seeded
+// and dynamic ones are kept: a member who attached a talkgroup by transmitting
+// should not lose it because an administrator saved an unrelated change.
+func (m *Master) SetSubscription(cfg SubscriptionConfig) {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = DefaultAttachmentTimeout
+	}
+	m.cfg.Subscription = cfg
+
+	// Configured attachments that are no longer configured stop being static.
+	// Dropping them outright would be wrong — the member may be using one — so
+	// they become dynamic and lapse on their own if nobody does.
+	for key, a := range m.attachments {
+		if a.Static {
+			a.Static = false
+			m.attachments[key] = a
+		}
+	}
+	m.seedStaticAttachments()
+}

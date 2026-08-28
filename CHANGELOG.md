@@ -126,6 +126,25 @@ All notable changes to QSP. Dates are UTC.
   as a table of subsystems, each with its own verdict, and an unavailable one
   names the phase that brings it — a roadmap rather than a fault.
 
+- **The reload handoff and the version store.** A configuration change is
+  queued with `Listener.Apply` and installed by the listener's own goroutine at
+  the top of its next sweep — because `routing.Core` is single-writer and owned
+  by that goroutine, so an HTTP handler calling `SetTable` is a data race the
+  detector would only sometimes catch.
+
+  A second save before the first is applied replaces it: two saves a half-second
+  apart should leave the instance running the later one. Access lists are
+  applied unconditionally, since their zero value permits everything and is a
+  setting rather than an absence — skipping it when empty would make "remove
+  every restriction" impossible to save. A static attachment that is no longer
+  configured becomes dynamic rather than disappearing, so a member using it does
+  not lose it because an administrator saved something unrelated.
+
+  `SQLVersionStore` is three statements, checked against the migration the same
+  way the auth SQL is. That check first examined five of twenty-seven column
+  references, because its identifier pattern required an underscore and most of
+  these columns do not have one.
+
 - **The configuration writer and the restart check**, the first code
   [ADR-0027](docs/adr/ADR-0027-configuration-writes.md) calls for.
 

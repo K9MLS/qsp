@@ -119,6 +119,9 @@ type Listener struct {
 	// locks because one goroutine owns them, so observers must be handed an
 	// immutable copy rather than reaching in.
 	enabledBridges atomic.Pointer[[]string]
+	// pending holds a configuration change waiting to be applied, at most one.
+	// See reload.go.
+	pending atomic.Pointer[Reload]
 
 	// running reports whether the loop is active, so health can distinguish
 	// "not started" from "started and quiet".
@@ -241,6 +244,9 @@ func (l *Listener) serve(ctx context.Context) {
 			l.log.Warn("read failed", slog.String("error", err.Error()))
 		}
 
+		// Before anything else in the sweep, so a change lands on a
+		// consistent view rather than half of one.
+		l.applyPending()
 		l.expire()
 		l.expireCalls()
 		l.expireRoutes()
