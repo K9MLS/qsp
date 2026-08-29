@@ -313,6 +313,18 @@ All notable changes to QSP. Dates are UTC.
   first — ordering inside one function is not something the compiler checks and
   not something a unit test can reach.
 
+- **Hints on every admin section, including the ones drawn by script.** The
+  four access lists each explain themselves now: that an empty deny list carries
+  everything, that the two timeslots are independent paths, that registration is
+  checked before a password so the log can say which refused a station, and that
+  a refused subscriber is silenced without disconnecting the hotspot carrying
+  it. The history page explains that a restore is itself a save.
+
+  `hints.js` exposes a wiring function, because a form drawn after the script
+  runs would otherwise have buttons that do nothing — worse than no buttons.
+  Wiring is idempotent, since a page that re-renders on a revert would otherwise
+  double up the handlers and produce a hint that never opens.
+
 - **Hints on the admin pages.** A button beside each panel heading reveals an
   explanation: what a talkgroup list mode actually does, why registration and
   subscriber checks differ, what dialled and arrives mean, why parrot wants a

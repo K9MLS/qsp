@@ -760,8 +760,21 @@ func TestHintsAreDisclosuresRatherThanTooltips(t *testing.T) {
 		t.Error("hints.js does not report its state to assistive technology")
 	}
 
+	// **Wiring must be idempotent.** A page that draws its own form calls wire
+	// again for the markup it just made; wiring a button twice would toggle it
+	// twice per click, which is a hint that never opens.
+	if !strings.Contains(src, "data-wired") {
+		t.Error("hints.js can wire the same button twice, which is a hint that never opens")
+	}
+	if !strings.Contains(src, "QSPHints") {
+		t.Error("hints.js exposes no way to wire markup drawn after it runs")
+	}
+
 	// Every hint button must name a paragraph that exists.
-	for _, page := range []string{"static/access.html", "static/network.html", "static/bridges.html"} {
+	for _, page := range []string{
+		"static/access.html", "static/network.html", "static/bridges.html",
+		"static/history.html",
+	} {
 		body, err := assets.ReadFile(page)
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)

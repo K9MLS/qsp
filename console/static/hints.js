@@ -19,10 +19,21 @@
 (function () {
   "use strict";
 
-  var buttons = document.querySelectorAll(".hint");
+  /* Exposed so a page that renders its own markup can wire the hints inside
+   * it. This file runs at load; a form drawn later would otherwise have
+   * buttons that do nothing, which is worse than no buttons at all. */
+  window.QSPHints = { wire: wireAll };
 
-  for (var i = 0; i < buttons.length; i++) {
-    wire(buttons[i]);
+  wireAll(document);
+
+  function wireAll(root) {
+    if (!root) {
+      return;
+    }
+    var buttons = root.querySelectorAll(".hint");
+    for (var i = 0; i < buttons.length; i++) {
+      wire(buttons[i]);
+    }
   }
 
   function wire(button) {
@@ -36,6 +47,14 @@
      * with a hint stuck open and no way to tell. */
     text.hidden = true;
     button.setAttribute("aria-expanded", "false");
+
+    /* Wiring the same button twice would toggle it twice per click, which is
+     * a hint that never opens. A page that re-renders its form calls wire
+     * again, so this has to be idempotent. */
+    if (button.getAttribute("data-wired") === "true") {
+      return;
+    }
+    button.setAttribute("data-wired", "true");
 
     button.addEventListener("click", function () {
       var open = button.getAttribute("aria-expanded") === "true";

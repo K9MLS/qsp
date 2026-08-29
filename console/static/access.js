@@ -18,14 +18,16 @@
       path: ["dmr", "access", "talkgroups", "timeslot_2"],
       noun: "talkgroup",
       hint: "Most club traffic is here. Enter numbers or ranges, one per line: " +
-        "9 or 3100-3199."
+        "9 or 3100-3199.",
+      detail: "Timeslot 2 is where most club traffic lives, because a hotspot carries local traffic there by convention. <strong>Leaving this empty on \"allow everything except\" carries every talkgroup</strong>, which is what a new instance does and is right for a club whose members are known. Facing the internet, switch to \"allow only\" and name the numbers."
     },
     {
       id: "acl-ts1",
       label: "Timeslot 1",
       path: ["dmr", "access", "talkgroups", "timeslot_1"],
       noun: "talkgroup",
-      hint: "Usually wide-area or linked traffic."
+      hint: "Usually wide-area or linked traffic.",
+      detail: "Timeslot 1 usually carries wide-area or linked traffic. A club that bridges nothing often leaves this alone. The two timeslots are independent paths on the same radio channel, so a talkgroup allowed here is not allowed on timeslot 2 unless it is listed there too."
     },
     {
       id: "acl-registration",
@@ -33,7 +35,8 @@
       path: ["dmr", "access", "registration"],
       noun: "repeater or hotspot ID",
       hint: "Checked at login, before the password. A hotspot ID is nine digits; " +
-        "a repeater's is seven."
+        "a repeater's is seven.",
+      detail: "Checked when a hotspot or repeater logs in, <strong>before its password is examined</strong>, so a refused ID never reaches the credential path at all. That also means the log says which of the two refused it, and \"not permitted here\" and \"wrong password\" are very different messages to somebody trying to get on."
     },
     {
       id: "acl-subscribers",
@@ -41,7 +44,8 @@
       path: ["dmr", "access", "subscribers"],
       noun: "radio ID",
       hint: "Checked on every transmission. A refused radio does not disconnect " +
-        "the hotspot carrying it."
+        "the hotspot carrying it.",
+      detail: "Checked on every transmission, which is the important difference. <strong>A refused radio is silenced without disconnecting the hotspot carrying it</strong>, so one member cannot knock another off the network by keying up. A hotspot may carry several radios and they are judged separately."
     }
   ];
 
@@ -133,7 +137,16 @@
     var permit = list.mode === "permit";
 
     el.innerHTML =
-      '<h3 class="acl__title">' + escapeText(spec.label) + "</h3>" +
+      '<h3 class="acl__title">' + escapeText(spec.label) +
+      (spec.detail
+        ? ' <button class="hint" type="button" aria-controls="hint-' +
+          escapeText(spec.id) + '" aria-label="Explain this">?</button>'
+        : "") +
+      "</h3>" +
+      (spec.detail
+        ? '<p class="hint__text" id="hint-' + escapeText(spec.id) + '">' +
+          spec.detail + "</p>"
+        : "") +
       '<p class="acl__state" id="' + spec.id + '-state">' +
         describe(list, spec.noun) + "</p>" +
       '<div class="acl__modes" role="radiogroup" aria-label="' +
@@ -200,6 +213,13 @@
       renderList(spec, at(cfg, spec.path));
     });
     refreshDescriptions();
+
+    /* The lists are drawn here, after hints.js has already run, so their hint
+     * buttons need wiring now. Wiring is idempotent, so re-rendering on a
+     * revert does not double them up. */
+    if (window.QSPHints) {
+      window.QSPHints.wire(document);
+    }
   }
 
   function load() {
