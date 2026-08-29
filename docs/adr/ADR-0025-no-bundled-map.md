@@ -1,4 +1,4 @@
-# ADR-0025: QSP does not draw a map
+# ADR-0025: A map placed from its centre, with no library
 
 **Status:** Proposed
 **Amended twice.** On 2026-08-28, before anything was built on the first
@@ -60,10 +60,33 @@ privacy.
 It remains true that the endpoint has no authentication, and that is worth
 fixing for its own reasons. It is not a reason to withhold the map.
 
-## Withdrawn: QSP does not draw a map
+## Withdrawn, then fixed
 
-*2026-08-29.* The map was built, deployed, and could not be made to work on the
-one instance running it. It is removed.
+*2026-08-29, morning.* The map was built, deployed, and could not be made to
+work on the one instance running it. It was removed.
+
+*2026-08-29, afternoon.* It is back, and the cause was in this design rather
+than anywhere unreachable.
+
+**Every position was computed from a measured width**, and the measurement was
+wrong. A caption added to make the map report itself showed a frame of 1920
+against a canvas of 1550. The size routine took the largest width in the element's ancestry, which
+found the viewport instead of the map. Six attempts argued about which
+measurement to trust; none asked why a measurement was being trusted at all.
+
+Positions are offsets from the map's centre now — a tile goes at
+`tx * 256 - centreX`, the plane sits at the middle of the canvas by CSS, and no
+width appears in the arithmetic. Verified against a simulated DOM at frame sizes
+from 1550×360 down to 50×50, a single peer lands at offset zero every time and
+two peers straddle the centre. **A measurement cannot misplace what it is not
+used to place.**
+
+The size still decides how many tiles to draw, where being wrong costs a few
+tiles nobody sees rather than a map nobody can use.
+
+The withdrawal below is kept. It was the right call at the time, since a
+feature the maintainer cannot make work is not a feature, and the reasoning
+that followed it is what found the bug.
 
 **What was established.** The tile arithmetic is correct: run against a
 simulated DOM at frame widths from 1520 down to 10, `map.js` emitted 21 to 24

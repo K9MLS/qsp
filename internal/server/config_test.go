@@ -614,7 +614,7 @@ func TestConsoleAssetsAreRevalidated(t *testing.T) {
 		t.Fatalf("New: %v", err)
 	}
 
-	for _, path := range []string{"/console.js", "/console.css", "/"} {
+	for _, path := range []string{"/console.js", "/map.js", "/console.css", "/"} {
 		rec := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusOK {

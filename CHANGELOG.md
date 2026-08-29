@@ -277,6 +277,21 @@ All notable changes to QSP. Dates are UTC.
   here read the files for consistency. Confirmed by deleting the same function
   again and watching it fail.
 
+- **The map is back, and the bug was in the design.** Every position was
+  computed from a measured width, and the measurement was wrong: the caption
+  added to make the map report itself showed a frame of 1920 against a canvas of
+  1550, because the size routine took the largest width in the element's
+  ancestry and found the viewport.
+
+  **Positions are offsets from the map's centre now.** A tile goes at
+  `tx * 256 - centreX`, the plane is centred by CSS, and no width appears in the
+  arithmetic. Verified against a simulated DOM at frame sizes from 1550×360 down
+  to 50×50: a single peer lands at offset zero every time, two peers straddle
+  the centre. A measurement cannot misplace what it is not used to place.
+
+  Six attempts argued about which measurement to trust. None asked why a
+  measurement was being trusted at all.
+
 ### Removed
 - **The peer map.** It was built, deployed, and could not be made to work on the
   instance running it. [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md) records

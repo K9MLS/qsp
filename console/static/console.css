@@ -684,6 +684,20 @@ body {
   cursor: grabbing;
 }
 
+/* The plane every tile and pin is placed on.
+   **It is centred by CSS, not by arithmetic.** Positions are offsets from the
+   map's centre point, so nothing placed here depends on a measured width — six
+   attempts at this map computed positions from a measurement, and a wrong
+   measurement put everything in a corner. A measurement cannot misplace what it
+   is not used to place. */
+.map__plane {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
 .map__tile {
   position: absolute;
   width: 256px;

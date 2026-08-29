@@ -319,7 +319,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// counting them: a count says "three" when a library arrives and somebody
 	// updates the number, while a name says which file nobody recognises.
 	ours := map[string]bool{
-		"console.js": true, "join.js": true,
+		"console.js": true, "map.js": true, "join.js": true,
 		"signin.js": true, "access.js": true, "network.js": true, "bridges.js": true, "history.js": true,
 	}
 	entries, err := assets.ReadDir("static")
@@ -402,7 +402,7 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 	classAttr := regexp.MustCompile(`class=\\?"([a-zA-Z][\w\- ]*)`)
 	var checked int
 	for _, script := range []string{
-		"static/console.js", "static/join.js", "static/access.js",
+		"static/console.js", "static/map.js", "static/join.js", "static/access.js",
 		"static/index.html", "static/join.html", "static/signin.html",
 		"static/access.html", "static/network.html", "static/network.js",
 		"static/bridges.html", "static/bridges.js",
@@ -643,6 +643,50 @@ func TestEveryFunctionTheConsoleCallsExists(t *testing.T) {
 		}
 		if checked == 0 {
 			t.Errorf("%s: no calls were examined; this check is not checking anything", script)
+		}
+	}
+}
+
+// TestTheMapPlacesRelativeToItsCentre.
+//
+// **Six attempts at this map computed positions from a measured width**, and a
+// measurement that was wrong put every tile and pin in a corner. Positions are
+// offsets from the map's centre now, with the plane centred by CSS — a
+// measurement cannot misplace what it is not used to place.
+//
+// The measurement still chooses how many tiles to draw, where being wrong costs
+// a few tiles nobody sees.
+func TestTheMapPlacesRelativeToItsCentre(t *testing.T) {
+	body, err := assets.ReadFile("static/map.js")
+	if err != nil {
+		t.Fatalf("reading map.js: %v", err)
+	}
+	src := string(body)
+
+	// The arithmetic must not reintroduce an origin derived from the width.
+	for _, gone := range []string{"originX", "originY", "width / 2", "height / 2"} {
+		if strings.Contains(src, gone) {
+			t.Errorf("map.js still positions from %q; placement must be offsets "+
+				"from the centre", gone)
+		}
+	}
+	if !strings.Contains(src, "map__plane") {
+		t.Error("map.js does not draw onto a centred plane")
+	}
+
+	css, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	rule := string(css)
+	i := strings.Index(rule, ".map__plane {")
+	if i < 0 {
+		t.Fatal("no rule centres the plane")
+	}
+	block := rule[i : i+220]
+	for _, want := range []string{"left: 50%", "top: 50%"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the plane is not centred: %q missing", want)
 		}
 	}
 }

@@ -339,7 +339,7 @@ it is more use than a list of what exists today.
 | **IPSC** | a club with a Motorola repeater cannot use QSP. Blocked on a capture, deliberately — see [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) |
 | **A vocoder** | QSP relays audio without decoding it, which is why parrot works and transcoding does not |
 | **`/api/peers` is unauthenticated** | it discloses callsigns, radio IDs and source addresses to anyone who finds the URL |
-| **Live map** | **built, then withdrawn** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). It could not be made to work on the instance running it and the fault was somewhere the source could not see. Positions are still on `/api/peers` and the peers table links each out to a map |
+| **Live map** | **built** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). Withdrawn once and restored: positions are offsets from the map's centre rather than from a measured width, which is what was wrong |
 | **IPSC** | unblocked by ADR-0008; needs a capture |
 | **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
 
