@@ -342,6 +342,60 @@
       '<path d="M8 8.5V10H2V4h1.5"/></svg></a>';
   }
 
+  // renderRefused shows what QSP is turning away.
+  //
+  // **Nothing surfaced this before.** Forty failed logins from one address in
+  // six minutes looked, from here, like the dropped counter going up — and the
+  // operator found out because the member messaged them. It stays hidden when
+  // there is nothing to say, because a panel that reports "all well" every day
+  // is one nobody reads on the day it matters.
+  function renderRefused(payload) {
+    var panel = document.getElementById("refused");
+    var body = document.getElementById("refused-body");
+    var count = document.getElementById("refused-count");
+    if (!panel || !body) {
+      return;
+    }
+
+    var list = (payload && payload.refused) || [];
+    if (!list.length) {
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+
+    var blocked = 0;
+    var rows = "";
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      var state = "retrying";
+      if (f.locked_until) {
+        blocked++;
+        state = "ignored until " + escapeText(new Date(f.locked_until).toLocaleTimeString());
+      }
+      rows +=
+        "<tr>" +
+        '<td class="mono">' + escapeText(f.address) + "</td>" +
+        '<td class="mono">' + escapeText(f.repeater_id || "—") + "</td>" +
+        '<td class="cell--wrap">' + escapeText(f.reason) + "</td>" +
+        '<td class="mono">' + escapeText(f.failures) + "</td>" +
+        '<td class="cell--wrap">' + state + "</td>" +
+        "</tr>";
+    }
+
+    count.textContent = blocked ? blocked + " ignored" : list.length + " failing";
+    body.innerHTML =
+      '<p class="panel__lede">A hotspot with a wrong password retries every ten ' +
+      "seconds. After several failures QSP stops answering that address for a " +
+      "while, and starts again on its own.</p>" +
+      '<div class="table-scroll" tabindex="0" aria-label="Logins being refused">' +
+      '<table class="table"><thead><tr>' +
+      '<th scope="col">Address</th><th scope="col">Radio ID</th>' +
+      '<th scope="col" class="cell--wrap">Reason</th><th scope="col">Failures</th>' +
+      '<th scope="col" class="cell--wrap">State</th>' +
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+  }
+
   function metric(value, label, cls) {
     return (
       '<div class="metric ' + (cls || "") + '">' +

@@ -578,3 +578,71 @@ func TestTheBridgesPageIsServed(t *testing.T) {
 		t.Error("the page does not show what a timezone should look like")
 	}
 }
+
+// TestEveryFunctionTheConsoleCallsExists.
+//
+// **Removing the map deleted a neighbouring function and left its call site.**
+// The whole poll then threw on every tick, and the catch reported "Cannot reach
+// QSP" — so a working instance looked unreachable, which is the worst way for a
+// mistake like this to present.
+//
+// JavaScript has no compiler to notice, and nothing else here reads the file
+// for consistency. This does.
+func TestEveryFunctionTheConsoleCallsExists(t *testing.T) {
+	for _, script := range []string{
+		"static/console.js", "static/access.js", "static/network.js",
+		"static/bridges.js", "static/history.js", "static/join.js", "static/signin.js",
+	} {
+		body, err := assets.ReadFile(script)
+		if err != nil {
+			t.Fatalf("reading %s: %v", script, err)
+		}
+		src := string(body)
+
+		defined := map[string]bool{}
+		for _, m := range regexp.MustCompile(`function (\w+)\s*\(`).FindAllStringSubmatch(src, -1) {
+			defined[m[1]] = true
+		}
+		// Names bound to a variable rather than declared.
+		for _, m := range regexp.MustCompile(`(?m)^\s*(?:var|let|const)\s+(\w+)\s*=`).FindAllStringSubmatch(src, -1) {
+			defined[m[1]] = true
+		}
+		// Parameters, which are callable inside their own function and are not
+		// declarations anywhere — `handler` in a helper that takes one is the
+		// case that found this.
+		for _, m := range regexp.MustCompile(`function\s*\w*\s*\(([^)]*)\)`).FindAllStringSubmatch(src, -1) {
+			for _, param := range strings.Split(m[1], ",") {
+				if p := strings.TrimSpace(param); p != "" {
+					defined[p] = true
+				}
+			}
+		}
+		for _, builtin := range []string{
+			"fetch", "setTimeout", "setInterval", "parseInt", "parseFloat",
+			"isNaN", "String", "Number", "Date", "JSON", "Math", "Object",
+			"Array", "encodeURIComponent", "decodeURIComponent", "alert",
+			"requestAnimationFrame", "EventSource", "ResizeObserver",
+		} {
+			defined[builtin] = true
+		}
+
+		// Calls of the shape name(...) at statement level, which is where a
+		// deleted function shows up.
+		calls := regexp.MustCompile(`(?m)^\s+(\w+)\((?:payload|\)|[a-z])`)
+		var checked int
+		for _, m := range calls.FindAllStringSubmatch(src, -1) {
+			name := m[1]
+			switch name {
+			case "if", "for", "while", "switch", "return", "function", "catch", "typeof":
+				continue
+			}
+			checked++
+			if !defined[name] {
+				t.Errorf("%s calls %s(), which nothing in that file defines", script, name)
+			}
+		}
+		if checked == 0 {
+			t.Errorf("%s: no calls were examined; this check is not checking anything", script)
+		}
+	}
+}

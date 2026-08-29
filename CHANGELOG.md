@@ -265,6 +265,18 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
+### Fixed
+- **The console reported "Cannot reach QSP" on a working instance.** Removing
+  the map deleted a neighbouring function, `renderRefused`, and left its call
+  site — so every poll threw, the catch reported the instance unreachable, and
+  the peer list and traffic counters went blank while the server was perfectly
+  healthy.
+
+  A test now reads every console script and fails if it calls a function nothing
+  in that file defines. JavaScript has no compiler to notice, and nothing else
+  here read the files for consistency. Confirmed by deleting the same function
+  again and watching it fail.
+
 ### Removed
 - **The peer map.** It was built, deployed, and could not be made to work on the
   instance running it. [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md) records
