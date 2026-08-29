@@ -79,6 +79,7 @@ field that requires it.
 | Applies live | Needs a restart |
 |---|---|
 | Bridges, schedule, triggers | `server.listen_address`, `dmr.listen_address` |
+| | `dmr.parrot` — the recorder is built once at startup |
 | Access lists | `dmr.password_file`, `dmr.enabled` |
 | Subscription and static attachments | `database.*`, `logging.*` |
 | Join page, map settings | `dmr.upstreams` — the links hold sockets |

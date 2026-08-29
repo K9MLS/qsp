@@ -177,6 +177,14 @@ func NeedsRestart(before, after Config) []string {
 	add("dmr.listen_address", before.DMR.ListenAddress != after.DMR.ListenAddress)
 	add("dmr.password_file", before.DMR.PasswordFile != after.DMR.PasswordFile)
 
+	// **Parrot is read when the listener is built.** The recorder is
+	// constructed once at startup and handed to the listener, so a change here
+	// is saved and does nothing until a restart — and a save that implied
+	// otherwise is exactly the kind of quiet lie NeedsRestart exists to
+	// prevent. Found by enabling parrot on a running instance and watching
+	// nothing happen.
+	add("dmr.parrot", before.DMR.Parrot != after.DMR.Parrot)
+
 	// Links hold sockets and a handshake, so any change to them is a restart.
 	// Comparing the whole list rather than field by field is deliberate: a new
 	// upstream field added later would otherwise be silently applied live,

@@ -244,6 +244,12 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A parrot change now says it needs a restart.** The recorder is built once at
+  startup and handed to the listener, so enabling parrot on a running instance
+  saved the setting and changed nothing — while the save reported no restart was
+  needed. That is exactly the quiet lie `NeedsRestart` exists to prevent, and it
+  was found by enabling parrot on a live server and watching nothing happen.
+
 - **Parrot answers a private call**, which is how most networks do it and how
   most operators program their radios — it lets somebody test without the whole
   club hearing them. `Handles` matched only group calls, so a private call to

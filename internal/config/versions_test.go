@@ -389,3 +389,29 @@ func TestAReadOnlyFileInAWritableDirectoryIsStillWritable(t *testing.T) {
 		t.Error("the save did not take effect")
 	}
 }
+
+// TestParrotNeedsARestart. The recorder is built once at startup and handed to
+// the listener, so enabling parrot on a running instance saves the setting and
+// changes nothing — and the save said nothing about it, which is the quiet lie
+// NeedsRestart exists to prevent. Found by doing exactly that on a live server.
+func TestParrotNeedsARestart(t *testing.T) {
+	base := config.Default()
+	after := base
+	after.DMR.Parrot = config.Parrot{Enabled: true, Talkgroup: 9990, Timeslot: 2}
+
+	fields := config.NeedsRestart(base, after)
+	var found bool
+	for _, f := range fields {
+		if f == "dmr.parrot" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("enabling parrot reported %v; it needs a restart and must say so", fields)
+	}
+
+	// And an unchanged parrot block does not ask for one.
+	if fields := config.NeedsRestart(base, base); len(fields) != 0 {
+		t.Errorf("an unchanged configuration asked for a restart: %v", fields)
+	}
+}
