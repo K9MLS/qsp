@@ -38,3 +38,4 @@ conclusion.
 | [0026](ADR-0026-authentication.md) | The first administrator is made from a shell, not a browser | Proposed |
 | [0027](ADR-0027-configuration-writes.md) | The file stays the source of truth, and the owner applies the change | Proposed |
 | [0028](ADR-0028-parrot.md) | Parrot replays bytes it never understood | Proposed |
+| [0029](ADR-0029-ipsc-from-capture.md) | IPSC is built from a capture, and the capture is the hard part | Proposed |

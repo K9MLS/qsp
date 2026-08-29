@@ -17,6 +17,12 @@ that actually matters. See Constitution §3 and
 | `hbp/hbp-voice-session.pcap` | Seven complete voice streams with headers and terminators |
 | `p25/p25-gateway-idle.pcap` | P25Gateway polling only — **no voice**, insufficient for a parser |
 
+IPSC has no fixture and therefore no implementation. See
+[`IPSC-CAPTURE-REQUEST.md`](IPSC-CAPTURE-REQUEST.md) and
+[ADR-0029](../docs/adr/ADR-0029-ipsc-from-capture.md): the protocol has no
+published specification, so a capture is the only route that does not make QSP's
+implementation a derivative of somebody else's.
+
 Each has a sibling `.md` recording provenance, structure, sanitization and
 expected parser behaviour. Read it before using the fixture.
 

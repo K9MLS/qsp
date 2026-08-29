@@ -88,11 +88,11 @@ rules whatsoever.
 | Which talkgroups a repeater may use | 2 | **built** — checked on arrival and per destination |
 | Which repeaters may register | 2 | **built** — checked at login, before the password |
 | Per-peer talkgroup attachment | 3 | **built** — static, and dynamic by transmitting |
-| Trunking to another bridge | 4, 5 | **partial** — OpenBridge links outward; QSP cannot yet dial out |
-| Motorola repeater support | — | **missing** — IPSC; see §4 |
-| Administration without a text editor | — | **missing** |
+| Trunking to another bridge | 4, 5 | **built** — OpenBridge links outward, and outbound peer mode dials out; untested against a real far end |
+| Motorola repeater support | — | **missing** — IPSC, blocked on a capture; see [ADR-0029](adr/ADR-0029-ipsc-from-capture.md) |
+| Administration without a text editor | — | **built** — access control, network settings, bridges and schedule, and a version history with restore |
 | Private calls, radio to radio | 1 | **built** — routed to the radio's peer |
-| Text messaging, GPS, data | — | **missing** — ADR-0021 |
+| Text messaging, GPS, data | — | **relayed** — data frames are carried like voice and confirmed on air; QSP does not decode them |
 
 QSP is ahead of a commercial DMR server on scheduling, on being free and self-hosted, and on
 the repeat model, and level with it on per-peer attachment. It is behind on
