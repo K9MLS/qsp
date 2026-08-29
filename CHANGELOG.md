@@ -244,6 +244,19 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Panels on the admin pages had nothing between them.** `.main` is a grid and
+  its gap separates its own children, so a page that wraps its panels — as the
+  admin pages do, to hide the whole form until the configuration loads — got the
+  gap once around the wrapper and the panels inside it touched. A test fails if
+  a page stacks panels in a wrapper with nothing to space them.
+
+- **Health reports blocked sources and parrot activity.** An address being
+  refused for repeated failed logins is reported as degraded rather than
+  healthy: QSP is working exactly as intended, and it is also the state where a
+  member cannot get on the network and nobody has told the operator. It clears
+  itself when the lockout lifts, so nobody is left with a permanent warning
+  about somebody who fixed their password an hour ago.
+
 - **A network settings page**, at `/network`. The network's name, the address
   members point at, the talkgroups shown on the join page, and parrot — all of
   which were previously a matter of hand-editing JSON or posting it with curl.

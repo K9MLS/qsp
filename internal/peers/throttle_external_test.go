@@ -85,3 +85,38 @@ func TestARefusedLoginIsVisible(t *testing.T) {
 		t.Errorf("the reason is %q", failures[0].Reason)
 	}
 }
+
+// TestHealthReportsABlockedSource.
+//
+// Somebody being turned away is QSP working as intended and also the state
+// where a member cannot get on the network and nobody has told the operator.
+// Degraded says "look at this" without claiming anything is broken.
+func TestHealthReportsABlockedSource(t *testing.T) {
+	h := newHarness(t, func(c *peers.MasterConfig) {
+		c.MaxLoginFailures = 2
+		c.LoginLockout = time.Minute
+	})
+
+	// Healthy first, with no listener the check reports unavailable — so this
+	// asserts on the master's own count, which is what the check reads.
+	if got := h.m.BlockedSources(h.c.now()); got != 0 {
+		t.Fatalf("%d blocked before any failure", got)
+	}
+
+	for i := 0; i < 2; i++ {
+		out := h.send(hbp.Login{RepeaterID: testID}, addrA)
+		ack, _ := hbp.Parse(out.Responses[0].Payload)
+		wrong := hbp.Digest(ack.(hbp.Ack).Salt(), []byte("wrong"))
+		h.send(hbp.Key{RepeaterID: testID, Digest: wrong}, addrA)
+	}
+
+	if got := h.m.BlockedSources(h.c.now()); got != 1 {
+		t.Errorf("%d blocked sources after a lockout, want 1", got)
+	}
+
+	// And it clears itself, so an operator is not left with a permanent
+	// warning about a member who fixed their password an hour ago.
+	if got := h.m.BlockedSources(h.c.now().Add(2 * time.Minute)); got != 0 {
+		t.Errorf("%d still blocked after the lockout lifted", got)
+	}
+}

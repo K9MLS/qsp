@@ -620,3 +620,32 @@ func TestEveryAdminPageSharesTheNavigation(t *testing.T) {
 		}
 	}
 }
+
+// TestWrappedPanelsAreSpaced.
+//
+// .main is a grid and its gap separates its own children, so an admin page
+// that wraps its panels — as they all do, to hide the whole form until the
+// configuration loads — got the gap once around the wrapper and the panels
+// inside it touched.
+func TestWrappedPanelsAreSpaced(t *testing.T) {
+	css, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	if !strings.Contains(string(css), ".stack {") {
+		t.Fatal("no rule spaces panels inside a wrapper")
+	}
+
+	for _, page := range []string{"static/access.html", "static/network.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		src := string(body)
+		// Every wrapper holding more than one panel needs the spacing rule.
+		if strings.Count(src, "<section class=\"panel\"") > 1 &&
+			!strings.Contains(src, `class="stack"`) {
+			t.Errorf("%s stacks panels in a wrapper with nothing to space them", page)
+		}
+	}
+}

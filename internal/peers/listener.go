@@ -849,11 +849,36 @@ func (h PeersHealthCheck) Check(context.Context) health.Result {
 		return health.Unavailable(reason)
 	}
 
+	now := time.Now()
 	s := h.Listener.Stats()
-	res := health.Healthy(fmt.Sprintf("%d peer(s) connected", s.ConfiguredPeers))
-	res.Detail = map[string]string{
+	blocked := h.Master.BlockedSources(now)
+
+	detail := map[string]string{
 		"configured_peers": fmt.Sprintf("%d", s.ConfiguredPeers),
 	}
+	if s.ParrotReplays > 0 || s.ParrotActive > 0 {
+		detail["parrot_replays"] = fmt.Sprintf("%d", s.ParrotReplays)
+		detail["parrot_playing"] = fmt.Sprintf("%d", s.ParrotActive)
+	}
+
+	// **A blocked source is degraded, not a fault.** Somebody is being turned
+	// away and QSP is working exactly as intended — but it is also the state
+	// where a member cannot get on the network and nobody has told the
+	// operator. Degraded says "look at this" without claiming anything is
+	// broken.
+	if blocked > 0 {
+		detail["blocked_sources"] = fmt.Sprintf("%d", blocked)
+		res := health.Degraded(
+			fmt.Sprintf("%d peer(s) connected; %d address(es) refused for repeated failed logins",
+				s.ConfiguredPeers, blocked),
+			"check the console for which address and why; a member with a wrong password "+
+				"looks the same from here as somebody guessing, and both stop on their own")
+		res.Detail = detail
+		return res
+	}
+
+	res := health.Healthy(fmt.Sprintf("%d peer(s) connected", s.ConfiguredPeers))
+	res.Detail = detail
 	return res
 }
 

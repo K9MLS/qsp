@@ -1208,3 +1208,18 @@ select.field__input {
      behaviour that already works. */
   cursor: pointer;
 }
+
+/* ---- Stacked panels -------------------------------------------------- */
+
+/* Panels inside a wrapper rather than directly in .main.
+   **.main is a grid and its gap separates its own children**, so a wrapper
+   holding several panels got the gap once, around itself, and the panels
+   inside it touched. The admin pages wrap their panels so the whole form can
+   be hidden until the configuration loads, which is what put them in this
+   position. */
+.stack {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-5);
+  align-content: start;
+}
