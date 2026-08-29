@@ -260,11 +260,63 @@ func (t *Tracker) finish(key Key, call *Call, at time.Time, reason EndReason) *C
 	delete(t.lastSeen, key)
 
 	finished := *call
+
+	// **Consecutive data bursts are one event, not thirty.** A text message is
+	// a sequence of one-frame bursts, each with its own stream ID, so each
+	// completes as its own call — and fifty of them push every voice
+	// transmission out of a history that holds fifty. Observed on a live
+	// network while two members exchanged messages.
+	//
+	// Merging happens here rather than in the console because the eviction is
+	// what does the damage: by the time a page renders, the voice is already
+	// gone.
+	if prev := t.mergeableData(finished); prev != nil {
+		prev.Frames += finished.Frames
+		prev.Ended = finished.Ended
+		prev.EndReason = finished.EndReason
+		merged := *prev
+		return &merged
+	}
+
 	t.history = append(t.history, finished)
 	if len(t.history) > t.capacity {
 		t.history = t.history[len(t.history)-t.capacity:]
 	}
 	return &finished
+}
+
+// dataBurstWindow is how close two data bursts must be to count as one event.
+//
+// A text message's bursts arrive within a second of each other; two messages a
+// minute apart are two things that happened and should read as two.
+const dataBurstWindow = 5 * time.Second
+
+// mergeableData returns the history entry a data burst continues, if any.
+//
+// Only the most recent entry is considered. A burst that arrives after somebody
+// else has transmitted is a new event, and merging into something further back
+// would reorder the history — which is worse than an extra row.
+func (t *Tracker) mergeableData(c Call) *Call {
+	// **One frame.** A text message's bursts are single frames — that is what
+	// makes thirty of them thirty entries — and requiring it keeps the merge
+	// away from anything with structure. A first version merged on "not voice"
+	// alone and swallowed a stream of header-and-terminator pairs, which is a
+	// transmission that carried no audio rather than a burst of data.
+	if c.Voice || c.Frames != 1 || len(t.history) == 0 {
+		return nil
+	}
+	prev := &t.history[len(t.history)-1]
+	if prev.Voice ||
+		prev.Source != c.Source ||
+		prev.Target != c.Target ||
+		prev.Group != c.Group ||
+		prev.Key.Timeslot != c.Key.Timeslot {
+		return nil
+	}
+	if c.Started.Sub(prev.Ended) > dataBurstWindow {
+		return nil
+	}
+	return prev
 }
 
 // Active returns in-progress calls, most recently started first.

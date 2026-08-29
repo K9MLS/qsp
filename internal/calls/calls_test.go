@@ -216,10 +216,15 @@ func TestActiveCallLimitBoundsMemory(t *testing.T) {
 }
 
 // TestExpireIsDeterministic keeps logs and tests reproducible.
+//
+// Voice frames rather than bare sync ones: three single-frame streams from one
+// radio to one target within a second are a text message, and the tracker now
+// merges those into a single entry. This test is about the order things expire
+// in, so it uses transmissions that cannot be mistaken for one event.
 func TestExpireIsDeterministic(t *testing.T) {
 	tr := calls.NewTracker(calls.Options{Timeout: time.Second})
 	for _, s := range []hbp.StreamID{0x30, 0x10, 0x20} {
-		tr.Update(peerID, frame(s, hbp.FrameTypeSync), base)
+		tr.Update(peerID, frame(s, hbp.FrameTypeVoiceSync), base)
 	}
 	lost := tr.Expire(base.Add(2 * time.Second))
 	if len(lost) != 3 {
@@ -336,5 +341,110 @@ func TestAVoiceTransmissionIsVoice(t *testing.T) {
 	}
 	if !active[0].Voice {
 		t.Error("a voice transmission was not recorded as voice")
+	}
+}
+
+// TestATextMessageIsOneEntry.
+//
+// A text is a sequence of one-frame data bursts, each with its own stream ID,
+// so each completed as its own call — and fifty of them pushed every voice
+// transmission out of a history that holds fifty. Observed on a live network
+// while two members exchanged messages.
+func TestATextMessageIsOneEntry(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{History: 50, Timeout: time.Second})
+	at := base
+
+	for i := 0; i < 30; i++ {
+		burst := frame(hbp.StreamID(0x2000+i), hbp.FrameTypeSync)
+		tr.Update(peerID, burst, at)
+		at = at.Add(120 * time.Millisecond)
+	}
+	tr.Expire(at.Add(2 * time.Second))
+
+	h := tr.History()
+	if len(h) != 1 {
+		t.Fatalf("history holds %d entries for one text message, want 1", len(h))
+	}
+	if h[0].Frames != 30 {
+		t.Errorf("the merged entry counts %d frames, want 30", h[0].Frames)
+	}
+	if h[0].Voice {
+		t.Error("a merged data entry was marked as voice")
+	}
+}
+
+// TestVoiceIsNotEvictedByATextMessage is the damage the merge prevents: a
+// history that holds fifty entries loses everything that matters when one
+// message arrives.
+func TestVoiceIsNotEvictedByATextMessage(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{History: 5, Timeout: time.Second})
+	at := base
+
+	// Somebody talks.
+	tr.Update(peerID, frame(0x1111, hbp.FrameTypeVoiceSync), at)
+	at = at.Add(60 * time.Millisecond)
+	tr.Update(peerID, frame(0x1111, hbp.FrameTypeVoiceSync), at)
+	at = at.Add(3 * time.Second)
+	tr.Expire(at)
+
+	// Then a text message goes by.
+	for i := 0; i < 30; i++ {
+		tr.Update(peerID, frame(hbp.StreamID(0x3000+i), hbp.FrameTypeSync), at)
+		at = at.Add(120 * time.Millisecond)
+	}
+	tr.Expire(at.Add(2 * time.Second))
+
+	var sawVoice bool
+	for _, c := range tr.History() {
+		if c.Voice {
+			sawVoice = true
+		}
+	}
+	if !sawVoice {
+		t.Error("the voice transmission was evicted by a text message")
+	}
+}
+
+// TestTwoMessagesApartAreTwoEntries. Two texts a minute apart are two things
+// that happened and should read as two.
+func TestTwoMessagesApartAreTwoEntries(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{History: 50, Timeout: time.Second})
+
+	at := base
+	for i := 0; i < 3; i++ {
+		tr.Update(peerID, frame(hbp.StreamID(0x4000+i), hbp.FrameTypeSync), at)
+		at = at.Add(120 * time.Millisecond)
+	}
+	tr.Expire(at.Add(2 * time.Second))
+
+	at = at.Add(time.Minute)
+	for i := 0; i < 3; i++ {
+		tr.Update(peerID, frame(hbp.StreamID(0x5000+i), hbp.FrameTypeSync), at)
+		at = at.Add(120 * time.Millisecond)
+	}
+	tr.Expire(at.Add(2 * time.Second))
+
+	if h := tr.History(); len(h) != 2 {
+		t.Errorf("history holds %d entries for two messages a minute apart, want 2", len(h))
+	}
+}
+
+// TestAMultiFrameStreamIsNotMerged. Only a single-frame burst merges; anything
+// with structure is a transmission that carried no audio rather than a burst of
+// data, and merging those would hide them.
+func TestAMultiFrameStreamIsNotMerged(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{History: 50, Timeout: time.Second})
+	at := base
+
+	for i := 0; i < 3; i++ {
+		stream := hbp.StreamID(0x6000 + i)
+		tr.Update(peerID, frame(stream, hbp.FrameTypeSync), at)
+		tr.Update(peerID, frame(stream, hbp.FrameTypeSync), at.Add(60*time.Millisecond))
+		at = at.Add(200 * time.Millisecond)
+	}
+	tr.Expire(at.Add(2 * time.Second))
+
+	if h := tr.History(); len(h) != 3 {
+		t.Errorf("history holds %d entries, want 3; multi-frame streams were merged", len(h))
 	}
 }

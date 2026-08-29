@@ -244,6 +244,21 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A text message is one entry in Last heard, not thirty.** Each data burst
+  carries its own stream ID and completed as its own call, so fifty of them
+  pushed every voice transmission out of a history that holds fifty — seen on a
+  live network while two members exchanged messages.
+
+  Consecutive single-frame bursts from the same radio to the same target within
+  five seconds now merge into one entry with a frame count. Merging happens in
+  the tracker rather than the console, because the eviction is what does the
+  damage: by the time a page renders, the voice is already gone.
+
+  **Only a single-frame burst merges.** A stream with structure is a
+  transmission that carried no audio rather than a burst of data, and hiding
+  those would lose something worth seeing. Two messages a minute apart stay two
+  entries, because they are two things that happened.
+
 - **A configuration history page**, at `/history`, with restore. The admin
   pages can change a running network within a second and there was no undo:
   `configuration_versions` had been recording every save since the first
