@@ -14,6 +14,7 @@ import (
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/peers"
 )
 
 // stubConfig is the configuration manager, without a file or a database.
@@ -622,5 +623,68 @@ func TestConsoleAssetsAreRevalidated(t *testing.T) {
 		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
 			t.Errorf("%s has Cache-Control %q, want no-cache", path, got)
 		}
+	}
+}
+
+// stubLogins reports refusals without a Master.
+type stubLogins struct{ failures []peers.LoginFailure }
+
+func (s stubLogins) LoginFailures(time.Time) []peers.LoginFailure { return s.failures }
+func (s stubLogins) BlockedSources(time.Time) int                 { return len(s.failures) }
+
+// TestRefusedLoginsReachTheConsole. An operator learning about a run of failed
+// logins from a member's phone call is the case this exists to end.
+func TestRefusedLoginsReachTheConsole(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		Logins: stubLogins{failures: []peers.LoginFailure{{
+			Address: "203.0.113.5", RepeaterID: 3155413,
+			Reason: "6 wrong password", Failures: 6,
+			LockedUntil: time.Now().Add(5 * time.Minute),
+		}}},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/peers", nil))
+
+	var body struct {
+		Refused []map[string]any `json:"refused"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Refused) != 1 {
+		t.Fatalf("%d refusals reported, want 1", len(body.Refused))
+	}
+	if body.Refused[0]["address"] != "203.0.113.5" {
+		t.Errorf("the refusal does not name the source: %v", body.Refused[0])
+	}
+	if body.Refused[0]["reason"] == "" {
+		t.Error("the refusal does not say what failed")
+	}
+}
+
+// TestNoRefusalsMeansNoField, so a console with nothing to report shows
+// nothing rather than an empty panel.
+func TestNoRefusalsMeansNoField(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		Logins:        stubLogins{},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/peers", nil))
+	if strings.Contains(rec.Body.String(), `"refused"`) {
+		t.Error("an instance refusing nothing reported a refused field")
 	}
 }

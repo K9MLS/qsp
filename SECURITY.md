@@ -117,6 +117,27 @@ addresses, the peer password file, the database, the logging format, and the
 links an upstream holds. A save names them rather than reporting a bare
 "restart required".
 
+### Peer authentication
+
+**A source address that repeatedly fails to log in stops being answered.** Six
+refusals in fifteen minutes and QSP ignores that address for five minutes,
+including the challenge — which is where a guesser would otherwise collect a
+fresh salt on every attempt. A successful login clears the history, so a member
+who fixes their password is not held to the attempts before they did.
+
+Throttling is per source address rather than per repeater ID, because an ID is
+whatever the caller claims and a determined guesser would vary it. The address
+is the one thing a remote party cannot choose freely.
+
+**This bounds guessing rather than preventing it.** Roughly seventy attempts an
+hour is hopeless against a strong peer password and ruinous against a weak one,
+so the password still has to be a real one.
+
+A refused login is logged with the reason — a wrong password, an unknown ID, a
+digest from the wrong address, or one with no challenge outstanding — because
+those need different things done about them. A run is reported once rather than
+once per attempt, and the console shows what is currently being refused.
+
 ### Read-only endpoints
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static

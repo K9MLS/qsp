@@ -1,6 +1,7 @@
 package server
 
 import (
+	"github.com/k9mls/qsp/internal/peers"
 	"net/http"
 	"time"
 )
@@ -128,6 +129,12 @@ type peersResponse struct {
 	// peer list because that is the only response that needs it, and a second
 	// endpoint for three fields would be three fields and an endpoint.
 	Map MapSettings `json:"map"`
+	// Refused reports logins QSP is currently turning away.
+	//
+	// **Nothing surfaced this before.** Forty failed logins from one address in
+	// six minutes looked, from the console, like the dropped counter going up —
+	// and the operator found out because the member messaged them.
+	Refused []peers.LoginFailure `json:"refused,omitempty"`
 	// Forwarding reports whether this instance relays traffic.
 	//
 	// It exists because the console cannot otherwise tell a master that is
@@ -170,6 +177,13 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		Active:      []CallView{},
 		Recent:      []CallView{},
 		GeneratedAt: now,
+	}
+
+	// Before the early return. A refusal is exactly what an operator needs to
+	// see when the peer list is empty — the case where somebody is trying to
+	// connect and failing is the one where nothing else on the page says so.
+	if r := s.loginReporter(); r != nil {
+		body.Refused = r.LoginFailures(now)
 	}
 
 	if s.opts.Peers == nil {

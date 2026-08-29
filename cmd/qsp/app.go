@@ -52,6 +52,9 @@ type app struct {
 	auth *auth.Service
 	// configManager holds the running configuration and saves a new one.
 	configManager *configManager
+	// master authenticates peers. Kept so the console can report what it is
+	// refusing.
+	master *peers.Master
 	// closers are run in reverse order during shutdown.
 	closers []func(context.Context) error
 }
@@ -214,6 +217,10 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			return nil, lerr
 		}
 		a.upstreams = links
+		// Kept so the console can report what the master is refusing: an
+		// operator should learn about a run of failed logins from the page
+		// rather than from a member's phone call.
+		a.master = master
 
 		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
 			ListenAddress: cfg.DMR.ListenAddress,
@@ -332,6 +339,9 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		return nil, err
 	}
 	a.srv = srv
+	if a.master != nil {
+		srv.SetLogins(a.master)
+	}
 	// The join page, the map and the forwarding flag are derived from the
 	// configuration and were captured once at construction, so a saved change
 	// to any of them applied to nothing while NeedsRestart reported that no

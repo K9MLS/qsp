@@ -17,6 +17,10 @@ type live struct {
 	join       atomic.Pointer[JoinSettings]
 	mapping    atomic.Pointer[MapSettings]
 	forwarding atomic.Bool
+	// logins reports refused logins. Attached after construction because the
+	// peer master is built after the server that reports on it, and reordering
+	// the two would trade a clear dependency for a circular one.
+	logins atomic.Pointer[LoginReporter]
 }
 
 // Join returns the current join settings.
@@ -63,4 +67,21 @@ func (s *Server) ApplyConfig(join JoinSettings, mapping MapSettings, forwarding 
 	// Stored last: it is what Forwarding reads to decide whether anything has
 	// been applied, so the others must already be in place when it appears.
 	s.live.join.Store(&join)
+}
+
+// SetLogins attaches the peer master's refusal reporting.
+//
+// Called once, after the master exists. Reading it through an atomic rather
+// than a field because every handler reads it and the writer is a different
+// goroutine — the same reason the settings above are atomics.
+func (s *Server) SetLogins(r LoginReporter) {
+	s.live.logins.Store(&r)
+}
+
+// logins returns the reporter, or nil when there is none.
+func (s *Server) loginReporter() LoginReporter {
+	if v := s.live.logins.Load(); v != nil {
+		return *v
+	}
+	return s.opts.Logins
 }

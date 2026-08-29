@@ -46,6 +46,12 @@ type MasterConfig struct {
 	// PeerTimeout is silence tolerated from a configured peer. Zero selects
 	// DefaultPeerTimeout.
 	PeerTimeout time.Duration
+	// MaxLoginFailures is how many refused logins a source address may send
+	// before QSP stops answering it. Zero selects DefaultMaxLoginFailures.
+	MaxLoginFailures int
+	// LoginLockout is how long QSP then ignores that address. Zero selects
+	// DefaultLoginLockout.
+	LoginLockout time.Duration
 	// LoginTimeout bounds an incomplete handshake. Zero selects
 	// DefaultLoginTimeout.
 	LoginTimeout time.Duration
@@ -147,6 +153,13 @@ type Master struct {
 	// attachments records which talkgroups each peer receives. Mostly learned
 	// from traffic; see attachments.go.
 	attachments map[attachmentKey]*Attachment
+	// logins counts failed authentications per source address, so a run of
+	// them stops being answered. See throttle.go.
+	logins *throttle
+	// claimedIDs remembers which repeater ID a failing address last claimed,
+	// for the console. The address is what is throttled; the ID is what an
+	// operator recognises.
+	claimedIDs map[netip.Addr]hbp.RepeaterID
 }
 
 // NewMaster constructs a Master.
@@ -181,6 +194,8 @@ func NewMaster(log *slog.Logger, cfg MasterConfig) (*Master, error) {
 		peers:       make(map[hbp.RepeaterID]*Peer),
 		subscribers: make(map[uint32]*Location),
 		attachments: make(map[attachmentKey]*Attachment),
+		claimedIDs:  make(map[netip.Addr]hbp.RepeaterID),
+		logins:      newThrottle(cfg.MaxLoginFailures, cfg.LoginLockout),
 	}
 	m.seedStaticAttachments()
 	return m, nil
@@ -236,6 +251,11 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 // completes, so an unauthenticated stranger cannot displace a working peer by
 // sending a single packet.
 func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) Outcome {
+	if m.logins.locked(from, now) {
+		// The challenge is where a guesser gets a fresh salt, so a locked
+		// source is refused here and not only at the digest.
+		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, from)
+	}
 	if msg.RepeaterID == 0 {
 		return dropped("login from %s carries repeater ID 0, which is not a valid station", from)
 	}
@@ -308,8 +328,16 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 
 // handleKey verifies the peer's digest against the challenge it was issued.
 func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outcome {
+	if m.logins.locked(from, now) {
+		// Silence rather than a refusal. Answering tells a guesser their
+		// attempt was received and is a reply QSP has been made to send, which
+		// is the amplification an unauthenticated endpoint should not offer.
+		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, from)
+	}
+
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
+		m.noteFailure(msg.RepeaterID, from, ReasonUnsolicited, now)
 		return dropped("authentication from repeater ID %d at %s, which has not logged in", msg.RepeaterID, from)
 	}
 	if p.State != StateChallenged {
@@ -319,6 +347,7 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 		// The digest is bound to a salt issued to a specific address. Accepting
 		// it from elsewhere would let anyone who observed the exchange
 		// authenticate as that peer.
+		m.noteFailure(msg.RepeaterID, from, ReasonWrongAddress, now)
 		return dropped("authentication for repeater ID %d arrived from %s but the challenge was issued to %s",
 			msg.RepeaterID, from, p.Addr)
 	}
@@ -326,16 +355,14 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 	password, ok := m.cfg.Password(msg.RepeaterID)
 	if !ok {
 		delete(m.peers, msg.RepeaterID)
+		m.noteFailure(msg.RepeaterID, from, ReasonUnknownID, now)
 		return dropped("no password is configured for repeater ID %d", msg.RepeaterID)
 	}
 	if !hbp.VerifyDigest(p.Salt, password, msg.Digest) {
 		// Remove the half-open registration so a wrong password cannot hold a
 		// slot, and so retries start cleanly.
 		delete(m.peers, msg.RepeaterID)
-		m.log.Warn("authentication failed",
-			logging.PeerID(uint32(msg.RepeaterID)),
-			slog.String("from", from.String()),
-		)
+		m.noteFailure(msg.RepeaterID, from, ReasonWrongPassword, now)
 		return m.reject(msg.RepeaterID, from,
 			fmt.Sprintf("authentication failed for repeater ID %d (wrong password)", msg.RepeaterID))
 	}
@@ -372,6 +399,9 @@ func (m *Master) handleConfig(msg hbp.Config, from netip.AddrPort, now time.Time
 	cfg := msg
 	p.Config = &cfg
 	p.State = StateConfigured
+	// A peer that gets in was the honest case. Holding its earlier mistakes
+	// against it would lock out a member who has just fixed their password.
+	m.logins.succeed(from)
 	p.LastHeard = now
 	if first {
 		p.ConfiguredAt = now
@@ -572,6 +602,10 @@ func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome
 // because a half-open registration holds a slot without providing service.
 func (m *Master) Expire() []Event {
 	now := m.cfg.Now().UTC()
+
+	// Forget sources whose lockouts and failure runs have both lapsed, so the
+	// map does not grow with every address that ever mistyped a password.
+	m.logins.expire(now)
 
 	for _, a := range m.expireAttachments(now) {
 		m.log.Debug("talkgroup attachment lapsed",

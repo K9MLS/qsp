@@ -22,6 +22,7 @@ import (
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/peers"
 )
 
 // Options configures a Server.
@@ -58,6 +59,9 @@ type Options struct {
 	// endpoint that changes anything for its first several phases, and an
 	// instance that only observes still does not need one.
 	Auth Authenticator
+	// Logins reports refused logins, so the console can say that somebody is
+	// being turned away rather than leaving it to a member's phone call.
+	Logins LoginReporter
 	// Config exposes the running configuration for reading and saving. Nil
 	// means this instance was started without one, which is a working state:
 	// it runs on defaults and cannot be reconfigured from a browser.
@@ -358,4 +362,13 @@ func revalidated(next http.Handler) http.Handler {
 		w.Header().Set("Cache-Control", "no-cache")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// LoginReporter reports logins the peer master is refusing.
+//
+// An interface so internal/server does not need a Master to be tested, which
+// is the same reason every other collaborator here is one.
+type LoginReporter interface {
+	LoginFailures(now time.Time) []peers.LoginFailure
+	BlockedSources(now time.Time) int
 }

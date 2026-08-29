@@ -211,6 +211,17 @@
       </div>
     </section>
 
+    <!-- Hidden until something is being refused. A panel that says "nothing is
+         wrong" on every ordinary day is one nobody reads on the day something
+         is. -->
+    <section class="panel" id="refused" aria-labelledby="refused-title" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="refused-title">Logins being refused</h2>
+        <span class="panel__count" id="refused-count">&mdash;</span>
+      </div>
+      <div id="refused-body" aria-live="polite"></div>
+    </section>
+
     <section class="panel" id="map" aria-labelledby="map-title">
       <div class="panel__head">
         <h2 class="panel__title" id="map-title">Where peers are</h2>

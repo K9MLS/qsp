@@ -244,6 +244,31 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Repeated failed logins stop being answered, say why, and are visible.**
+  Three faults, one story: forty refusals from one address in six minutes is
+  indistinguishable from somebody guessing the peer password, QSP answered every
+  one, the log said only "authentication failed", and the operator found out
+  because the member messaged them.
+
+  A source address that fails six times in fifteen minutes is ignored for five
+  minutes — including the challenge, which is where a guesser would otherwise
+  collect a fresh salt on every attempt. Throttling is per address rather than
+  per repeater ID, since an ID is whatever the caller claims. A successful login
+  clears the history, so a member who fixes their password is not held to the
+  attempts before they did, and the lockout lifts on its own.
+
+  Every refusal now names its reason — wrong password, unknown ID, answered from
+  a different address, or no challenge outstanding — because those need
+  different things done about them. **A run is reported once**, not once per
+  attempt: a hotspot retrying every ten seconds produced forty identical lines,
+  which is how an operator learns to skim past the one that matters.
+
+  `/api/peers` carries what is being refused and the console shows it, hidden
+  when there is nothing to say. It is reported even when no peer is connected,
+  which is exactly the case where nothing else on the page explains the silence.
+
+  Sixteen tests.
+
 - **The join page is in the navigation**, and the access page shows the link to
   send members with a button to copy it. The page an operator hands to their
   club existed with no link from anywhere — findable only by somebody who
