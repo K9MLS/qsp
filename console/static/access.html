@@ -92,7 +92,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Talkgroups</h2>
+          <h2 class="panel__title">Talkgroups</h2><button class="hint" type="button" aria-controls="hint-talkgroups" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-talkgroups">A talkgroup is a channel members share. <strong>Allow everything except</strong> with an empty list carries every talkgroup, which is what a new instance does and is fine for a club. <strong>Allow only</strong> refuses anything not listed, which is what you want facing the internet. Ranges work: <code>3100-3199</code>.</p>
           <span class="panel__count" id="tg-summary">&mdash;</span>
         </div>
         <div class="panel__body">
@@ -108,7 +109,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Who may connect</h2>
+          <h2 class="panel__title">Who may connect</h2><button class="hint" type="button" aria-controls="hint-connect" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-connect">Registration is checked when a hotspot logs in, before its password, so a refused ID never reaches the credential path. Subscribers are checked on every transmission — a refused radio is silenced without disconnecting the hotspot carrying it, so one member cannot knock another off the network.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -155,6 +157,7 @@
 
 </div>
 
+<script src="/hints.js"></script>
 <script src="/access.js"></script>
 </body>
 </html>

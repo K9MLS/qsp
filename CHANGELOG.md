@@ -277,6 +277,21 @@ All notable changes to QSP. Dates are UTC.
   here read the files for consistency. Confirmed by deleting the same function
   again and watching it fail.
 
+- **Hints on the admin pages.** A button beside each panel heading reveals an
+  explanation: what a talkgroup list mode actually does, why registration and
+  subscriber checks differ, what dialled and arrives mean, why parrot wants a
+  group call, and that a scheduled bridge is off outside its windows whatever
+  its own setting says.
+
+  **They are disclosures, not floating tooltips.** Anything floating has to be
+  positioned, and positioning against a measured box is the class of bug that
+  cost this project a day. Hover is also unavailable on a touch screen and
+  unreachable from a keyboard, so a button is both the accessible answer and the
+  robust one — nothing about a hint is positioned at all.
+
+  The text is in the markup rather than the script, so a page without the script
+  still carries its explanations and somebody reading the HTML can see them.
+
 - **The map works, and the cause was QSP's own content security policy.**
   `style-src 'self'` forbids inline style attributes, so every
   `style="left:…"` on a tile or pin was silently refused and all of them stacked

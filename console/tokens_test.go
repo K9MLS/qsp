@@ -320,7 +320,8 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// updates the number, while a name says which file nobody recognises.
 	ours := map[string]bool{
 		"console.js": true, "map.js": true, "join.js": true,
-		"signin.js": true, "access.js": true, "network.js": true, "bridges.js": true, "history.js": true,
+		"signin.js": true, "access.js": true, "network.js": true,
+		"bridges.js": true, "history.js": true, "hints.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -406,7 +407,7 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 		"static/index.html", "static/join.html", "static/signin.html",
 		"static/access.html", "static/network.html", "static/network.js",
 		"static/bridges.html", "static/bridges.js",
-		"static/history.html", "static/history.js",
+		"static/history.html", "static/history.js", "static/hints.js",
 	} {
 		body, err := assets.ReadFile(script)
 		if err != nil {
@@ -692,7 +693,7 @@ func TestTheMapPlacesRelativeToItsCentre(t *testing.T) {
 func TestTheConsoleNeverWritesStyleAttributes(t *testing.T) {
 	for _, script := range []string{
 		"static/console.js", "static/map.js", "static/access.js",
-		"static/network.js", "static/bridges.js", "static/history.js",
+		"static/network.js", "static/bridges.js", "static/history.js", "static/hints.js",
 		"static/join.js", "static/signin.js",
 	} {
 		body, err := assets.ReadFile(script)
@@ -731,6 +732,61 @@ func TestTheConsoleNeverWritesStyleAttributes(t *testing.T) {
 	for _, want := range []string{"left: 50%", "top: 50%"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("the plane is not centred: %q missing", want)
+		}
+	}
+}
+
+// TestHintsAreDisclosuresRatherThanTooltips.
+//
+// **A floating tooltip has to be positioned**, and positioning against a
+// measured box is the class of bug that cost this project a day. A disclosure
+// that expands in the flow cannot be put in the wrong place. Hover is also
+// unavailable on a touch screen and unreachable from a keyboard, so a button is
+// both the accessible answer and the robust one.
+func TestHintsAreDisclosuresRatherThanTooltips(t *testing.T) {
+	script, err := assets.ReadFile("static/hints.js")
+	if err != nil {
+		t.Fatalf("reading hints.js: %v", err)
+	}
+	src := string(script)
+
+	// Nothing about a hint may be positioned.
+	for _, banned := range []string{"getBoundingClientRect", ".style.left", ".style.top"} {
+		if strings.Contains(src, banned) {
+			t.Errorf("hints.js uses %s; a hint is a disclosure and must not be positioned", banned)
+		}
+	}
+	if !strings.Contains(src, "aria-expanded") {
+		t.Error("hints.js does not report its state to assistive technology")
+	}
+
+	// Every hint button must name a paragraph that exists.
+	for _, page := range []string{"static/access.html", "static/network.html", "static/bridges.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		html := string(body)
+
+		if !strings.Contains(html, "/hints.js") {
+			t.Errorf("%s has hints and does not load hints.js", page)
+		}
+
+		ids := regexp.MustCompile(`aria-controls="([^"]+)"`).FindAllStringSubmatch(html, -1)
+		if len(ids) == 0 {
+			t.Errorf("%s carries no hints", page)
+		}
+		for _, m := range ids {
+			if !strings.Contains(html, `id="`+m[1]+`"`) {
+				t.Errorf("%s has a hint pointing at %q, which does not exist", page, m[1])
+			}
+		}
+		// A button with no label is a question mark screen readers cannot
+		// explain.
+		buttons := strings.Count(html, `class="hint"`)
+		labels := strings.Count(html, `aria-label="Explain this"`)
+		if buttons != labels {
+			t.Errorf("%s has %d hint buttons and %d labels", page, buttons, labels)
 		}
 	}
 }

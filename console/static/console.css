@@ -1278,3 +1278,59 @@ select.field__input {
   font-size: var(--text-xs);
   color: var(--color-foreground-subtle);
 }
+
+/* ---- Field hints ----------------------------------------------------- */
+
+/* A hint is a button that reveals a paragraph beneath it, not a floating
+   tooltip. Hover is unavailable on a touch screen and unreachable from a
+   keyboard, and anything floating has to be positioned — which is the class of
+   bug that cost this project a day. Nothing here is positioned. */
+.hint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: var(--space-2);
+  padding: 0;
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  background: none;
+  color: var(--color-foreground-muted);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.hint:hover {
+  border-color: var(--color-primary);
+  color: var(--color-foreground);
+}
+
+.hint:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.hint[aria-expanded="true"] {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.hint__text {
+  max-width: 62ch;
+  margin: var(--space-2) 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--color-border-strong);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-surface-sunken);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.hint__text code {
+  font-family: var(--font-mono);
+  color: var(--color-foreground);
+}

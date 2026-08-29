@@ -87,7 +87,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Bridges</h2>
+          <h2 class="panel__title">Bridges</h2><button class="hint" type="button" aria-controls="hint-bridges" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-bridges">Peers on the <em>same</em> talkgroup already hear each other with no bridge at all — that is what forwarding does. A bridge is for joining talkgroups that <em>differ</em>, so traffic on one is carried to the other. An endpoint is a peer, a talkgroup and a timeslot; leave the peer blank to mean every peer carrying that talkgroup.</p>
           <span class="panel__count" id="bridge-count">&mdash;</span>
         </div>
         <div class="panel__body">
@@ -105,7 +106,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Schedule</h2>
+          <h2 class="panel__title">Schedule</h2><button class="hint" type="button" aria-controls="hint-schedule" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-schedule">A window turns a bridge on for part of a week. <strong>A bridge named by any window is controlled entirely by the schedule</strong> and is off outside its windows whatever its own setting says — which is worth knowing before a net fails to open rather than afterwards. The timezone must be an IANA name such as <code>America/Chicago</code>: an abbreviation cannot express "20:00 local all year" across a daylight-saving change.</p>
           <span class="panel__count" id="window-count">&mdash;</span>
         </div>
         <div class="panel__body">
@@ -137,6 +139,7 @@
 
 </div>
 
+<script src="/hints.js"></script>
 <script src="/bridges.js"></script>
 </body>
 </html>

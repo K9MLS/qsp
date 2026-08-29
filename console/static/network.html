@@ -89,7 +89,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">What members see</h2>
+          <h2 class="panel__title">What members see</h2><button class="hint" type="button" aria-controls="hint-members" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-members">These appear on the join page you send to a member. The address is what their hotspot points at, so it must be reachable from outside your network — a LAN address here produces a join page that works for nobody.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -113,7 +114,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Talkgroups members can use</h2>
+          <h2 class="panel__title">Talkgroups members can use</h2><button class="hint" type="button" aria-controls="hint-tg-rewrite" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-tg-rewrite"><strong>Dialled is what goes into the radio; arrives is what this network sees.</strong> A hotspot running DMRGateway can rewrite a talkgroup number on its way out — a <code>TGRewrite</code> line in its configuration — so what a member enters is not always what QSP receives. When they match, leave arrives blank. When they do not and nobody has written it down, the symptom is a member who transmits into silence with every log looking healthy.</p>
           <span class="panel__count" id="tg-count">&mdash;</span>
         </div>
         <div class="panel__body">
@@ -134,7 +136,8 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Parrot</h2>
+          <h2 class="panel__title">Parrot</h2><button class="hint" type="button" aria-controls="hint-parrot" aria-label="Explain this">?</button>
+          <p class="hint__text" id="hint-parrot"><strong>Program it as a group call.</strong> A private call is recorded and cannot be replayed usefully: DMR carries the call's addressing inside the audio burst, so a radio mutes a replay that is not addressed to it, and rewriting that means decoding the burst — which QSP deliberately does not do. The talkgroup must also be one the member's hotspot forwards; 9990 is outside the usual pass-through range and often needs a rule adding.</p>
           <span class="panel__count" id="parrot-state">&mdash;</span>
         </div>
         <div class="panel__body">
@@ -189,6 +192,7 @@
 
 </div>
 
+<script src="/hints.js"></script>
 <script src="/network.js"></script>
 </body>
 </html>
