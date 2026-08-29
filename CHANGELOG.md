@@ -255,6 +255,24 @@ All notable changes to QSP. Dates are UTC.
   column of numbers does not need the width of a monitor, and a box that wide
   invites a paragraph. Panels gained a little breathing room at the bottom.
 
+- **Parrot replays**, and the transport that does it. A recording is sent back
+  at DMR timing by a goroutine — **the only part of QSP that writes to the peer
+  socket without being the listener**, which is a deliberate exception to
+  [ADR-0002](docs/adr/ADR-0002-single-writer-routing-core.md) named rather than
+  left to be discovered. It exists because frames must leave 60 milliseconds
+  apart and the sweep runs every second, sixteen times too slow for one frame.
+
+  Frames are paced by a ticker rather than by sleeping, so a long recording does
+  not drift slower against the radio as the time spent writing accumulates. One
+  dropped packet does not end a replay: UDP to a hotspot on a domestic
+  connection loses some, and abandoning a recording over one would make parrot
+  look broken when it is not. Keying up stops a replay in progress, and
+  shutdown stops every one.
+
+  Ten more tests, including that frames leave paced rather than as fast as the
+  socket will take them — a replay a radio cannot decode would look like parrot
+  working and sound like nothing.
+
 - **Parrot records and replays**, so a member can prove their whole path works
   with nobody else awake. [ADR-0028](docs/adr/ADR-0028-parrot.md). That case is
   the ordinary one rather than the unlucky one: a club has a handful of active

@@ -15,6 +15,7 @@ import (
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/routing"
 )
@@ -81,6 +82,13 @@ type ListenerConfig struct {
 	// It is owned by the serve goroutine, like Master, and must not be touched
 	// by the caller after Start.
 	Calls *calls.Tracker
+	// Parrot records and replays on one talkgroup. Optional; nil disables it.
+	//
+	// A frame parrot handles never reaches the routing core: a recording faces
+	// no access control, no contention and no bridge on its way back, because
+	// none of those questions is about a member hearing their own voice. See
+	// ADR-0028.
+	Parrot *parrot.Recorder
 }
 
 // Listener owns the UDP socket and drives a Master.
@@ -122,6 +130,10 @@ type Listener struct {
 	// pending holds a configuration change waiting to be applied, at most one.
 	// See reload.go.
 	pending atomic.Pointer[Reload]
+	// playback replays parrot recordings. Nil when parrot is off.
+	playback *playback
+	// ctx bounds every playback goroutine, so shutdown stops them.
+	ctx context.Context
 
 	// running reports whether the loop is active, so health can distinguish
 	// "not started" from "started and quiet".
@@ -149,7 +161,15 @@ func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
 	if cfg.ListenAddress == "" {
 		return nil, errors.New("peers: a listen address is required, for example \"0.0.0.0:62031\"")
 	}
-	return &Listener{cfg: cfg, log: logging.Subsystem(log, "network")}, nil
+	l := &Listener{cfg: cfg, log: logging.Subsystem(log, "network")}
+	if cfg.Parrot != nil {
+		// Constructed here rather than when the socket opens, so that the
+		// field is written once before any other goroutine exists. Stats reads
+		// it, and a field assigned during serve would be a race the tests
+		// would only sometimes schedule.
+		l.playback = newPlayback(l.log, nil)
+	}
+	return l, nil
 }
 
 // Start binds the socket and serves in a background goroutine.
@@ -171,6 +191,13 @@ func (l *Listener) Start(ctx context.Context) error {
 			l.cfg.ListenAddress, err)
 	}
 	l.conn = conn
+	// The socket exists now, so playback can hold it. Its own field was set in
+	// NewListener and is not written again — Stats reads it from another
+	// goroutine, and a field assigned during serve would be a data race the
+	// tests would only sometimes schedule.
+	if l.playback != nil {
+		l.playback.conn = conn
+	}
 	l.running.Store(true)
 	l.refresh()
 	if l.cfg.ScheduleState != nil {
@@ -208,6 +235,11 @@ func (l *Listener) Close() error {
 // serve is the single goroutine that owns the Master.
 func (l *Listener) serve(ctx context.Context) {
 	defer l.running.Store(false)
+
+	// Kept so a recording finishing on the sweep can start a playback bounded
+	// by the same lifetime as the listener itself. Only ever read from this
+	// goroutine.
+	l.ctx = ctx
 
 	buf := make([]byte, maxDatagram)
 
@@ -251,6 +283,7 @@ func (l *Listener) serve(ctx context.Context) {
 		l.expireCalls()
 		l.expireRoutes()
 		l.expireTriggers()
+		l.expireParrot()
 		l.applySchedule()
 	}
 }
@@ -334,10 +367,42 @@ func (l *Listener) trigger(from hbp.RepeaterID, frame hbp.Data) {
 // Constitution §18. The usual cause is two people keying the same talkgroup at
 // once, which an operator should be able to see.
 func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
+	// Parrot first, and it consumes what it handles. The talkgroup is one the
+	// operator gave up for this, so nothing else should see it.
+	if l.cfg.Parrot != nil {
+		if l.cfg.Parrot.Handles(frame) {
+			if rec := l.cfg.Parrot.Observe(from, frame); rec != nil {
+				l.replay(*rec)
+			}
+			return
+		}
+		// Keying up elsewhere abandons a recording in progress and stops a
+		// replay already running: a member who has moved on should not be
+		// surprised by their own voice a moment later.
+		l.cfg.Parrot.Cancel(from)
+		if l.playback != nil {
+			l.playback.Stop(from)
+		}
+	}
+
 	if l.cfg.Routing == nil {
 		return
 	}
 	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+}
+
+// replay hands a finished recording to the playback goroutine.
+func (l *Listener) replay(rec parrot.Recording) {
+	if l.playback == nil {
+		return
+	}
+	peer, ok := l.cfg.Master.Lookup(rec.Peer)
+	if !ok {
+		// The peer went away between transmitting and its recording
+		// completing. Nothing to play it to.
+		return
+	}
+	l.playback.Start(l.ctx, rec, peer.Addr)
 }
 
 // UpstreamSender carries a frame over a link to another network.
@@ -677,11 +742,19 @@ type Stats struct {
 	Collisions      uint64
 	WriteErrors     uint64
 	ConfiguredPeers int64
+	// ParrotReplays is how many recordings have been played back, and
+	// ParrotFrames how many frames that took. Zero when parrot is off.
+	ParrotReplays uint64
+	ParrotFrames  uint64
+	// ParrotActive is how many replays are running right now, which is the
+	// number that tells an operator somebody is testing rather than that
+	// somebody once did.
+	ParrotActive int
 }
 
 // Stats returns current counters. Safe to call from any goroutine.
 func (l *Listener) Stats() Stats {
-	return Stats{
+	st := Stats{
 		Received:        l.received.Load(),
 		Sent:            l.sent.Load(),
 		Dropped:         l.dropped.Load(),
@@ -691,6 +764,15 @@ func (l *Listener) Stats() Stats {
 		WriteErrors:     l.writeErr.Load(),
 		ConfiguredPeers: l.peers.Load(),
 	}
+	// playback is created when the listener starts serving, so a Stats call
+	// before that must not dereference it.
+	if l.playback != nil {
+		played, frames, _, _ := l.playback.stats.snapshot()
+		st.ParrotReplays = played
+		st.ParrotFrames = frames
+		st.ParrotActive = l.playback.Active()
+	}
+	return st
 }
 
 // HealthCheck reports on the peer listener.

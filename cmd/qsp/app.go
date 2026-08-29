@@ -20,6 +20,7 @@ import (
 	"github.com/k9mls/qsp/internal/database"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/homebrew"
@@ -177,6 +178,30 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			log.Info("forwarding disabled; traffic is observed and not relayed")
 		}
 
+		// Off unless configured, because parrot swallows a talkgroup and one
+		// QSP takes is one the operator did not choose to lose.
+		var parrotRecorder *parrot.Recorder
+		if cfg.DMR.Parrot.Enabled {
+			slot := hbp.Timeslot1
+			if cfg.DMR.Parrot.Timeslot == 2 {
+				slot = hbp.Timeslot2
+			}
+			rec, perr := parrot.New(parrot.Config{
+				Talkgroup:   cfg.DMR.Parrot.Talkgroup,
+				Timeslot:    slot,
+				MaxDuration: cfg.DMR.Parrot.MaxDuration.AsDuration(),
+				Gap:         cfg.DMR.Parrot.Gap.AsDuration(),
+			})
+			if perr != nil {
+				return nil, perr
+			}
+			parrotRecorder = rec
+			log.Info("parrot enabled",
+				slog.Uint64("talkgroup", uint64(cfg.DMR.Parrot.Talkgroup)),
+				slog.String("timeslot", slot.String()),
+			)
+		}
+
 		links, lerr := buildUpstreams(log, cfg, func(name string, frame hbp.Data) {
 			// Resolved at call time rather than captured: the listener does not
 			// exist yet. Links are not started until run(), by which point
@@ -195,6 +220,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Master:        master,
 			Bus:           a.bus,
 			Calls:         calls.NewTracker(calls.Options{}),
+			Parrot:        parrotRecorder,
 			Routing:       core,
 			Upstreams:     upstreamSender(links),
 			ScheduleState: bridgeState(sched, triggers),
