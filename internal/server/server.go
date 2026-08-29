@@ -230,6 +230,9 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("GET /access", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/access.html", http.StatusFound)
 		})
+		mux.HandleFunc("GET /network", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/network.html", http.StatusFound)
+		})
 		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/join.html", http.StatusFound)
 		})

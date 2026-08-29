@@ -1162,3 +1162,49 @@ a.muted:focus-visible {
   overflow-x: auto;
   white-space: nowrap;
 }
+
+/* ---- Talkgroup rows -------------------------------------------------- */
+
+.tg-row {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.tg-row:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.tg-row__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.tg-row__field--small {
+  flex: 0 1 7rem;
+}
+
+.tg-row__remove {
+  /* Aligned with the inputs rather than their labels, so the row reads as one
+     line rather than a button floating above it. */
+  flex: 0 0 auto;
+}
+
+/* A single value does not need the width of a monitor, and a box that wide
+   invites somebody to type a sentence into it. */
+.field__input--narrow {
+  max-width: 24rem;
+}
+
+select.field__input {
+  /* The browser's own arrow, kept: replacing it means reimplementing keyboard
+     behaviour that already works. */
+  cursor: pointer;
+}

@@ -244,6 +244,24 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A network settings page**, at `/network`. The network's name, the address
+  members point at, the talkgroups shown on the join page, and parrot — all of
+  which were previously a matter of hand-editing JSON or posting it with curl.
+
+  **The talkgroup form separates what is dialled from what arrives**, because a
+  hotspot may rewrite a number on its way out and the two are easy to configure
+  apart and very hard to diagnose from either end. A morning went into exactly
+  that this week.
+
+  A save names the settings that need a restart rather than warning without
+  saying what for, which is what parrot needs and what the page says up front.
+
+- **The map draws a minimum grid.** The tile arithmetic has been correct
+  throughout and the measurement wrong three times, so the grid now has a floor
+  of seven columns by three rows widened around the centre. A map drawn against
+  a bad measurement is off-centre rather than a single tile in a corner, and the
+  worst case is a few tiles nobody sees rather than a map nobody can use.
+
 - **Text messages were being dropped by contention, and now are not.** A DMR
   text is a sequence of short data bursts, each carrying its own stream ID, and
   the contention key included the stream — so every burst looked like a

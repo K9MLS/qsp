@@ -688,3 +688,32 @@ func TestNoRefusalsMeansNoField(t *testing.T) {
 		t.Error("an instance refusing nothing reported a refused field")
 	}
 }
+
+// TestTheNetworkPageIsReachable covers the redirect and the asset together.
+func TestTheNetworkPageIsReachable(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/network", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/network returned %d, want a redirect", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/network.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/network.html returned %d", rec.Code)
+	}
+}

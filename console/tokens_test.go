@@ -347,7 +347,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// updates the number, while a name says which file nobody recognises.
 	ours := map[string]bool{
 		"console.js": true, "map.js": true, "join.js": true,
-		"signin.js": true, "access.js": true,
+		"signin.js": true, "access.js": true, "network.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -430,7 +430,8 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 	var checked int
 	for _, script := range []string{
 		"static/console.js", "static/map.js", "static/join.js", "static/access.js",
-		"static/index.html", "static/join.html", "static/signin.html", "static/access.html",
+		"static/index.html", "static/join.html", "static/signin.html",
+		"static/access.html", "static/network.html", "static/network.js",
 	} {
 		body, err := assets.ReadFile(script)
 		if err != nil {
@@ -576,6 +577,46 @@ func TestTheJoinPageIsReachableFromTheConsole(t *testing.T) {
 		}
 		if !strings.Contains(string(body), `href="/join"`) {
 			t.Errorf("%s does not link to the join page", page)
+		}
+	}
+}
+
+// TestTheNetworkPageIsServed. It edits the join details and parrot, which were
+// otherwise a matter of hand-editing JSON or posting it with curl.
+func TestTheNetworkPageIsServed(t *testing.T) {
+	for _, name := range []string{"static/network.html", "static/network.js"} {
+		if _, err := assets.ReadFile(name); err != nil {
+			t.Errorf("%s is not embedded: %v", name, err)
+		}
+	}
+	page, err := assets.ReadFile("static/network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+	body := string(page)
+	if !strings.Contains(body, "/network.js") {
+		t.Error("network.html does not load network.js")
+	}
+	// The distinction that cost an operator a morning: what a radio dials is
+	// not always what this network sees, because a hotspot may rewrite it.
+	if !strings.Contains(body, "Dialled") || !strings.Contains(body, "arrives") {
+		t.Error("the talkgroup form does not distinguish what is dialled from what arrives")
+	}
+}
+
+// TestEveryAdminPageSharesTheNavigation. A page reachable only by typing its
+// URL is one an operator does not know exists.
+func TestEveryAdminPageSharesTheNavigation(t *testing.T) {
+	pages := []string{"static/index.html", "static/access.html", "static/network.html"}
+	for _, page := range pages {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		for _, link := range []string{`href="/access"`, `href="/network"`, `href="/join"`} {
+			if !strings.Contains(string(body), link) {
+				t.Errorf("%s does not carry %s", page, link)
+			}
 		}
 	}
 }

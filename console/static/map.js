@@ -321,12 +321,40 @@
     this.canvas.innerHTML = html;
   };
 
+  /* MIN_COLUMNS and MIN_ROWS are a floor on the tile grid.
+   *
+   * **The measurement has been wrong three times and the arithmetic never
+   * was.** A grid computed only from a measured size draws one tile in a
+   * corner when that measurement is small; a floor means the map fills a
+   * typical panel even then, and the worst case is a few tiles fetched that
+   * nobody sees rather than a map nobody can use.
+   *
+   * Seven by three covers a full-width panel at 360px tall, which is the
+   * layout the console actually has. */
+  var MIN_COLUMNS = 7;
+  var MIN_ROWS = 3;
+
   Map.prototype.tiles = function (originX, originY, width, height) {
     var scale = Math.pow(2, this.zoom);
     var firstX = Math.floor(originX / TILE);
     var firstY = Math.floor(originY / TILE);
     var lastX = Math.floor((originX + width) / TILE);
     var lastY = Math.floor((originY + height) / TILE);
+
+    /* Widened around the centre rather than extended to one side, so a map
+     * drawn against a bad measurement is off-centre rather than half empty. */
+    while (lastX - firstX + 1 < MIN_COLUMNS) {
+      firstX--;
+      if (lastX - firstX + 1 < MIN_COLUMNS) {
+        lastX++;
+      }
+    }
+    while (lastY - firstY + 1 < MIN_ROWS) {
+      firstY--;
+      if (lastY - firstY + 1 < MIN_ROWS) {
+        lastY++;
+      }
+    }
 
     var html = "";
     for (var ty = firstY; ty <= lastY; ty++) {

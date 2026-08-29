@@ -142,7 +142,8 @@ once per attempt, and the console shows what is currently being refused.
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
 console assets are unauthenticated and read-only. That includes the access
-control page, which is markup like every other console page: the endpoints
+control and network settings pages, which are markup like every other console
+page: the endpoints
 behind it refuse anonymously, which is where the decision belongs, and it shows
 a sign-in prompt rather than a form when nobody is signed in.
 
