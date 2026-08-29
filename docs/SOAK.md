@@ -15,22 +15,29 @@ runs while other work continues.
 across a fortnight, without supervision — including that it survives restarts,
 and that DST-correct wall-clock scheduling behaves over a long span.
 
-**Does not prove:** that audio relays correctly between two peers. That needs a
-second peer and is a separate test. This soak runs with one hotspot, so the
-bridge opens and closes with nothing crossing it. That is still the gate as
-written, but it is worth being clear about which half is being tested.
+**Does not prove:** that audio relays correctly between two peers. That is a
+separate test, and it has since been run: on 2026-08-28 two hotspots a thousand
+miles apart exchanged voice through this instance, and on 2026-08-29 they
+exchanged it on a talkgroup of the club's own choosing. The soak proves the
+scheduler; the air test proved the relay.
+
+**This soak no longer runs with one hotspot.** A second joined on 2026-08-28, so
+the bridge now opens and closes with a real network behind it rather than
+nothing crossing it.
 
 ---
 
-## Read this first: the journal is the evidence
+## Read this first: the journal is most of the evidence
 
-**Nothing writes to the database.** Registering a driver made the migrations
-run and created `configuration_versions` and `audit_events`, but no code inserts
-into either. `grep -rn 'INSERT INTO' --include='*.go'` finds only the migration
-runner's own bookkeeping.
+**This section said "nothing writes to the database", and that stopped being
+true on 2026-08-29.** Authentication writes accounts and sessions, every
+configuration save writes a version, and every administrative action writes an
+audit event. The claim is corrected rather than deleted so the change is
+visible: a document that quietly becomes accurate again teaches nobody anything.
 
-QSP's audit trail goes to the structured log. So the journal is the entire
-record of whether this soak passed, and it must survive a reboot:
+What has not changed is that **the scheduler leaves no trace in the database**.
+A bridge opening and closing is a log line and nothing else, so the journal is
+still the record of whether this soak passed, and it must survive a reboot:
 
 ```sh
 sudo mkdir -p /etc/systemd/journald.conf.d
@@ -185,6 +192,30 @@ All four, at day fourteen:
 If a DST change falls inside the window, that is a bonus rather than a
 requirement: it is the single best test of wall-clock scheduling, and worth
 noting in the result either way.
+
+---
+
+## Run log
+
+Restarts are only acceptable if they are explained, so they are written down
+here as they happen rather than reconstructed afterwards.
+
+| Date | Restarts | Why |
+|---|---|---|
+| 2026-08-27 | — | Soak began |
+| 2026-08-28 | several | Deploys through the day: stale-peer keepalive, access control, console changes, authentication schema, outbound peer mode |
+| 2026-08-29 | several | Deploys: content security policy for map tiles, parrot, login throttling, data contention fix, admin pages |
+
+**Every restart in that table is a deploy**, and the criterion is no
+*unexplained* restarts. It is also true that a fortnight of daily deploys is not
+the unattended fortnight the gate describes: the scheduler has been exercised
+across restarts rather than across two weeks of continuous running, which is a
+weaker result than the gate asks for.
+
+**The clock should be treated as running from the last deploy**, not from
+2026-08-27, and the run should be left alone once the current work settles.
+Recording that here is the point — a gate quietly counted from a convenient date
+is one nobody can check.
 
 ---
 

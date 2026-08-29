@@ -22,7 +22,7 @@ the club want?", the answer is "that is a field, not a decision". K9MLS's club
 | **2. Access control** | which talkgroups, repeaters, subscribers are permitted | **missing — next** |
 | **3. Subscription** | which peers receive which talkgroups | partial: schedule and triggers; no per-peer attachment |
 | **4. Bridging** | connect this master to other systems | built, including OpenBridge |
-| **5. Outbound peer** | connect *out* to XLX, DMR+, IPSC2 | missing |
+| **5. Outbound peer** | connect *out* to XLX, DMR+, IPSC2 | built, never met a real far end |
 
 QSP spent two days building layer 4 before layer 1 existed, because bridging was
 mistaken for the routing model. See
@@ -239,10 +239,11 @@ file said off, so DMRGateway never loaded it and routed everything to
 BrandMeister. The talkgroup mapping is `TGRewrite0=2,11,2,9,1`: dial TG 11 on
 TS2, arrive as TG 9.
 
-Parrot was dropped from the gate's wording. It is a BrandMeister service and
-QSP does not implement it, so "hears itself through parrot" was never
-achievable on a QSP-only network. The substance — a live transmission
-decoding — is what was verified.
+Parrot was dropped from the gate's wording because QSP did not implement it.
+**It does now**, per [ADR-0028](docs/adr/ADR-0028-parrot.md), so "hears itself
+through parrot" is achievable on a QSP-only network after all, as a group
+call or a private one. It is a buffer rather than an audio feature, which is
+why it arrived long before the vocoder.
 
 Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
@@ -321,13 +322,23 @@ against real hardware; 381 tests; CI green.
 
 This is a thin product and it is worth saying so plainly.
 
-| Missing | Consequence |
+**This table listed five missing things. Four have been built**, and it is kept
+with its answers rather than replaced, because what was missing and what closed
+it is more use than a list of what exists today.
+
+| Was missing | Consequence at the time | Now |
+|---|---|---|
+| **Admin interface** | every change is SSH and a text editor | built: access control, network settings, bridges and schedule, and a version history with restore |
+| **Access control (layer 2)** | every peer received every talkgroup any peer transmitted on | built: registration, subscriber and per-timeslot talkgroup lists |
+| **Per-peer talkgroup subscription (layer 3)** | a member could not choose what they hear | built: dynamic by transmitting, and static by configuration |
+| **Authentication** | no login anywhere | built: accounts made from the shell, sessions in the database, proven end to end |
+| **Persistence in use** | the schema existed and nothing wrote to it | accounts, sessions, configuration versions and audit events all write |
+
+| Still missing | Consequence |
 |---|---|
-| **Admin interface** | every change is SSH and a text editor. No talkgroup can be added without an operator on the command line |
-| **Access control (layer 2)** | every peer receives every talkgroup any peer transmits on. Fine for a club; unsafe facing the internet |
-| **Per-peer talkgroup subscription (layer 3)** | a member cannot choose what they hear |
-| **Authentication** | no login anywhere; `/api/peers` discloses callsigns, radio IDs and source addresses |
-| **Persistence in use** | the schema exists and migrates; nothing writes to it |
+| **IPSC** | a club with a Motorola repeater cannot use QSP. Blocked on a capture, deliberately — see [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) |
+| **A vocoder** | QSP relays audio without decoding it, which is why parrot works and transcoding does not |
+| **`/api/peers` is unauthenticated** | it discloses callsigns, radio IDs and source addresses to anyone who finds the URL |
 | **Live map** | **built** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). Drawn by QSP with no library vendored; the tile source is `server.map.tile_url`, defaulting to OpenStreetMap and clearable for an instance with no route out |
 | **IPSC** | unblocked by ADR-0008; needs a capture |
 | **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
@@ -339,13 +350,15 @@ This is a thin product and it is worth saying so plainly.
 2. **Layer 2, access control.** `TGID_ACL`, `REG_ACL`, `SUB_ACL` in HBlink's
    terms. Needed before any instance faces the internet, and needed before a
    club with strangers on it.
-3. **Admin interface (Phase 2b).** Needs authentication and a config write path.
-   `configuration_versions` already has `author`, `summary` and `document`
-   columns waiting, so this is also what finally gives the database a writer.
-4. **The live map.** Store the coordinates already arriving, expose them, draw
-   them. The obstacle is that a map library means a build step or a CDN, which
-   cuts against the console's no-dependency rule — worth an ADR.
-5. **IPSC**, once a capture exists.
+3. **IPSC**, once a capture exists. It is the only row in the parity table still
+   marked missing, and the reason it is blocked is a decision rather than an
+   obstacle: building from somebody else's implementation would make QSP's IPSC
+   a derivative work permanently.
+4. **An XLX reflector for outbound peer mode**, which is built and has never
+   spoken to a real far end.
+5. **A two-peer voice capture.** Every fixture is single-peer, and the repeat
+   path, which carried the first QSO across this network, has never been tested
+   against a recording of a real relay.
 
 ### Immediate, small
 
