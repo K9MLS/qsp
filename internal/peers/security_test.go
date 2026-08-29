@@ -75,6 +75,17 @@ func TestTrafficIsRejectedFromAnUnregisteredAddress(t *testing.T) {
 
 // TestKeepaliveFromAnotherAddressDoesNotHijackTheSession proves a spoofed
 // keepalive cannot move a peer's address or keep a dead session alive.
+//
+// **It is answered with MSTNAK, and that is a deliberate change.** This test
+// previously required silence. Silence means a peer whose router rebound its
+// NAT mapping only recovers when its own keepalive timeout fires, and on a live
+// network that cost a session every eight to nine minutes, all day.
+//
+// The reflection this allows is real and small: MSTNAK is smaller than the ping
+// that provokes it, so there is no amplification, and QSP already answers an
+// unregistered keepalive the same way for the same reason. What must not change
+// is below — the address does not move and the timeout is not refreshed, so a
+// spoofed packet still cannot take or hold a session.
 func TestKeepaliveFromAnotherAddressDoesNotHijackTheSession(t *testing.T) {
 	h := newHarness(t)
 	h.login(addrA)
@@ -83,8 +94,24 @@ func TestKeepaliveFromAnotherAddressDoesNotHijackTheSession(t *testing.T) {
 	h.c.advance(30 * time.Second)
 
 	out := h.send(hbp.Ping{RepeaterID: testID}, addrB)
-	if len(out.Responses) != 0 {
-		t.Fatal("a keepalive from an unknown address was answered")
+
+	// Answered, and answered only to where the packet came from.
+	if len(out.Responses) != 1 {
+		t.Fatalf("got %d responses, want one MSTNAK", len(out.Responses))
+	}
+	if out.Responses[0].To != addrB {
+		t.Errorf("the refusal went to %s rather than the sender", out.Responses[0].To)
+	}
+	msg, err := hbp.Parse(out.Responses[0].Payload)
+	if err != nil {
+		t.Fatalf("the response does not parse: %v", err)
+	}
+	if _, ok := msg.(hbp.Nak); !ok {
+		t.Errorf("the response is %T, want MSTNAK", msg)
+	}
+	// No amplification: the answer must not be larger than what provoked it.
+	if len(out.Responses[0].Payload) > len(hbp.Ping{RepeaterID: testID}.Marshal()) {
+		t.Error("the refusal is larger than the keepalive, which makes this a reflector")
 	}
 
 	after, _ := h.m.Lookup(testID)
@@ -93,6 +120,33 @@ func TestKeepaliveFromAnotherAddressDoesNotHijackTheSession(t *testing.T) {
 	}
 	if !after.LastHeard.Equal(before.LastHeard) {
 		t.Error("a spoofed keepalive refreshed the peer's timeout")
+	}
+}
+
+// TestARebindRecoversWithoutWaiting is the case that prompted the change: a
+// hotspot behind a router that rebinds its NAT mapping.
+func TestARebindRecoversWithoutWaiting(t *testing.T) {
+	h := newHarness(t)
+	h.login(addrA)
+
+	// The router rebinds. The peer does not know and keeps sending keepalives.
+	out := h.send(hbp.Ping{RepeaterID: testID}, addrB)
+	if len(out.Responses) != 1 {
+		t.Fatal("the rebound peer was told nothing and must wait for its own timeout")
+	}
+
+	// It logs in again from the new address and passes traffic, without
+	// anything having expired.
+	h.login(addrB)
+	p, ok := h.m.Lookup(testID)
+	if !ok {
+		t.Fatal("the peer is not registered after logging in again")
+	}
+	if p.Addr != addrB {
+		t.Errorf("the peer registered from %s, want the new address", p.Addr)
+	}
+	if !p.State.CanPassTraffic() {
+		t.Errorf("the peer is %s and cannot pass traffic", p.State)
 	}
 }
 

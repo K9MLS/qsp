@@ -278,6 +278,26 @@ All notable changes to QSP. Dates are UTC.
   again and watching it fail.
 
 ### Fixed
+- **A hotspot behind a rebinding router lost its session every eight to nine
+  minutes.** QSP requires a peer to authenticate again when its source address
+  changes ([ADR-0011](docs/adr/ADR-0011-nat-rebind.md)) and dropped the
+  mismatched keepalives **in silence** — so the peer only recovered when its own
+  timeout fired, and the network was dead for that member until it did.
+
+  Measured on a live instance: `Login to the master has failed, retrying login`
+  on that cycle all day, from the moment the hotspot first connected, with
+  nobody noticing because reconnection worked.
+
+  A mismatched keepalive is answered with `MSTNAK` now, which is what an
+  *unregistered* keepalive already received and for the same reason. **The rule
+  is unchanged** — the peer still completes the whole handshake from its new
+  address before passing traffic. The cost is a reflection vector, and a test
+  asserts the answer stays smaller than the request so it cannot quietly become
+  an amplification one.
+
+  ADR-0011 asked for exactly this field validation and is amended with it. The
+  rule was right; the silence was not.
+
 - **Radio ID lookups never ran.** The console's view source captures the
   resolver by value and was built before the resolver was assigned, so the view
   held nil: no ID was ever queued, the cache stayed empty, and the instance

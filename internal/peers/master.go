@@ -449,9 +449,22 @@ func (m *Master) handlePing(msg hbp.Ping, from netip.AddrPort, now time.Time) Ou
 		return dropped("keepalive from repeater ID %d while %s", msg.RepeaterID, p.State)
 	}
 	if p.Addr != from {
-		// See ADR-0011: a source address change requires re-authentication.
-		return dropped("keepalive for repeater ID %d arrived from %s but it registered from %s; it must log in again",
-			msg.RepeaterID, from, p.Addr)
+		// **Answered with MSTNAK rather than dropped.** ADR-0011 requires a
+		// rebound peer to authenticate again, and that stands — what does not
+		// is making it wait to find out. Silence means the peer only re-logs in
+		// when its own keepalive timeout fires, and a hotspot behind a router
+		// that rebinds its NAT mapping loses its session on a cycle: measured
+		// on a live network at every eight to nine minutes, all day.
+		//
+		// MSTNAK says "you are not registered here" immediately, which is the
+		// same answer an unregistered keepalive already gets and for the same
+		// reason. The security property is unchanged: the peer must still
+		// complete RPTL, RPTK and RPTC from the new address before it passes
+		// any traffic.
+		return m.reject(msg.RepeaterID, from,
+			fmt.Sprintf("keepalive for repeater ID %d arrived from %s but it registered from %s; "+
+				"answered with MSTNAK so it logs in again from the new address",
+				msg.RepeaterID, from, p.Addr))
 	}
 
 	p.LastHeard = now
