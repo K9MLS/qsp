@@ -244,6 +244,22 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Parrot answers a private call**, which is how most networks do it and how
+  most operators program their radios — it lets somebody test without the whole
+  club hearing them. `Handles` matched only group calls, so a private call to
+  the parrot number fell straight through to routing.
+
+  **A private replay is addressed back to the radio that made it.** A radio
+  un-mutes a private call only when the target is its own ID, so replaying one
+  with the original addressing would produce frames it receives and refuses to
+  play — parrot appearing to work and sounding like nothing. A group replay
+  keeps its addressing, because the talkgroup is what the radio is listening to.
+
+  A private call is matched on either timeslot: it is addressed to a number
+  rather than carried on a talkgroup, so requiring one would refuse the
+  commonest way parrot is used. A test asserted the opposite of all this and had
+  encoded the assumption that parrot is a group service.
+
 - **Repeated failed logins stop being answered, say why, and are visible.**
   Three faults, one story: forty refusals from one address in six minutes is
   indistinguishable from somebody guessing the peer password, QSP answered every

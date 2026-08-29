@@ -48,6 +48,24 @@ There is no default talkgroup. 9990 is conventional on some networks and 9998 on
 others, and §0 refused to ship one network's numbers for the same reason it
 refused their talkgroup lists.
 
+### A private call counts, and is answered privately
+
+**Most operators program parrot as a private call**, because it lets somebody
+test without the whole club hearing them. A private call to the parrot number is
+therefore parrot traffic on either timeslot — it is addressed to a number rather
+than carried on a talkgroup, so requiring a particular one would refuse the
+commonest way it is used.
+
+The replay is addressed back to the radio that made it: target becomes the
+calling radio, source becomes the parrot number. A radio un-mutes a private
+call only when the target is its own ID, so replaying one unchanged produces
+frames the radio receives and refuses to play — parrot appearing to work and
+sounding like nothing at all.
+
+A group call keeps its addressing, because there the talkgroup is what the radio
+is listening to and the member's display should show what it showed when they
+transmitted.
+
 ### The frames go back the way they came
 
 A recording is replayed **to the peer that sent it and to no one else**. Parrot

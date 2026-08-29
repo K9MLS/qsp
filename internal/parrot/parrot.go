@@ -147,9 +147,19 @@ func (r *Recorder) Talkgroup() uint32 { return r.cfg.Talkgroup }
 // way out, and none of those questions applies to a member hearing their own
 // voice — nor should a test leak onto a bridged network.
 func (r *Recorder) Handles(frame hbp.Data) bool {
-	return frame.CallType == hbp.CallGroup &&
-		frame.TargetID == r.cfg.Talkgroup &&
-		frame.Timeslot == r.cfg.Timeslot
+	if frame.TargetID != r.cfg.Talkgroup {
+		return false
+	}
+	// **A private call to the parrot number counts, on either timeslot.**
+	// That is how most networks do parrot and how most operators program it,
+	// because it lets somebody test without the whole club hearing them. A
+	// private call is addressed to a number rather than carried on a
+	// talkgroup, so requiring a particular timeslot for one would refuse the
+	// commonest way it is used.
+	if frame.CallType == hbp.CallPrivate {
+		return true
+	}
+	return frame.CallType == hbp.CallGroup && frame.Timeslot == r.cfg.Timeslot
 }
 
 // Observe records a frame and reports a recording when a transmission ends.
@@ -215,11 +225,23 @@ func (r *Recorder) finish(peer hbp.RepeaterID, rec *recording, now time.Time) *R
 	stream := r.nextStream()
 	frames := make([]hbp.Data, 0, len(rec.frames))
 	for i, f := range rec.frames {
-		// Source and target are preserved, so the member's own display shows
-		// what it showed when they transmitted. Only the stream ID and the
-		// sequence change.
 		f.StreamID = stream
 		f.Sequence = uint8(i)
+
+		// **A private call must be addressed back to the radio that made it.**
+		// A radio un-mutes a private call only when the target is its own ID,
+		// so replaying one with the original addressing produces frames the
+		// radio receives and refuses to play — parrot appearing to work and
+		// sounding like nothing.
+		//
+		// A group call is left alone: the member's display should show what it
+		// showed when they transmitted, and the talkgroup is what their radio
+		// is listening to.
+		if f.CallType == hbp.CallPrivate {
+			f.TargetID = f.SourceID
+			f.SourceID = r.cfg.Talkgroup
+		}
+
 		frames = append(frames, f)
 	}
 

@@ -159,11 +159,77 @@ func TestOnlyTheParrotTalkgroupIsHandled(t *testing.T) {
 		t.Error("the parrot talkgroup on the other timeslot was handled")
 	}
 
-	// A private call to the same number is not a group call to the talkgroup.
+	// A private call to the parrot number is parrot traffic, on either
+	// timeslot. **This test previously asserted the opposite**, which encoded
+	// the assumption that parrot is a group service — and a private call is
+	// how most networks do it and how most operators program their radios,
+	// because it lets somebody test without the whole club hearing them.
 	private := voice(1, parrotTG)
 	private.CallType = hbp.CallPrivate
-	if r.Handles(private) {
-		t.Error("a private call was treated as parrot traffic")
+	if !r.Handles(private) {
+		t.Error("a private call to the parrot number was not handled")
+	}
+	private.Timeslot = hbp.Timeslot1
+	if !r.Handles(private) {
+		t.Error("a private call was refused for being on the other timeslot; " +
+			"a private call is addressed to a number, not carried on a talkgroup")
+	}
+
+	// But a private call to somebody else is nothing to do with parrot.
+	elsewhere := voice(1, 3155408)
+	elsewhere.CallType = hbp.CallPrivate
+	if r.Handles(elsewhere) {
+		t.Error("a private call to another radio was swallowed by parrot")
+	}
+}
+
+// TestAPrivateReplayIsAddressedBackToTheRadio. A radio un-mutes a private call
+// only when the target is its own ID, so replaying one with the original
+// addressing produces frames it receives and refuses to play — parrot
+// appearing to work and sounding like nothing.
+func TestAPrivateReplayIsAddressedBackToTheRadio(t *testing.T) {
+	r, c := newRecorder(t)
+
+	for i := 0; i < 6; i++ {
+		f := voice(0x1234, parrotTG)
+		f.CallType = hbp.CallPrivate
+		r.Observe(testPeer, f)
+		c.advance(parrot.FrameInterval)
+	}
+	c.advance(3 * time.Second)
+	done := r.Expire(c.now())
+
+	if len(done) != 1 {
+		t.Fatalf("got %d recordings", len(done))
+	}
+	for _, f := range done[0].Frames {
+		if f.TargetID != testRadio {
+			t.Errorf("the replay is addressed to %d, not the radio that called (%d)",
+				f.TargetID, testRadio)
+		}
+		if f.SourceID != parrotTG {
+			t.Errorf("the replay comes from %d, want the parrot number %d",
+				f.SourceID, parrotTG)
+		}
+		if f.CallType != hbp.CallPrivate {
+			t.Error("the replay is not a private call")
+		}
+	}
+}
+
+// TestAGroupReplayKeepsItsAddressing. The member's display should show what it
+// showed when they transmitted, and the talkgroup is what their radio listens
+// to.
+func TestAGroupReplayKeepsItsAddressing(t *testing.T) {
+	r, c := newRecorder(t)
+	transmit(r, c, 0x1234, 5)
+	c.advance(3 * time.Second)
+	done := r.Expire(c.now())
+
+	for _, f := range done[0].Frames {
+		if f.SourceID != testRadio || f.TargetID != parrotTG {
+			t.Errorf("a group replay was re-addressed: %+v", f)
+		}
 	}
 }
 
