@@ -39,3 +39,4 @@ conclusion.
 | [0027](ADR-0027-configuration-writes.md) | The file stays the source of truth, and the owner applies the change | Proposed |
 | [0028](ADR-0028-parrot.md) | Parrot replays bytes it never understood | Proposed |
 | [0029](ADR-0029-ipsc-from-capture.md) | IPSC is built from a capture, and the capture is the hard part | Proposed |
+| [0030](ADR-0030-radio-id-lookup.md) | Radio IDs are looked up one at a time, and QSP says who is asking | Proposed |

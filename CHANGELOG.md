@@ -244,6 +244,31 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **[ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md) decides how radio IDs are
+  resolved**, and `internal/callsigns` implements the part that needs no
+  network. A club should see names without maintaining alias lists in every
+  radio.
+
+  The design is shaped by the registry's data use policy more than by its
+  endpoint. **No bulk download**, because mirroring is behind approval and a
+  club needs a few dozen records rather than hundreds of thousands. **The
+  operator supplies a contact address or there are no lookups** — automated
+  clients are asked to identify themselves, and QSP has no business inventing an
+  address for somebody else.
+
+  **Nothing blocks on a lookup.** An ID seen in a transmission is queued and
+  resolved later; a network call has no business near a routing decision, and a
+  registry that is slow costs nothing but the name. One transmission queues one
+  request however many frames it carries.
+
+  Absences are cached too, or every unregistered radio becomes a request on
+  every transmission. A *failed* request is not an absence: a registry briefly
+  unreachable has said nothing, and remembering that would hide a real name for
+  a day.
+
+  Thirteen tests. **The HTTP fetcher and the cache table are not written yet**,
+  so nothing is resolved from the registry.
+
 - **A text message is one entry in Last heard, not thirty.** Each data burst
   carries its own stream ID and completed as its own call, so fifty of them
   pushed every voice transmission out of a history that holds fifty — seen on a
