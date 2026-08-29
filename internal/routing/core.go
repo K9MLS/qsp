@@ -504,8 +504,27 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			}
 
 			destKey := contend(dest)
+
+			// **A data burst does not contend.** A text message is thirty
+			// short bursts, each carrying its own stream ID, so contention
+			// treated every one as a different person keying up: the first
+			// reserved the destination and the rest were refused until the
+			// reservation lapsed two seconds later. Observed on a live network
+			// as seventeen frames offered and two delivered, which is why a
+			// message needed endless retries and usually failed.
+			//
+			// Contention exists to stop two people's audio interleaving.
+			// Nothing about a data burst interleaves: it is one frame, the
+			// radio reassembles the message, and blocking it achieves nothing
+			// but losing it.
 			held, occupied := c.busy[destKey]
 			switch {
+			case occupied && held.source != src && sameOrigin(held.source, src) &&
+				!contendsForSlot(frame):
+				// A data burst from the peer already holding this destination.
+				// Delivered without disturbing the reservation and without
+				// being refused by it.
+
 			case occupied && held.source != src:
 				if now.Sub(held.lastSeen) <= c.timeout {
 					// Somebody else is already talking on this slot.
@@ -688,4 +707,38 @@ func (c *Core) Busy() []Endpoint {
 	}
 	sortEndpoints(out)
 	return out
+}
+
+// contendsForSlot reports whether a frame competes for a destination.
+//
+// **Only voice does.** Contention exists so that two people's audio does not
+// interleave into something nobody can understand, and that is a property of
+// voice alone. A data burst is a single self-contained frame with its own
+// stream ID; treating a sequence of them as competing transmissions is what
+// made text messages fail.
+//
+// A voice header is FrameTypeSync and does not reserve here either, so a
+// reservation is taken by the first voice frame that follows it — one frame,
+// sixty milliseconds, later than it could be. That is the cost of not needing
+// to tell a voice header from a data burst, which share a frame type and
+// cannot be told apart from one frame alone.
+func contendsForSlot(frame hbp.Data) bool {
+	return frame.FrameType == hbp.FrameTypeVoice || frame.FrameType == hbp.FrameTypeVoiceSync
+}
+
+// sameOrigin reports whether two source keys are the same station, ignoring
+// which stream they belong to.
+//
+// **One radio's successive data bursts are one station, not many.** A text
+// message is thirty short bursts, each with its own stream ID, so the
+// contention key saw thirty different sources: the first reserved the
+// destination and the rest were refused until it lapsed. Observed on a live
+// network as seventeen frames offered and two delivered, which is why a message
+// needed endless retries and usually failed.
+//
+// The stream is still part of the key for everything else, because two
+// genuinely different transmissions must contend, and two networks choosing the
+// same stream ID must not look like one.
+func sameOrigin(a, b sourceKey) bool {
+	return a.peer == b.peer && a.slot == b.slot && a.upstream == b.upstream
 }

@@ -244,6 +244,22 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Text messages were being dropped by contention, and now are not.** A DMR
+  text is a sequence of short data bursts, each carrying its own stream ID, and
+  the contention key included the stream — so every burst looked like a
+  different station keying up. The first reserved the destination and the rest
+  were refused until it lapsed two seconds later.
+
+  Seen on a live network as seventeen frames offered and two delivered, which is
+  why a message needed endless retries and usually failed. **Contention now
+  compares the station rather than the stream** for data: one radio's successive
+  bursts are one station, not thirty.
+
+  Voice is untouched. Two people keying up still contend, and a data burst still
+  cannot take a destination that is carrying somebody's voice — both have tests,
+  because the rule this relaxes is the one that stops audio interleaving into
+  something nobody can understand.
+
 - **A text message no longer looks like fifty failed transmissions.** A text is
   a handful of one-frame data bursts, each with its own stream ID, so each
   became its own entry in Last heard — and every one was marked "no terminator",

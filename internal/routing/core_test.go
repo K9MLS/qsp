@@ -366,3 +366,96 @@ func TestNewCoreRequiresPeerLookup(t *testing.T) {
 		t.Error("NewCore accepted a nil PeerLookup")
 	}
 }
+
+// TestATextMessageIsNotThirtyCompetingTransmissions.
+//
+// A DMR text is a sequence of short data bursts, each carrying its own stream
+// ID. The contention key included the stream, so every burst looked like a
+// different station keying up: the first reserved the destination and the rest
+// were refused until it lapsed two seconds later.
+//
+// Observed on a live network as seventeen frames offered and two delivered,
+// which is why a message needed endless retries and usually failed.
+func TestATextMessageIsNotThirtyCompetingTransmissions(t *testing.T) {
+	c := newCore(t, nil, peerA, peerB)
+	now := time.Date(2026, 8, 29, 13, 25, 0, 0, time.UTC)
+
+	var delivered int
+	for i := 0; i < 20; i++ {
+		burst := hbp.Data{
+			SourceID: 3155413, TargetID: 2, RepeaterID: peerA,
+			Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+			// Each burst its own stream, as a radio sends them.
+			FrameType: hbp.FrameTypeSync, StreamID: hbp.StreamID(1000 + i),
+		}
+		res := c.Route(peerA, burst, now)
+		delivered += len(res.Deliveries)
+		now = now.Add(120 * time.Millisecond)
+	}
+
+	if delivered != 20 {
+		t.Errorf("%d of 20 data bursts were delivered; the rest were refused as "+
+			"contention against the station that sent them", delivered)
+	}
+}
+
+// TestVoiceStillContends. The fix must not open the door the contention rule
+// exists to close: two people's audio interleaving into something nobody can
+// understand.
+func TestVoiceStillContends(t *testing.T) {
+	c := newCore(t, nil, peerA, peerB)
+	now := time.Date(2026, 8, 29, 13, 25, 0, 0, time.UTC)
+
+	first := hbp.Data{
+		SourceID: 3132910, TargetID: 2, RepeaterID: peerA,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x1111,
+	}
+	if res := c.Route(peerA, first, now); len(res.Deliveries) == 0 {
+		t.Fatal("the first transmission was not delivered")
+	}
+
+	// A different peer, mid-transmission.
+	second := first
+	second.RepeaterID = peerB
+	second.SourceID = 3155413
+	second.StreamID = 0x2222
+	res := c.Route(peerB, second, now.Add(60*time.Millisecond))
+
+	for _, d := range res.Deliveries {
+		if d.Peer == peerA {
+			t.Error("a second voice transmission interleaved with the first")
+		}
+	}
+	if len(res.Drops) == 0 {
+		t.Error("the competing transmission was not refused")
+	}
+}
+
+// TestADataBurstDoesNotStealASlotFromVoice. A text arriving while somebody is
+// talking must not take the destination from them.
+func TestADataBurstDoesNotStealASlotFromVoice(t *testing.T) {
+	c := newCore(t, nil, peerA, peerB)
+	now := time.Date(2026, 8, 29, 13, 25, 0, 0, time.UTC)
+
+	voice := hbp.Data{
+		SourceID: 3132910, TargetID: 2, RepeaterID: peerA,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x1111,
+	}
+	c.Route(peerA, voice, now)
+
+	// A data burst from a different station.
+	burst := voice
+	burst.RepeaterID = peerB
+	burst.SourceID = 3155413
+	burst.FrameType = hbp.FrameTypeSync
+	burst.StreamID = 0x3333
+	res := c.Route(peerB, burst, now.Add(60*time.Millisecond))
+
+	for _, d := range res.Deliveries {
+		if d.Peer == peerA {
+			t.Error("a data burst was delivered into a slot carrying somebody's voice")
+		}
+	}
+}
