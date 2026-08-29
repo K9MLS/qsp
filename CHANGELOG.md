@@ -265,6 +265,29 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
+### Removed
+- **The peer map.** It was built, deployed, and could not be made to work on the
+  instance running it. [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md) records
+  the withdrawal alongside the design, because a decision reversed is worth
+  being able to read.
+
+  What was established: the arithmetic is correct — run against a simulated DOM
+  at frame widths from 1520 down to 10, it emitted 21 to 24 tiles every time,
+  positioned across the frame with the marker at the centre — and the instance
+  served that exact file, confirmed through the proxy. The rendered page showed
+  one tile in a corner regardless. **The positions computed are not the
+  positions rendered, and nothing available from the source side can find out
+  why.**
+
+  Six attempts were made, each reasoning about which measurement was at fault,
+  each producing the same screenshot. A feature that cannot be made to work by
+  the person maintaining it is not a feature.
+
+  Peer positions remain on `/api/peers`, and the peers table still shows each
+  peer's location with a link out to a map — which answers "where is this
+  station", the question actually being asked. A club that wants a map can build
+  one against the API and will be able to see what it is doing.
+
 - **The map reports what it measured and drew**, in a line beneath it: tile
   count, frame size, canvas size, zoom.
 

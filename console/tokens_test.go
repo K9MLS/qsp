@@ -301,33 +301,6 @@ func TestContrastReport(t *testing.T) {
 		contrast(surface, opaque["--color-background"]))
 }
 
-// TestMapIsServed keeps the map's script reachable. It is a separate file so it
-// can be lifted out, which also means it can be forgotten.
-func TestMapIsServed(t *testing.T) {
-	for _, name := range []string{"static/map.js", "static/console.js", "static/index.html"} {
-		if _, err := assets.ReadFile(name); err != nil {
-			t.Errorf("%s is not embedded: %v", name, err)
-		}
-	}
-	index, err := assets.ReadFile("static/index.html")
-	if err != nil {
-		t.Fatalf("reading index.html: %v", err)
-	}
-	// map.js defines what console.js uses, so it has to be loaded first.
-	body := string(index)
-	mapAt := strings.Index(body, "/map.js")
-	consoleAt := strings.Index(body, "/console.js")
-	if mapAt < 0 {
-		t.Fatal("index.html does not load map.js")
-	}
-	if consoleAt < 0 {
-		t.Fatal("index.html does not load console.js")
-	}
-	if mapAt > consoleAt {
-		t.Error("map.js is loaded after console.js, which uses it")
-	}
-}
-
 // TestTheMapVendorsNothing is the property ADR-0025 is about. A script tag
 // pointing at a CDN, or a vendored library appearing in static/, would end the
 // console's no-dependency guarantee quietly.
@@ -346,7 +319,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// counting them: a count says "three" when a library arrives and somebody
 	// updates the number, while a name says which file nobody recognises.
 	ours := map[string]bool{
-		"console.js": true, "map.js": true, "join.js": true,
+		"console.js": true, "join.js": true,
 		"signin.js": true, "access.js": true, "network.js": true, "bridges.js": true, "history.js": true,
 	}
 	entries, err := assets.ReadDir("static")
@@ -429,7 +402,7 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 	classAttr := regexp.MustCompile(`class=\\?"([a-zA-Z][\w\- ]*)`)
 	var checked int
 	for _, script := range []string{
-		"static/console.js", "static/map.js", "static/join.js", "static/access.js",
+		"static/console.js", "static/join.js", "static/access.js",
 		"static/index.html", "static/join.html", "static/signin.html",
 		"static/access.html", "static/network.html", "static/network.js",
 		"static/bridges.html", "static/bridges.js",
@@ -480,91 +453,6 @@ func TestTheAccessPageIsServed(t *testing.T) {
 	// signed in: the endpoints refuse anonymously and the page should say so.
 	if !strings.Contains(body, "/signin") {
 		t.Error("access.html does not link to the sign-in page")
-	}
-}
-
-// TestTheMapArithmeticFillsAFrame.
-//
-// The map drew one tile in the corner of a full-width panel, and the cause was
-// never the arithmetic: run against a known size it emits a grid that covers
-// the frame and puts a single point in the middle. Pinning that here means the
-// next time the map looks wrong, the browser is the thing to look at.
-func TestTheMapArithmeticFillsAFrame(t *testing.T) {
-	body, err := assets.ReadFile("static/map.js")
-	if err != nil {
-		t.Fatalf("reading map.js: %v", err)
-	}
-	src := string(body)
-
-	// The projection constants the arithmetic depends on. A change to either
-	// without a change to the other is how a map ends up subtly wrong.
-	if !strings.Contains(src, "var TILE = 256;") {
-		t.Error("the tile size is no longer 256; the arithmetic assumes it")
-	}
-	// Tiles must be laid out from the frame's own width rather than a constant.
-	if strings.Contains(src, "|| 600") || strings.Contains(src, "|| 320") {
-		t.Error("map.js still falls back to a fixed viewport size; a map drawn " +
-			"against a size the frame does not have puts everything in the corner")
-	}
-	// And it must redraw when the element's size changes, or a frame measured
-	// before layout stays wrong for ever.
-	if !strings.Contains(src, "ResizeObserver") {
-		t.Error("map.js does not observe its own size")
-	}
-}
-
-// TestTheMapCanBeDragged. Three things stop a map moving under the pointer,
-// and all three were present at once: images starting the browser's own
-// drag-and-drop, tiles taking the pointer from the canvas that handles it, and
-// a redraw on every pointermove rebuilding the whole grid dozens of times a
-// second.
-func TestTheMapCanBeDragged(t *testing.T) {
-	body, err := assets.ReadFile("static/map.js")
-	if err != nil {
-		t.Fatalf("reading map.js: %v", err)
-	}
-	src := string(body)
-
-	if !strings.Contains(src, "event.preventDefault()") {
-		t.Error("pointerdown does not prevent the browser's native image drag, " +
-			"which takes the pointer and stops the map dead")
-	}
-	if !strings.Contains(src, `draggable="false"`) {
-		t.Error("tiles are draggable, so pressing one starts a drag-and-drop")
-	}
-	if !strings.Contains(src, "scheduleDraw") {
-		t.Error("redraws are not coalesced; a pointermove fires far more often " +
-			"than the screen refreshes")
-	}
-
-	css, err := assets.ReadFile("static/console.css")
-	if err != nil {
-		t.Fatalf("reading console.css: %v", err)
-	}
-	// The tile rule must not take the pointer from the canvas.
-	tileRule := string(css)
-	i := strings.Index(tileRule, ".map__tile {")
-	if i < 0 {
-		t.Fatal("the tile rule is gone")
-	}
-	if !strings.Contains(tileRule[i:i+400], "pointer-events: none") {
-		t.Error("tiles capture the pointer; the canvas is what handles dragging")
-	}
-}
-
-// TestTilesAreNotDeferred. A tile is wanted the moment it is drawn, and
-// loading="lazy" leaves a map filling in as somebody scrolls — or not, for
-// tiles the browser decides are far enough away.
-func TestTilesAreNotDeferred(t *testing.T) {
-	body, err := assets.ReadFile("static/map.js")
-	if err != nil {
-		t.Fatalf("reading map.js: %v", err)
-	}
-	// The phrase appears in a comment explaining its absence, so the check is
-	// for the attribute as it would be emitted.
-	if strings.Contains(string(body), `loading=\"lazy\"`) ||
-		strings.Contains(string(body), "loading='lazy'") {
-		t.Error("tiles are lazily loaded")
 	}
 }
 

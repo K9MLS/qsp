@@ -1,8 +1,9 @@
-# ADR-0025: A map with no library, and a tile source that is configuration
+# ADR-0025: QSP does not draw a map
 
 **Status:** Proposed
-**Amended 2026-08-28**, before anything was built on the first version. Two of
-its three arguments did not survive contact with the details.
+**Amended twice.** On 2026-08-28, before anything was built on the first
+version: two of its three arguments did not survive contact with the details.
+On 2026-08-29, after the map was built, shipped, and withdrawn.
 
 ## Context
 
@@ -59,7 +60,40 @@ privacy.
 It remains true that the endpoint has no authentication, and that is worth
 fixing for its own reasons. It is not a reason to withhold the map.
 
-## Decision
+## Withdrawn: QSP does not draw a map
+
+*2026-08-29.* The map was built, deployed, and could not be made to work on the
+one instance running it. It is removed.
+
+**What was established.** The tile arithmetic is correct: run against a
+simulated DOM at frame widths from 1520 down to 10, `map.js` emitted 21 to 24
+tiles every time, positioned across the frame: `-74, 181, 437, 693, 949, 1205`
+for a 1920-wide viewport, with the marker at the centre. The instance served the
+current file; a `curl` through the proxy confirmed it. The rendered page showed
+one tile in a corner and the marker beside it.
+
+**So the positions computed are not the positions rendered, and nothing
+available from the source side can discover why.** Six attempts were made, each
+reasoning about which measurement was at fault, and each produced the same
+screenshot. The seventh added a caption reporting the map's own measurements,
+which is what established the above, and established that the fault lies
+somewhere the code cannot see.
+
+**The decision is to stop.** A feature that cannot be made to work by the person
+maintaining it is not a feature, and continuing to guess spends an operator's
+time on something they can already do with one click. The peers table shows each
+peer's announced location and links the coordinates out to a map, which answers
+"where is this station" — the question actually being asked most of the time.
+
+`/api/peers` carries `latitude`, `longitude` and `height`, so a club that wants
+a map can build one and will be able to see what it is doing. The tile-origin
+allowance in the content security policy is kept for exactly that.
+
+What follows is the reasoning from when a map was going to be drawn. It is kept
+because the conclusions about tiles, licensing and privacy remain right, and
+because a decision reversed is worth being able to read.
+
+## Superseded: the design of the map that was withdrawn
 
 **QSP has a map, and it vendors nothing to get one.**
 

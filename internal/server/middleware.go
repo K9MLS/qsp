@@ -186,15 +186,14 @@ func withRecovery(log *slog.Logger) middleware {
 // console is built to satisfy it: assets are served from this origin and no
 // handler emits inline JavaScript.
 //
-// **One exception, and only one: the map's tile origin.** Map tiles are images
-// from somebody else's server by definition, and `img-src 'self'` blocked every
-// one of them — the map drew an empty frame and the browser refused the
-// requests silently, which is the policy working and the feature not.
+// **One exception, and only one: the map's tile origin.** It is retained for an
+// operator who builds their own map against /api/peers, which is what ADR-0025
+// now points them at — QSP no longer draws one itself, and a policy that
+// forbade the tiles of a map somebody else built would be an odd thing to leave
+// behind.
 //
 // The origin is derived from the configured tile URL rather than opened to
-// every host. An operator who points the map at their own tile server gets that
-// host allowed and no other, and one who clears the tile URL gets the original
-// policy back unchanged.
+// every host, and clearing the tile URL restores the original policy exactly.
 func withSecurityHeaders(tileURL string) middleware {
 	csp := "default-src 'self'; " +
 		"script-src 'self'; " +

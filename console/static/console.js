@@ -31,10 +31,6 @@
 
   var authState = document.getElementById("auth-state");
 
-  var mapBody = document.getElementById("map-body");
-  var mapCount = document.getElementById("map-count");
-  var peerMap = null;
-
   var healthBody = document.getElementById("health-body");
   var healthCount = document.getElementById("health-count");
 
@@ -346,127 +342,6 @@
       '<path d="M8 8.5V10H2V4h1.5"/></svg></a>';
   }
 
-  // renderMap draws the peers that announced a usable position.
-  //
-  // A peer with no coordinates, or coordinates the server could not parse, is
-  // absent rather than placed somewhere: a pin in the wrong place is believed,
-  // while a missing one prompts somebody to ask. The count says how many are
-  // shown out of how many are connected, so the gap is visible rather than
-  // silent.
-  function renderMap(payload) {
-    if (!mapBody) {
-      return;
-    }
-    var list = (payload && payload.peers) || [];
-    var points = [];
-    for (var i = 0; i < list.length; i++) {
-      var p = list[i];
-      if (typeof p.latitude !== "number" || typeof p.longitude !== "number") {
-        continue;
-      }
-      points.push({
-        lat: p.latitude,
-        lon: p.longitude,
-        label: p.callsign || String(p.id)
-      });
-    }
-
-    if (mapCount) {
-      mapCount.textContent = points.length + " of " + list.length + " located";
-    }
-
-    if (!points.length) {
-      peerMap = null;
-      // Two different problems used to render as one sentence: a hotspot
-      // nobody has configured, and a hotspot configured wrongly. Only the
-      // operator can tell them apart, and only if something says which.
-      var refused = [];
-      for (var j = 0; j < list.length; j++) {
-        if (list[j].position_refused) {
-          refused.push((list[j].callsign || list[j].id) + " " + list[j].position_refused);
-        }
-      }
-      if (refused.length) {
-        mapBody.innerHTML = emptyState(
-          "No peer has a usable position",
-          refused.join(". ") + "."
-        );
-      } else {
-        mapBody.innerHTML = emptyState(
-          "No peer has announced a position",
-          "A hotspot sends its latitude and longitude when it registers. Set them " +
-            "in the hotspot's configuration and it appears here."
-        );
-      }
-      return;
-    }
-
-    if (!peerMap) {
-      // The map is created on first use rather than at load, so an instance
-      // whose peers never announce a position fetches no tiles at all.
-      mapBody.innerHTML = '<div class="map-frame"></div>';
-      peerMap = new window.QSPMap.Map(
-        mapBody.querySelector(".map-frame"),
-        (payload && payload.map) || {}
-      );
-    }
-    peerMap.show(points);
-  }
-
-  // renderRefused shows what QSP is turning away.
-  //
-  // **Nothing surfaced this before.** Forty failed logins from one address in
-  // six minutes looked, from here, like the dropped counter going up — and the
-  // operator found out because the member messaged them. It stays hidden when
-  // there is nothing to say, because a panel that reports "all well" every day
-  // is one nobody reads on the day it matters.
-  function renderRefused(payload) {
-    var panel = document.getElementById("refused");
-    var body = document.getElementById("refused-body");
-    var count = document.getElementById("refused-count");
-    if (!panel || !body) {
-      return;
-    }
-
-    var list = (payload && payload.refused) || [];
-    if (!list.length) {
-      panel.hidden = true;
-      return;
-    }
-    panel.hidden = false;
-
-    var blocked = 0;
-    var rows = "";
-    for (var i = 0; i < list.length; i++) {
-      var f = list[i];
-      var state = "retrying";
-      if (f.locked_until) {
-        blocked++;
-        state = "ignored until " + escapeText(new Date(f.locked_until).toLocaleTimeString());
-      }
-      rows +=
-        "<tr>" +
-        '<td class="mono">' + escapeText(f.address) + "</td>" +
-        '<td class="mono">' + escapeText(f.repeater_id || "—") + "</td>" +
-        '<td class="cell--wrap">' + escapeText(f.reason) + "</td>" +
-        '<td class="mono">' + escapeText(f.failures) + "</td>" +
-        '<td class="cell--wrap">' + state + "</td>" +
-        "</tr>";
-    }
-
-    count.textContent = blocked ? blocked + " ignored" : list.length + " failing";
-    body.innerHTML =
-      '<p class="panel__lede">A hotspot with a wrong password retries every ten ' +
-      "seconds. After several failures QSP stops answering that address for a " +
-      "while, and starts again on its own.</p>" +
-      '<div class="table-scroll" tabindex="0" aria-label="Logins being refused">' +
-      '<table class="table"><thead><tr>' +
-      '<th scope="col">Address</th><th scope="col">Radio ID</th>' +
-      '<th scope="col" class="cell--wrap">Reason</th><th scope="col">Failures</th>' +
-      '<th scope="col" class="cell--wrap">State</th>' +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
-  }
-
   function metric(value, label, cls) {
     return (
       '<div class="metric ' + (cls || "") + '">' +
@@ -659,7 +534,6 @@
         renderPeers(payload);
         renderCalls(payload);
         renderTraffic(payload);
-        renderMap(payload);
         renderRefused(payload);
         showRouting(payload);
       })
