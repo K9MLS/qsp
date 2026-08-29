@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Access control — QSP</title>
+<title>Bridges — QSP</title>
 <link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/console.css">
 <link rel="icon" href="/mark.svg" type="image/svg+xml">
@@ -40,35 +40,30 @@
     </ul>
     <p class="nav__heading" id="nav-admin">Administration</p>
     <ul class="nav__group" aria-labelledby="nav-admin">
-      <li><a class="nav__link" href="/access" aria-current="page"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
       <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
-      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/bridges" aria-current="page"><span>Bridges</span></a></li>
       <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
     </ul>
   </nav>
 
   <main class="main" id="main">
-    <h1 class="page__title">Access control</h1>
+    <h1 class="page__title">Bridges</h1>
 
     <p class="page__lede">
-      Who may register, who may transmit, and which talkgroups this instance
-      carries. Every change applies within a second; nothing here needs a
-      restart.
+      A bridge joins talkgroups together so traffic on one is carried to the
+      others. Peers already hear each other on a shared talkgroup without any
+      bridge; a bridge is for joining talkgroups that differ.
     </p>
 
-    <!-- Shown while the session is unknown, so the page does not flash a form
-         at somebody who is not signed in. -->
     <div class="empty" id="loading">
       <h2 class="empty__title">Loading</h2>
       <p class="empty__body">Reading this instance's configuration.</p>
     </div>
 
     <div class="notice notice--warn" id="signed-out" hidden>
-      <p class="notice__title">Sign in to change access control</p>
-      <p class="notice__body">
-        These settings decide who can use the network, so they need an
-        administrator. <a href="/signin">Sign in</a>.
-      </p>
+      <p class="notice__title">Sign in to change bridges</p>
+      <p class="notice__body"><a href="/signin">Sign in</a> as an administrator.</p>
     </div>
 
     <div class="notice notice--warn" id="read-only" hidden>
@@ -77,13 +72,13 @@
     </div>
 
     <div class="notice notice--warn" id="error" hidden>
-      <p class="notice__title" id="error-title">That did not save</p>
+      <p class="notice__title">That did not save</p>
       <p class="notice__body" id="error-text"></p>
       <ul class="notice__list" id="error-fields"></ul>
     </div>
 
     <div class="notice" id="saved" hidden>
-      <p class="notice__title" id="saved-title">Saved</p>
+      <p class="notice__title">Saved</p>
       <p class="notice__body" id="saved-text"></p>
     </div>
 
@@ -91,56 +86,43 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Talkgroups</h2>
-          <span class="panel__count" id="tg-summary">&mdash;</span>
+          <h2 class="panel__title">Bridges</h2>
+          <span class="panel__count" id="bridge-count">&mdash;</span>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
-            Which talkgroups this instance carries, per timeslot. Most traffic
-            is on timeslot 2.
+            Each bridge joins two or more endpoints. An endpoint is a peer, a
+            talkgroup and a timeslot &mdash; leave the peer blank to mean every
+            peer carrying that talkgroup.
           </p>
-
-          <div class="acl" id="acl-ts2"></div>
-          <div class="acl" id="acl-ts1"></div>
+          <div id="bridges"></div>
+          <button class="button button--quiet" id="add-bridge" type="button">
+            Add a bridge
+          </button>
         </div>
       </section>
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Who may connect</h2>
+          <h2 class="panel__title">Schedule</h2>
+          <span class="panel__count" id="window-count">&mdash;</span>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
-            Registration is checked when a hotspot or repeater logs in.
-            Subscribers are checked on every transmission, so a refused radio
-            does not disconnect the hotspot carrying it.
+            A window turns a bridge on for part of a week &mdash; a net on a
+            Tuesday evening, say. <strong>A bridge named by any window is
+            controlled entirely by the schedule</strong>, so it is off outside
+            its windows whatever its own setting says.
           </p>
-
-          <div class="acl" id="acl-registration"></div>
-          <div class="acl" id="acl-subscribers"></div>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel__head">
-          <h2 class="panel__title">Inviting a member</h2>
-        </div>
-        <div class="panel__body">
           <p class="panel__lede">
-            The join page tells a member what to put into their hotspot: the
-            address, the port, the talkgroups, and whether QSP heard them key
-            up. Send them this link.
+            The timezone is an IANA name such as <code>America/Chicago</code>.
+            An abbreviation cannot express "20:00 local all year" across a
+            daylight-saving change, so it is refused.
           </p>
-          <!-- Built by access.js from the address the browser is already
-               using, because an operator reading this page reached it by the
-               same route their members will. A hardcoded address would be
-               wrong for anybody behind a proxy, which is most people. -->
-          <div class="invite">
-            <code class="invite__url" id="join-url">&mdash;</code>
-            <button class="button button--quiet" id="copy-join" type="button">Copy</button>
-            <a class="button button--quiet" href="/join">Open</a>
-          </div>
-          <p class="acl__hint" id="copy-note" aria-live="polite"></p>
+          <div id="windows"></div>
+          <button class="button button--quiet" id="add-window" type="button">
+            Add a window
+          </button>
         </div>
       </section>
 
@@ -154,6 +136,6 @@
 
 </div>
 
-<script src="/access.js"></script>
+<script src="/bridges.js"></script>
 </body>
 </html>

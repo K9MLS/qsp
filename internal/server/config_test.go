@@ -760,3 +760,31 @@ func TestAGroupTargetIsNeverACallsign(t *testing.T) {
 		t.Error("a group call carried a target callsign")
 	}
 }
+
+// TestTheBridgesPageIsReachable covers the redirect and the asset together.
+func TestTheBridgesPageIsReachable(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/bridges", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/bridges returned %d, want a redirect", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/bridges.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/bridges.html returned %d", rec.Code)
+	}
+}

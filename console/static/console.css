@@ -1223,3 +1223,32 @@ select.field__input {
   gap: var(--space-5);
   align-content: start;
 }
+
+/* ---- Weekday picker -------------------------------------------------- */
+
+.days {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  margin: var(--space-3) 0;
+}
+
+.day {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The label is the target, not just the box, so a row of seven clears the
+     minimum without seven 44px squares. */
+  min-height: var(--target-min);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+/* A field standing in for a heading, as a bridge's name does. Sized to the
+   text around it rather than to a form row, so the panel still reads as a list
+   of named things. */
+.field__input--inline {
+  max-width: 20rem;
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}

@@ -244,6 +244,25 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A bridges and schedule page**, at `/bridges`. The last configuration area
+  with no interface at all: bridges, their endpoints, and the windows that turn
+  them on for a net.
+
+  **A bridge named by any window is controlled entirely by the schedule**, so it
+  is off outside its windows whatever its own setting says. The page says so
+  beside that setting, because the alternative is an operator discovering it
+  when their net does not open. Renaming a bridge or repointing a window redraws
+  those notes, since either changes which bridges the schedule owns.
+
+  A new bridge starts with two endpoints, because validation refuses fewer and
+  an operator should not have to learn that by pressing save. A blank peer means
+  every peer carrying the talkgroup, which the model expresses by the field
+  being absent rather than zero.
+
+  The timezone must be an IANA name, and the page shows one: an abbreviation
+  cannot express "20:00 local all year" across a daylight-saving change, which
+  is the sort of thing worth saying before somebody types CST.
+
 - **Last heard shows callsigns where QSP knows them.** A hotspot announces its
   own callsign when it registers, and on most hotspots the operator's radio
   carries the same DMR ID — so "3155413" is KB9TYC and QSP can say so without
