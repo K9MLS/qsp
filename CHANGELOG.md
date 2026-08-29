@@ -277,6 +277,22 @@ All notable changes to QSP. Dates are UTC.
   here read the files for consistency. Confirmed by deleting the same function
   again and watching it fail.
 
+### Fixed
+- **Radio ID lookups never ran.** The console's view source captures the
+  resolver by value and was built before the resolver was assigned, so the view
+  held nil: no ID was ever queued, the cache stayed empty, and the instance
+  logged `radio ID lookups enabled` throughout.
+
+  Nothing failed. The feature was simply never reached, which is why an
+  operator's live instance sat with lookups on, a migrated `callsigns` table,
+  and not one row in it. Found by checking the table rather than by trusting the
+  startup line.
+
+  The resolver is now built immediately after the migrations, before anything
+  that could capture it. A test reads `app.go` and fails if a reader appears
+  first — ordering inside one function is not something the compiler checks and
+  not something a unit test can reach.
+
 - **Hints on the admin pages.** A button beside each panel heading reveals an
   explanation: what a talkgroup list mode actually does, why registration and
   subscriber checks differ, what dialled and arrives mean, why parrot wants a

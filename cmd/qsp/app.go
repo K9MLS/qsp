@@ -115,6 +115,39 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		)
 	}
 
+	// **Before anything that reads it.** This was built after the console's
+	// view source captured a.names, so the view held nil, no radio ID was ever
+	// queued, and the cache stayed empty on a working instance with lookups
+	// enabled and logging that they were.
+	// Radio ID lookups. Off unless configured, and refused without a contact
+	// address — the registry asks automated clients to identify themselves and
+	// QSP has no business inventing one. See ADR-0030.
+	if cfg.DMR.Callsigns.Enabled {
+		var store callsigns.Store
+		if a.db != nil {
+			cs, serr := callsigns.NewSQLStore(a.db.SQL())
+			if serr != nil {
+				return nil, serr
+			}
+			store = cs
+		}
+		resolver, rerr := callsigns.New(callsigns.Options{
+			Contact: cfg.DMR.Callsigns.Contact,
+		}, store)
+		if rerr != nil {
+			return nil, rerr
+		}
+		fetcher, ferr := callsigns.NewHTTPFetcher(buildVersion(), cfg.DMR.Callsigns.Contact)
+		if ferr != nil {
+			return nil, ferr
+		}
+		a.names = callsigns.NewService(log, resolver, fetcher, store)
+		log.Info("radio ID lookups enabled",
+			slog.String("registry", callsigns.Endpoint),
+			slog.String("contact", cfg.DMR.Callsigns.Contact),
+		)
+	}
+
 	master, dmrDisabledReason, err := buildDMR(cfg, log, a.bus)
 	if err != nil {
 		return nil, err
@@ -304,34 +337,6 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// The configuration manager. A nil writer is a working state: an instance
 	// started without -config runs on defaults and cannot be reconfigured from
 	// a browser, which the console reports rather than discovering at save.
-	// Radio ID lookups. Off unless configured, and refused without a contact
-	// address — the registry asks automated clients to identify themselves and
-	// QSP has no business inventing one. See ADR-0030.
-	if cfg.DMR.Callsigns.Enabled {
-		var store callsigns.Store
-		if a.db != nil {
-			cs, serr := callsigns.NewSQLStore(a.db.SQL())
-			if serr != nil {
-				return nil, serr
-			}
-			store = cs
-		}
-		resolver, rerr := callsigns.New(callsigns.Options{
-			Contact: cfg.DMR.Callsigns.Contact,
-		}, store)
-		if rerr != nil {
-			return nil, rerr
-		}
-		fetcher, ferr := callsigns.NewHTTPFetcher(buildVersion(), cfg.DMR.Callsigns.Contact)
-		if ferr != nil {
-			return nil, ferr
-		}
-		a.names = callsigns.NewService(log, resolver, fetcher, store)
-		log.Info("radio ID lookups enabled",
-			slog.String("registry", callsigns.Endpoint),
-			slog.String("contact", cfg.DMR.Callsigns.Contact),
-		)
-	}
 
 	manager := &configManager{current: cfg}
 	a.configManager = manager

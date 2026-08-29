@@ -477,3 +477,37 @@ func TestSchemaSurvivesARestart(t *testing.T) {
 		t.Fatal("no database handle on the second build")
 	}
 }
+
+// TestTheResolverIsBuiltBeforeAnythingReadsIt.
+//
+// **The console's view source captures a.names by value.** It was built before
+// the resolver was assigned, so the view held nil: no radio ID was ever queued,
+// the cache stayed empty, and the instance logged "radio ID lookups enabled" the
+// whole time. Nothing failed — the feature was simply never reached.
+//
+// Ordering inside one function is not something the compiler checks and not
+// something a unit test can reach, so this reads the source.
+func TestTheResolverIsBuiltBeforeAnythingReadsIt(t *testing.T) {
+	body, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatalf("reading app.go: %v", err)
+	}
+	src := string(body)
+
+	built := strings.Index(src, "a.names = callsigns.NewService")
+	if built < 0 {
+		t.Fatal("the resolver is no longer built here; this check is blind")
+	}
+
+	// Every place that captures it must come later.
+	for _, reader := range []string{"names: a.names", "srv.SetLogins"} {
+		at := strings.Index(src, reader)
+		if at < 0 {
+			continue
+		}
+		if at < built {
+			t.Errorf("%q reads a.names before it is built; the value captured is nil",
+				reader)
+		}
+	}
+}
