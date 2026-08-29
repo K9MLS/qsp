@@ -750,23 +750,48 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 
 func (p peerViews) CallViews(now time.Time) (active, recent []server.CallView) {
 	snap := p.listener.Calls()
+	names := p.callsigns()
+
 	for _, c := range snap.Active {
-		active = append(active, callView(c, now))
+		active = append(active, callView(c, now, names))
 	}
 	for _, c := range snap.Recent {
-		v := callView(c, now)
+		v := callView(c, now, names)
 		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
 		recent = append(recent, v)
 	}
 	return active, recent
 }
 
-func callView(c calls.Call, now time.Time) server.CallView {
+// callsigns maps radio IDs to callsigns QSP already knows.
+//
+// **Only an exact match counts.** A hotspot announces its own callsign when it
+// registers, and on most hotspots the operator's radio carries the same DMR ID
+// — so "3155413" is KB9TYC and QSP can say so without anybody's database.
+//
+// A radio behind a hotspot with a *different* ID is not resolved. QSP knows
+// which hotspot it came through and nothing about whose radio it is, and
+// labelling somebody else's transmission with the hotspot owner's callsign
+// would be worse than a number. Resolving those needs a registry, which is a
+// decision (§0) rather than a lookup.
+func (p peerViews) callsigns() map[uint32]string {
+	out := map[uint32]string{}
+	for _, peer := range p.listener.Snapshot() {
+		if peer.Callsign() != "" {
+			out[uint32(peer.ID)] = peer.Callsign()
+		}
+	}
+	return out
+}
+
+func callView(c calls.Call, now time.Time, names map[uint32]string) server.CallView {
 	return server.CallView{
-		Source:   c.Source,
-		Target:   c.Target,
-		Group:    c.Group,
-		Timeslot: int(c.Key.Timeslot),
+		Source:     c.Source,
+		SourceName: names[c.Source],
+		TargetName: targetName(c, names),
+		Target:     c.Target,
+		Group:      c.Group,
+		Timeslot:   int(c.Key.Timeslot),
 		// 10 ms granularity: DMR frames arrive 60 ms apart, so a coarser
 		// truncation renders a short but real transmission as "0s", which reads
 		// as nothing having happened.
@@ -775,6 +800,18 @@ func callView(c calls.Call, now time.Time) server.CallView {
 		Voice:    c.Voice,
 		Lost:     c.EndReason == calls.EndTimedOut,
 	}
+}
+
+// targetName resolves the called party, for a private call only.
+//
+// A group call's target is a talkgroup number and has no callsign; looking one
+// up would find a radio that happens to share the number, which is how a
+// talkgroup ends up labelled with somebody's call.
+func targetName(c calls.Call, names map[uint32]string) string {
+	if c.Group {
+		return ""
+	}
+	return names[c.Target]
 }
 
 // processCheck reports that the process itself is running.

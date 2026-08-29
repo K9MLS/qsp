@@ -717,3 +717,46 @@ func TestTheNetworkPageIsReachable(t *testing.T) {
 		t.Errorf("/network.html returned %d", rec.Code)
 	}
 }
+
+// TestACallsignIsOnlyClaimedWhenKnown.
+//
+// A hotspot announces its own callsign at registration, and on most hotspots
+// the operator's radio carries the same DMR ID — so QSP can name that radio
+// without anybody's database. A radio behind a hotspot with a different ID is
+// left as a number: QSP knows which hotspot carried it and nothing about whose
+// radio it is, and labelling it with the hotspot owner's callsign would be
+// worse than the number.
+func TestACallsignIsOnlyClaimedWhenKnown(t *testing.T) {
+	views := []CallView{
+		{Source: 3155413, SourceName: "KB9TYC", Target: 2, Group: true},
+		{Source: 3155408, Target: 2, Group: true},
+	}
+	body, err := json.Marshal(views)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+
+	var out []map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out[0]["source_name"] != "KB9TYC" {
+		t.Errorf("a known callsign was not carried: %v", out[0])
+	}
+	if _, ok := out[1]["source_name"]; ok {
+		t.Error("an unknown radio was given a callsign field")
+	}
+}
+
+// TestAGroupTargetIsNeverACallsign. A talkgroup number is not a radio ID, and
+// looking one up finds whichever radio happens to share the number.
+func TestAGroupTargetIsNeverACallsign(t *testing.T) {
+	view := CallView{Source: 3132910, Target: 3155413, Group: true}
+	body, err := json.Marshal(view)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	if strings.Contains(string(body), "target_name") {
+		t.Error("a group call carried a target callsign")
+	}
+}

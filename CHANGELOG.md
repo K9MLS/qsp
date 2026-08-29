@@ -244,6 +244,22 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Last heard shows callsigns where QSP knows them.** A hotspot announces its
+  own callsign when it registers, and on most hotspots the operator's radio
+  carries the same DMR ID — so "3155413" is KB9TYC and QSP can say so without
+  anybody's database.
+
+  **Only an exact match counts.** A radio behind a hotspot with a different ID
+  stays a number: QSP knows which hotspot carried it and nothing about whose
+  radio it is, and labelling somebody else's transmission with the hotspot
+  owner's callsign would be worse than the number. Resolving those needs a
+  registry, which is a §0 decision rather than a lookup.
+
+  A group call's target is never given a callsign, because a talkgroup number is
+  not a radio ID and looking one up finds whichever radio happens to share it.
+  The number stays beside the callsign, since the number is what somebody
+  programmed and what they will search for.
+
 - **Panels on the admin pages had nothing between them.** `.main` is a grid and
   its gap separates its own children, so a page that wraps its panels — as the
   admin pages do, to hide the whole form until the configuration loads — got the

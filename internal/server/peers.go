@@ -57,6 +57,17 @@ type CallView struct {
 	// Source is the radio ID that keyed up. Unlike the peer ID this survives
 	// relaying, so it is the identity an operator recognises.
 	Source uint32 `json:"source"`
+	// SourceName is the callsign, when QSP knows it.
+	//
+	// **Only from a hotspot's own registration.** A radio whose ID matches a
+	// connected peer is that peer, and QSP can say so without anybody's
+	// database. A radio behind a hotspot with a different ID is left as a
+	// number: QSP knows which hotspot carried it and nothing about whose radio
+	// it is, and labelling it with the hotspot owner's callsign would be worse
+	// than the number.
+	SourceName string `json:"source_name,omitempty"`
+	// TargetName is the called party's callsign, for private calls only.
+	TargetName string `json:"target_name,omitempty"`
 	// Target is the talkgroup or radio being called.
 	Target uint32 `json:"target"`
 	// Group reports a group call rather than a private one.

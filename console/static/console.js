@@ -530,11 +530,21 @@
   }
 
   function callRow(call, live) {
-    var who = live
-      ? '<span class="live-dot" aria-hidden="true"></span> <span class="callsign">' +
-        escapeText(call.source) + "</span>"
+    /* The callsign when QSP knows it, with the number kept beside it: the
+     * number is what somebody programmed into a radio and what they will search
+     * for, and a callsign alone would make a list nobody can cross-reference. */
+    var name = call.source_name
+      ? '<span class="callsign">' + escapeText(call.source_name) + "</span>" +
+        ' <span class="mono muted">' + escapeText(call.source) + "</span>"
       : '<span class="callsign">' + escapeText(call.source) + "</span>";
-    var kind = call.group ? "TG " + escapeText(call.target) : "DM " + escapeText(call.target);
+    var who = live
+      ? '<span class="live-dot" aria-hidden="true"></span> ' + name
+      : name;
+
+    var kind = call.group
+      ? "TG " + escapeText(call.target)
+      : "DM " + escapeText(call.target) +
+        (call.target_name ? ' <span class="muted">' + escapeText(call.target_name) + "</span>" : "");
 
     /* **A data burst is not a failed transmission.** A text message is a
      * handful of one-frame bursts, each with its own stream ID, and marking
