@@ -3,6 +3,7 @@ package callsigns_test
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -16,15 +17,27 @@ func (c *clock) advance(d time.Duration) { c.t = c.t.Add(d) }
 
 // memoryStore is the cache, without a database.
 type memoryStore struct {
+	mu      sync.Mutex
 	entries []callsigns.Entry
 	saved   []callsigns.Entry
 	loadErr error
 }
 
 func (s *memoryStore) Load() ([]callsigns.Entry, error) { return s.entries, s.loadErr }
+
+// Save is called from the service's goroutine while a test reads count from
+// its own, so this is guarded.
 func (s *memoryStore) Save(e callsigns.Entry) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.saved = append(s.saved, e)
 	return nil
+}
+
+func (s *memoryStore) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.saved)
 }
 
 func newResolver(t *testing.T, store callsigns.Store, opts ...func(*callsigns.Options)) (*callsigns.Resolver, *clock) {

@@ -1,12 +1,17 @@
 package callsigns_test
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/callsigns"
+	"github.com/k9mls/qsp/internal/logging"
 )
 
 // The registry client, against a fake registry. The SQL is checked against the
@@ -144,4 +149,152 @@ func fetcherAgainst(t *testing.T, base string) callsigns.Fetcher {
 		t.Fatalf("NewHTTPFetcherAt: %v", err)
 	}
 	return f
+}
+
+// stubFetcher answers without a network.
+type stubFetcher struct {
+	mu      sync.Mutex
+	entries map[uint32]callsigns.Entry
+	err     error
+	calls   int
+}
+
+func (f *stubFetcher) Fetch(id uint32) (callsigns.Entry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.err != nil {
+		return callsigns.Entry{}, f.err
+	}
+	e, ok := f.entries[id]
+	if !ok {
+		return callsigns.Entry{Known: false}, nil
+	}
+	return e, nil
+}
+
+func (f *stubFetcher) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+// TestTheServiceResolvesWhatIsQueued is the whole wiring: an ID seen in a
+// transmission gets a name without anything waiting on it.
+func TestTheServiceResolvesWhatIsQueued(t *testing.T) {
+	r, err := callsigns.New(callsigns.Options{
+		Contact: "k9mls@example.org", Interval: time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	f := &stubFetcher{entries: map[uint32]callsigns.Entry{
+		3155408: {Callsign: "KB9TYC", Name: "Paul", Known: true},
+	}}
+	store := &memoryStore{}
+	svc := callsigns.NewService(logging.Discard(), r, f, store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	// Unknown at first, and queued rather than fetched inline.
+	if _, ok := svc.Lookup(3155408); ok {
+		t.Fatal("an unknown ID resolved before anybody asked the registry")
+	}
+
+	// **Resolution and caching are separate moments.** The entry is in memory
+	// as soon as it is recorded and written to the store just after, so
+	// asserting both at the same instant is a flaky test — which is what the
+	// first version of this was, passing alone and failing in a full run.
+	var resolved callsigns.Entry
+	waitFor(t, "the ID to resolve", func() bool {
+		e, ok := svc.Lookup(3155408)
+		resolved = e
+		return ok
+	})
+	if resolved.Display() != "KB9TYC Paul" {
+		t.Errorf("resolved to %q", resolved.Display())
+	}
+
+	waitFor(t, "the entry to be cached", func() bool { return store.count() > 0 })
+}
+
+// TestAFetchFailureDoesNotStopTheService. A registry that is down must cost a
+// name and nothing else.
+func TestAFetchFailureDoesNotStopTheService(t *testing.T) {
+	r, err := callsigns.New(callsigns.Options{
+		Contact: "k9mls@example.org", Interval: time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	f := &stubFetcher{err: errors.New("connection refused")}
+	svc := callsigns.NewService(logging.Discard(), r, f, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	svc.Lookup(3155408)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && f.count() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if f.count() == 0 {
+		t.Fatal("the service never asked")
+	}
+	// Still running, and the ID is still unresolved rather than remembered as
+	// absent.
+	if _, ok := svc.Lookup(3155408); ok {
+		t.Error("a failed fetch produced a resolution")
+	}
+}
+
+// TestLookupsAreSafeFromManyGoroutines. Every console request reads the
+// resolver while one background goroutine writes it.
+func TestLookupsAreSafeFromManyGoroutines(t *testing.T) {
+	r, err := callsigns.New(callsigns.Options{
+		Contact: "k9mls@example.org", Interval: time.Millisecond,
+	}, nil)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	f := &stubFetcher{entries: map[uint32]callsigns.Entry{
+		3155408: {Callsign: "KB9TYC", Known: true},
+	}}
+	svc := callsigns.NewService(logging.Discard(), r, f, nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				svc.Lookup(uint32(3155400 + n))
+				svc.Pending()
+				svc.Cached()
+			}
+		}(i)
+	}
+	wg.Wait()
+}
+
+// waitFor polls until cond holds. A fixed sleep is either flaky or slow, and on
+// a loaded machine usually both.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
 }

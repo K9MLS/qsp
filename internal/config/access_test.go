@@ -653,3 +653,56 @@ func TestAWorkingParrotIsAccepted(t *testing.T) {
 		t.Errorf("a well-formed parrot configuration was rejected: %v", err)
 	}
 }
+
+// Radio ID lookups. See ADR-0030.
+
+func TestCallsignLookupsAreOffByDefault(t *testing.T) {
+	if Default().DMR.Callsigns.Enabled {
+		t.Error("lookups are on by default; they reach a third party unasked")
+	}
+	if err := Default().Validate(); err != nil {
+		t.Errorf("the default configuration must validate: %v", err)
+	}
+}
+
+// TestEnablingLookupsRequiresAContact. The registry asks automated clients to
+// identify themselves, and QSP has no business inventing an address.
+func TestEnablingLookupsRequiresAContact(t *testing.T) {
+	c := Default()
+	c.DMR.Callsigns = Callsigns{Enabled: true}
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("lookups were enabled with no contact address")
+	}
+	var found bool
+	for _, fe := range err.(*ValidationError).Errors {
+		if fe.Field == "dmr.callsigns.contact" {
+			found = true
+			if fe.Fix == "" {
+				t.Error("the error does not say what to put there")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("want an error on the contact, got %v", err.(*ValidationError).Fields())
+	}
+}
+
+func TestLookupsWithAContactAreAccepted(t *testing.T) {
+	c := Default()
+	c.DMR.Callsigns = Callsigns{Enabled: true, Contact: "k9mls@example.org"}
+	if err := c.Validate(); err != nil {
+		t.Errorf("a well-formed lookup configuration was rejected: %v", err)
+	}
+}
+
+// TestADisabledLookupBlockIsNotChecked lets an operator write the block down
+// before deciding what address to publish.
+func TestADisabledLookupBlockIsNotChecked(t *testing.T) {
+	c := Default()
+	c.DMR.Callsigns = Callsigns{Enabled: false}
+	if err := c.Validate(); err != nil {
+		t.Errorf("a disabled lookup block was rejected: %v", err)
+	}
+}

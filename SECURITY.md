@@ -140,6 +140,20 @@ digest from the wrong address, or one with no challenge outstanding — because
 those need different things done about them. A run is reported once rather than
 once per attempt, and the console shows what is currently being refused.
 
+### Outbound requests
+
+**QSP makes one kind of request off the instance, and only when configured.**
+With `dmr.callsigns.enabled`, it asks the amateur DMR registry at
+`radioid.net` about radio IDs heard on this instance — one at a time, cached,
+never in bulk. See [ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md).
+
+`dmr.callsigns.contact` is required and is sent in the User-Agent along with
+QSP's version. The registry asks automated clients to identify themselves, and
+the address is the operator's because it is the operator making the requests.
+
+Nothing else reaches the internet. Map tiles are fetched by the browser rather
+than by QSP, and no telemetry of any kind is sent anywhere.
+
 ### Read-only endpoints
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static

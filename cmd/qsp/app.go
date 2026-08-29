@@ -16,6 +16,7 @@ import (
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/calls"
+	"github.com/k9mls/qsp/internal/callsigns"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/database"
 	"github.com/k9mls/qsp/internal/events"
@@ -52,6 +53,9 @@ type app struct {
 	auth *auth.Service
 	// configManager holds the running configuration and saves a new one.
 	configManager *configManager
+	// names resolves radio IDs against the amateur DMR registry. Nil when
+	// lookups are off, which is the default.
+	names *callsigns.Service
 	// master authenticates peers. Kept so the console can report what it is
 	// refusing.
 	master *peers.Master
@@ -276,7 +280,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 	var peerSource server.PeerSource
 	if a.dmr != nil {
-		peerSource = peerViews{listener: a.dmr}
+		peerSource = peerViews{listener: a.dmr, names: a.names}
 	}
 
 	// Nil when there is no database, which is a working state: an instance
@@ -300,6 +304,35 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// The configuration manager. A nil writer is a working state: an instance
 	// started without -config runs on defaults and cannot be reconfigured from
 	// a browser, which the console reports rather than discovering at save.
+	// Radio ID lookups. Off unless configured, and refused without a contact
+	// address — the registry asks automated clients to identify themselves and
+	// QSP has no business inventing one. See ADR-0030.
+	if cfg.DMR.Callsigns.Enabled {
+		var store callsigns.Store
+		if a.db != nil {
+			cs, serr := callsigns.NewSQLStore(a.db.SQL())
+			if serr != nil {
+				return nil, serr
+			}
+			store = cs
+		}
+		resolver, rerr := callsigns.New(callsigns.Options{
+			Contact: cfg.DMR.Callsigns.Contact,
+		}, store)
+		if rerr != nil {
+			return nil, rerr
+		}
+		fetcher, ferr := callsigns.NewHTTPFetcher(buildVersion(), cfg.DMR.Callsigns.Contact)
+		if ferr != nil {
+			return nil, ferr
+		}
+		a.names = callsigns.NewService(log, resolver, fetcher, store)
+		log.Info("radio ID lookups enabled",
+			slog.String("registry", callsigns.Endpoint),
+			slog.String("contact", cfg.DMR.Callsigns.Contact),
+		)
+	}
+
 	manager := &configManager{current: cfg}
 	a.configManager = manager
 	if configPath != "" {
@@ -476,6 +509,12 @@ func (a *app) run(ctx context.Context) error {
 		// names the administrator rather than "console" — the version row
 		// could attribute a live change and the log could not.
 		a.configManager.apply = applyToListener(a.dmr)
+	}
+
+	// Resolving names is background work by design: nothing waits on it, and a
+	// registry that is slow costs a name rather than a transmission.
+	if a.names != nil {
+		go a.names.Run(ctx)
 	}
 
 	<-ctx.Done()
@@ -712,7 +751,11 @@ func displayAddr(a netip.AddrPort) string {
 // internal/server does not depend on internal/peers, and so that the fields the
 // console can see are chosen in one obvious place. Notably absent: a peer's
 // outstanding challenge salt.
-type peerViews struct{ listener *peers.Listener }
+type peerViews struct {
+	listener *peers.Listener
+	// names resolves radio IDs the peer list cannot. Nil when lookups are off.
+	names *callsigns.Service
+}
 
 func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 	snap := p.listener.Snapshot()
@@ -753,10 +796,10 @@ func (p peerViews) CallViews(now time.Time) (active, recent []server.CallView) {
 	names := p.callsigns()
 
 	for _, c := range snap.Active {
-		active = append(active, callView(c, now, names))
+		active = append(active, p.callView(c, now, names))
 	}
 	for _, c := range snap.Recent {
-		v := callView(c, now, names)
+		v := p.callView(c, now, names)
 		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
 		recent = append(recent, v)
 	}
@@ -784,11 +827,11 @@ func (p peerViews) callsigns() map[uint32]string {
 	return out
 }
 
-func callView(c calls.Call, now time.Time, names map[uint32]string) server.CallView {
+func (p peerViews) callView(c calls.Call, now time.Time, names map[uint32]string) server.CallView {
 	return server.CallView{
 		Source:     c.Source,
-		SourceName: names[c.Source],
-		TargetName: targetName(c, names),
+		SourceName: resolve(c.Source, names, p.names),
+		TargetName: privateTargetName(c, names, p.names),
 		Target:     c.Target,
 		Group:      c.Group,
 		Timeslot:   int(c.Key.Timeslot),
@@ -800,18 +843,6 @@ func callView(c calls.Call, now time.Time, names map[uint32]string) server.CallV
 		Voice:    c.Voice,
 		Lost:     c.EndReason == calls.EndTimedOut,
 	}
-}
-
-// targetName resolves the called party, for a private call only.
-//
-// A group call's target is a talkgroup number and has no callsign; looking one
-// up would find a radio that happens to share the number, which is how a
-// talkgroup ends up labelled with somebody's call.
-func targetName(c calls.Call, names map[uint32]string) string {
-	if c.Group {
-		return ""
-	}
-	return names[c.Target]
 }
 
 // processCheck reports that the process itself is running.
@@ -1104,4 +1135,35 @@ func mapSettings(cfg config.Config) server.MapSettings {
 		Attribution: cfg.Server.Map.Attribution,
 		MaxZoom:     cfg.Server.Map.MaxZoom,
 	}
+}
+
+// resolve names a radio, preferring what a hotspot said about itself.
+//
+// **The exact match wins.** A hotspot's own registration is that station
+// describing itself, and it is right more often than a registry for the case it
+// covers — a reassigned or misregistered radio ID is somebody else's record,
+// and the station in front of you is not.
+func resolve(id uint32, known map[uint32]string, names *callsigns.Service) string {
+	if name, ok := known[id]; ok {
+		return name
+	}
+	if names == nil {
+		return ""
+	}
+	if e, ok := names.Lookup(id); ok {
+		return e.Display()
+	}
+	return ""
+}
+
+// privateTargetName resolves the called party, for a private call only.
+//
+// A group call's target is a talkgroup number and has no callsign; looking one
+// up finds whichever radio happens to share the number, which is how a
+// talkgroup ends up labelled with a stranger's call.
+func privateTargetName(c calls.Call, known map[uint32]string, names *callsigns.Service) string {
+	if c.Group {
+		return ""
+	}
+	return resolve(c.Target, known, names)
 }

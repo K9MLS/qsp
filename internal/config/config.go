@@ -135,6 +135,9 @@ type DMR struct {
 	// Parrot records and replays a transmission on one talkgroup, so a member
 	// can prove their setup works with nobody else awake. See ADR-0028.
 	Parrot Parrot `json:"parrot"`
+	// Callsigns resolves radio IDs to names through the amateur DMR registry.
+	// See ADR-0030.
+	Callsigns Callsigns `json:"callsigns"`
 }
 
 // Subscription is layer 3: which peers receive which talkgroups.
@@ -181,6 +184,24 @@ type Parrot struct {
 	// starting. Zero selects one second, which is long enough for a radio to
 	// have returned to receive.
 	Gap Duration `json:"gap"`
+}
+
+// Callsigns configures radio ID lookups against the amateur DMR registry.
+//
+// **Off unless configured**, because it makes an outbound request to a third
+// party that an operator did not obviously ask for. A club that wants names
+// turns it on; a club on an isolated network is not quietly trying to reach the
+// internet.
+type Callsigns struct {
+	// Enabled turns lookups on.
+	Enabled bool `json:"enabled"`
+	// Contact is the address sent to the registry so it knows who is asking.
+	//
+	// **Required, with no default.** The registry asks automated clients to
+	// identify themselves, and QSP has no business inventing an address for
+	// somebody else — it is the operator making the requests and the operator
+	// who would be contacted if something were wrong.
+	Contact string `json:"contact"`
 }
 
 // Access holds the four lists that decide who QSP carries.
@@ -751,6 +772,12 @@ func (c Config) Validate() error {
 			v.add("server.map.max_zoom", fmt.Sprintf("is %d; slippy maps run from 1 to 22", z),
 				"use 18, which is as far as most tile servers go")
 		}
+	}
+
+	if c.DMR.Callsigns.Enabled && strings.TrimSpace(c.DMR.Callsigns.Contact) == "" {
+		v.add("dmr.callsigns.contact", "must not be empty when lookups are enabled",
+			"the registry asks automated clients to say who they are; use an email "+
+				"address a person reads, so they can reach you rather than block you")
 	}
 
 	if c.DMR.Parrot.Enabled {

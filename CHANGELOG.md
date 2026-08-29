@@ -265,6 +265,20 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
+- **Radio IDs resolve to names in the console.** `dmr.callsigns.enabled` with a
+  contact address turns it on; Last heard then shows a callsign and given name
+  beside the number for radios the registry knows.
+
+  **A hotspot's own registration still wins.** That is the station describing
+  itself, and it is right more often than a registry for the case it covers — a
+  reassigned or misregistered ID is somebody else's record and the station in
+  front of you is not.
+
+  Resolution happens on a background goroutine and never on a request path. The
+  fetch is made outside the lock the console reads under, so a slow registry
+  cannot stall a page. A registry that is down is logged once as it starts
+  rather than once a minute.
+
 - **The registry client and the cache table.** `migrations/0004_callsigns.sql`
   holds resolved names so a restart does not re-ask for everything QSP already
   knew, and the HTTP client identifies itself with QSP's version and the
