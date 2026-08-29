@@ -282,8 +282,17 @@
           .replace("{z}", this.zoom)
           .replace("{x}", wrapped)
           .replace("{y}", ty);
+        /* **referrerpolicy is why tiles load at all.** QSP sends
+         * Referrer-Policy: no-referrer, and OpenStreetMap's tile policy
+         * requires a Referer identifying the site — without one it answers 403
+         * with a picture saying so, which is what the map drew.
+         *
+         * Set on the image rather than by relaxing the site-wide header:
+         * "origin" sends the scheme and host and nothing else, only for these
+         * requests, and every other request QSP makes stays anonymous. */
         html +=
-          '<img class="map__tile" alt="" aria-hidden="true" loading="lazy" src="' +
+          '<img class="map__tile" alt="" aria-hidden="true" loading="lazy" ' +
+          'referrerpolicy="origin" src="' +
           escapeAttribute(url) +
           '" style="left:' + (tx * TILE - originX) + "px;top:" +
           (ty * TILE - originY) + 'px">';

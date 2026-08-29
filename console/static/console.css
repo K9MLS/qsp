@@ -1075,3 +1075,43 @@ a.muted:focus-visible {
   color: var(--color-foreground-subtle);
   font-size: var(--text-xs);
 }
+
+/* ---- Pill ------------------------------------------------------------ */
+
+/* A small bordered link inside a table cell. It replaced four decimal places
+   of latitude and longitude: digits nobody reads, next to a place name that
+   somebody does, in a row that has to scan across the page. The numbers moved
+   to the title attribute, where they are still available and no longer in the
+   way. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: 999px;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-xs);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--duration-fast) var(--ease-out-expo),
+    color var(--duration-fast) var(--ease-out-expo);
+}
+
+.pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-foreground);
+}
+
+.pill:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.pill__icon {
+  width: 11px;
+  height: 11px;
+  /* Optically centred against the cap height rather than the line box, which
+     leaves an arrow looking like it has slipped. */
+  margin-top: -1px;
+}

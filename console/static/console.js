@@ -309,6 +309,13 @@
     if (!located) {
       return escapeText(name);
     }
+    /* A pill reading "Map" rather than the raw numbers.
+     *
+     * Four decimal places of latitude and longitude next to a place name is a
+     * row that no longer scans: the eye stops on digits nobody reads, and the
+     * one useful thing about them — that they open a map — was carried by the
+     * underline alone. The coordinates go in the title, where somebody who
+     * wants them can find them. */
     var coords = p.latitude.toFixed(4) + ", " + p.longitude.toFixed(4);
     var pin = mapLink(p.latitude, p.longitude, coords);
     if (!name) {
@@ -330,8 +337,13 @@
       "https://www.openstreetmap.org/?mlat=" + encodeURIComponent(lat) +
       "&mlon=" + encodeURIComponent(lon) +
       "#map=13/" + encodeURIComponent(lat) + "/" + encodeURIComponent(lon);
-    return '<a class="mono muted" href="' + escapeText(url) +
-      '" target="_blank" rel="noopener noreferrer">' + escapeText(label) + "</a>";
+    return '<a class="pill" href="' + escapeText(url) +
+      '" target="_blank" rel="noopener noreferrer" title="' + escapeText(label) +
+      '">Map<svg class="pill__icon" viewBox="0 0 12 12" fill="none" ' +
+      'stroke="currentColor" stroke-width="1.4" stroke-linecap="round" ' +
+      'aria-hidden="true" focusable="false">' +
+      '<path d="M4.5 2h5.5v5.5M10 2 5 7"/>' +
+      '<path d="M8 8.5V10H2V4h1.5"/></svg></a>';
   }
 
   // renderMap draws the peers that announced a usable position.

@@ -594,3 +594,33 @@ func TestTheAccessPageIsReachable(t *testing.T) {
 		t.Errorf("/access.html returned %d", rec.Code)
 	}
 }
+
+// TestConsoleAssetsAreRevalidated. Embedded files carry no modification time,
+// so nothing tells a browser whether its copy is current — and an operator who
+// upgrades gets the new server with the old console, indefinitely.
+func TestConsoleAssetsAreRevalidated(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	for _, path := range []string{"/console.js", "/map.js", "/console.css", "/"} {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s returned %d", path, rec.Code)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != "no-cache" {
+			t.Errorf("%s has Cache-Control %q, want no-cache", path, got)
+		}
+	}
+}

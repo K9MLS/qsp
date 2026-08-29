@@ -244,6 +244,11 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Peer coordinates are a pill rather than four decimal places.** Latitude and
+  longitude next to a place name made a row that no longer scanned — digits
+  nobody reads, in a table meant to be followed across the page. The numbers
+  moved to the link's title, where somebody who wants them can still find them.
+
 - **An access control page**, at `/access`. Talkgroups per timeslot,
   registration and subscribers, saved through the write path so a change applies
   within a second and is recorded as a version with the administrator's name on
@@ -263,6 +268,20 @@ All notable changes to QSP. Dates are UTC.
   in; the endpoints behind it are what require a session.
 
 ### Fixed
+- **OpenStreetMap refused every tile with a 403.** QSP sends
+  `Referrer-Policy: no-referrer` and their tile policy requires a `Referer`
+  identifying the site, so the map drew a picture saying access was blocked. The
+  tile images now carry `referrerpolicy="origin"` — scheme and host, for those
+  requests only, with every other request QSP makes staying anonymous. Relaxing
+  the site-wide header would have been the larger change for the smaller reason.
+
+- **Console assets were cached with no way to tell they had changed.** Embedded
+  files carry no modification time, so neither `Last-Modified` nor `ETag` was
+  sent and browsers cached them heuristically. **An operator who upgraded got
+  the new server and the old console**, indefinitely, with no way to know why a
+  fix had not arrived. They now carry `Cache-Control: no-cache`, which means
+  revalidate rather than do not store.
+
 - **The content security policy blocked every map tile.** `img-src 'self' data:`
   and tiles come from somebody else's server by definition, so the browser
   refused all of them silently and the map drew an empty frame. The policy now

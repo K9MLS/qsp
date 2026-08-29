@@ -229,7 +229,7 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/join.html", http.StatusFound)
 		})
-		mux.Handle("GET /", http.FileServerFS(s.opts.ConsoleAssets))
+		mux.Handle("GET /", revalidated(http.FileServerFS(s.opts.ConsoleAssets)))
 	} else {
 		mux.HandleFunc("GET /", s.handleNoConsole)
 	}
@@ -339,4 +339,23 @@ func writeJSON(w http.ResponseWriter, log *slog.Logger, status int, body any) {
 		// error response. Logging it is the only honest option.
 		log.Warn("cannot write JSON response", slog.String("error", err.Error()))
 	}
+}
+
+// revalidated makes a browser check before reusing a console asset.
+//
+// **Embedded files carry no modification time**, so http.ServeContent sends
+// neither Last-Modified nor ETag, and a browser with no validator falls back to
+// heuristic caching — it keeps the file for as long as it likes. An operator who
+// upgrades QSP then gets the new server and the old console, indefinitely, with
+// no way to know why the fix they read about did not arrive.
+//
+// no-cache does not mean "do not store": it means "revalidate before use". With
+// no validator to revalidate against the browser refetches, which for a console
+// of a few tens of kilobytes is the right trade against serving stale
+// JavaScript after every upgrade.
+func revalidated(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		next.ServeHTTP(w, r)
+	})
 }
