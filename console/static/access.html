@@ -41,6 +41,7 @@
     <p class="nav__heading" id="nav-admin">Administration</p>
     <ul class="nav__group" aria-labelledby="nav-admin">
       <li><a class="nav__link" href="/access" aria-current="page"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
     </ul>
   </nav>
 
@@ -115,6 +116,29 @@
 
           <div class="acl" id="acl-registration"></div>
           <div class="acl" id="acl-subscribers"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <h2 class="panel__title">Inviting a member</h2>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            The join page tells a member what to put into their hotspot: the
+            address, the port, the talkgroups, and whether QSP heard them key
+            up. Send them this link.
+          </p>
+          <!-- Built by access.js from the address the browser is already
+               using, because an operator reading this page reached it by the
+               same route their members will. A hardcoded address would be
+               wrong for anybody behind a proxy, which is most people. -->
+          <div class="invite">
+            <code class="invite__url" id="join-url">&mdash;</code>
+            <button class="button button--quiet" id="copy-join" type="button">Copy</button>
+            <a class="button button--quiet" href="/join">Open</a>
+          </div>
+          <p class="acl__hint" id="copy-note" aria-live="polite"></p>
         </div>
       </section>
 

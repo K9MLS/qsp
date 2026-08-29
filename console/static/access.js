@@ -303,6 +303,37 @@
     }
   });
 
+  /* The join link, built from the address this page was reached by.
+   *
+   * An operator reading this arrived by the same route their members will, so
+   * the browser already knows the address that works — including a proxy, a
+   * hostname, or a port that a value in the configuration would not. */
+  var joinURL = document.getElementById("join-url");
+  var copyJoin = document.getElementById("copy-join");
+  var copyNote = document.getElementById("copy-note");
+
+  if (joinURL) {
+    joinURL.textContent = window.location.origin + "/join";
+  }
+
+  if (copyJoin) {
+    copyJoin.addEventListener("click", function () {
+      var text = joinURL ? joinURL.textContent : "";
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          copyNote.textContent = "Copied.";
+        }).catch(function () {
+          /* Clipboard access is refused on an insecure origin, which is a
+           * club on a LAN over plain HTTP — the ordinary case rather than an
+           * error. Say what to do instead of failing silently. */
+          copyNote.textContent = "Could not copy automatically. Select the address and copy it.";
+        });
+        return;
+      }
+      copyNote.textContent = "This browser will not copy for us. Select the address and copy it.";
+    });
+  }
+
   /* Who is signed in, in the topbar, the same as the console. */
   var authState = document.getElementById("auth-state");
   fetch("/api/session", { headers: { Accept: "application/json" } })

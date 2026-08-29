@@ -564,3 +564,18 @@ func TestTilesAreNotDeferred(t *testing.T) {
 		t.Error("tiles are lazily loaded")
 	}
 }
+
+// TestTheJoinPageIsReachableFromTheConsole. It is the page an operator sends to
+// members, and it existed with no link to it from anywhere — findable only by
+// somebody who already knew the URL, which is not the person who needs it.
+func TestTheJoinPageIsReachableFromTheConsole(t *testing.T) {
+	for _, page := range []string{"static/index.html", "static/access.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		if !strings.Contains(string(body), `href="/join"`) {
+			t.Errorf("%s does not link to the join page", page)
+		}
+	}
+}

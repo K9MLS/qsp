@@ -244,6 +244,20 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **The join page is in the navigation**, and the access page shows the link to
+  send members with a button to copy it. The page an operator hands to their
+  club existed with no link from anywhere — findable only by somebody who
+  already knew the URL, which is not the person who needs it.
+
+  The link is built from the address the browser is already using rather than
+  from configuration, because an operator reading the page arrived by the same
+  route their members will: through a proxy, on a hostname, or on whatever port
+  is actually reachable. A configured value would be wrong for most of those.
+
+  Copying falls back to an instruction when the browser refuses clipboard access
+  — which it does on an insecure origin, and a club on a LAN over plain HTTP is
+  the ordinary case rather than an error.
+
 - **The map can be dragged, and draws more than one tile.** Three separate
   faults, all present at once.
 
