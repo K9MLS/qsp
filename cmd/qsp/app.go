@@ -772,6 +772,7 @@ func callView(c calls.Call, now time.Time) server.CallView {
 		// as nothing having happened.
 		Duration: c.Duration(now).Truncate(10 * time.Millisecond).String(),
 		Frames:   c.Frames,
+		Voice:    c.Voice,
 		Lost:     c.EndReason == calls.EndTimedOut,
 	}
 }

@@ -92,6 +92,15 @@ type Call struct {
 	EndReason EndReason
 	// Frames counts the frames received.
 	Frames int
+	// Voice reports whether any voice frame arrived.
+	//
+	// **A text message is a handful of one-frame data bursts**, each with its
+	// own stream ID, so each becomes a call. Fifty of them bury the voice
+	// traffic this list exists to show — and marking them "no terminator" is a
+	// false alarm, because a single data burst has no terminator and is not
+	// meant to. The distinction is recorded here so the console can tell them
+	// apart rather than guessing from the frame count.
+	Voice bool
 }
 
 // Duration returns how long the call ran, or how long it has been running.
@@ -183,6 +192,9 @@ func (t *Tracker) Update(peer hbp.RepeaterID, frame hbp.Data, now time.Time) (st
 
 	call.Frames++
 	t.lastSeen[key] = now
+	if frame.FrameType == hbp.FrameTypeVoice || frame.FrameType == hbp.FrameTypeVoiceSync {
+		call.Voice = true
+	}
 
 	// A sync frame both opens and closes a transmission. The opening one is the
 	// first frame of the stream, so only a later one ends it.

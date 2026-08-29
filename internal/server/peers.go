@@ -69,6 +69,10 @@ type CallView struct {
 	Ago string `json:"ago,omitempty"`
 	// Frames counts the frames received.
 	Frames int `json:"frames"`
+	// Voice reports whether any voice frame arrived. A text message is a few
+	// one-frame data bursts, and without this the console cannot tell one from
+	// a transmission that failed halfway.
+	Voice bool `json:"voice"`
 	// Lost reports that the call ended without a terminator, which usually
 	// means a lossy link or a peer that vanished mid-transmission.
 	Lost bool `json:"lost,omitempty"`

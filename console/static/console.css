@@ -598,6 +598,14 @@ body {
   color: var(--color-degraded);
 }
 
+/* Data rather than voice. Muted rather than amber: it is a label, not a
+   warning, and colouring an ordinary text message like a fault is what made
+   fifty of them look alarming. */
+.tag--data {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground-subtle);
+}
+
 /* ---- Traffic counters ------------------------------------------------ */
 .metrics {
   display: grid;

@@ -244,6 +244,16 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A text message no longer looks like fifty failed transmissions.** A text is
+  a handful of one-frame data bursts, each with its own stream ID, so each
+  became its own entry in Last heard — and every one was marked "no terminator",
+  which is a false alarm: a single burst has no terminator and is not meant to
+  have one. Fifty of them buried the voice traffic the panel exists to show.
+
+  Calls now record whether any voice frame arrived. Data is labelled as data, in
+  muted type rather than amber, because it is a label and not a warning — and
+  "no terminator" is kept for voice, where it means something.
+
 - **A parrot change now says it needs a restart.** The recorder is built once at
   startup and handed to the listener, so enabling parrot on a running instance
   saved the setting and changed nothing — while the save reported no restart was

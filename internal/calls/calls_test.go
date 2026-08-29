@@ -291,3 +291,50 @@ func TestTimesAreUTC(t *testing.T) {
 		t.Errorf("call start is in %v, want UTC", started.Started.Location())
 	}
 }
+
+// TestADataBurstIsNotVoice.
+//
+// A text message is a handful of one-frame data bursts, each with its own
+// stream ID, so each becomes a call. Fifty of them buried the voice traffic
+// the console exists to show, and every one was marked "no terminator" — which
+// is a false alarm, because a single burst has no terminator and is not meant
+// to have one.
+func TestADataBurstIsNotVoice(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{})
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+
+	burst := hbp.Data{
+		SourceID: 3155413, TargetID: 3132910, Timeslot: hbp.Timeslot2,
+		CallType: hbp.CallPrivate, FrameType: hbp.FrameTypeSync, StreamID: 0x1111,
+	}
+	started, _ := tr.Update(3155413, burst, now)
+	if started == nil {
+		t.Fatal("the burst was not tracked")
+	}
+	if started.Voice {
+		t.Error("a data burst was recorded as voice")
+	}
+}
+
+func TestAVoiceTransmissionIsVoice(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{})
+	now := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+
+	header := hbp.Data{
+		SourceID: 3132910, TargetID: 2, Timeslot: hbp.Timeslot2,
+		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeSync, StreamID: 0x2222,
+	}
+	tr.Update(3132910, header, now)
+
+	voice := header
+	voice.FrameType = hbp.FrameTypeVoiceSync
+	tr.Update(3132910, voice, now.Add(60*time.Millisecond))
+
+	active := tr.Active()
+	if len(active) != 1 {
+		t.Fatalf("%d active calls", len(active))
+	}
+	if !active[0].Voice {
+		t.Error("a voice transmission was not recorded as voice")
+	}
+}

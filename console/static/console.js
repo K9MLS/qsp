@@ -535,9 +535,22 @@
         escapeText(call.source) + "</span>"
       : '<span class="callsign">' + escapeText(call.source) + "</span>";
     var kind = call.group ? "TG " + escapeText(call.target) : "DM " + escapeText(call.target);
-    var flags = call.lost
-      ? ' <span class="tag tag--lost" title="ended without a terminator">no terminator</span>'
-      : "";
+
+    /* **A data burst is not a failed transmission.** A text message is a
+     * handful of one-frame bursts, each with its own stream ID, and marking
+     * every one "no terminator" was a false alarm — a single burst has no
+     * terminator and is not meant to. Worse, fifty of them buried the voice
+     * traffic this list exists to show.
+     *
+     * Voice is what "no terminator" means something about, so the warning is
+     * kept for voice and data is labelled for what it is. */
+    var flags = "";
+    if (!call.voice) {
+      flags = ' <span class="tag tag--data" title="data rather than voice: a text ' +
+        'message, position report, or registration">data</span>';
+    } else if (call.lost) {
+      flags = ' <span class="tag tag--lost" title="ended without a terminator">no terminator</span>';
+    }
     return (
       "<tr>" +
       "<td>" + who + "</td>" +
