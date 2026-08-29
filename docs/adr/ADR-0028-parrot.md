@@ -48,23 +48,37 @@ There is no default talkgroup. 9990 is conventional on some networks and 9998 on
 others, and §0 refused to ship one network's numbers for the same reason it
 refused their talkgroup lists.
 
-### A private call counts, and is answered privately
+### Parrot answers a group call, and cannot yet answer a private one
 
-**Most operators program parrot as a private call**, because it lets somebody
-test without the whole club hearing them. A private call to the parrot number is
-therefore parrot traffic on either timeslot — it is addressed to a number rather
-than carried on a talkgroup, so requiring a particular one would refuse the
-commonest way it is used.
+*Amended 2026-08-29, after it did not work on air.*
 
-The replay is addressed back to the radio that made it: target becomes the
-calling radio, source becomes the parrot number. A radio un-mutes a private
-call only when the target is its own ID, so replaying one unchanged produces
-frames the radio receives and refuses to play — parrot appearing to work and
-sounding like nothing at all.
+Most operators program parrot as a private call, and QSP records one: a private
+call to the parrot number is parrot traffic on either timeslot, since it is
+addressed to a number rather than carried on a talkgroup.
 
-A group call keeps its addressing, because there the talkgroup is what the radio
-is listening to and the member's display should show what it showed when they
-transmitted.
+**It cannot replay one usefully, and the reason is the thing that makes parrot
+cheap.** A DMR voice header carries the call's addressing *inside* the 33-byte
+burst, in the Link Control, under its own error correction. A radio believes the
+Link Control, not the wrapper around it.
+
+A first attempt swapped the source and target in the wrapper so a private replay
+would be addressed back to the calling radio. Five replays went out at correct
+timing, and the radio played none of them: the Link Control still said "private
+call to 9990", so the frames arrived addressed to a number that was not the
+radio's own and were muted. The swap achieved nothing except making the wrapper
+disagree with the payload, and has been removed.
+
+Rewriting the Link Control means decoding and re-encoding a DMR burst:
+deinterleaving, error correction, checksums. That is exactly what QSP does not
+do, and not doing it is what lets parrot exist at all without a vocoder.
+
+**So parrot answers a group call.** Replayed unchanged, the Link Control still
+says "group call to this talkgroup", and a radio with that talkgroup in its
+receive list un-mutes it with nothing rewritten anywhere. An operator keeps
+whichever number is already in their radios and programs it as a group contact.
+
+A private parrot remains possible and is a different piece of work: the first
+place QSP would have to understand a burst rather than carry it.
 
 ### The frames go back the way they came
 

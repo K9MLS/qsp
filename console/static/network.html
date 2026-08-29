@@ -141,8 +141,14 @@
           <p class="panel__lede">
             Plays a transmission back to whoever sent it, so a member can prove
             their radio, hotspot and network path all work without needing
-            anybody else awake. Works as a group call or a private call to the
-            same number.
+            anybody else awake.
+          </p>
+          <p class="panel__lede">
+            <strong>Program it as a group call.</strong> A private call is
+            recorded and cannot be replayed usefully: DMR carries the call's
+            addressing inside the audio burst, so a radio mutes a replay that is
+            not addressed to it, and rewriting that means decoding the burst —
+            which QSP deliberately does not do.
           </p>
 
           <label class="acl__mode">

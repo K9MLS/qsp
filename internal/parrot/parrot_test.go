@@ -183,11 +183,19 @@ func TestOnlyTheParrotTalkgroupIsHandled(t *testing.T) {
 	}
 }
 
-// TestAPrivateReplayIsAddressedBackToTheRadio. A radio un-mutes a private call
-// only when the target is its own ID, so replaying one with the original
-// addressing produces frames it receives and refuses to play — parrot
-// appearing to work and sounding like nothing.
-func TestAPrivateReplayIsAddressedBackToTheRadio(t *testing.T) {
+// TestAPrivateReplayIsNotRewritten.
+//
+// **This test asserted the opposite and was wrong on air.** A DMR voice header
+// carries the call's addressing inside the 33-byte burst, in the Link Control,
+// under its own error correction — so swapping the source and target in the
+// wrapper only made the two disagree, and the radio believed the Link Control
+// and muted the frames.
+//
+// Five replays went out at correct timing to a radio that played none of them
+// before this was understood. Rewriting the Link Control means decoding a DMR
+// burst, which is what QSP does not do; until it does, parrot answers a group
+// call, where nothing needs rewriting at all.
+func TestAPrivateReplayIsNotRewritten(t *testing.T) {
 	r, c := newRecorder(t)
 
 	for i := 0; i < 6; i++ {
@@ -203,16 +211,9 @@ func TestAPrivateReplayIsAddressedBackToTheRadio(t *testing.T) {
 		t.Fatalf("got %d recordings", len(done))
 	}
 	for _, f := range done[0].Frames {
-		if f.TargetID != testRadio {
-			t.Errorf("the replay is addressed to %d, not the radio that called (%d)",
-				f.TargetID, testRadio)
-		}
-		if f.SourceID != parrotTG {
-			t.Errorf("the replay comes from %d, want the parrot number %d",
-				f.SourceID, parrotTG)
-		}
-		if f.CallType != hbp.CallPrivate {
-			t.Error("the replay is not a private call")
+		if f.SourceID != testRadio || f.TargetID != parrotTG {
+			t.Errorf("a private replay was re-addressed to %d from %d; the Link "+
+				"Control inside the burst still says otherwise", f.TargetID, f.SourceID)
 		}
 	}
 }

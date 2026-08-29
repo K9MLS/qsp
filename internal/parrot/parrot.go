@@ -228,19 +228,22 @@ func (r *Recorder) finish(peer hbp.RepeaterID, rec *recording, now time.Time) *R
 		f.StreamID = stream
 		f.Sequence = uint8(i)
 
-		// **A private call must be addressed back to the radio that made it.**
-		// A radio un-mutes a private call only when the target is its own ID,
-		// so replaying one with the original addressing produces frames the
-		// radio receives and refuses to play — parrot appearing to work and
-		// sounding like nothing.
+		// **Nothing else is rewritten, and a private call cannot be.**
 		//
-		// A group call is left alone: the member's display should show what it
-		// showed when they transmitted, and the talkgroup is what their radio
-		// is listening to.
-		if f.CallType == hbp.CallPrivate {
-			f.TargetID = f.SourceID
-			f.SourceID = r.cfg.Talkgroup
-		}
+		// An earlier version swapped the source and target here so a private
+		// replay would be addressed back to the calling radio. It did not work
+		// on air, and could not: a DMR voice header carries the call's
+		// addressing inside the 33-byte burst, in the Link Control, under its
+		// own error correction. A radio believes the Link Control rather than
+		// the wrapper around it, so the swap only made the two disagree —
+		// frames the radio received and muted.
+		//
+		// Rewriting the Link Control means decoding and re-encoding a DMR
+		// burst, which is precisely what QSP does not do and what makes parrot
+		// cheap enough to exist. Until it does, **parrot answers a group call**:
+		// replayed unchanged, the Link Control still says "group call to this
+		// talkgroup", and a radio with that talkgroup in its receive list
+		// un-mutes it with nothing rewritten at all.
 
 		frames = append(frames, f)
 	}

@@ -244,6 +244,27 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+### Fixed
+- **Parrot answers a group call, and the private-call replay never worked.**
+  Five replays went out at correct DMR timing to a radio that played none of
+  them.
+
+  **A DMR voice header carries the call's addressing inside the 33-byte burst**,
+  in the Link Control, under its own error correction — and a radio believes the
+  Link Control rather than the wrapper around it. Swapping the source and target
+  in the wrapper, which is what the previous patch did, only made the two
+  disagree: the frames arrived saying "private call to 9990" and were muted.
+
+  Rewriting the Link Control means decoding and re-encoding a DMR burst, which
+  is exactly what QSP does not do and what lets parrot exist without a vocoder.
+  The swap is removed, and the network settings page says to program parrot as a
+  group call — replayed unchanged, the Link Control still says "group call to
+  this talkgroup" and a radio with it in the receive list un-mutes with nothing
+  rewritten anywhere.
+
+  A private parrot stays possible and is a different piece of work: the first
+  place QSP would have to understand a burst rather than carry it.
+
 - **[ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md) decides how radio IDs are
   resolved**, and `internal/callsigns` implements the part that needs no
   network. A club should see names without maintaining alias lists in every
