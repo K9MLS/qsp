@@ -244,6 +244,26 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **A configuration history page**, at `/history`, with restore. The admin
+  pages can change a running network within a second and there was no undo:
+  `configuration_versions` had been recording every save since the first
+  migration and nothing read it back.
+
+  **A restore is a save.** It writes a new version whose contents match an older
+  one, so the history is never rewritten and a restore can itself be undone —
+  which is what [ADR-0027](docs/adr/ADR-0027-configuration-writes.md) decided
+  and why those rows are never updated or deleted.
+
+  Restoring shows exactly what it would change before it does it. A restore
+  applies within a second, so that is the only chance an operator gets, and
+  "restore version 4" means nothing without knowing what version 4 said. The
+  newest version offers no button, because restoring what is already running
+  would do nothing and a button that does nothing is worse than a sentence.
+
+  `GET /api/config/versions/{number}` returns one version's document with its
+  difference from what is running. The list still omits documents: fifty
+  versions carrying fifty configurations is a response nobody reads.
+
 - **A bridges and schedule page**, at `/bridges`. The last configuration area
   with no interface at all: bridges, their endpoints, and the windows that turn
   them on for a net.

@@ -177,6 +177,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},
+		{"GET /api/config/versions/{number}", s.requireSession(s.handleConfigVersion)},
 	}
 }
 
@@ -235,6 +236,9 @@ func (s *Server) handler() http.Handler {
 		})
 		mux.HandleFunc("GET /bridges", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/bridges.html", http.StatusFound)
+		})
+		mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/history.html", http.StatusFound)
 		})
 		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/join.html", http.StatusFound)

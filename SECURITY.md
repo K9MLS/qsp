@@ -95,7 +95,9 @@ arguments.
 ### Configuration endpoints
 
 `/api/config` reads the running configuration and saves a new one.
-`/api/config/versions` lists the history. All three require a logged-in
+`/api/config/versions` lists the history and
+`/api/config/versions/{number}` returns one version's document, which is how a
+restore reads what it is about to write. All three require a logged-in
 administrator and refuse a cross-origin write.
 
 **These are the endpoints that change what QSP does.** A save is validated,
@@ -142,8 +144,8 @@ once per attempt, and the console shows what is currently being refused.
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
 console assets are unauthenticated and read-only. That includes the access
-control, network settings and bridges pages, which are markup like every other
-console page: the endpoints
+control, network settings, bridges and history pages, which are markup like
+every other console page: the endpoints
 behind it refuse anonymously, which is where the decision belongs, and it shows
 a sign-in prompt rather than a form when nobody is signed in.
 

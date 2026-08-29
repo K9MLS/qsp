@@ -788,3 +788,105 @@ func TestTheBridgesPageIsReachable(t *testing.T) {
 		t.Errorf("/bridges.html returned %d", rec.Code)
 	}
 }
+
+// TestAVersionCanBeReadBack. Restoring one needs its document, and the list
+// deliberately omits documents — fifty versions carrying fifty configurations
+// is a response nobody reads.
+func TestAVersionCanBeReadBack(t *testing.T) {
+	cm := newStubConfig()
+	older := config.Default()
+	older.Events.HistorySize = 111
+	cm.versions = []config.Version{{
+		Number: 4, Author: "K9MLS", Summary: "before the net",
+		CreatedAt: time.Now(), Config: older,
+	}}
+	srv, a := newConfigServer(t, cm, nil)
+
+	res := authed(t, srv, a, http.MethodGet, "/api/config/versions/4", "")
+	if res.Code != http.StatusOK {
+		t.Fatalf("returned %d: %s", res.Code, res.Body)
+	}
+
+	var body struct {
+		Number  int64           `json:"number"`
+		Author  string          `json:"author"`
+		Config  config.Config   `json:"config"`
+		Changes []config.Change `json:"changes"`
+	}
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Number != 4 || body.Author != "K9MLS" {
+		t.Errorf("wrong version returned: %+v", body)
+	}
+	if body.Config.Events.HistorySize != 111 {
+		t.Errorf("the document was not carried: %+v", body.Config.Events)
+	}
+	// The difference from what is running, so an operator sees what a restore
+	// would do before doing it rather than after.
+	if len(body.Changes) == 0 {
+		t.Error("no changes were reported against the running configuration")
+	}
+}
+
+func TestAnUnknownVersionIsNotFound(t *testing.T) {
+	cm := newStubConfig()
+	srv, a := newConfigServer(t, cm, nil)
+
+	res := authed(t, srv, a, http.MethodGet, "/api/config/versions/99", "")
+	if res.Code != http.StatusNotFound {
+		t.Errorf("returned %d, want 404: %s", res.Code, res.Body)
+	}
+}
+
+func TestAVersionMustBeANumber(t *testing.T) {
+	cm := newStubConfig()
+	srv, a := newConfigServer(t, cm, nil)
+
+	for _, bad := range []string{"nonsense", "0", "-1"} {
+		res := authed(t, srv, a, http.MethodGet, "/api/config/versions/"+bad, "")
+		if res.Code != http.StatusBadRequest && res.Code != http.StatusNotFound {
+			t.Errorf("version %q returned %d", bad, res.Code)
+		}
+	}
+}
+
+// TestReadingAVersionNeedsASession. The document names the password file and
+// the database, exactly as the running configuration does.
+func TestReadingAVersionNeedsASession(t *testing.T) {
+	srv, _ := newConfigServer(t, newStubConfig(), nil)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/config/versions/1", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("returned %d, want 401", rec.Code)
+	}
+}
+
+// TestTheHistoryPageIsReachable covers the redirect and the asset.
+func TestTheHistoryPageIsReachable(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/history", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/history returned %d, want a redirect", rec.Code)
+	}
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/history.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/history.html returned %d", rec.Code)
+	}
+}

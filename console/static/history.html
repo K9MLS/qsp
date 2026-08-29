@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Configuration history — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__meta">
+      <span class="topbar__auth" id="auth-state"></span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li><a class="nav__link" href="/"><span>Overview</span></a></li>
+    </ul>
+    <p class="nav__heading" id="nav-admin">Administration</p>
+    <ul class="nav__group" aria-labelledby="nav-admin">
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
+      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/history" aria-current="page"><span>History</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
+    </ul>
+  </nav>
+
+  <main class="main" id="main">
+    <h1 class="page__title">Configuration history</h1>
+
+    <p class="page__lede">
+      Every save is recorded with who made it and when. Restoring one writes a
+      new version whose contents match it, so the history is never rewritten and
+      a restore can itself be undone.
+    </p>
+
+    <div class="empty" id="loading">
+      <h2 class="empty__title">Loading</h2>
+      <p class="empty__body">Reading this instance's history.</p>
+    </div>
+
+    <div class="notice notice--warn" id="signed-out" hidden>
+      <p class="notice__title">Sign in to see the history</p>
+      <p class="notice__body"><a href="/signin">Sign in</a> as an administrator.</p>
+    </div>
+
+    <div class="notice notice--warn" id="error" hidden>
+      <p class="notice__body" id="error-text"></p>
+      <ul class="notice__list" id="error-fields"></ul>
+    </div>
+
+    <div class="notice" id="saved" hidden>
+      <p class="notice__title">Restored</p>
+      <p class="notice__body" id="saved-text"></p>
+      <p class="notice__body" id="restart-note" hidden></p>
+    </div>
+
+    <!-- Shown before a restore, listing exactly what it would change. A restore
+         applies within a second, so seeing the difference first is the only
+         chance an operator gets. -->
+    <section class="panel" id="preview" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title" id="preview-title">Restore</h2>
+      </div>
+      <div class="panel__body">
+        <p class="panel__lede" id="preview-summary"></p>
+        <ul class="notice__list" id="preview-changes"></ul>
+        <p class="acl__hint" id="preview-restart" hidden></p>
+        <div class="page__actions">
+          <button class="button" id="confirm-restore" type="button">Restore this version</button>
+          <button class="button button--quiet" id="cancel-restore" type="button">Cancel</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="list-panel" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title">Versions</h2>
+        <span class="panel__count" id="version-count">&mdash;</span>
+      </div>
+      <div id="list"></div>
+    </section>
+
+  </main>
+
+</div>
+
+<script src="/history.js"></script>
+</body>
+</html>

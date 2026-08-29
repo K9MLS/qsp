@@ -347,7 +347,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// updates the number, while a name says which file nobody recognises.
 	ours := map[string]bool{
 		"console.js": true, "map.js": true, "join.js": true,
-		"signin.js": true, "access.js": true, "network.js": true, "bridges.js": true,
+		"signin.js": true, "access.js": true, "network.js": true, "bridges.js": true, "history.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -433,6 +433,7 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 		"static/index.html", "static/join.html", "static/signin.html",
 		"static/access.html", "static/network.html", "static/network.js",
 		"static/bridges.html", "static/bridges.js",
+		"static/history.html", "static/history.js",
 	} {
 		body, err := assets.ReadFile(script)
 		if err != nil {
@@ -609,14 +610,14 @@ func TestTheNetworkPageIsServed(t *testing.T) {
 // URL is one an operator does not know exists.
 func TestEveryAdminPageSharesTheNavigation(t *testing.T) {
 	pages := []string{"static/index.html", "static/access.html", "static/network.html",
-		"static/bridges.html"}
+		"static/bridges.html", "static/history.html"}
 	for _, page := range pages {
 		body, err := assets.ReadFile(page)
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
 		}
 		for _, link := range []string{`href="/access"`, `href="/network"`,
-			`href="/bridges"`, `href="/join"`} {
+			`href="/bridges"`, `href="/history"`, `href="/join"`} {
 			if !strings.Contains(string(body), link) {
 				t.Errorf("%s does not carry %s", page, link)
 			}
@@ -640,16 +641,23 @@ func TestWrappedPanelsAreSpaced(t *testing.T) {
 	}
 
 	for _, page := range []string{"static/access.html", "static/network.html",
-		"static/bridges.html"} {
+		"static/bridges.html", "static/history.html"} {
 		body, err := assets.ReadFile(page)
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
 		}
 		src := string(body)
-		// Every wrapper holding more than one panel needs the spacing rule.
-		if strings.Count(src, "<section class=\"panel\"") > 1 &&
-			!strings.Contains(src, `class="stack"`) {
-			t.Errorf("%s stacks panels in a wrapper with nothing to space them", page)
+		// **Only a wrapper needs the rule.** Panels that are direct children of
+		// .main already get its grid gap; the first version of this check
+		// required the class of every page with two panels and failed the
+		// history page, which does not wrap them.
+		wrapper := strings.Index(src, `<div id="form"`)
+		if wrapper < 0 {
+			continue
+		}
+		if strings.Count(src[wrapper:], `<section class="panel"`) > 1 &&
+			!strings.Contains(src[:wrapper+40], `class="stack"`) {
+			t.Errorf("%s wraps several panels with nothing to space them", page)
 		}
 	}
 }

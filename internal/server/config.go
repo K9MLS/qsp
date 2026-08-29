@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -240,6 +241,61 @@ type versionSummary struct {
 	Author    string `json:"author"`
 	Summary   string `json:"summary,omitempty"`
 	Checksum  string `json:"checksum"`
+}
+
+// handleConfigVersion returns one version's whole document.
+//
+// Separate from the list because the list deliberately omits documents — fifty
+// versions carrying fifty configurations is a large response nobody reads — and
+// this is how the console fetches the one it wants to restore.
+func (s *Server) handleConfigVersion(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Config == nil {
+		writeJSON(w, s.log, http.StatusServiceUnavailable, map[string]string{
+			"error": "this instance keeps no configuration history",
+		})
+		return
+	}
+
+	number, err := strconv.ParseInt(r.PathValue("number"), 10, 64)
+	if err != nil || number < 1 {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": "a version is a positive number",
+		})
+		return
+	}
+
+	version, found, err := s.opts.Config.Version(r.Context(), number)
+	if err != nil {
+		s.log.Error("cannot read a configuration version", "version", number, "error", err)
+		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{
+			"error": "that version could not be read",
+		})
+		return
+	}
+	if !found {
+		writeJSON(w, s.log, http.StatusNotFound, map[string]string{
+			"error": fmt.Sprintf("there is no version %d", number),
+		})
+		return
+	}
+
+	// The difference from what is running, so an operator restoring a version
+	// sees what it would change before they do it rather than after.
+	changes, err := config.Diff(s.opts.Config.Current(), version.Config)
+	if err != nil {
+		changes = nil
+	}
+
+	writeJSON(w, s.log, http.StatusOK, map[string]any{
+		"number":        version.Number,
+		"created_at":    version.CreatedAt.UTC().Format(time.RFC3339),
+		"author":        version.Author,
+		"summary":       version.Summary,
+		"checksum":      version.Checksum,
+		"config":        version.Config,
+		"changes":       changes,
+		"needs_restart": config.NeedsRestart(s.opts.Config.Current(), version.Config),
+	})
 }
 
 // handleConfigVersions returns the history, newest first.
