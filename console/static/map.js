@@ -318,16 +318,28 @@
     var centreX = lonToX(this.centre.lon, this.zoom);
     var centreY = latToY(this.centre.lat, this.zoom);
 
-    var html = "";
+    /* **Built as elements, not as markup with style attributes.**
+     *
+     * The content security policy is `style-src 'self'`, which forbids inline
+     * style attributes — so every `style="left:…"` this map used to emit was
+     * refused by the browser and every tile and pin stacked at its container's
+     * origin. That is the whole of the fault chased across seven attempts:
+     * with the plane at the frame's corner they piled in the corner, and once
+     * the plane was centred they piled at the centre.
+     *
+     * Setting `element.style.left` is CSSOM, which the policy permits. The
+     * policy stays as strict as it was. */
+    var plane = document.createElement("div");
+    plane.className = "map__plane";
+
     var tiles = 0;
     if (this.settings.tile_url) {
-      var grid = this.tiles(centreX, centreY, box.width, box.height);
-      html += grid.html;
-      tiles = grid.count;
+      tiles = this.appendTiles(plane, centreX, centreY, box.width, box.height);
     }
-    html += this.markers(centreX, centreY);
+    this.appendMarkers(plane, centreX, centreY);
 
-    this.canvas.innerHTML = '<div class="map__plane">' + html + "</div>";
+    this.canvas.innerHTML = "";
+    this.canvas.appendChild(plane);
     this.report(box, tiles);
   };
 
@@ -365,90 +377,66 @@
   var MIN_COLUMNS = 7;
   var MIN_ROWS = 3;
 
-  Map.prototype.tiles = function (centreX, centreY, width, height) {
+  /* appendTiles adds the tile grid to the plane and returns how many.
+   *
+   * Positions are set through the style object rather than an attribute: the
+   * content security policy forbids inline style attributes, and one silently
+   * refused is how every tile ended up stacked at the same point. */
+  Map.prototype.appendTiles = function (plane, centreX, centreY, width, height) {
     var scale = Math.pow(2, this.zoom);
 
-    /* Chosen around the centre tile and sized to cover the frame, with the
-     * floor below. Only the count comes from the measurement. */
     var centreTileX = Math.floor(centreX / TILE);
     var centreTileY = Math.floor(centreY / TILE);
-    /* Half the frame either side of the centre tile, at least one. The
-     * registry of tiles is somebody else's server, so drawing a ring more than
-     * the frame needs is politeness spent for nothing. */
+    /* Half the frame either side of the centre tile, at least one. Drawing a
+     * ring more than the frame needs is politeness spent for nothing on
+     * somebody else's tile server. */
     var reachX = Math.max(1, Math.ceil(width / (2 * TILE)));
     var reachY = Math.max(1, Math.ceil(height / (2 * TILE)));
 
-    var firstX = centreTileX - reachX;
-    var lastX = centreTileX + reachX;
-    var firstY = centreTileY - reachY;
-    var lastY = centreTileY + reachY;
-
-    /* Widened around the centre rather than extended to one side, so a map
-     * drawn against a bad measurement is off-centre rather than half empty. */
-    while (lastX - firstX + 1 < MIN_COLUMNS) {
-      firstX--;
-      if (lastX - firstX + 1 < MIN_COLUMNS) {
-        lastX++;
-      }
-    }
-    while (lastY - firstY + 1 < MIN_ROWS) {
-      firstY--;
-      if (lastY - firstY + 1 < MIN_ROWS) {
-        lastY++;
-      }
-    }
-
-    var html = "";
     var count = 0;
-    for (var ty = firstY; ty <= lastY; ty++) {
+    for (var ty = centreTileY - reachY; ty <= centreTileY + reachY; ty++) {
       /* Above the north edge or below the south there is no tile. Requesting
        * one fetches a 404 per pan, which is rude to a donated server and
        * pointless everywhere else. */
       if (ty < 0 || ty >= scale) {
         continue;
       }
-      for (var tx = firstX; tx <= lastX; tx++) {
+      for (var tx = centreTileX - reachX; tx <= centreTileX + reachX; tx++) {
         /* Longitude wraps, so a tile column off one edge is a real tile from
-         * the other. Without this the map goes blank when dragged past the
-         * date line. */
+         * the other. Without this the map goes blank past the date line. */
         var wrapped = ((tx % scale) + scale) % scale;
-        var url = this.settings.tile_url
+
+        var img = document.createElement("img");
+        img.className = "map__tile";
+        img.alt = "";
+        img.draggable = false;
+        img.setAttribute("aria-hidden", "true");
+        /* **referrerpolicy is why tiles load at all.** QSP sends
+         * Referrer-Policy: no-referrer, and OpenStreetMap's tile policy
+         * requires a Referer identifying the site. "origin" sends the scheme
+         * and host and nothing else, for these requests only. */
+        img.setAttribute("referrerpolicy", "origin");
+        img.src = this.settings.tile_url
           .replace("{z}", this.zoom)
           .replace("{x}", wrapped)
           .replace("{y}", ty);
-        /* **referrerpolicy is why tiles load at all.** QSP sends
-         * Referrer-Policy: no-referrer, and OpenStreetMap's tile policy
-         * requires a Referer identifying the site — without one it answers 403
-         * with a picture saying so, which is what the map drew.
-         *
-         * Set on the image rather than by relaxing the site-wide header:
-         * "origin" sends the scheme and host and nothing else, only for these
-         * requests, and every other request QSP makes stays anonymous. */
-        html +=
-          /* Not loading="lazy". A tile is only wanted when it is drawn, and
-           * deferring it means a map that fills in as the page is scrolled —
-           * or does not, for tiles the browser decides are far enough away.
-           * The map asks for what it needs and nothing more. */
-          '<img class="map__tile" alt="" aria-hidden="true" draggable="false" ' +
-          'referrerpolicy="origin" src="' +
-          escapeAttribute(url) +
-          '" style="left:' + Math.round(tx * TILE - centreX) + "px;top:" +
-          Math.round(ty * TILE - centreY) + 'px">';
+        img.style.left = Math.round(tx * TILE - centreX) + "px";
+        img.style.top = Math.round(ty * TILE - centreY) + "px";
+
+        plane.appendChild(img);
         count++;
       }
     }
-    return { html: html, count: count };
+    return count;
   };
 
-  Map.prototype.markers = function (centreX, centreY) {
-    var html = "";
+  /* appendMarkers adds a pin per located peer. */
+  Map.prototype.appendMarkers = function (plane, centreX, centreY) {
     for (var i = 0; i < this.points.length; i++) {
       var p = this.points[i];
       var x = Math.round(lonToX(p.lon, this.zoom) - centreX);
       var y = Math.round(latToY(p.lat, this.zoom) - centreY);
-      /* Pins outside the frame are skipped. One drawn at a negative offset
-       * escaped the panel's overflow in the corner case and overlapped the
-       * header above it. */
+
       /* Offsets from the centre, so the bound is generous either way. A pin
        * just off the edge costs one element; a pin wrongly skipped is a
        * station that has vanished. */
@@ -456,13 +444,25 @@
       if (x < -reach || x > reach || y < -reach || y > reach) {
         continue;
       }
-      html +=
-        '<div class="map__pin" style="left:' + x + "px;top:" + y + 'px">' +
-        '<span class="map__pin-dot" aria-hidden="true"></span>' +
-        '<span class="map__pin-label">' + escapeAttribute(p.label) + "</span>" +
-        "</div>";
+
+      var pin = document.createElement("div");
+      pin.className = "map__pin";
+      pin.style.left = x + "px";
+      pin.style.top = y + "px";
+
+      var dot = document.createElement("span");
+      dot.className = "map__pin-dot";
+      dot.setAttribute("aria-hidden", "true");
+
+      var label = document.createElement("span");
+      label.className = "map__pin-label";
+      /* textContent, so a callsign is never markup. */
+      label.textContent = p.label;
+
+      pin.appendChild(dot);
+      pin.appendChild(label);
+      plane.appendChild(pin);
     }
-    return html;
   };
 
   /* Escaping here rather than reusing the console's helper keeps this file

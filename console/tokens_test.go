@@ -674,6 +674,50 @@ func TestTheMapPlacesRelativeToItsCentre(t *testing.T) {
 		t.Error("map.js does not draw onto a centred plane")
 	}
 
+	// Style attributes are checked across every script by the test below, which
+	// reads line by line and can tell a rule from a comment about it. What
+	// matters here is that the map positions through the style object, which is
+	// CSSOM and which the policy permits.
+	if !strings.Contains(src, ".style.left =") {
+		t.Error("map.js does not position through the style object")
+	}
+}
+
+// TestTheConsoleNeverWritesStyleAttributes.
+//
+// The policy is `style-src 'self'`, which forbids them everywhere and not only
+// in the map. One written anywhere is refused silently, which is the hardest
+// kind of fault to see: the markup is right, the CSS is right, and the element
+// is in the wrong place.
+func TestTheConsoleNeverWritesStyleAttributes(t *testing.T) {
+	for _, script := range []string{
+		"static/console.js", "static/map.js", "static/access.js",
+		"static/network.js", "static/bridges.js", "static/history.js",
+		"static/join.js", "static/signin.js",
+	} {
+		body, err := assets.ReadFile(script)
+		if err != nil {
+			t.Fatalf("reading %s: %v", script, err)
+		}
+		for _, line := range strings.Split(string(body), "\n") {
+			trimmed := strings.TrimSpace(line)
+			// Comments explaining the rule are not breaches of it.
+			if strings.HasPrefix(trimmed, "*") || strings.HasPrefix(trimmed, "//") ||
+				strings.HasPrefix(trimmed, "/*") {
+				continue
+			}
+			// Both routes to the same breach: a style attribute written into
+			// markup, and one set through setAttribute. The second was missed
+			// by the first version of this check, which is the sort of gap a
+			// check only reveals when somebody tries to defeat it.
+			if strings.Contains(line, `style="`) || strings.Contains(line, `style='`) ||
+				strings.Contains(line, `setAttribute("style"`) ||
+				strings.Contains(line, `setAttribute('style'`) {
+				t.Errorf("%s writes a style attribute: %s", script, trimmed)
+			}
+		}
+	}
+
 	css, err := assets.ReadFile("static/console.css")
 	if err != nil {
 		t.Fatalf("reading console.css: %v", err)

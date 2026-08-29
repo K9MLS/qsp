@@ -277,6 +277,22 @@ All notable changes to QSP. Dates are UTC.
   here read the files for consistency. Confirmed by deleting the same function
   again and watching it fail.
 
+- **The map works, and the cause was QSP's own content security policy.**
+  `style-src 'self'` forbids inline style attributes, so every
+  `style="left:…"` on a tile or pin was silently refused and all of them stacked
+  at their container's origin — in a corner while the plane was at the corner,
+  at the centre once it was centred. Both screenshots were one fault seen twice.
+
+  Positions are set through `element.style` now, which is CSSOM and which the
+  policy permits, so the policy is unchanged. **This is the third feature QSP's
+  own headers broke**: `img-src` blocked the tiles, `Referrer-Policy` made the
+  tile server refuse them, and `style-src` stopped them being placed.
+
+  Verified against a DOM that throws on a style attribute exactly as the policy
+  does: 27 tiles spanning the frame and two pins straddling the centre, with no
+  attribute written anywhere. A test now fails if any console script writes one,
+  by either route.
+
 - **The map is back, and the bug was in the design.** Every position was
   computed from a measured width, and the measurement was wrong: the caption
   added to make the map report itself showed a frame of 1920 against a canvas of

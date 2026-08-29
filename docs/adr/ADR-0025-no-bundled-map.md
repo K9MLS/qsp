@@ -74,7 +74,21 @@ against a canvas of 1550. The size routine took the largest width in the element
 found the viewport instead of the map. Six attempts argued about which
 measurement to trust; none asked why a measurement was being trusted at all.
 
-Positions are offsets from the map's centre now — a tile goes at
+**And then the actual cause.** The content security policy is `style-src
+'self'`, which forbids inline style attributes. Every tile and pin was emitted
+as markup carrying a style attribute, the browser refused each one, and all of
+them stacked at their container's origin: in the frame's corner while the plane
+sat there, at the centre once the plane was centred. Both screenshots were the
+same fault seen twice.
+
+Positions are set through `element.style` now, which is CSSOM and which the
+policy permits, so the policy stays exactly as strict as it was. **This is the
+third feature that QSP's own security headers broke**: `img-src` blocked the
+tiles, `Referrer-Policy` made the tile server refuse them, and `style-src`
+stopped them being placed. Each header was correct and written before the
+feature existed.
+
+Positions are also offsets from the map's centre now — a tile goes at
 `tx * 256 - centreX`, the plane sits at the middle of the canvas by CSS, and no
 width appears in the arithmetic. Verified against a simulated DOM at frame sizes
 from 1550×360 down to 50×50, a single peer lands at offset zero every time and
