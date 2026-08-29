@@ -50,14 +50,16 @@ bridging.** Both are now implemented.
 | | |
 |---|---|
 | Version | 0.1.9 |
-| Tests | 381, all passing |
+| Tests | ~740, all passing |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
 | Health report | 11 subsystems |
-| Hardware validated | **yes** — live voice decoded 2026-08-25, see §6 |
+| Hardware validated | **yes** — live voice 2026-08-25, and a two-station QSO across a real network 2026-08-28, see §6 |
+| Members | two: K9MLS (Denton, TX) and KB9TYC (Wisconsin, WI) |
 | CI | green, 8 jobs, `github.com/K9MLS/qsp` (private) |
-| Static analysis | `staticcheck` clean, pinned at 2024.1.1 |
+| Static analysis | `staticcheck` clean, pinned at 2024.1.1. **It runs in the development container**: the release binary comes from GitHub, which the network policy allows, unlike the module proxy |
+| Migrations | 4 — configuration versions, audit events, users and sessions, callsign cache |
 
 ### Phase gates (BLUEPRINT §16)
 
@@ -66,15 +68,19 @@ No phase advances on a passing test suite alone. By that rule:
 | Phase | Gate | Status |
 |---|---|---|
 | 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
-| 2 — Console | A newcomer is running in under 10 minutes, unassisted | open — shell is functional and plain; redesign not started |
-| 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak not started |
+| 2 — Console | A newcomer is running in under 10 minutes, unassisted | open — the console is built out, with five administration pages, but **no newcomer has tried it**. The one thing that would close this gate is somebody who is not the author following the join page |
+| 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak running since 2026-08-27 but interrupted by daily deploys. See §9 |
 | 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
 
 Phase 3's gate is two weeks of wall-clock time and cannot be compressed, so it
-is now the critical path. Phase 1 closing is what unblocked it.
+is the critical path. Phase 1 closing is what unblocked it.
 
-Phase 2 does not gate the soak. The console works; it is only unpolished. The
-two can run concurrently, and should, because the fortnight is the constraint.
+**The soak has not had two weeks of anything.** It has been deployed to almost
+daily since it began, and every restart is explained — but a fortnight of
+explained restarts is not the unattended fortnight the gate describes. The clock
+should be treated as running from the last deploy.
+
+Phase 2 does not gate the soak, and the two can run concurrently.
 
 ### Working
 
@@ -240,12 +246,69 @@ BrandMeister. The talkgroup mapping is `TGRewrite0=2,11,2,9,1`: dial TG 11 on
 TS2, arrive as TG 9.
 
 Parrot was dropped from the gate's wording because QSP did not implement it.
-**It does now**, per [ADR-0028](docs/adr/ADR-0028-parrot.md), so "hears itself
-through parrot" is achievable on a QSP-only network after all, as a group
-call or a private one. It is a buffer rather than an audio feature, which is
-why it arrived long before the vocoder.
+**It does now**, per [ADR-0028](docs/adr/ADR-0028-parrot.md), as a group
+call. See the caveat in §6a. It is a buffer rather than an audio feature,
+which is why it arrived long before the vocoder.
 
 Fixture: `testdata/hbp/hbp-voice-live.pcap`.
+
+---
+
+## 6a. What two members on a real network taught us, 2026-08-28 and 08-29
+
+A second station joined — KB9TYC in Wisconsin, Wisconsin, about a thousand miles
+from K9MLS in Denton, Texas — and **everything below was found by using QSP
+rather than by testing it.** That is the pattern worth carrying forward: the
+defects that mattered were all invisible to a passing suite.
+
+### Confirmed working on air
+
+Voice both ways on a shared talkgroup. Private calls radio to radio. Text
+messages. Parrot, as a group call. Radio ID lookups against the registry.
+Authentication, configuration saves from a browser, and the access control page.
+
+### Defects found by looking at a running system
+
+- **QSP's own security headers broke the same feature three times.** `img-src`
+  blocked map tiles; `Referrer-Policy: no-referrer` made OpenStreetMap refuse
+  them; `style-src 'self'` silently discarded the inline style attribute
+  positioning every tile, so all of them stacked at one point. Each header is
+  correct and predates the feature. **Each failed silently**, which is what a
+  security header should do and what makes this class of fault nearly invisible
+  from the source side. If a browser feature does not work and the code is
+  provably right, check what the page is forbidden from doing.
+- **Contention was eating text messages.** A DMR text is a sequence of
+  single-frame data bursts, each with its own stream ID, so the contention key
+  saw thirty different stations and refused all but the first. Seventeen frames
+  offered, two delivered. Contention compares the station rather than the stream
+  for data now.
+- **A parrot replay of a private call cannot work** without decoding a DMR
+  burst. The addressing lives inside the 33-byte burst, in the Link Control,
+  under its own error correction, and a radio believes that rather than the
+  wrapper. Swapping source and target in the HBP header looked right, passed a
+  test, and produced five replays a radio muted.
+- **Peer authentication had no throttling** while the console login did. Forty
+  failed logins from one address in six minutes, and QSP answered every one.
+- **A text message filled Last heard**, pushing out the voice traffic the panel
+  exists to show, because each burst completed as its own call.
+
+### The hotspot lessons, which are not QSP's but bite every member
+
+A member's hotspot needs configuration QSP cannot supply, and none of it is
+discoverable from either end:
+
+- `TGRewrite` must cover the club's talkgroups or they never leave the hotspot.
+  `TGRewrite0=2,2,2,2,10` passes TS2 talkgroups 2 through 11 unchanged.
+- `PCRewrite` must cover **each member's own radio ID**, or private calls and
+  texts addressed to them are dropped on the way in.
+- Parrot's talkgroup is often outside the pass-through range and needs its own
+  rule.
+- A rule is found by content, never by line number: `sed -i '/^TGRewrite0=/d'`
+  removed the line from *every* network block on one occasion and took the
+  club's network down for an hour.
+
+**This belongs on the join page and does not yet exist there.** Until it does,
+every new member repeats the same afternoon.
 
 ---
 
@@ -314,9 +377,14 @@ stays in CI.
 ### What actually works today
 
 A master that accepts hotspots, repeats a talkgroup between them, bridges
-between talkgroups on a schedule or on PTT, links outward over OpenBridge, and
-serves a read-only console plus a member onboarding page. Protocol validated
-against real hardware; 381 tests; CI green.
+between talkgroups on a schedule or on PTT, links outward over OpenBridge and by
+dialling out as a peer, replays a transmission back to whoever sent it, resolves
+radio IDs to names, and serves a console with five administration pages behind a
+login. Around 740 tests; CI green.
+
+**It carries a real network.** Two stations a thousand miles apart use it for
+voice, private calls and text messages. Everything in §6a was found by that
+happening rather than by the suite.
 
 ### What is honestly missing
 
@@ -338,12 +406,18 @@ it is more use than a list of what exists today.
 |---|---|
 | **IPSC** | a club with a Motorola repeater cannot use QSP. Blocked on a capture, deliberately — see [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) |
 | **A vocoder** | QSP relays audio without decoding it, which is why parrot works and transcoding does not |
-| **`/api/peers` is unauthenticated** | it discloses callsigns, radio IDs and source addresses to anyone who finds the URL |
-| **Live map** | **built** — [ADR-0025](docs/adr/ADR-0025-no-bundled-map.md). Withdrawn once and restored: positions are offsets from the map's centre rather than from a measured width, which is what was wrong |
-| **IPSC** | unblocked by ADR-0008; needs a capture |
+| **Hotspot configuration guidance** | a member's own hotspot needs `TGRewrite` and `PCRewrite` rules QSP cannot supply, and the join page does not mention them. Every new member repeats the same afternoon. See §6a |
 | **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
 
+The live map is built, and `/api/peers` is deliberately unauthenticated: it
+carries callsigns, radio IDs and coordinates, all of which are public
+information in amateur radio. That has been raised and settled; do not raise it
+again.
+
 ### Order I would take it
+
+*Everything below was written before the network had two members. The first two
+items are done; what replaced them is at the end of this section.*
 
 1. **Prove audio between two real hotspots.** Never done. Twenty minutes with a
    second radio, and it either confirms layer 1 or finds what no test can.
@@ -362,10 +436,55 @@ it is more use than a list of what exists today.
 
 ### Immediate, small
 
-- Real BCARA talkgroups in `/var/lib/qsp/qsp.json`; `11 → 9` is a placeholder.
 - The join page needs one path prefix so a reverse proxy needs one rule, not
   seven.
 - A BrandMeister bridge request, since approval takes as long as it takes.
+
+---
+
+### Where a new session should actually start, as of 2026-08-29
+
+1. **Hotspot configuration on the join page.** The single highest-value thing
+   left, and the only one that is nobody's job but QSP's. A member's hotspot
+   needs `TGRewrite` covering the club's talkgroups and `PCRewrite` covering
+   their own radio ID, or their talkgroups never leave and their texts never
+   arrive. §6a has the specifics. The page knows each member's radio ID, so it
+   can generate the lines rather than describe them.
+2. **A health check for the callsign resolver.** It can be rate-limited or
+   unreachable and nothing anywhere reports it.
+3. **Leave the soak alone.** Phase 3 wants a fortnight and has never had a week.
+   Every restart so far is an explained deploy, which satisfies the letter and
+   not the point.
+4. **A newcomer follows the join page unassisted.** That is phase 2's gate and
+   no substitute for it exists — the author cannot close it.
+
+Blocked on hardware, and blocked correctly: an IPSC capture
+([ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md)), a two-peer voice fixture,
+an XLX reflector for outbound peer mode, and the BrandMeister request.
+
+## 8a. How this project finds its defects
+
+Worth stating plainly, because it has been true every week and is the single
+most useful thing to know before proposing work.
+
+**Almost every defect that mattered was found by using QSP, not by testing it.**
+The suite is large and green and has never once caught the thing that was
+actually wrong. What it does is stop old faults returning, which is worth having
+and is not the same job.
+
+The pattern behind most of them: **two statements individually true, together a
+lie.** Live settings were read at construction and the code that changed them
+was correct, and a save reported success while nothing took effect.
+`NeedsRestart` listed real fields and omitted parrot. A test asserted the
+wrapper QSP writes rather than what a radio reads, and passed while five
+replays went out to a muted radio. A security header was right, the feature
+it silently broke was right, and the pair was wrong.
+
+So: when something does not work and the code is provably correct, the fault is
+in the gap between two correct things. Look at what the running system is
+actually doing before proposing what to change.
+
+---
 
 ## 9. The soak, in progress
 
