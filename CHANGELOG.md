@@ -265,6 +265,17 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
+- **The map reports what it measured and drew**, in a line beneath it: tile
+  count, frame size, canvas size, zoom.
+
+  This exists because the map has been wrong five times and every fix was a
+  guess about which measurement was at fault. Running the real `map.js` against
+  a simulated DOM settles the question from this side — **at frame sizes from
+  1520×360 down to 10×10 it emits 21 to 24 tiles every time**, so the code
+  cannot produce the single tile that keeps appearing. Whatever is executing in
+  the browser is not this file, and nothing in the source can discover that from
+  the inside.
+
 - **Radio IDs resolve to names in the console.** `dmr.callsigns.enabled` with a
   contact address turns it on; Last heard then shows a callsign and given name
   beside the number for radios the registry knows.

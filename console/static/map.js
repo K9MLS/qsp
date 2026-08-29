@@ -102,6 +102,14 @@
 
     this.canvas = this.el.querySelector(".map__canvas");
 
+    /* Outside the frame, because the frame clips its overflow and a caption
+     * that can be swallowed by the thing it describes is no use. */
+    this.caption = document.createElement("p");
+    this.caption.className = "map__caption";
+    if (this.el.parentElement) {
+      this.el.parentElement.appendChild(this.caption);
+    }
+
     /* Attribution is set as text rather than markup. It is operator-supplied
      * configuration, and configuration is not a reason to trust a string with
      * innerHTML. */
@@ -314,11 +322,37 @@
     var originY = centreY - height / 2;
 
     var html = "";
+    var tiles = 0;
     if (this.settings.tile_url) {
-      html += this.tiles(originX, originY, width, height);
+      var grid = this.tiles(originX, originY, width, height);
+      html += grid.html;
+      tiles = grid.count;
     }
     html += this.markers(originX, originY);
     this.canvas.innerHTML = html;
+
+    this.report(box, tiles);
+  };
+
+  /* report says what the map measured and drew.
+   *
+   * **This exists because the map has been wrong five times and every fix was
+   * a guess about which measurement was at fault.** The source is consistent
+   * and the rendered page is not, which is a gap nothing in the code can close
+   * from the inside. A line under the map turns one screenshot into the answer.
+   *
+   * It is small, muted, and beside the attribution the tiles already require,
+   * so it reads as map furniture rather than a debugging artefact. */
+  Map.prototype.report = function (box, tiles) {
+    if (!this.caption) {
+      return;
+    }
+    var canvas = this.canvas.getBoundingClientRect();
+    this.caption.textContent =
+      tiles + (tiles === 1 ? " tile" : " tiles") +
+      " · frame " + box.width + "×" + box.height +
+      " · canvas " + Math.round(canvas.width) + "×" + Math.round(canvas.height) +
+      " · zoom " + this.zoom;
   };
 
   /* MIN_COLUMNS and MIN_ROWS are a floor on the tile grid.
@@ -357,6 +391,7 @@
     }
 
     var html = "";
+    var count = 0;
     for (var ty = firstY; ty <= lastY; ty++) {
       /* Above the north edge or below the south there is no tile. Requesting
        * one fetches a 404 per pan, which is rude to a donated server and
@@ -391,9 +426,10 @@
           escapeAttribute(url) +
           '" style="left:' + (tx * TILE - originX) + "px;top:" +
           (ty * TILE - originY) + 'px">';
+        count++;
       }
     }
-    return html;
+    return { html: html, count: count };
   };
 
   Map.prototype.markers = function (originX, originY) {

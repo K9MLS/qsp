@@ -1252,3 +1252,15 @@ select.field__input {
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
 }
+
+/* What the map measured and drew.
+   The map has been wrong repeatedly and every fix was a guess about which
+   measurement was at fault; the source is consistent and the rendered page is
+   not, which is a gap nothing in the code can close from the inside. This line
+   turns a screenshot into the answer. */
+.map__caption {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+}
