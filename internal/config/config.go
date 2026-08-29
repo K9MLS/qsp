@@ -132,6 +132,9 @@ type DMR struct {
 	// meant. A listener reachable from beyond this host with no block at all
 	// refuses to start. See docs/adr/ADR-0020-access-control.md.
 	Access *Access `json:"access,omitempty"`
+	// Parrot records and replays a transmission on one talkgroup, so a member
+	// can prove their setup works with nobody else awake. See ADR-0028.
+	Parrot Parrot `json:"parrot"`
 }
 
 // Subscription is layer 3: which peers receive which talkgroups.
@@ -156,6 +159,28 @@ type StaticAttachment struct {
 	// Talkgroup and Timeslot identify what it receives.
 	Talkgroup uint32 `json:"talkgroup"`
 	Timeslot  int    `json:"timeslot"`
+}
+
+// Parrot configures the record-and-replay talkgroup.
+//
+// **There is no default talkgroup**, and that is §0 rather than an oversight:
+// 9990 is conventional on some networks and 9998 on others, and shipping one
+// network's number is what was refused for talkgroup lists and for tile
+// servers. A talkgroup QSP swallows is one an operator did not choose to lose.
+type Parrot struct {
+	// Enabled turns parrot on. Off by default.
+	Enabled bool `json:"enabled"`
+	// Talkgroup is the number that records and replays. Required when enabled.
+	Talkgroup uint32 `json:"talkgroup"`
+	// Timeslot the talkgroup lives on: 1 or 2.
+	Timeslot int `json:"timeslot"`
+	// MaxDuration bounds a recording. Zero selects thirty seconds — without a
+	// bound, a stuck PTT is unbounded memory.
+	MaxDuration Duration `json:"max_duration"`
+	// Gap is the pause between the transmission ending and the replay
+	// starting. Zero selects one second, which is long enough for a radio to
+	// have returned to receive.
+	Gap Duration `json:"gap"`
 }
 
 // Access holds the four lists that decide who QSP carries.
@@ -725,6 +750,29 @@ func (c Config) Validate() error {
 		if z := c.Server.Map.MaxZoom; z < 1 || z > 22 {
 			v.add("server.map.max_zoom", fmt.Sprintf("is %d; slippy maps run from 1 to 22", z),
 				"use 18, which is as far as most tile servers go")
+		}
+	}
+
+	if c.DMR.Parrot.Enabled {
+		p := c.DMR.Parrot
+		if p.Talkgroup == 0 {
+			v.add("dmr.parrot.talkgroup", "must not be 0 when parrot is enabled",
+				"choose a talkgroup nothing else on this network uses; 9990 is common, "+
+					"but QSP ships no default because it would swallow a number you may want")
+		}
+		if p.Timeslot != 1 && p.Timeslot != 2 {
+			v.add("dmr.parrot.timeslot",
+				fmt.Sprintf("is %d; DMR has timeslots 1 and 2", p.Timeslot),
+				"use 2 unless the talkgroup lives on timeslot 1")
+		}
+		if d := p.MaxDuration.AsDuration(); d < 0 || d > 5*time.Minute {
+			v.add("dmr.parrot.max_duration", fmt.Sprintf("is %s", d),
+				"use something between a few seconds and a minute; a member who transmits "+
+					"for longer waits as long again to hear it")
+		}
+		if d := p.Gap.AsDuration(); d < 0 || d > time.Minute {
+			v.add("dmr.parrot.gap", fmt.Sprintf("is %s", d),
+				"use a second or two, long enough for a radio to return to receive")
 		}
 	}
 

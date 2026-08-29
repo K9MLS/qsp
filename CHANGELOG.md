@@ -244,6 +244,33 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Parrot records and replays**, so a member can prove their whole path works
+  with nobody else awake. [ADR-0028](docs/adr/ADR-0028-parrot.md). That case is
+  the ordinary one rather than the unlucky one: a club has a handful of active
+  operators, and somebody keying up into silence cannot tell a broken radio from
+  an empty channel.
+
+  **QSP replays bytes it never understood.** A transmission is frames carrying
+  DMR bursts and nothing here decodes one, which is why this arrives long before
+  the vocoder — parrot is a buffer, not an audio feature.
+
+  A recording goes back to the peer that sent it and to no one else, carrying a
+  new stream ID because a repeated one is a duplicate to a radio and is
+  discarded as one. Source and target are preserved, so the member's display
+  shows what it showed when they transmitted. **A recording never enters the
+  routing core**, so it cannot face access control or contention on the way back
+  and cannot leak onto a bridged network.
+
+  A transmission ends in silence rather than in a distinguishable frame: the
+  header and the terminator share a frame type and only position tells them
+  apart, which `internal/calls` discovered first. Keying up again starts over.
+  Two hotspots may test at once.
+
+  There is **no default talkgroup** — 9990 is conventional on some networks and
+  9998 on others, and shipping one network's number is what §0 refused for
+  talkgroup lists and tile servers. Fourteen tests. **The playback transport is
+  not written yet**, so nothing replays.
+
 - **Peer coordinates are a pill rather than four decimal places.** Latitude and
   longitude next to a place name made a row that no longer scanned — digits
   nobody reads, in a table meant to be followed across the page. The numbers

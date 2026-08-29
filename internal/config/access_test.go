@@ -582,3 +582,74 @@ func TestNoTilesIsValid(t *testing.T) {
 		t.Errorf("an empty map block was rejected: %v", err)
 	}
 }
+
+// Parrot. See ADR-0028.
+
+func TestParrotIsOffByDefault(t *testing.T) {
+	if Default().DMR.Parrot.Enabled {
+		t.Error("parrot is on by default; it swallows a talkgroup, so it must be chosen")
+	}
+	if Default().DMR.Parrot.Talkgroup != 0 {
+		t.Error("a default parrot talkgroup ships; §0 refused one network's numbers")
+	}
+	if err := Default().Validate(); err != nil {
+		t.Errorf("the default configuration must validate: %v", err)
+	}
+}
+
+func TestParrotValidation(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		p     Parrot
+		field string
+	}{
+		{"no talkgroup", Parrot{Enabled: true, Timeslot: 2}, "dmr.parrot.talkgroup"},
+		{"no timeslot", Parrot{Enabled: true, Talkgroup: 9990}, "dmr.parrot.timeslot"},
+		{"timeslot 3", Parrot{Enabled: true, Talkgroup: 9990, Timeslot: 3},
+			"dmr.parrot.timeslot"},
+		{"an hour of recording", Parrot{Enabled: true, Talkgroup: 9990, Timeslot: 2,
+			MaxDuration: Duration(time.Hour)}, "dmr.parrot.max_duration"},
+		{"an hour of silence", Parrot{Enabled: true, Talkgroup: 9990, Timeslot: 2,
+			Gap: Duration(time.Hour)}, "dmr.parrot.gap"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := Default()
+			c.DMR.Parrot = tc.p
+
+			err := c.Validate()
+			if err == nil {
+				t.Fatal("an invalid parrot configuration was accepted")
+			}
+			var found bool
+			for _, fe := range err.(*ValidationError).Errors {
+				if fe.Field == tc.field {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("want an error on %s, got %v", tc.field, err.(*ValidationError).Fields())
+			}
+		})
+	}
+}
+
+// TestADisabledParrotIsNotChecked lets an operator write the block down before
+// deciding which talkgroup to give up.
+func TestADisabledParrotIsNotChecked(t *testing.T) {
+	c := Default()
+	c.DMR.Parrot = Parrot{Enabled: false}
+	if err := c.Validate(); err != nil {
+		t.Errorf("a disabled parrot block was rejected: %v", err)
+	}
+}
+
+func TestAWorkingParrotIsAccepted(t *testing.T) {
+	c := Default()
+	c.DMR.Parrot = Parrot{
+		Enabled: true, Talkgroup: 9990, Timeslot: 2,
+		MaxDuration: Duration(30 * time.Second), Gap: Duration(time.Second),
+	}
+	if err := c.Validate(); err != nil {
+		t.Errorf("a well-formed parrot configuration was rejected: %v", err)
+	}
+}
