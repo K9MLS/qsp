@@ -682,6 +682,10 @@ body {
   height: 256px;
   user-select: none;
   -webkit-user-drag: none;
+  /* The pointer belongs to the canvas, which handles dragging. Without this a
+     press lands on whichever tile is under it and the drag handler never sees
+     a consistent target. */
+  pointer-events: none;
 }
 
 .map__pin {

@@ -509,3 +509,58 @@ func TestTheMapArithmeticFillsAFrame(t *testing.T) {
 		t.Error("map.js does not observe its own size")
 	}
 }
+
+// TestTheMapCanBeDragged. Three things stop a map moving under the pointer,
+// and all three were present at once: images starting the browser's own
+// drag-and-drop, tiles taking the pointer from the canvas that handles it, and
+// a redraw on every pointermove rebuilding the whole grid dozens of times a
+// second.
+func TestTheMapCanBeDragged(t *testing.T) {
+	body, err := assets.ReadFile("static/map.js")
+	if err != nil {
+		t.Fatalf("reading map.js: %v", err)
+	}
+	src := string(body)
+
+	if !strings.Contains(src, "event.preventDefault()") {
+		t.Error("pointerdown does not prevent the browser's native image drag, " +
+			"which takes the pointer and stops the map dead")
+	}
+	if !strings.Contains(src, `draggable="false"`) {
+		t.Error("tiles are draggable, so pressing one starts a drag-and-drop")
+	}
+	if !strings.Contains(src, "scheduleDraw") {
+		t.Error("redraws are not coalesced; a pointermove fires far more often " +
+			"than the screen refreshes")
+	}
+
+	css, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	// The tile rule must not take the pointer from the canvas.
+	tileRule := string(css)
+	i := strings.Index(tileRule, ".map__tile {")
+	if i < 0 {
+		t.Fatal("the tile rule is gone")
+	}
+	if !strings.Contains(tileRule[i:i+400], "pointer-events: none") {
+		t.Error("tiles capture the pointer; the canvas is what handles dragging")
+	}
+}
+
+// TestTilesAreNotDeferred. A tile is wanted the moment it is drawn, and
+// loading="lazy" leaves a map filling in as somebody scrolls — or not, for
+// tiles the browser decides are far enough away.
+func TestTilesAreNotDeferred(t *testing.T) {
+	body, err := assets.ReadFile("static/map.js")
+	if err != nil {
+		t.Fatalf("reading map.js: %v", err)
+	}
+	// The phrase appears in a comment explaining its absence, so the check is
+	// for the attribute as it would be emitted.
+	if strings.Contains(string(body), `loading=\"lazy\"`) ||
+		strings.Contains(string(body), "loading='lazy'") {
+		t.Error("tiles are lazily loaded")
+	}
+}

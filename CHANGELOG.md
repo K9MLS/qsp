@@ -244,6 +244,27 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **The map can be dragged, and draws more than one tile.** Three separate
+  faults, all present at once.
+
+  Pressing a tile started the browser's own drag-and-drop, which takes the
+  pointer and stops the map dead after a few pixels. Tiles also captured the
+  pointer from the canvas that handles dragging. And every `pointermove`
+  rebuilt the whole tile grid — far more often than the screen refreshes —
+  which is what made dragging feel broken rather than merely imperfect. Redraws
+  are now coalesced to one per animation frame.
+
+  Tiles are no longer lazily loaded: a tile is wanted the moment it is drawn,
+  and deferring it leaves a map filling in as somebody scrolls, or not at all
+  for tiles the browser judges far away.
+
+  **The frame is measured by taking the largest answer anything offers** — the
+  element, its bounding box, and its ancestors. Three attempts to fix this by
+  reasoning about which measurement was correct all failed, and a map that draws
+  a few tiles more than it needs is a far smaller fault than one that draws a
+  corner. What it measured is recorded on the element as `data-measured`, so the
+  inspector answers the question rather than another round of guessing.
+
 - **Map and admin page adjustments.** The map frame is explicitly full width
   and falls back to its container's width when it measures narrower, which is
   what left a full-width panel showing one tile in the corner. The tile

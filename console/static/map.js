@@ -82,6 +82,8 @@
     this.centre = { lat: 0, lon: 0 };
     this.zoom = 2;
     this.points = [];
+    /* Whether a redraw is already scheduled for the next animation frame. */
+    this.frameQueued = false;
     /* Whether the view has been fitted to the points. A resize redraws and
      * does not refit: somebody who has panned away from their club should not
      * be yanked back because the window changed width. */
@@ -148,6 +150,12 @@
     var last = null;
 
     this.canvas.addEventListener("pointerdown", function (event) {
+      /* **Without this the map cannot be dragged at all.** Pressing on an
+       * image starts the browser's own drag-and-drop, which takes the pointer
+       * and cancels the events this handler depends on — so the map moves for
+       * a few pixels and then stops dead. */
+      event.preventDefault();
+
       dragging = true;
       last = { x: event.clientX, y: event.clientY };
       self.canvas.setPointerCapture(event.pointerId);
@@ -169,7 +177,7 @@
       var cx = lonToX(self.centre.lon, self.zoom) - dx;
       var cy = latToY(self.centre.lat, self.zoom) - dy;
       self.centre = { lon: xToLon(cx, self.zoom), lat: yToLat(cy, self.zoom) };
-      self.draw();
+      self.scheduleDraw();
     });
 
     function stop(event) {
@@ -197,26 +205,68 @@
    * clientWidth rather than getBoundingClientRect, because it is the box the
    * absolutely-positioned children are placed inside and so is the number the
    * arithmetic actually needs. */
+  /* size measures the frame, taking the largest answer anything offers.
+   *
+   * **Three attempts at this failed by reasoning about which measurement was
+   * right.** The arithmetic was verified against a known size and is correct,
+   * so a map drawing one tile in a corner means every path that produced a
+   * number produced a small one. Rather than pick a fourth candidate and hope,
+   * this takes the largest of the element, its bounding box, and its
+   * ancestors — a map that draws a few tiles more than it needs is a far
+   * smaller fault than one that draws a corner.
+   *
+   * The result is recorded on the element as data-measured, so a screenshot of
+   * the inspector answers the question instead of another round of guessing. */
   Map.prototype.size = function () {
-    var width = this.el.clientWidth;
-    var height = this.el.clientHeight;
+    var width = 0;
+    var height = 0;
 
-    /* Fall back to the parent when the frame measures narrower than it.
-     *
-     * The tile arithmetic was verified against a known size and is correct, so
-     * a map drawing one tile in the corner means the element reported a width
-     * it does not have. Rather than guess at which layout rule does that, take
-     * the containing box, which is the width the frame is meant to fill
-     * anyway. */
-    var parent = this.el.parentElement;
-    if (parent && parent.clientWidth > width) {
-      width = parent.clientWidth;
+    function consider(w, h) {
+      if (w > width) { width = w; }
+      if (h > height) { height = h; }
+    }
+
+    consider(this.el.clientWidth, this.el.clientHeight);
+    consider(this.el.offsetWidth, this.el.offsetHeight);
+    var rect = this.el.getBoundingClientRect();
+    consider(Math.round(rect.width), Math.round(rect.height));
+
+    /* Up the tree until something has a width. A frame that reports nothing
+     * is still inside a panel that does. */
+    var node = this.el.parentElement;
+    for (var depth = 0; node && depth < 4; depth++) {
+      consider(node.clientWidth, 0);
+      node = node.parentElement;
     }
 
     if (width < 1 || height < 1) {
       return null;
     }
+    this.el.setAttribute("data-measured", width + "x" + height);
     return { width: width, height: height };
+  };
+
+  /* scheduleDraw coalesces redraws to one per animation frame.
+   *
+   * A pointermove fires far more often than the screen refreshes, and each
+   * redraw replaces every tile element. Rebuilding the whole grid dozens of
+   * times a second is what made dragging feel broken rather than merely
+   * imperfect. */
+  Map.prototype.scheduleDraw = function () {
+    var self = this;
+    if (this.frameQueued) {
+      return;
+    }
+    this.frameQueued = true;
+
+    var schedule = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : function (fn) { return setTimeout(fn, 16); };
+
+    schedule(function () {
+      self.frameQueued = false;
+      self.draw();
+    });
   };
 
   /* show replaces the points and refits the view. */
@@ -304,7 +354,11 @@
          * "origin" sends the scheme and host and nothing else, only for these
          * requests, and every other request QSP makes stays anonymous. */
         html +=
-          '<img class="map__tile" alt="" aria-hidden="true" loading="lazy" ' +
+          /* Not loading="lazy". A tile is only wanted when it is drawn, and
+           * deferring it means a map that fills in as the page is scrolled —
+           * or does not, for tiles the browser decides are far enough away.
+           * The map asks for what it needs and nothing more. */
+          '<img class="map__tile" alt="" aria-hidden="true" draggable="false" ' +
           'referrerpolicy="origin" src="' +
           escapeAttribute(url) +
           '" style="left:' + (tx * TILE - originX) + "px;top:" +
