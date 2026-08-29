@@ -265,6 +265,22 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
+- **The registry client and the cache table.** `migrations/0004_callsigns.sql`
+  holds resolved names so a restart does not re-ask for everything QSP already
+  knew, and the HTTP client identifies itself with QSP's version and the
+  operator's contact address.
+
+  **A rate-limit answer is an error, not an absence.** The registry may
+  rate-limit at any time, and recording that as "this ID does not exist" would
+  cache their refusal as a fact about somebody's own members. An empty result
+  is an absence; HTTP 429 is a temporary failure worth retrying later.
+
+  The response is read bounded and only the displayed fields are kept, so the
+  cache does not drift towards being a copy of the registry — which is the thing
+  their policy puts behind approval. The endpoint is a constant rather than a
+  setting: QSP is a client of the amateur DMR registry, not a general client of
+  whatever somebody points it at.
+
 - **[ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md) decides how radio IDs are
   resolved**, and `internal/callsigns` implements the part that needs no
   network. A club should see names without maintaining alias lists in every
