@@ -292,3 +292,11 @@
 .join__foot p {
   margin: 0;
 }
+
+/* The talkgroup table's own modifier. It was in the markup with no rule behind
+   it, which the class check found — a hook somebody added and never used.
+   Given a rule rather than removed: a table of numbers reads better with the
+   numeric column aligned, which is what it was presumably for. */
+.fields--talkgroups td:first-child {
+  font-family: var(--font-mono);
+}

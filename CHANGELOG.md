@@ -244,6 +244,24 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **An access control page**, at `/access`. Talkgroups per timeslot,
+  registration and subscribers, saved through the write path so a change applies
+  within a second and is recorded as a version with the administrator's name on
+  it.
+
+  **Each list says in words what it does**, and that is the reason the page
+  exists rather than a nicety: `{"mode": "deny", "ids": []}` is correct and
+  tells an operator nothing. It now reads "Everything is allowed. Nothing is
+  blocked." — and the line updates as the form is edited, so the consequence of
+  a change is visible before it is saved rather than after.
+
+  A refused save lists every problem with its suggested fix. A read-only
+  instance says so and disables the button rather than letting somebody fill in
+  a form that cannot be submitted.
+
+  The page is served to anyone and shows a sign-in prompt when nobody is signed
+  in; the endpoints behind it are what require a session.
+
 ### Fixed
 - **The content security policy blocked every map tile.** `img-src 'self' data:`
   and tiles come from somebody else's server by definition, so the browser

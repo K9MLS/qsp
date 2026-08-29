@@ -120,7 +120,10 @@ links an upstream holds. A save names them rather than reporting a bare
 ### Read-only endpoints
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
-console assets are unauthenticated and read-only.
+console assets are unauthenticated and read-only. That includes the access
+control page at `/access`: the page is markup, and the endpoints behind it
+refuse anonymously, which is where the decision belongs. It shows a sign-in
+prompt rather than a form when nobody is signed in.
 
 `/api/peers` returns callsigns, radio IDs, peer source addresses, and the
 position a hotspot announces. It is unauthenticated, which is a further reason

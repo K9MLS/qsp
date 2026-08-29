@@ -220,6 +220,12 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("GET /signin", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/signin.html", http.StatusFound)
 		})
+		// The page itself is served to anyone; it shows a sign-in prompt rather
+		// than a form when nobody is. The endpoints behind it are what require
+		// a session, which is where the decision belongs.
+		mux.HandleFunc("GET /access", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/access.html", http.StatusFound)
+		})
 		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/join.html", http.StatusFound)
 		})

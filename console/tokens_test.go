@@ -345,7 +345,10 @@ func TestTheMapVendorsNothing(t *testing.T) {
 	// Every script in static/ is one QSP wrote. Naming them rather than
 	// counting them: a count says "three" when a library arrives and somebody
 	// updates the number, while a name says which file nobody recognises.
-	ours := map[string]bool{"console.js": true, "map.js": true, "join.js": true, "signin.js": true}
+	ours := map[string]bool{
+		"console.js": true, "map.js": true, "join.js": true,
+		"signin.js": true, "access.js": true,
+	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
 		t.Fatalf("reading static: %v", err)
@@ -416,15 +419,19 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 		defined[m[1]] = true
 	}
 
-	// Classes the markup carries are covered by the pages themselves; this is
-	// about the ones only the scripts know, which nothing else would catch.
+	// Markup as well as scripts. The first version checked only scripts, on
+	// the reasoning that a page's own classes are visible when you look at it —
+	// which is exactly the reasoning that let `.muted` ship.
 	// Only the literal part of the attribute, up to the first quote or the
 	// point where an expression begins. `class="badge " + kind` contributes
 	// "badge" and stops; anything else here would be checking JavaScript
 	// against a stylesheet.
 	classAttr := regexp.MustCompile(`class=\\?"([a-zA-Z][\w\- ]*)`)
 	var checked int
-	for _, script := range []string{"static/console.js", "static/map.js", "static/join.js"} {
+	for _, script := range []string{
+		"static/console.js", "static/map.js", "static/join.js", "static/access.js",
+		"static/index.html", "static/join.html", "static/signin.html", "static/access.html",
+	} {
 		body, err := assets.ReadFile(script)
 		if err != nil {
 			t.Fatalf("reading %s: %v", script, err)
@@ -448,4 +455,27 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 		t.Fatalf("only %d classes were found in the scripts; the check is missing some", checked)
 	}
 	t.Logf("checked %d class references", checked)
+}
+
+// TestTheAccessPageIsServed. It is reached by a redirect and a nav link, so a
+// missing asset would show as a blank page rather than an error.
+func TestTheAccessPageIsServed(t *testing.T) {
+	for _, name := range []string{"static/access.html", "static/access.js"} {
+		if _, err := assets.ReadFile(name); err != nil {
+			t.Errorf("%s is not embedded: %v", name, err)
+		}
+	}
+	page, err := assets.ReadFile("static/access.html")
+	if err != nil {
+		t.Fatalf("reading access.html: %v", err)
+	}
+	body := string(page)
+	if !strings.Contains(body, "/access.js") {
+		t.Error("access.html does not load access.js")
+	}
+	// The page must offer a way in rather than a dead form when nobody is
+	// signed in: the endpoints refuse anonymously and the page should say so.
+	if !strings.Contains(body, "/signin") {
+		t.Error("access.html does not link to the sign-in page")
+	}
 }

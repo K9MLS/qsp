@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/events"
@@ -562,5 +563,34 @@ func TestNoTilesMeansTheOriginalPolicy(t *testing.T) {
 		if !strings.Contains(csp, "img-src 'self' data:;") {
 			t.Errorf("tile URL %q widened the policy: %s", tileURL, csp)
 		}
+	}
+}
+
+// TestTheAccessPageIsReachable covers the redirect and the asset together.
+func TestTheAccessPageIsReachable(t *testing.T) {
+	bus := events.NewBus(nil, events.Options{})
+	t.Cleanup(bus.Close)
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("assets: %v", err)
+	}
+	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+		ListenAddress: "127.0.0.1:0",
+		ConsoleAssets: assets,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/access", nil))
+	if rec.Code != http.StatusFound {
+		t.Fatalf("/access returned %d, want a redirect", rec.Code)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/access.html", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/access.html returned %d", rec.Code)
 	}
 }

@@ -982,3 +982,96 @@ a.muted:focus-visible {
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
+
+/* ---- Administration pages -------------------------------------------- */
+
+.page__lede {
+  max-width: 62ch;
+  margin: 0 0 var(--space-6);
+  color: var(--color-foreground-muted);
+}
+
+.page__actions {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-top: var(--space-5);
+}
+
+.panel__body {
+  padding: var(--space-5);
+}
+
+.panel__lede {
+  max-width: 62ch;
+  margin: 0 0 var(--space-5);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.notice__list {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+/* ---- Access control lists -------------------------------------------- */
+
+.acl {
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.acl:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.acl__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+/* The plain-English consequence of the list, which is the reason this page
+   exists: "mode: deny, ids: []" is correct and tells an operator nothing. */
+.acl__state {
+  margin: 0 0 var(--space-4);
+  color: var(--color-foreground);
+  font-size: var(--text-sm);
+}
+
+.acl__modes {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.acl__mode {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The whole label is the target, not just the radio, so it clears the 44px
+     minimum without a 44px circle. */
+  min-height: var(--target-min);
+  cursor: pointer;
+  font-size: var(--text-sm);
+}
+
+.acl__ids {
+  /* Monospace because these are numbers and ranges, and a column of digits
+     that does not line up is a column nobody proofreads. */
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  padding: var(--space-3);
+  resize: vertical;
+}
+
+.acl__hint {
+  margin: var(--space-2) 0 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+}
