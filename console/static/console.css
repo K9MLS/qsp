@@ -651,6 +651,11 @@ body {
 .map-frame,
 .map {
   position: relative;
+  /* Explicit, because a block div is only full width if nothing makes it
+     shrink-to-fit — and the tile arithmetic is right while the measured width
+     is not, which leaves the element's own sizing as the thing to pin down. */
+  display: block;
+  width: 100%;
   height: 360px;
   overflow: hidden;
   border-radius: var(--radius-md);
@@ -999,7 +1004,7 @@ a.muted:focus-visible {
 }
 
 .panel__body {
-  padding: var(--space-5);
+  padding: var(--space-5) var(--space-5) var(--space-6);
 }
 
 .panel__lede {
@@ -1061,6 +1066,9 @@ a.muted:focus-visible {
 }
 
 .acl__ids {
+  /* A column of talkgroup numbers does not need the width of a monitor, and a
+     text box that wide invites somebody to type a paragraph into it. */
+  max-width: 28rem;
   /* Monospace because these are numbers and ranges, and a column of digits
      that does not line up is a column nobody proofreads. */
   font-family: var(--font-mono);

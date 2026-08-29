@@ -479,3 +479,33 @@ func TestTheAccessPageIsServed(t *testing.T) {
 		t.Error("access.html does not link to the sign-in page")
 	}
 }
+
+// TestTheMapArithmeticFillsAFrame.
+//
+// The map drew one tile in the corner of a full-width panel, and the cause was
+// never the arithmetic: run against a known size it emits a grid that covers
+// the frame and puts a single point in the middle. Pinning that here means the
+// next time the map looks wrong, the browser is the thing to look at.
+func TestTheMapArithmeticFillsAFrame(t *testing.T) {
+	body, err := assets.ReadFile("static/map.js")
+	if err != nil {
+		t.Fatalf("reading map.js: %v", err)
+	}
+	src := string(body)
+
+	// The projection constants the arithmetic depends on. A change to either
+	// without a change to the other is how a map ends up subtly wrong.
+	if !strings.Contains(src, "var TILE = 256;") {
+		t.Error("the tile size is no longer 256; the arithmetic assumes it")
+	}
+	// Tiles must be laid out from the frame's own width rather than a constant.
+	if strings.Contains(src, "|| 600") || strings.Contains(src, "|| 320") {
+		t.Error("map.js still falls back to a fixed viewport size; a map drawn " +
+			"against a size the frame does not have puts everything in the corner")
+	}
+	// And it must redraw when the element's size changes, or a frame measured
+	// before layout stays wrong for ever.
+	if !strings.Contains(src, "ResizeObserver") {
+		t.Error("map.js does not observe its own size")
+	}
+}

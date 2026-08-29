@@ -200,6 +200,19 @@
   Map.prototype.size = function () {
     var width = this.el.clientWidth;
     var height = this.el.clientHeight;
+
+    /* Fall back to the parent when the frame measures narrower than it.
+     *
+     * The tile arithmetic was verified against a known size and is correct, so
+     * a map drawing one tile in the corner means the element reported a width
+     * it does not have. Rather than guess at which layout rule does that, take
+     * the containing box, which is the width the frame is meant to fill
+     * anyway. */
+    var parent = this.el.parentElement;
+    if (parent && parent.clientWidth > width) {
+      width = parent.clientWidth;
+    }
+
     if (width < 1 || height < 1) {
       return null;
     }

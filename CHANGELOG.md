@@ -244,6 +244,17 @@ All notable changes to QSP. Dates are UTC.
   being prompt: an expired session is already refused and deleted on sight, so
   this only reclaims rows.
 
+- **Map and admin page adjustments.** The map frame is explicitly full width
+  and falls back to its container's width when it measures narrower, which is
+  what left a full-width panel showing one tile in the corner. The tile
+  arithmetic was verified against a known size and is correct — it emits a grid
+  that covers the frame and centres a single point — so the element's own sizing
+  was the thing to pin down.
+
+  The talkgroup boxes on the access page are capped at a sensible width: a
+  column of numbers does not need the width of a monitor, and a box that wide
+  invites a paragraph. Panels gained a little breathing room at the bottom.
+
 - **Parrot records and replays**, so a member can prove their whole path works
   with nobody else awake. [ADR-0028](docs/adr/ADR-0028-parrot.md). That case is
   the ordinary one rather than the unlucky one: a club has a handful of active
