@@ -88,6 +88,14 @@ All notable changes to QSP. Dates are UTC.
   while QSP still never rewrites a Link Control (ADR-0028).
 
 ### Fixed
+- **The pair harness used a talkgroup nobody had programmed.** It carried TG 9
+  because the soak configuration does; this network runs TG 2. A test rig on a
+  talkgroup that is not in the radio costs a codeplug edit every time it is
+  used, which is a reliable way to ensure it never gets used. Both
+  configurations now carry TG 2 TS2, and `docs/FEDERATION-TEST.md` says to
+  change `export`, `import` and `join.talkgroups` together for a club that runs
+  something else.
+
 - **The pair harness could not receive a frame from anything.** Both DMR
   listeners bound `127.0.0.1`, which is tidy and made the whole rig useless: no
   hotspot on the LAN could reach either instance, so the only traffic either

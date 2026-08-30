@@ -12,6 +12,12 @@ This is the cheapest way to find out. It is not a soak, and it is not the air
 test — it answers one question those cannot: does a frame leave one instance and
 arrive at the other, over a real socket, authenticated by a real passphrase.
 
+**The pair carries TG 2 TS2, because that is what this network runs.** A harness
+on a talkgroup nobody has programmed is a harness that costs a codeplug edit
+every time it is used, which is a good way to ensure it never is. If your club
+uses something else, change `export`, `import` and `join.talkgroups` in both
+files together.
+
 ## Running it
 
 On the development machine:
@@ -61,7 +67,7 @@ curl -s http://127.0.0.1:8092/healthz
 ```
 
 **Two: a frame crosses.** Point a hotspot at this machine's LAN address on port
-62041 and transmit on TG 9 TS2. It should appear in bravo's log and on bravo's
+62041 and transmit on TG 2 TS2. It should appear in bravo's log and on bravo's
 console.
 
 A capture from `testdata/hbp` cannot simply be replayed at it: the login
