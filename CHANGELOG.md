@@ -5,6 +5,46 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/hotspot` generates the network block a member pastes into their
+  own hotspot.** The join page describes the settings; describing them is what
+  costs the evening, because a member reading prose and typing rewrite rules is
+  a member making one of the two mistakes that took the first hotspot two days
+  to connect.
+
+  **The syntax is taken from a working `/etc/dmrgateway`, not from
+  documentation.** Five networks in that file — BrandMeister, DMR+ IPSC2,
+  HBLink and SystemX among them — and three of them implement the same prefix
+  scheme with a different leading digit. That is the pattern generated here: a
+  blanket seven-digit rule so a talkgroup added later is reachable without
+  editing anything, shortcuts for the talkgroups the club publishes, private
+  call rules in both directions, and source rules so a reply displays the
+  number that was dialled.
+
+  **The prefix belongs to the member, not to the club.** The rewrite happens on
+  their hotspot before anything reaches QSP, so two members may choose different
+  digits with no effect on each other or on the network — and QSP cannot choose
+  for them, because the only file that says which digits are free is the one on
+  their own Pi.
+
+  Zero prefix means QSP is the only network, which is most members: no rewrite
+  rules at all, just `PassAllTG` and `PassAllPC` on both slots. Every rule is a
+  thing that can be wrong, and rules serving no purpose are maintenance.
+
+  `Enabled=1` is the first setting in the block, because a dashboard reporting a
+  network as enabled while the file said otherwise is what cost the two days.
+  **No radio ID means no private call rules** rather than a guess: the two-digit
+  suffix is a convention and not a rule of the protocol, and a rule naming the
+  wrong radio sends a member's texts somewhere they will never look. The parrot
+  is converted from a group call to a private one by `TypeRewrite` on the
+  hotspot, which is how a member keeps the parrot they already have programmed
+  without QSP ever rewriting a Link Control (ADR-0028).
+
+  The password is never generated. Warnings cover what the generator cannot
+  check: whether the prefix collides, whether the block number is free, and that
+  `/etc/dmrgateway` is edited by searching for a line and never by its number.
+
+  Pure, no I/O, no state. Not yet wired to the join page.
+
 - **[ADR-0031](docs/adr/ADR-0031-loop-prevention.md) decides how a looped
   transmission is recognised, before any link can create one.** Every instance
   is a leaf today, so nothing loops because nothing connects — and that is
