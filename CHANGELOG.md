@@ -72,6 +72,17 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **Two functions left behind when the per-talkgroup rules were removed.**
+  `sorted` and `Talkgroup.target` lost their only callers and staticcheck failed
+  CI on both (U1000). `Arrives` is still a field on the input type, so a caller
+  holding a club's talkgroup list can pass it through unchanged, and the
+  documentation now says plainly that nothing in the package reads it.
+
+  It reached CI because staticcheck was not being run before the patch was sent.
+  It is now: the release binary is fetched from GitHub rather than through the
+  module proxy, which this container cannot reach, and it is the same version CI
+  uses.
+
 - **The network settings page refused to save a configuration describing a
   working network.** It reported that no bridge carried the published
   talkgroups — true, and irrelevant: with `dmr.forwarding` on, a repeating

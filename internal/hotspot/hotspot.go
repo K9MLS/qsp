@@ -16,7 +16,6 @@ package hotspot
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -27,19 +26,15 @@ type Talkgroup struct {
 	// Dialled is the number a member enters into the radio when QSP is their
 	// only network.
 	Dialled uint32
-	// Arrives is the number QSP receives, when it differs from Dialled. Zero
-	// means no rewrite: the two are the same.
+	// Arrives is the number QSP receives, when it differs from Dialled.
+	//
+	// **Nothing here reads it.** A talkgroup number is the same on both sides
+	// of a hotspot, and no rule this package generates renumbers one. It stays
+	// so that a caller holding a club's talkgroup list can pass it through
+	// unchanged rather than having to strip a field first.
 	Arrives uint32
 	// Timeslot is 1 or 2.
 	Timeslot int
-}
-
-// target returns the talkgroup QSP actually receives.
-func (t Talkgroup) target() uint32 {
-	if t.Arrives != 0 {
-		return t.Arrives
-	}
-	return t.Dialled
 }
 
 // Network is everything needed to write a member's network block.
@@ -241,22 +236,4 @@ func name(s string) string {
 		}
 	}
 	return b.String()
-}
-
-// sorted orders talkgroups by timeslot then dialled number, so the same
-// configuration always renders identically.
-func sorted(in []Talkgroup) []Talkgroup {
-	out := make([]Talkgroup, 0, len(in))
-	for _, t := range in {
-		if t.Dialled != 0 {
-			out = append(out, t)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].Timeslot != out[j].Timeslot {
-			return out[i].Timeslot < out[j].Timeslot
-		}
-		return out[i].Dialled < out[j].Dialled
-	})
-	return out
 }
