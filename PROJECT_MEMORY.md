@@ -297,8 +297,13 @@ Authentication, configuration saves from a browser, and the access control page.
 A member's hotspot needs configuration QSP cannot supply, and none of it is
 discoverable from either end:
 
+- **Superseded by §6b. Do not follow this list for a QSP-only hotspot**, which
+  needs no rewrite rules at all. It is kept because it describes what a hotspot
+  carrying several networks still needs.
 - `TGRewrite` must cover the club's talkgroups or they never leave the hotspot.
-  `TGRewrite0=2,2,2,2,10` passes TS2 talkgroups 2 through 11 unchanged.
+  `TGRewrite0=2,2,2,2,10` passes TS2 talkgroups 2 through 11 unchanged — and a
+  range like this is exactly what broke when the club added a talkgroup outside
+  it.
 - `PCRewrite` must cover **each member's own radio ID**, or private calls and
   texts addressed to them are dropped on the way in.
 - Parrot's talkgroup is often outside the pass-through range and needs its own
@@ -340,6 +345,94 @@ add more hotspot rules without evidence from a capture or a log — four were
 proposed for this problem and none was the answer.
 
 ---
+
+## 6b. What a second day on the network taught us, 2026-08-30
+
+### A talkgroup number is the same on both sides of a hotspot
+
+**This is settled and is not to be relitigated.** 2 is 2, 11 is 11. QSP
+publishes a number, a member dials it, and nothing between them renumbers
+anything.
+
+The alternative was tried and cost most of a day. §6a above recommends
+`TGRewrite0=2,2,2,2,10` and per-talkgroup rules, and both are now wrong: a rule
+covering one number silently breaks the next talkgroup the club adds. The
+console no longer offers an `Arrives` field, and `internal/hotspot` never emits
+a rule that maps one number to another.
+
+**A hotspot carrying only QSP needs no rewrite rules at all** — `PassAllTG` and
+`PassAllPC` on both slots, nothing else, nothing to maintain. That is what most
+members should run and what the generator produces for them.
+
+### Turning off automatic rewrites does not remove the rules
+
+WPSD writes `WPSD_AutoRewrites=0` and **leaves all fourteen generated rules in
+place**. The dashboard toggle looks like it removed them. Restarting DMRGateway
+reloads exactly the same rules and the log looks identical.
+
+The Denton hotspot spent an afternoon connected, authenticated, keepaliving, and
+dropping every transmission because a prefix-9 rule set survived the toggle and
+had no entry for TG 2. MMDVMHost logged the RF at BER 0.4%; no voice packet ever
+left the Pi.
+
+**A rule set is confirmed by reading the DMRGateway log after a restart**, not
+by the dashboard and not by the file:
+
+```sh
+sudo grep -A8 'QSP, Opening DMR Network' /var/log/pi-star/DMRGateway-$(date -u +%Y-%m-%d).log
+```
+
+No `Rewrite RF` lines under QSP is the goal.
+
+### Rules written before ADR-0019 are still being found
+
+Three separate validation rules assumed bridges were the only way traffic moves,
+which stopped being true when the master learned to repeat:
+
+1. Forwarding with no bridges was refused — the ordinary club network.
+2. An enabled link was required to carry `export` or `import` lists, which
+   contradicted the rule requiring a bridge to name it. **This one stopped the
+   live network from starting** and took it down for twenty minutes.
+3. A published join talkgroup was required to be on a bridge, which refused to
+   save a configuration describing a network that works.
+
+**When a rule mentions bridges, check whether `dmr.forwarding` makes it false.**
+None of the three was caught by the suite: each test asserted the rule against
+the world the rule assumed.
+
+### Nothing could send traffic to a link
+
+`routing.Endpoint` carried an `Upstream` field that was only ever set on the
+inbound side, and `config.Endpoint` had no way to name a link at all. Traffic
+could arrive from another network and never leave for one; outbound was
+unreachable from any configuration a person could write.
+
+`Upstream.Export` and `Upstream.Import` were validated, stored, documented, and
+read by no routing code. **A bridge endpoint names a link now**, and an enabled
+link nothing routes to is refused at startup.
+
+### A config is checked before a restart, not by one
+
+```sh
+sudo qsp -config /var/lib/qsp/qsp.json -check
+```
+
+Reads the file, says whether it is valid, exits. No socket, no database, nobody
+dropped. It needs `sudo` because `/var/lib/qsp` holds peer passwords.
+
+The twenty-minute outage happened because a configuration edit was verified by
+restarting the service. systemd then gave up after five attempts and needed
+`systemctl reset-failed` before it would try again.
+
+### Two servers have carried a frame between them
+
+Alpha and bravo on one machine, peered over OpenBridge: alpha sent, bravo
+received, the link reported healthy. **This is the first time any upstream path
+has met a real far end.** `scripts/pair.sh` runs it; `docs/FEDERATION-TEST.md`
+says what it does and does not prove.
+
+What it exposed: there was nowhere in the console to see a link. That is what
+the Links page and `/api/links` are for.
 
 ## 7. Working conventions
 
@@ -514,6 +607,67 @@ Blocked on hardware, and blocked correctly: an IPSC capture
 ([ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md)), a two-peer voice fixture,
 an XLX reflector for outbound peer mode, and the BrandMeister request.
 
+## 8b. Where the next session starts, as of 2026-08-30
+
+Read §6b first. It supersedes parts of §6a.
+
+### Settled today, do not reopen
+
+- **Nothing renumbers a talkgroup.** 2 is 2, 11 is 11. `Arrives` is deprecated,
+  the console does not offer it, and generated configuration never maps one
+  number to another.
+- **A bridge endpoint names a link.** That is how traffic reaches another
+  network; `Export` and `Import` route nothing.
+- **A peering is agreed by two people** ([ADR-0032](docs/adr/ADR-0032-peering-is-agreed.md)),
+  by an invitation that travels separately from its passphrase. Nothing changes
+  on the wire.
+- **The loop rule already existed.** `routing.Core.route` refuses to send a
+  frame that arrived on a link to any link, which makes loops unformable rather
+  than detectable. [ADR-0031](docs/adr/ADR-0031-loop-prevention.md) was written
+  before that was read and is amended to say so.
+
+### Working, on air, as of tonight
+
+The Denton hotspot carries **no rewrite rules** — `PassAllTG` and `PassAllPC` on
+both slots, `Location=1`, and every talkgroup passes untouched. Both stations
+are connected to production. Add a talkgroup in the console and it works with no
+change on any Pi.
+
+### Open, in the order I would take them
+
+1. **The private call from KB9TYC.** Still unexplained, needs Paul. §6a has the
+   diagnostic; the NAT rebind fix may already have resolved it.
+2. **Paul's TYT model and firmware.** Decides whether Talker Alias is a
+   pass-through that already works, a userdb flash on his radio, or a feature
+   that has to be built. Ask before designing anything: BrandMeister does *not*
+   look names up — it passes through what a transmitting radio sends.
+3. **Six `call started` in three seconds**, six distinct stream IDs, from one
+   operator. Never explained. Not obviously a fault, and not obviously not one.
+4. **The peering retry**, now that the console flow and the config checker both
+   exist. Production offers, Fedora accepts. Two administrators is one person
+   with two terminals, but the mechanism is what club #2 will use.
+5. **A second instance off this machine.** Loopback cannot produce NAT, a
+   changing address, or a far end that restarts, which are the failures that
+   actually break a peering.
+
+### Not built, and named as required
+
+- **Creating a link is in the console; nothing shows a peering's history.**
+  ADR-0032 asks for an audit event and one is written. Nothing displays it.
+- **A server identity block.** `UpstreamIdentity` carries callsign and
+  coordinates *per link*, so three links means stating a callsign three times
+  with nothing keeping them consistent. Decided: decimal degrees, matching what
+  Pi-Star and the DMR config message already carry.
+- **Subscription and a 4000-style unlink.** [ADR-0023](docs/adr/ADR-0023-talkgroup-subscription.md)
+  is written and unimplemented. The unlink talkgroup should be configuration,
+  not a constant, for the same reason parrot's is.
+
+### Costs to respect
+
+GitHub Actions minutes are finite and were at 90% of the month on 2026-08-30.
+**CI runs on push, not on commit.** Apply patches and test locally; push once
+when CI is actually wanted, or use `[skip ci]` in the commit message.
+
 ## 7b. What is built, as of 2026-08-29
 
 The five layers of [ADR-0019](docs/adr/ADR-0019-master-repeats.md) are
@@ -568,6 +722,47 @@ it silently broke was right, and the pair was wrong.
 So: when something does not work and the code is provably correct, the fault is
 in the gap between two correct things. Look at what the running system is
 actually doing before proposing what to change.
+
+### The question that keeps finding things: what is declared and read by nothing?
+
+Six defects in one day came from asking it, and none of them from running
+anything:
+
+- `Upstream.Export` and `Upstream.Import`: validated, stored, documented as what
+  crosses in each direction, consulted by no routing code.
+- `--target-min`: a 44px touch target declared in `tokens.css` and referenced by
+  nothing, next to a 20px button.
+- `database.busy_timeout`: documented, defaulted to five seconds, validated on
+  startup, applied to no connection. `sql.Open` took SQLite's defaults, so
+  contention failed instead of waiting, a writer blocked every reader, and the
+  `ON DELETE CASCADE` in migration 0003 had never fired.
+- `ActionUserLogin`, `ActionUserLogout`, `OutcomeDenied`: declared, listed in
+  `knownActions`, and emitted by nothing. **No authentication was ever
+  audited**, while SECURITY.md said the audit trail records who did what.
+- The peering invitation took its network ID from an existing link, so the first
+  peering an instance ever attempted could not be generated.
+
+A field that is documented, defaulted, validated and included in a map of known
+values looks maintained. None of that means anything reads it.
+
+```sh
+grep -rn "\.FieldName\b" --include=*.go . | grep -v _test
+```
+
+Zero hits outside the declaring package is the signal.
+
+### A test that has never failed is a test you do not believe
+
+Three tests written the same day asserted something adjacent to the thing that
+mattered and passed against the code they existed to reject:
+
+- A wrapping check searched for `white-space: pre`, which `pre-wrap` contains.
+- A `[hidden]` check found the phrase inside the comment explaining the bug.
+- A logout ordering check found `EndSession` in an interface declaration above
+  the handler.
+
+Each was caught by deliberately breaking the code and watching the test stay
+green. **Do that before trusting any new assertion.**
 
 ---
 
