@@ -5,6 +5,40 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **[ADR-0031](docs/adr/ADR-0031-loop-prevention.md) decides how a looped
+  transmission is recognised, before any link can create one.** Every instance
+  is a leaf today, so nothing loops because nothing connects — and that is
+  exactly why this is written now. A protocol behaviour is a commitment to every
+  instance already speaking it, and once clubs are federated the rule cannot be
+  changed without changing all of them at once.
+
+  **The field naming where a frame came from is rewritten in transit; the field
+  naming which transmission it belongs to is not.** `openbridge.Encode` assigns
+  the local network ID into `RepeaterID` on every frame it sends, so a relayed
+  frame carries the last server's identity and no trace of the first. `StreamID`
+  and `SourceID` survive — the codec's own comment records the voice fixture
+  showing one StreamID on both links as a gateway relays.
+
+  So a transmission is fingerprinted as `(SourceID, StreamID)` and the first
+  ingress path to present it owns it for the life of the stream. `sourceKey`
+  cannot be reused: it keys on `RepeaterID`, which OpenBridge overwrites, and on
+  the arriving link, which is the thing that differs between the original and
+  the looped copy. Keyed that way a returning frame looks like a new
+  transmission from a different sender.
+
+  No field is added to the wire. A hop count would fit in the bytes QSP already
+  preserves as `Trailing`, and putting one there would produce frames that
+  behave differently depending on who relays them, failing at the far end of
+  somebody else's network. The rule lives entirely in the receiver, so a QSP
+  peering with a a commercial DMR server is protected by it too.
+
+  Also recorded: parrot must take a fresh StreamID, or a replay is dropped as a
+  loop of what it is replaying; federation stays shallow, because each hop adds
+  a jitter buffer and a 60 ms cadence does not forgive four of them; and the
+  first federated link is a scheduled point-to-point one between two
+  administrators who can telephone each other, because no unit test can show
+  that a real relay preserves StreamID across a real peering.
+
 - **`console/static/nav.js`, and the administration nav says when its links lead
   nowhere.** Signed out, the console offered four administration pages that can
   only ever answer with a sign-in notice. Nothing behind them leaks — every
