@@ -72,6 +72,38 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **The database connection took SQLite's defaults, and all three were wrong for
+  a server.** `sql.Open` was handed a bare DSN and no pragma was ever set.
+
+  `busy_timeout` was **0**, so any lock contention returned busy immediately
+  rather than waiting. `database.busy_timeout` was documented, defaulted to five
+  seconds, validated on startup, and **applied to nothing** — the third field
+  found this way today, after the link export lists and `--target-min`. QSP
+  writes an audit event whenever a peer connects and reads a session on every
+  console request, against a pool of four connections.
+
+  `journal_mode` was **DELETE**, under which a writer blocks every reader for
+  the length of its transaction. WAL costs nothing here and is what a server
+  wants.
+
+  `foreign_keys` was **OFF**, SQLite's default. Migration 0003 declares
+  `sessions.user_id REFERENCES users(id) ON DELETE CASCADE` and that cascade has
+  never fired. Nothing deletes a user today and the session lookup is an inner
+  join, so an orphaned row cannot authenticate — but a constraint the schema
+  states and the database ignores is one somebody eventually relies on.
+
+  Set with SQL rather than DSN parameters, because DSN syntax belongs to the
+  driver and ADR-0005 keeps this package from knowing which driver it has.
+
+- **The first peering an operator ever attempted could not be offered.** The
+  invitation took its network ID from an existing link, and an instance with no
+  links has none — so it was refused for carrying no network ID, on precisely
+  the instance that has never peered with anything. Which is every instance, the
+  first time.
+
+  The console asks for it now, alongside the address, and a refusal says which
+  fields to fill in rather than only which one is absent.
+
 - **Two functions left behind when the per-talkgroup rules were removed.**
   `sorted` and `Talkgroup.target` lost their only callers and staticcheck failed
   CI on both (U1000). `Arrives` is still a field on the input type, so a caller

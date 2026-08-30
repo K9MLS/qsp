@@ -160,7 +160,8 @@
       post("/api/links/offer", {
         talkgroup: num("offer-tg"),
         timeslot: num("offer-slot"),
-        address: val("offer-address")
+        address: val("offer-address"),
+        network_id: num("offer-netid")
       }).then(function (b) {
         text(el("offer-token"), b.token);
         /* Shown once and never fetched again. It is not stored anywhere the

@@ -89,6 +89,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	db, err := database.Open(ctx, log, database.Options{
 		Driver:          cfg.Database.Driver,
 		DSN:             cfg.Database.DSN,
+		BusyTimeout:     cfg.Database.BusyTimeout.AsDuration(),
 		MaxOpenConns:    cfg.Database.MaxOpenConns,
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
 	})

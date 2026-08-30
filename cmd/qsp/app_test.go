@@ -511,3 +511,57 @@ func TestTheResolverIsBuiltBeforeAnythingReadsIt(t *testing.T) {
 		}
 	}
 }
+
+// TestTheConnectionDoesNotTakeSQLitesDefaults.
+//
+// **None of these were being set.** sql.Open was given a bare DSN and the
+// connection took SQLite's defaults, which are chosen for a single-process
+// command line tool rather than a server:
+//
+//   - busy_timeout 0, so any lock contention failed immediately rather than
+//     waiting. database.busy_timeout was documented, defaulted to five seconds,
+//     validated on startup, and applied to nothing — the third field found this
+//     way, after the link export lists and the target-size token.
+//   - journal_mode DELETE, under which a writer blocks every reader for the
+//     length of its transaction. QSP writes an audit event whenever a peer
+//     connects and reads a session on every console request, against a pool of
+//     four connections.
+//   - foreign_keys OFF, so the ON DELETE CASCADE migration 0003 declares on
+//     sessions.user_id has never fired.
+func TestTheConnectionDoesNotTakeSQLitesDefaults(t *testing.T) {
+	cfg := testConfig(t)
+
+	a, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	defer func() { _ = a.shutdown(context.Background()) }()
+
+	if a.db == nil {
+		t.Fatal("no database handle despite a registered sqlite driver")
+	}
+
+	var timeout int
+	if err := a.db.SQL().QueryRow("PRAGMA busy_timeout").Scan(&timeout); err != nil {
+		t.Fatalf("reading busy_timeout: %v", err)
+	}
+	if timeout <= 0 {
+		t.Errorf("busy_timeout is %d, so contention fails rather than waits", timeout)
+	}
+
+	var journal string
+	if err := a.db.SQL().QueryRow("PRAGMA journal_mode").Scan(&journal); err != nil {
+		t.Fatalf("reading journal_mode: %v", err)
+	}
+	if !strings.EqualFold(journal, "wal") {
+		t.Errorf("journal_mode is %q, so a writer blocks every reader", journal)
+	}
+
+	var fk int
+	if err := a.db.SQL().QueryRow("PRAGMA foreign_keys").Scan(&fk); err != nil {
+		t.Fatalf("reading foreign_keys: %v", err)
+	}
+	if fk != 1 {
+		t.Error("foreign_keys is off, so the cascade migration 0003 declares does nothing")
+	}
+}

@@ -37,6 +37,14 @@ type offerRequest struct {
 	// instance to build one from its own join address, which is right often
 	// enough to be worth offering and wrong behind a NAT.
 	Address string `json:"address"`
+	// NetworkID is what this instance will announce on the link.
+	//
+	// **Without this the first peering an operator ever attempted failed.** It
+	// was taken from an existing link, and an instance with no links has none,
+	// so the invitation was refused for carrying no network ID — on precisely
+	// the instance that has never peered with anything, which is every
+	// instance the first time.
+	NetworkID uint32 `json:"network_id"`
 }
 
 // offerResponse carries the two halves that travel by different routes.
@@ -113,11 +121,16 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	networkID := req.NetworkID
+	if networkID == 0 {
+		networkID = firstNetworkID(cfg)
+	}
+
 	inv := peering.Invitation{
 		Network:   cfg.DMR.Join.NetworkName,
 		Callsign:  linkCallsign(cfg),
 		Address:   address,
-		NetworkID: firstNetworkID(cfg),
+		NetworkID: networkID,
 		Export: []peering.Talkgroup{
 			{Talkgroup: req.Talkgroup, Timeslot: req.Timeslot},
 		},
@@ -130,7 +143,13 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 
 	token, err := peering.Encode(inv)
 	if err != nil {
-		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		// An invitation is refused for a missing field on an instance that has
+		// never peered, which is when an operator is least able to guess which
+		// field it means. Say what to fill in rather than what is absent.
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": err.Error() +
+				" — fill in the network ID and the address the far end should send to",
+		})
 		return
 	}
 

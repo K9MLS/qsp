@@ -40,6 +40,9 @@ type Options struct {
 	Driver string
 	// DSN is the data source name.
 	DSN string
+	// BusyTimeout is how long to wait for a lock before returning busy. Zero
+	// takes a sensible default rather than SQLite's, which is not to wait.
+	BusyTimeout time.Duration
 	// MaxOpenConns bounds concurrent connections.
 	MaxOpenConns int
 	// ConnMaxLifetime bounds connection reuse.
@@ -99,6 +102,13 @@ func Open(ctx context.Context, log *slog.Logger, opts Options) (*DB, error) {
 		handle.SetConnMaxLifetime(opts.ConnMaxLifetime)
 	}
 
+	if err := applyPragmas(ctx, handle, opts); err != nil {
+		if closeErr := handle.Close(); closeErr != nil {
+			return nil, fmt.Errorf("%w (and closing the handle failed: %v)", err, closeErr)
+		}
+		return nil, err
+	}
+
 	if err := handle.PingContext(ctx); err != nil {
 		// Close the handle rather than leaking it; the caller has no reference.
 		if closeErr := handle.Close(); closeErr != nil {
@@ -108,6 +118,50 @@ func Open(ctx context.Context, log *slog.Logger, opts Options) (*DB, error) {
 	}
 
 	return &DB{sql: handle, log: logging.Subsystem(log, "database")}, nil
+}
+
+// applyPragmas sets the three SQLite defaults this project cannot live with.
+//
+// **None of them were being set.** `sql.Open` was given a bare DSN and the
+// connection took SQLite's defaults, which are chosen for a single-process
+// command line tool rather than a server:
+//
+//   - **busy_timeout was 0.** Any lock contention returned SQLITE_BUSY
+//     immediately rather than waiting. `database.busy_timeout` was documented,
+//     defaulted to five seconds, validated on startup, and applied to nothing —
+//     the same shape as the export lists and the target-size token. QSP writes
+//     an audit event on every peer connecting and reads a session on every
+//     console request, against a pool of four connections.
+//
+//   - **journal_mode was DELETE**, under which a writer blocks every reader for
+//     the length of its transaction. WAL lets them proceed, which is what a
+//     server wants and what costs nothing here.
+//
+//   - **foreign_keys was OFF**, SQLite's default for compatibility. Migration
+//     0003 declares `sessions.user_id REFERENCES users(id) ON DELETE CASCADE`
+//     and that cascade has never fired. Nothing deletes a user today, and the
+//     session lookup is an inner join so an orphaned row cannot authenticate —
+//     but a constraint the schema states and the database ignores is one
+//     somebody will eventually rely on.
+//
+// Set with SQL rather than DSN parameters, because DSN syntax is the driver's
+// and ADR-0005 keeps this package from knowing which driver it has.
+func applyPragmas(ctx context.Context, handle *sql.DB, opts Options) error {
+	ms := opts.BusyTimeout.Milliseconds()
+	if ms <= 0 {
+		ms = 5000
+	}
+	pragmas := []string{
+		fmt.Sprintf("PRAGMA busy_timeout = %d", ms),
+		"PRAGMA journal_mode = WAL",
+		"PRAGMA foreign_keys = ON",
+	}
+	for _, p := range pragmas {
+		if _, err := handle.ExecContext(ctx, p); err != nil {
+			return fmt.Errorf("cannot apply %q: %w", p, err)
+		}
+	}
+	return nil
 }
 
 // SQL exposes the underlying handle for repository implementations.
