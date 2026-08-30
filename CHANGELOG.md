@@ -72,6 +72,30 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **No authentication was ever audited.** `login.go` contained no audit call at
+  all: every sign-in, sign-out and refused password went to the log and none of
+  it reached `audit_events`, while `ActionUserLogin`, `ActionUserLogout` and
+  `OutcomeDenied` sat declared and unused.
+
+  SECURITY.md says roles are deliberately absent because one kind of account can
+  do everything, and that the audit trail records who did what. It could not
+  answer who was in the system at all.
+
+  All four paths record now, and **the failures matter more than the
+  successes**: an attempt against a username holding no account is the shape of
+  somebody guessing, and a trail of successes alone cannot show it. A lockout is
+  recorded as `denied` rather than `failure`, so the two are distinguishable.
+  Logout reads the session before ending it, or the record names nobody. A trail
+  that cannot be written warns rather than failing the request — a sign-in that
+  succeeded is not undone by a database problem, and refusing would lock an
+  operator out of their console over one.
+
+  Three existing tests failed against this, correctly and for the wrong reason:
+  they indexed `rec.events[0]` on a recorder shared with the login that precedes
+  a save. They filter by action now. Positional assumptions about a shared
+  recorder break whenever anything else starts recording, which is what should
+  keep happening.
+
 - **The database connection took SQLite's defaults, and all three were wrong for
   a server.** `sql.Open` was handed a bare DSN and no pragma was ever set.
 

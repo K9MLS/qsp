@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
 )
 
@@ -70,6 +71,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Said plainly. An operator who has locked themselves out and is told
 		// only "incorrect" will keep trying, which extends the lockout.
 		s.log.Warn("login refused: account locked", "username", req.Username)
+		s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeDenied, "locked out")
 		writeJSON(w, s.log, http.StatusTooManyRequests, map[string]string{
 			"error": "too many failed attempts; wait a few minutes and try again",
 		})
@@ -79,6 +81,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// an unknown username turns this into a way of asking which callsigns
 		// hold accounts here.
 		s.log.Warn("login refused", "username", req.Username, "from", clientIP(r, s.opts.BehindProxy))
+		// The username as typed, which may be nobody's account. A failed
+		// attempt against a name that does not exist is the shape of somebody
+		// guessing, and an audit trail that only records successes cannot show
+		// it.
+		s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeFailure, "")
 		writeJSON(w, s.log, http.StatusUnauthorized, map[string]string{
 			"error": "the username or password is incorrect",
 		})
@@ -87,6 +94,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	http.SetCookie(w, s.sessionCookie(session.Token, session.ExpiresAt))
 	s.log.Info("login", "username", session.Username, "from", clientIP(r, s.opts.BehindProxy))
+	s.recordAuth(r, audit.ActionUserLogin, session.Username, audit.OutcomeSuccess, "")
 	writeJSON(w, s.log, http.StatusOK, sessionResponse{
 		Authenticated: true,
 		Username:      session.Username,
@@ -100,10 +108,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 // reports "you were not logged in" tells whoever sent it something about a
 // cookie they may not own.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	// Read before the session is destroyed, or the record names nobody.
+	who := "unknown"
+	if sess, ok := s.session(r); ok {
+		who = sess.Username
+	}
+
 	if s.opts.Auth != nil {
 		if c, err := r.Cookie(SessionCookie); err == nil {
 			if err := s.opts.Auth.EndSession(r.Context(), c.Value); err != nil {
 				s.log.Warn("cannot end a session", "error", err)
+			} else {
+				s.recordAuth(r, audit.ActionUserLogout, who, audit.OutcomeSuccess, "")
 			}
 		}
 	}
@@ -242,4 +258,43 @@ func withSession(ctx context.Context, s auth.Session) context.Context {
 func SessionFrom(ctx context.Context) (auth.Session, bool) {
 	s, ok := ctx.Value(sessionKey{}).(auth.Session)
 	return s, ok
+}
+
+// recordAuth writes a sign-in or sign-out to the audit trail.
+//
+// **Nothing did.** `login.go` carried no audit call at all: every attempt was
+// written to the log and none of it reached `audit_events`, while
+// `ActionUserLogin`, `ActionUserLogout` and `OutcomeDenied` sat declared and
+// unused. SECURITY.md says roles are deliberately absent because there is one
+// kind of account that can do everything, and that the audit trail records who
+// did what — which it could not answer for the question of who was in the
+// system at all.
+//
+// Failures are recorded as well as successes, and a lockout distinctly from a
+// wrong password: an attempt against a username that holds no account is the
+// shape of somebody guessing, and a trail of successes alone cannot show it.
+func (s *Server) recordAuth(r *http.Request, action audit.Action, username string, outcome audit.Outcome, note string) {
+	if s.opts.Audit == nil {
+		return
+	}
+	detail := map[string]string{}
+	if note != "" {
+		detail["reason"] = note
+	}
+	if len(detail) == 0 {
+		detail = nil
+	}
+	if err := s.opts.Audit.Record(r.Context(), audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      username,
+		Action:     action,
+		Outcome:    outcome,
+		SourceIP:   clientIP(r, s.opts.BehindProxy),
+		Detail:     detail,
+	}); err != nil {
+		// Warned rather than failed. A sign-in that succeeded is not undone by
+		// a trail that could not be written, and refusing the request would
+		// lock an operator out of a console over a database problem.
+		s.log.Warn("cannot record an authentication in the audit trail", "error", err)
+	}
 }

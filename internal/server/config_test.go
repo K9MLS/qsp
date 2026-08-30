@@ -196,11 +196,12 @@ func TestSaveRecordsAndReportsTheChanges(t *testing.T) {
 	if len(cm.authors) != 1 || cm.authors[0] != "K9MLS" {
 		t.Errorf("saved with author %v", cm.authors)
 	}
-	if len(rec.events) != 1 || rec.events[0].Actor != "K9MLS" {
+	saves := configEvents(rec)
+	if len(saves) != 1 || saves[0].Actor != "K9MLS" {
 		t.Errorf("the audit event names %+v", rec.events)
 	}
-	if rec.events[0].Action != audit.ActionConfigChanged {
-		t.Errorf("audit action is %q", rec.events[0].Action)
+	if saves[0].Action != audit.ActionConfigChanged {
+		t.Errorf("audit action is %q", saves[0].Action)
 	}
 }
 
@@ -220,7 +221,7 @@ func TestSavingAnUnchangedConfigurationRecordsNothing(t *testing.T) {
 	if len(cm.saved) != 0 {
 		t.Error("an unchanged configuration was written")
 	}
-	if len(rec.events) != 0 {
+	if len(configEvents(rec)) != 0 {
 		t.Error("an unchanged configuration produced an audit event")
 	}
 }
@@ -260,7 +261,8 @@ func TestAnInvalidConfigurationReportsEveryProblem(t *testing.T) {
 	}
 	// A refused save is still an event: an operator who could not save is a
 	// fact worth having, and no record would look like nobody tried.
-	if len(rec.events) != 1 || rec.events[0].Outcome != audit.OutcomeFailure {
+	refused := configEvents(rec)
+	if len(refused) != 1 || refused[0].Outcome != audit.OutcomeFailure {
 		t.Errorf("a refused save recorded %+v", rec.events)
 	}
 }
@@ -889,4 +891,21 @@ func TestTheHistoryPageIsReachable(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("/history.html returned %d", rec.Code)
 	}
+}
+
+// configEvents returns only the configuration events a recorder holds.
+//
+// **These tests used to index rec.events[0].** Signing in is audited now, so
+// the first event in a test that signs in and then saves is the login, and
+// three tests failed against correct code. Positional assumptions about a
+// shared recorder break whenever anything else starts recording — which is
+// what should happen as more of the system is audited.
+func configEvents(rec *recordingAudit) []audit.Event {
+	var out []audit.Event
+	for _, e := range rec.events {
+		if e.Action == audit.ActionConfigChanged || e.Action == audit.ActionConfigRolledBack {
+			out = append(out, e)
+		}
+	}
+	return out
 }

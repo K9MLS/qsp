@@ -92,6 +92,13 @@ Roles are deliberately absent: there is one kind of account and it can do
 everything. The audit trail records who did what, which is the part that settles
 arguments.
 
+Every authentication is recorded: a successful sign-in, a sign-out, a refused
+password, and a refusal caused by lockout, the last as `denied` rather than
+`failure`. **The failures matter more than the successes.** An attempt against a
+username that holds no account is the shape of somebody guessing, and a trail
+containing only successes cannot show it. The username is recorded as typed,
+which may name no account.
+
 ### Configuration endpoints
 
 `/api/config` reads the running configuration and saves a new one.

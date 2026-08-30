@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -481,5 +482,58 @@ func TestSignInPageIsReachable(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/signin.html", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("/signin.html returned %d", rec.Code)
+	}
+}
+
+// TestEveryAuthenticationIsAudited.
+//
+// **login.go carried no audit call at all.** Every attempt went to the log and
+// none of it reached audit_events, while ActionUserLogin, ActionUserLogout and
+// OutcomeDenied sat declared and unused — the same shape as the link export
+// lists and database.busy_timeout.
+//
+// SECURITY.md says roles are deliberately absent because one kind of account
+// can do everything, and that the audit trail records who did what. It could
+// not answer who was in the system at all.
+func TestEveryAuthenticationIsAudited(t *testing.T) {
+	src, err := os.ReadFile("login.go")
+	if err != nil {
+		t.Fatalf("reading login.go: %v", err)
+	}
+	body := string(src)
+
+	// A failed attempt is the one that matters most: an attempt against a
+	// username holding no account is the shape of somebody guessing, and a
+	// trail of successes alone cannot show it.
+	for _, want := range []string{
+		"audit.ActionUserLogin, req.Username, audit.OutcomeDenied",
+		"audit.ActionUserLogin, req.Username, audit.OutcomeFailure",
+		"audit.ActionUserLogin, session.Username, audit.OutcomeSuccess",
+		"audit.ActionUserLogout, who, audit.OutcomeSuccess",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("no audit record for %q", want)
+		}
+	}
+
+	// Logout must read the session before ending it, or the record names
+	// nobody.
+	//
+	// **Scoped to the handler.** The first version searched the whole file and
+	// found EndSession in the interface declaration above, so it compared a
+	// position in the handler against one in a type — and failed against
+	// correct code. Measuring the wrong occurrence of the right string.
+	at := strings.Index(body, "func (s *Server) handleLogout")
+	if at < 0 {
+		t.Fatal("handleLogout is gone")
+	}
+	handler := body[at:]
+	if next := strings.Index(handler[1:], "\nfunc "); next >= 0 {
+		handler = handler[:next]
+	}
+	end := strings.Index(handler, "EndSession")
+	read := strings.Index(handler, "who = sess.Username")
+	if read < 0 || end < 0 || read > end {
+		t.Error("logout ends the session before reading who it belonged to")
 	}
 }
