@@ -158,3 +158,23 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* ---- The hidden attribute means hidden ------------------------------- */
+
+/* **A class with a `display` rule beats the browser's own [hidden] styling.**
+   `[hidden] { display: none }` comes from the user-agent stylesheet, and any
+   author rule with a class selector outranks it — so `.empty { display: flex }`
+   left every element the console hid by attribute sitting on screen with the
+   attribute faithfully set.
+
+   The access page showed it plainly: "Loading — reading this instance's
+   configuration" stayed above a form that had finished loading and rendered
+   underneath it. The script was correct and had always been correct; the
+   attribute it set did nothing.
+
+   This is the one place `!important` is the right tool. `hidden` is not a
+   suggestion, and the alternative is remembering to re-hide in every component
+   that ever sets `display` — which is the arrangement that produced the bug. */
+[hidden] {
+  display: none !important;
+}

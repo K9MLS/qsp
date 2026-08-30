@@ -1117,3 +1117,69 @@ func TestTheGeneratedBlockIsNotWrapped(t *testing.T) {
 		t.Error("a long rule has nowhere to go but off the page")
 	}
 }
+
+// TestHiddenMeansHidden.
+//
+// **The console hides by attribute and the attribute was being ignored.**
+// `[hidden] { display: none }` is a user-agent rule, and any author rule with a
+// class selector outranks it — so `.empty { display: flex }` meant the access
+// page's "Loading" panel stayed on screen above the form it had already
+// finished rendering. Every `hide()` in every page script was correct and none
+// of them worked on an element whose class set a display mode.
+//
+// Found by an operator saying a page had never worked, not by anything here.
+func TestHiddenMeansHidden(t *testing.T) {
+	sheets := []string{"static/tokens.css", "static/console.css", "static/join.css"}
+
+	var declared bool
+	for _, sheet := range sheets {
+		body, err := assets.ReadFile(sheet)
+		if err != nil {
+			t.Fatalf("reading %s: %v", sheet, err)
+		}
+		css := string(body)
+		// **Anchored to the start of a line.** A plain substring search finds
+		// the phrase inside the comment above the rule — which quotes the
+		// user-agent declaration in order to explain the bug — and then
+		// measures the comment instead of the CSS. That is the same fault as
+		// the wrapping check: asserting something adjacent to the thing that
+		// matters.
+		loc := regexp.MustCompile(`(?m)^\[hidden\] \{`).FindStringIndex(css)
+		if loc == nil {
+			continue
+		}
+		rule := css[loc[0]:]
+		if end := strings.Index(rule, "}"); end >= 0 {
+			rule = rule[:end]
+		}
+		if !strings.Contains(rule, "display: none") {
+			t.Errorf("%s declares [hidden] without display: none", sheet)
+		}
+		// Without !important the declaration loses to every class that sets a
+		// display mode, which is the whole fault.
+		if !strings.Contains(rule, "!important") {
+			t.Errorf("%s declares [hidden] without !important, so a class with a "+
+				"display rule still wins", sheet)
+		}
+		declared = true
+	}
+	if !declared {
+		t.Error("no stylesheet makes the hidden attribute override a component's display")
+	}
+
+	// And the pages must still be using it, or the rule guards nothing.
+	var users int
+	for _, page := range []string{"static/access.html", "static/network.html",
+		"static/bridges.html", "static/history.html", "static/join.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		if strings.Contains(string(body), " hidden>") {
+			users++
+		}
+	}
+	if users < 4 {
+		t.Errorf("only %d pages hide by attribute; this check has gone blind", users)
+	}
+}

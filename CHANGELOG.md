@@ -134,6 +134,30 @@ All notable changes to QSP. Dates are UTC.
   while QSP still never rewrites a Link Control (ADR-0028).
 
 ### Fixed
+- **The `hidden` attribute did nothing on any element whose class set a display
+  mode.** `[hidden] { display: none }` comes from the user-agent stylesheet, and
+  any author rule with a class selector outranks it — so `.empty { display:
+  flex }` left the access page's "Loading — reading this instance's
+  configuration" panel on screen above a form that had already finished loading
+  and rendered underneath it.
+
+  The scripts were correct. Every `hide()` set the attribute exactly as
+  intended, and the attribute was ignored. **The access page had never worked**,
+  and an operator said so; nothing in the suite had ever noticed, because the
+  suite reads the script and the script is right.
+
+  `tokens.css` now declares `[hidden] { display: none !important }`. This is the
+  one place `!important` is the correct tool: `hidden` is not a suggestion, and
+  the alternative is remembering to re-hide in every component that sets
+  `display`, which is the arrangement that produced the fault.
+
+  `TestHiddenMeansHidden` also had to be corrected before it could fail: its
+  first version searched for the phrase `[hidden] {`, found it inside the
+  comment that quotes the user-agent rule to explain the bug, and measured the
+  comment. That is the same fault as the wrapping check earlier today —
+  asserting something adjacent to the thing that matters. It anchors to the
+  start of a line now.
+
 - **The pair harness used a talkgroup nobody had programmed.** It carried TG 9
   because the soak configuration does; this network runs TG 2. A test rig on a
   talkgroup that is not in the radio costs a codeplug edit every time it is
