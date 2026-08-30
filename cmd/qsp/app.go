@@ -83,7 +83,10 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		return nil
 	})
 
-	a.audit = audit.NewLogRecorder(log)
+	// The log first, so events recorded before the database opens still reach
+	// somewhere. The database is added below when it is available.
+	trail := audit.NewMulti(log, audit.NewLogRecorder(log))
+	a.audit = trail
 
 	var dbUnavailableReason string
 	db, err := database.Open(ctx, log, database.Options{
@@ -114,6 +117,15 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			slog.Int("applied_now", len(result.Applied)),
 			slog.Int("already_applied", result.AlreadyApplied),
 		)
+
+		// **Nothing did this.** Migration 0002 created audit_events with its
+		// indexes, the schema carried it to version 4, SECURITY.md described a
+		// trail that settles arguments between administrators, and
+		// LogRecorder was the only implementation of audit.Recorder in the
+		// program. An instance running for weeks held zero rows and could not
+		// have held any.
+		trail.Add(audit.NewSQLRecorder(db.SQL(), log))
+		log.Info("audit trail persisted", slog.String("table", "audit_events"))
 	}
 
 	// **Before anything that reads it.** This was built after the console's

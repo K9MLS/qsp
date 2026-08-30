@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -169,4 +171,74 @@ func TestLogRecorderRejectsInvalidEvent(t *testing.T) {
 
 func TestLogRecorderImplementsRecorder(t *testing.T) {
 	var _ Recorder = (*LogRecorder)(nil)
+}
+
+// TestMultiWritesToEveryRecorder.
+//
+// **The database recorder did not exist and nothing noticed.** Migration 0002
+// created audit_events with its indexes, the schema reached version 4 carrying
+// it, SECURITY.md described a trail that settles arguments between
+// administrators, and LogRecorder was the only implementation of Recorder in
+// the program. A production instance held zero rows and could not have held
+// any.
+func TestMultiWritesToEveryRecorder(t *testing.T) {
+	a, b := &countingRecorder{}, &countingRecorder{}
+	m := NewMulti(slog.New(slog.NewTextHandler(io.Discard, nil)), a, b)
+
+	ev := Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      "K9MLS",
+		Action:     ActionUserLogin,
+		Outcome:    OutcomeSuccess,
+	}
+	if err := m.Record(context.Background(), ev); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if a.n != 1 || b.n != 1 {
+		t.Errorf("recorders saw %d and %d events", a.n, b.n)
+	}
+
+	// **A failure must not cost the others.** Stopping at the first error would
+	// mean a locked database silently taking the log copy with it, which is the
+	// copy most likely to be shipped somewhere durable.
+	bad := &countingRecorder{err: errors.New("database is locked")}
+	m = NewMulti(slog.New(slog.NewTextHandler(io.Discard, nil)), bad, a)
+
+	before := a.n
+	if err := m.Record(context.Background(), ev); err == nil {
+		t.Error("a failing recorder was not reported")
+	}
+	if a.n != before+1 {
+		t.Error("a recorder after the failing one was skipped")
+	}
+}
+
+// TestAddedRecordersReceiveLaterEvents. The database opens after the log
+// exists, so the trail starts as a log and gains persistence a moment later.
+func TestAddedRecordersReceiveLaterEvents(t *testing.T) {
+	m := NewMulti(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	late := &countingRecorder{}
+	m.Add(late)
+
+	if err := m.Record(context.Background(), Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      "system",
+		Action:     ActionServiceStarted,
+		Outcome:    OutcomeSuccess,
+	}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	if late.n != 1 {
+		t.Errorf("a recorder added after construction saw %d events", late.n)
+	}
+}
+
+type countingRecorder struct {
+	n   int
+	err error
+}
+
+func (c *countingRecorder) Record(context.Context, Event) error {
+	c.n++
+	return c.err
 }

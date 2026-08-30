@@ -92,6 +92,12 @@ Roles are deliberately absent: there is one kind of account and it can do
 everything. The audit trail records who did what, which is the part that settles
 arguments.
 
+Events are written to the log and to `audit_events` in the database, and the
+two fail independently — a database that is locked or full does not take the
+log copy with it. Detail is redacted on the way in rather than on the way out,
+because a secret written to an append-only table is a secret in every backup of
+it.
+
 Every authentication is recorded: a successful sign-in, a sign-out, a refused
 password, and a refusal caused by lockout, the last as `denied` rather than
 `failure`. **The failures matter more than the successes.** An attempt against a

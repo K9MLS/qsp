@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
@@ -563,5 +564,68 @@ func TestTheConnectionDoesNotTakeSQLitesDefaults(t *testing.T) {
 	}
 	if fk != 1 {
 		t.Error("foreign_keys is off, so the cascade migration 0003 declares does nothing")
+	}
+}
+
+// TestTheAuditTrailReachesTheDatabase.
+//
+// **It never did.** Migration 0002 created audit_events with two indexes, the
+// schema reached version 4 carrying it, SECURITY.md said the audit trail
+// records who did what and that roles are absent because of it — and
+// audit.LogRecorder was the only implementation of audit.Recorder in the
+// program. A production instance running for weeks held zero rows in that
+// table and could not have held any.
+//
+// Every part existed: the table, the migration, the interface, the redactor,
+// the event type, the actions. Nothing joined them. This asserts the join
+// rather than any of the parts, because each part was already correct.
+func TestTheAuditTrailReachesTheDatabase(t *testing.T) {
+	cfg := testConfig(t)
+
+	a, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	defer func() { _ = a.shutdown(context.Background()) }()
+
+	if a.db == nil {
+		t.Fatal("no database handle despite a registered sqlite driver")
+	}
+
+	if err := a.audit.Record(context.Background(), audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      "K9MLS",
+		Action:     audit.ActionUserLogin,
+		Outcome:    audit.OutcomeSuccess,
+		SourceIP:   "192.0.2.1",
+		Detail:     map[string]string{"note": "kept", "password": "must not survive"},
+	}); err != nil {
+		t.Fatalf("recording: %v", err)
+	}
+
+	var count int
+	if err := a.db.SQL().QueryRow(
+		`SELECT COUNT(*) FROM audit_events WHERE action = ?`,
+		string(audit.ActionUserLogin)).Scan(&count); err != nil {
+		t.Fatalf("counting: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("audit_events holds %d login rows; the trail does not reach the database", count)
+	}
+
+	// Redacted on the way in. A secret written to an append-only table is a
+	// secret in every backup of it, and the table's own comment makes that the
+	// recorder's job.
+	var detail string
+	if err := a.db.SQL().QueryRow(
+		`SELECT detail FROM audit_events WHERE action = ?`,
+		string(audit.ActionUserLogin)).Scan(&detail); err != nil {
+		t.Fatalf("reading detail: %v", err)
+	}
+	if strings.Contains(detail, "must not survive") {
+		t.Errorf("a secret was written to the audit trail: %s", detail)
+	}
+	if !strings.Contains(detail, "kept") {
+		t.Errorf("redaction removed a value that was not sensitive: %s", detail)
 	}
 }

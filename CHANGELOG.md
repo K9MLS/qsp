@@ -72,6 +72,29 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **The audit trail never reached the database.** Migration 0002 created
+  `audit_events` with two indexes, the schema reached version 4 carrying it,
+  SECURITY.md said the trail records who did what and that roles are
+  deliberately absent because of it — and `audit.LogRecorder` was the only
+  implementation of `audit.Recorder` in the program.
+
+  **A production instance running for weeks held zero rows in that table**, and
+  could not have held any. Every part existed: the table, the migration, the
+  interface, the redactor, the event type, the action constants, the sensitive
+  key list. Nothing joined them.
+
+  `audit.SQLRecorder` writes them now, and `audit.Multi` writes to the log and
+  the database both, because they fail independently and the log copy is the one
+  most likely to be shipped somewhere durable. Every recorder is attempted even
+  after one fails, so a locked database does not silently cost the other copy.
+
+  `Redact` is applied on the way in. A secret written to an append-only table is
+  a secret in every backup of it, and the table's own comment makes redaction
+  the recorder's job.
+
+  The test asserts the join rather than any of the parts, because each part was
+  already correct and individually tested.
+
 - **No authentication was ever audited.** `login.go` contained no audit call at
   all: every sign-in, sign-out and refused password went to the log and none of
   it reached `audit_events`, while `ActionUserLogin`, `ActionUserLogout` and
