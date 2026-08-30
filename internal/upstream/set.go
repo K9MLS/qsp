@@ -42,6 +42,9 @@ type Set struct {
 	mu    sync.RWMutex
 	links map[string]Connection
 	order []string
+	// relaying mirrors dmr.forwarding, so a link check can explain a silence
+	// this instance is itself the cause of.
+	relaying bool
 }
 
 // NewSet creates an empty set.
@@ -143,6 +146,15 @@ func (s *Set) Statuses() []Status {
 type HealthCheck struct {
 	// Link is the link to report on.
 	Link Connection
+	// Relaying reports whether this instance forwards traffic at all.
+	//
+	// **A link opens whether or not anything can reach it.** With forwarding
+	// off the routing table is never built, so no frame is ever offered to a
+	// link — and the link still binds its socket, logs that it opened, and
+	// then reports itself degraded because nothing has arrived. The advice it
+	// gives in that state sends an operator to check the far end's address and
+	// their own firewall, when the cause is in their own configuration.
+	Relaying bool
 }
 
 // Name implements health.Checker.
@@ -160,6 +172,14 @@ func (h HealthCheck) Check(context.Context) health.Result {
 	case !st.Open:
 		return health.Unavailable(st.Summary)
 
+	case !h.Relaying:
+		// Reported before staleness, because staleness is the symptom and this
+		// is the cause. Naming the symptom first is what sends an operator to
+		// somebody else's network.
+		return health.Unavailable(
+			"this link is open, and forwarding is off so nothing can reach it: " +
+				"the routing table is only built when dmr.forwarding is on")
+
 	case st.Degraded():
 		// The advice comes from the link. What to check differs entirely
 		// between a bridge with no keep-alive and a login that has one, and a
@@ -176,15 +196,24 @@ func (h HealthCheck) Check(context.Context) health.Result {
 // It returns a check that reports the absence rather than nil, so a caller
 // registering checks for every name in Names cannot accidentally register
 // nothing.
+// SetRelaying records whether this instance forwards traffic, so a link can
+// say why nothing reaches it rather than blaming the far end.
+func (s *Set) SetRelaying(on bool) {
+	s.mu.Lock()
+	s.relaying = on
+	s.mu.Unlock()
+}
+
 func (s *Set) CheckFor(name string) health.Checker {
 	s.mu.RLock()
 	link, ok := s.links[name]
+	relaying := s.relaying
 	s.mu.RUnlock()
 
 	if !ok {
 		return missingLink(name)
 	}
-	return HealthCheck{Link: link}
+	return HealthCheck{Link: link, Relaying: relaying}
 }
 
 // missingLink reports a link that was named but not configured.

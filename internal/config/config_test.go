@@ -294,10 +294,18 @@ func TestDiffIsOrderedByField(t *testing.T) {
 	}
 }
 
-func TestForwardingWithoutBridgesIsRejected(t *testing.T) {
-	// Enabling forwarding with nothing to forward across is almost certainly a
-	// mistake, and one that would leave an operator waiting for audio that
-	// never comes.
+// TestTheOrdinaryClubNetworkIsValid.
+//
+// **This test asserted the opposite until now**, and its name said so:
+// forwarding with no bridges was rejected as "almost certainly a mistake". It
+// was, while bridging was the whole routing model. ADR-0019 made a repeating
+// master the ordinary case, the health check was corrected for it, and this was
+// not — so the Forwarding field's own documentation described a configuration
+// its validator refused, twenty lines apart in one file.
+//
+// Four hotspots on one talkgroup hearing each other needs no bridges and is
+// what most clubs run.
+func TestTheOrdinaryClubNetworkIsValid(t *testing.T) {
 	c := Default()
 	c.DMR.Enabled = true
 	// An empty block is the deliberate permit-everything of ADR-0020: the
@@ -306,12 +314,24 @@ func TestForwardingWithoutBridgesIsRejected(t *testing.T) {
 	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
 	c.DMR.Forwarding = true
 
-	err := c.Validate()
-	if err == nil {
-		t.Fatal("forwarding was enabled with no bridges configured")
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a repeating master with no bridges was rejected: %v", err)
 	}
-	if !strings.Contains(err.Error(), "relays none of it") {
-		t.Errorf("error should explain the consequence, got: %v", err)
+}
+
+// TestObservingWithoutRelayingIsValid. Forwarding is off by default so an
+// operator can run QSP as a master and watch peers connect before it puts audio
+// on anybody's repeater. Refusing that — which one version of this rule did —
+// removes the mode the field exists to provide.
+func TestObservingWithoutRelayingIsValid(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = false
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("observation mode was rejected: %v", err)
 	}
 }
 

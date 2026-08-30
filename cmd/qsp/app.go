@@ -297,6 +297,10 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	registry.MustRegister(routingCheck{enabled: cfg.DMR.Forwarding, bridges: len(cfg.DMR.Bridges)})
 	registry.MustRegister(schedulerCheck{windows: len(cfg.DMR.Schedule), forwarding: cfg.DMR.Forwarding})
 	if a.upstreams != nil {
+		// Before the checks are built, so each link knows whether anything can
+		// reach it. A link opens regardless of dmr.forwarding and then reports
+		// a silence it cannot explain.
+		a.upstreams.SetRelaying(cfg.DMR.Forwarding)
 		for _, name := range a.upstreams.Names() {
 			registry.MustRegister(a.upstreams.CheckFor(name))
 		}

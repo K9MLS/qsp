@@ -1096,11 +1096,25 @@ func (c Config) Validate() error {
 			}
 		}
 
-		if c.DMR.Forwarding && len(c.DMR.Bridges) == 0 {
-			v.add("dmr.bridges", "forwarding is enabled but no bridges are configured",
-				"add at least one bridge, or set dmr.forwarding to false; "+
-					"with no bridges QSP accepts traffic and relays none of it")
-		}
+		// **There was a rule here refusing forwarding with no bridges**, on the
+		// grounds that QSP would relay nothing. That was true while bridging
+		// was the whole routing model and became false the day the master
+		// learned to repeat: a club whose members share one talkgroup
+		// configures no bridges and works exactly as intended. The health
+		// check was corrected for ADR-0019 and this was not, so the field's
+		// own documentation twenty lines above described a configuration the
+		// validator refused.
+		//
+		// Inverting it was the second mistake and lasted one test run. Off
+		// with no bridges is the observation mode Forwarding exists to
+		// provide — running as a master and watching peers connect before
+		// putting audio on anybody's repeater.
+		//
+		// **Both states are legitimate, so neither is a validation error.**
+		// This was a judgement about what an operator probably meant, and
+		// that belongs in the health report, which says plainly that
+		// forwarding is off and peers cannot hear each other. A validator
+		// refuses what cannot work; it does not guess at intent.
 	}
 
 	v.positive("events.history_size", c.Events.HistorySize,

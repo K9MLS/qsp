@@ -46,7 +46,7 @@
     "login_timeout": "30s",
     "max_peers": 4,
     "subscriber_timeout": "2h",
-    "forwarding": false,
+    "forwarding": true,
     "bridges": [],
     "schedule": [],
     "triggers": [],

@@ -88,6 +88,42 @@ All notable changes to QSP. Dates are UTC.
   while QSP still never rewrites a Link Control (ADR-0028).
 
 ### Fixed
+- **A link reported open, blamed the far end, and could never have carried
+  anything.** Two instances peered over OpenBridge with `dmr.forwarding` off:
+  each logged `link open` with its target and listening addresses, bound its
+  socket, and then reported degraded with advice to confirm the far end's public
+  address and that UDP was reaching the port. The routing table is built only
+  inside `if cfg.DMR.Forwarding`, so no frame was ever offered to either link.
+
+  Three statements, each true, together sending an operator to debug somebody
+  else's network over a fault three lines above in their own log. A link now
+  says so itself: open, forwarding off, nothing can reach it.
+
+  **Found by running two processes.** The suite passed on both configurations,
+  including `TestShippedExamplesAreValid`, written the same day to catch exactly
+  this class of thing.
+
+- **The configuration validator refused the ordinary club network.**
+  `dmr.forwarding` with no bridges was rejected as relaying nothing — true while
+  bridging was the whole routing model, false since ADR-0019 made a repeating
+  master the ordinary case. The health check was corrected for ADR-0019 and the
+  validator was not, so the `Forwarding` field's own documentation described a
+  configuration its validator refused, twenty lines apart in one file.
+
+  Inverting the rule was the second mistake and survived one test run: off with
+  no bridges is the observation mode the field exists to provide — running as a
+  master and watching peers connect before putting audio on anybody's repeater.
+
+  **Both states are legitimate, so the rule is gone rather than reversed.** It
+  was a judgement about what an operator probably meant, and that belongs in the
+  health report, which already says plainly that forwarding is off and peers
+  cannot hear each other. A validator refuses what cannot work; it does not
+  guess at intent. `TestForwardingWithoutBridgesIsRejected` is replaced by two
+  tests asserting each state is valid.
+
+  The pair configurations carried `forwarding: false` only to satisfy that rule,
+  which is why the harness shipped unable to relay in either direction.
+
 - **A test that could not fail, found while checking that it could.**
   `TestTheGeneratedBlockIsNotWrapped` asserts the generated configuration uses
   `white-space: pre`, because a DMRGateway rule broken across two lines is one a
