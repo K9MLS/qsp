@@ -22,13 +22,24 @@ On the development machine:
 ./scripts/pair.sh clean    # stop them and remove /tmp/qsp-pair
 ```
 
-Nothing here touches the production instance. Both processes bind `127.0.0.1`
-only, on ports nothing else in this project uses, and write to `/tmp/qsp-pair`.
+Nothing here touches the production instance. The consoles and the link sockets
+bind `127.0.0.1`, and everything is written to `/tmp/qsp-pair`.
+
+**The DMR listeners bind `0.0.0.0`, deliberately.** The first version of this
+bound them to loopback like everything else, which is tidy and made the harness
+useless: a hotspot on the LAN could not reach either instance, so the only
+traffic either ever saw was the console polling itself. A pair with no way to
+receive a frame cannot answer the question it exists to answer.
+
+They are reachable from the LAN while running, which is why both configurations
+carry an explicit `access` block. It permits everything, which is the deliberate
+statement ADR-0020 asks for rather than an oversight — this is a development
+machine, and the instances are stopped when the test ends.
 
 | | alpha | bravo |
 |---|---|---|
 | Console | http://127.0.0.1:8091 | http://127.0.0.1:8092 |
-| DMR listener | `127.0.0.1:62041` | `127.0.0.1:62042` |
+| DMR listener | `0.0.0.0:62041` | `0.0.0.0:62042` |
 | Link listener | `127.0.0.1:62045` | `127.0.0.1:62046` |
 | Network ID | 3132910 | 3199001 |
 
@@ -49,9 +60,14 @@ curl -s http://127.0.0.1:8091/healthz
 curl -s http://127.0.0.1:8092/healthz
 ```
 
-**Two: a frame crosses.** Point a hotspot at `127.0.0.1:62041`, or replay a
-capture from `testdata/hbp` into it, and transmit on TG 9 TS2. It should appear
-in bravo's log and on bravo's console.
+**Two: a frame crosses.** Point a hotspot at this machine's LAN address on port
+62041 and transmit on TG 9 TS2. It should appear in bravo's log and on bravo's
+console.
+
+A capture from `testdata/hbp` cannot simply be replayed at it: the login
+handshake answers a challenge whose salt differs every time, so a recorded
+session will not authenticate. Generating traffic without a radio needs a tool
+that speaks the client side, which is separate work.
 
 **Three: it does not come back.** The pair exports and imports the same
 talkgroup deliberately — the ordinary club configuration, and the one that would

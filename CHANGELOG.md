@@ -88,6 +88,25 @@ All notable changes to QSP. Dates are UTC.
   while QSP still never rewrites a Link Control (ADR-0028).
 
 ### Fixed
+- **The pair harness could not receive a frame from anything.** Both DMR
+  listeners bound `127.0.0.1`, which is tidy and made the whole rig useless: no
+  hotspot on the LAN could reach either instance, so the only traffic either
+  ever saw was the console polling itself. Watching bravo's log during the first
+  run showed `/healthz` and `/api/peers` and nothing else, which reads exactly
+  like a broken link and was a harness with no way in.
+
+  The listeners bind `0.0.0.0` now. Both configurations already carry an
+  explicit permit-everything `access` block, which is the deliberate statement
+  ADR-0020 asks for. `TestThePairFacesItself` fails if either listener returns
+  to loopback, and compares bind ports rather than addresses — `0.0.0.0:62041`
+  and `127.0.0.1:62041` are different strings and the same socket, so comparing
+  addresses would pass a pair that cannot both start.
+
+  `docs/FEDERATION-TEST.md` also records what a capture cannot do: the login
+  handshake answers a challenge whose salt differs every time, so a recorded
+  session from `testdata/hbp` will not authenticate. Traffic without a radio
+  needs a tool that speaks the client side.
+
 - **A link reported open, blamed the far end, and could never have carried
   anything.** Two instances peered over OpenBridge with `dmr.forwarding` off:
   each logged `link open` with its target and listening addresses, bound its

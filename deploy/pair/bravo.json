@@ -20,7 +20,7 @@
   },
   "dmr": {
     "enabled": true,
-    "listen_address": "127.0.0.1:62042",
+    "listen_address": "0.0.0.0:62042",
     "password_file": "/tmp/qsp-pair/bravo.peer.pass",
     "access": {
       "registration": {

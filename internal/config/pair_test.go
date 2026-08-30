@@ -79,6 +79,16 @@ func TestThePairFacesItself(t *testing.T) {
 	// Every port either instance binds must be unique across the pair. Two
 	// processes on one machine sharing a port is a second instance that starts,
 	// reports healthy, and never receives anything.
+	//
+	// **Compared by port rather than by address.** 0.0.0.0:62041 and
+	// 127.0.0.1:62041 are different strings and the same socket, so comparing
+	// the whole address would pass a pair that cannot both start.
+	port := func(addr string) string {
+		if i := strings.LastIndex(addr, ":"); i >= 0 {
+			return addr[i+1:]
+		}
+		return addr
+	}
 	seen := map[string]string{}
 	for _, p := range []struct{ what, addr string }{
 		{"alpha console", alpha.Server.ListenAddress},
@@ -88,10 +98,23 @@ func TestThePairFacesItself(t *testing.T) {
 		{"bravo DMR", bravo.DMR.ListenAddress},
 		{"bravo link", b.ListenAddress},
 	} {
-		if prev, ok := seen[p.addr]; ok {
-			t.Errorf("%s and %s both bind %s", prev, p.what, p.addr)
+		if prev, ok := seen[port(p.addr)]; ok {
+			t.Errorf("%s and %s both bind port %s", prev, p.what, port(p.addr))
 		}
-		seen[p.addr] = p.what
+		seen[port(p.addr)] = p.what
+	}
+
+	// **The DMR listeners must be reachable from off this machine.** Bound to
+	// loopback they are tidy and useless: no hotspot on the LAN can reach
+	// either instance, so the harness observes nothing but its own console
+	// polling and cannot answer the question it exists for.
+	for _, l := range []struct{ what, addr string }{
+		{"alpha", alpha.DMR.ListenAddress},
+		{"bravo", bravo.DMR.ListenAddress},
+	} {
+		if strings.HasPrefix(l.addr, "127.") || strings.HasPrefix(l.addr, "[::1]") {
+			t.Errorf("%s listens for peers on %s, which no hotspot can reach", l.what, l.addr)
+		}
 	}
 
 	// The databases must differ too, and this is easy to get wrong by copying.

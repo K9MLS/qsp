@@ -20,7 +20,7 @@
   },
   "dmr": {
     "enabled": true,
-    "listen_address": "127.0.0.1:62041",
+    "listen_address": "0.0.0.0:62041",
     "password_file": "/tmp/qsp-pair/alpha.peer.pass",
     "access": {
       "registration": {
