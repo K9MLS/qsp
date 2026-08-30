@@ -47,7 +47,24 @@
     "max_peers": 4,
     "subscriber_timeout": "2h",
     "forwarding": true,
-    "bridges": [],
+    "bridges": [
+      {
+        "name": "pair",
+        "enabled": true,
+        "endpoints": [
+          {
+            "peer": 0,
+            "talkgroup": 2,
+            "timeslot": 2
+          },
+          {
+            "upstream": "pair",
+            "talkgroup": 2,
+            "timeslot": 2
+          }
+        ]
+      }
+    ],
     "schedule": [],
     "triggers": [],
     "join": {

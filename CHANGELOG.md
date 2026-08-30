@@ -134,6 +134,38 @@ All notable changes to QSP. Dates are UTC.
   while QSP still never rewrites a Link Control (ADR-0028).
 
 ### Fixed
+- **Nothing could send traffic to a link. The fields that were supposed to were
+  read by no code at all.** Two instances peered over OpenBridge: both sockets
+  opened, the far end authenticated, keepalives flowed both ways for an hour,
+  and six transmissions on the bridged talkgroup were routed to local peers and
+  to nothing else.
+
+  `routing.Endpoint` has carried an `Upstream` since links existed, and the only
+  place it was ever set was `RouteFromUpstream`, on the inbound side. So traffic
+  could arrive from another network and never leave for one. `config.Endpoint` —
+  what a bridge is built from — had `Peer`, `Talkgroup` and `Timeslot` and no
+  way to name a link, so **outbound was unreachable from any configuration a
+  person could write.**
+
+  `Upstream.Export` and `Upstream.Import` were validated, stored, documented as
+  what crosses in each direction, and consulted by nothing. A search of every
+  `.go` file finds the field declarations and no reader.
+
+  A bridge endpoint can name a link now, which makes links first-class in the
+  mechanism that already handles scheduling, triggers and enabling rather than
+  a second parallel one.
+
+  **And a link nothing routes to is refused at startup.** That is the shape of
+  this fault: a socket that opens, authenticates, reports no traffic, and sends
+  an operator to check somebody else's address. It is a configuration error and
+  it now says so before the process runs.
+
+  Recorded honestly: this was asserted the wrong way round earlier today. When
+  a bridge endpoint naming an `upstream` was rejected as an unknown field, that
+  was read as using the wrong mechanism and written into a commit message as
+  though it were a finding. The error was reporting that the feature did not
+  exist.
+
 - **The `hidden` attribute did nothing on any element whose class set a display
   mode.** `[hidden] { display: none }` comes from the user-agent stylesheet, and
   any author rule with a class selector outranks it — so `.empty { display:

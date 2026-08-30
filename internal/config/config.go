@@ -470,10 +470,22 @@ func (t JoinTalkgroup) Target() uint32 {
 	return t.Dialled
 }
 
-// Endpoint is one talkgroup on one timeslot at one peer.
+// Endpoint is one talkgroup on one timeslot, at one peer or at one link.
 type Endpoint struct {
 	// Peer is the peer's repeater ID, or 0 for every connected peer.
 	Peer uint32 `json:"peer"`
+	// Upstream names a link to another network, empty for an ordinary peer.
+	//
+	// **Without this there was no way to send anything to a link.** The
+	// routing core has carried an Upstream on its own endpoint since links
+	// existed, and the only place it was ever set was on the inbound side, so
+	// traffic could arrive from another network and never leave for one. A
+	// link opened, authenticated, reported healthy, and was unreachable from
+	// any configuration a person could write.
+	//
+	// Ignored when Peer is set, and the two together are an error: a link is
+	// not a peer.
+	Upstream string `json:"upstream,omitempty"`
 	// Talkgroup is the talkgroup ID.
 	Talkgroup uint32 `json:"talkgroup"`
 	// Timeslot is 1 or 2.
@@ -854,6 +866,15 @@ func (c Config) Validate() error {
 				"is not a departed one")
 
 		names := make(map[string]bool, len(c.DMR.Bridges))
+		// Which links exist, and which a bridge actually reaches.
+		links := map[string]bool{}
+		for _, u := range c.DMR.Upstreams {
+			if u.Enabled {
+				links[strings.ToLower(strings.TrimSpace(u.Name))] = true
+			}
+		}
+		reached := map[string]bool{}
+
 		for i, b := range c.DMR.Bridges {
 			field := fmt.Sprintf("dmr.bridges[%d]", i)
 			if strings.TrimSpace(b.Name) == "" {
@@ -879,6 +900,35 @@ func (c Config) Validate() error {
 					v.add(ef+".timeslot", fmt.Sprintf("is %d", e.Timeslot),
 						"DMR has two timeslots; use 1 or 2")
 				}
+				link := strings.ToLower(strings.TrimSpace(e.Upstream))
+				switch {
+				case link == "":
+				case e.Peer != 0:
+					v.add(ef, "names both a peer and a link",
+						"a link is not a peer; set one or the other")
+				case !links[link]:
+					v.add(ef+".upstream", fmt.Sprintf("%q does not match any enabled link", e.Upstream),
+						"check the spelling against dmr.upstreams, and that the link is enabled")
+				default:
+					reached[link] = true
+				}
+			}
+		}
+
+		// **A link nothing routes to is the fault that cost an afternoon.**
+		// The socket opens, the far end authenticates, the health report says
+		// no traffic has arrived, and the advice sends an operator to check
+		// somebody else's address — while no configuration on this side could
+		// ever have put a frame on it.
+		for i, u := range c.DMR.Upstreams {
+			if !u.Enabled {
+				continue
+			}
+			if !reached[strings.ToLower(strings.TrimSpace(u.Name))] {
+				v.add(fmt.Sprintf("dmr.upstreams[%d]", i),
+					fmt.Sprintf("no bridge sends anything to %q", u.Name),
+					"add a bridge with an endpoint naming this link, or the link will "+
+						"open, authenticate and carry nothing")
 			}
 		}
 

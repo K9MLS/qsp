@@ -693,6 +693,7 @@ func buildTable(cfg config.Config, sched *scheduler.Schedule, triggers *routing.
 		for _, e := range b.Endpoints {
 			endpoints = append(endpoints, routing.Endpoint{
 				Peer:      hbp.RepeaterID(e.Peer),
+				Upstream:  e.Upstream,
 				Talkgroup: e.Talkgroup,
 				Timeslot:  timeslot(e.Timeslot),
 			})

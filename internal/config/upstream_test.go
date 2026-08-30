@@ -30,7 +30,31 @@ func withUpstreams(us ...Upstream) Config {
 	c.DMR.Access = &Access{}
 	c.DMR.PasswordFile = "peer.pass"
 	c.DMR.Upstreams = us
+	c.DMR.Bridges = bridgesReaching(us...)
 	return c
+}
+
+// bridgesReaching gives every enabled link something that routes to it.
+//
+// These tests are about a link's own fields, and a link nothing routes to is a
+// separate fault with its own check. Without this they would all fail on that
+// one instead, which is a test file that stops testing what it says it does.
+func bridgesReaching(us ...Upstream) []Bridge {
+	var out []Bridge
+	for _, u := range us {
+		if !u.Enabled {
+			continue
+		}
+		out = append(out, Bridge{
+			Name:    "to-" + u.Name,
+			Enabled: true,
+			Endpoints: []Endpoint{
+				{Talkgroup: 9, Timeslot: 2},
+				{Upstream: u.Name, Talkgroup: 9, Timeslot: 2},
+			},
+		})
+	}
+	return out
 }
 
 func upstreamProblems(t *testing.T, c Config) string {
@@ -233,6 +257,8 @@ func TestHomebrewUpstreamIsAccepted(t *testing.T) {
 	c.DMR.Access = &Access{}
 	c.DMR.Upstreams = []Upstream{homebrewUpstream()}
 
+	c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
+
 	if err := c.Validate(); err != nil {
 		t.Fatalf("a well-formed homebrew link was rejected: %v", err)
 	}
@@ -249,6 +275,8 @@ func TestHomebrewDoesNotNeedOpenBridgeFields(t *testing.T) {
 	u.PassphraseFile = ""
 	u.NetworkID = 0
 	c.DMR.Upstreams = []Upstream{u}
+
+	c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
 
 	if err := c.Validate(); err != nil {
 		t.Errorf("a homebrew link was asked for OpenBridge's fields: %v", err)
@@ -284,6 +312,8 @@ func TestHomebrewValidation(t *testing.T) {
 			u := homebrewUpstream()
 			tc.mutate(&u)
 			c.DMR.Upstreams = []Upstream{u}
+
+			c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
 
 			err := c.Validate()
 			if err == nil {
@@ -337,6 +367,8 @@ func TestUnknownProtocolIsRefused(t *testing.T) {
 	u.Protocol = "ipsc"
 	c.DMR.Upstreams = []Upstream{u}
 
+	c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
+
 	err := c.Validate()
 	if err == nil {
 		t.Fatal("an unknown protocol was accepted")
@@ -354,6 +386,8 @@ func TestADisabledHomebrewLinkIsBarelyChecked(t *testing.T) {
 	c.DMR.Access = &Access{}
 	c.DMR.Upstreams = []Upstream{{Name: "xlx950", Protocol: "homebrew", Enabled: false}}
 
+	c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
+
 	if err := c.Validate(); err != nil {
 		t.Errorf("a disabled homebrew link was rejected: %v", err)
 	}
@@ -367,6 +401,8 @@ func TestHomebrewUpstreamRoundTripsThroughJSON(t *testing.T) {
 	u.Identity.Latitude = 33.2148
 	u.Identity.Longitude = -97.1331
 	c.DMR.Upstreams = []Upstream{u}
+
+	c.DMR.Bridges = bridgesReaching(c.DMR.Upstreams...)
 
 	var buf bytes.Buffer
 	if err := Save(&buf, c); err != nil {
@@ -385,5 +421,68 @@ func TestHomebrewUpstreamRoundTripsThroughJSON(t *testing.T) {
 	// A secret must never be written into the document.
 	if strings.Contains(buf.String(), "passw") && !strings.Contains(buf.String(), "password_file") {
 		t.Error("something password-like reached the configuration document")
+	}
+}
+
+// TestALinkNothingRoutesToIsRefused.
+//
+// **This is the fault that cost an afternoon, and nothing could have caught
+// it.** Two instances were peered over OpenBridge. Both sockets opened, the far
+// end authenticated, keepalives flowed both ways for an hour, and six
+// transmissions were routed to local peers and to nothing else — because
+// `config.Endpoint` had no way to name a link, so no configuration a person
+// could write could put a frame on one.
+//
+// `Upstream.Export` and `Upstream.Import` were validated, stored, documented,
+// and read by no code that has ever run.
+func TestALinkNothingRoutesToIsRefused(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Bridges = nil
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a link with nothing routing to it was accepted; it would open, " +
+			"authenticate and carry nothing")
+	}
+	if !strings.Contains(err.Error(), "no bridge sends anything") {
+		t.Errorf("the error does not say what is wrong: %v", err)
+	}
+}
+
+// TestABridgeCanNameALink, which is the whole point.
+func TestABridgeCanNameALink(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a bridge naming a link was rejected: %v", err)
+	}
+}
+
+// TestAnEndpointIsAPeerOrALinkAndNotBoth. routing.Endpoint has always said so;
+// configuration could not express either half until now.
+func TestAnEndpointIsAPeerOrALinkAndNotBoth(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Bridges[0].Endpoints[1].Peer = 3132910
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("an endpoint naming both a peer and a link was accepted")
+	}
+	if !strings.Contains(err.Error(), "not a peer") {
+		t.Errorf("the error does not explain: %v", err)
+	}
+}
+
+// TestABridgeCannotNameALinkThatIsNotThere, because a typo in a link name
+// otherwise produces a bridge that routes to nowhere and says nothing.
+func TestABridgeCannotNameALinkThatIsNotThere(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Bridges[0].Endpoints[1].Upstream = "pairr"
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a bridge naming a link that does not exist was accepted")
+	}
+	if !strings.Contains(err.Error(), "does not match any enabled link") {
+		t.Errorf("the error does not explain: %v", err)
 	}
 }
