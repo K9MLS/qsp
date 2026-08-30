@@ -50,7 +50,7 @@ bridging.** Both are now implemented.
 | | |
 |---|---|
 | Version | 0.1.9 |
-| Tests | ~740, all passing |
+| Tests | 743, all passing |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -310,6 +310,35 @@ discoverable from either end:
 **This belongs on the join page and does not yet exist there.** Until it does,
 every new member repeats the same afternoon.
 
+### Two open questions, unresolved at handoff
+
+**A hotspot behind a home router rebinds its NAT mapping every eight to nine
+minutes.** Fifteen reconnects in two hours, on a cycle, from the day it first
+connected. QSP dropped the mismatched keepalives in silence, so the peer only
+recovered on its own timeout;
+[ADR-0011](docs/adr/ADR-0011-nat-rebind.md) is amended and QSP answers with
+`MSTNAK` now. The hotspot was also repointed from `qsp.hopto.me` to the LAN
+address `192.168.1.247`, taking the router out of the path. **Neither change has
+been measured yet.** Count with:
+
+```sh
+sudo journalctl -u qsp --since "20 min ago" -o cat | grep -c '"msg":"peer connected"'
+```
+
+**Private calls from KB9TYC to K9MLS are not heard**, while the reverse works
+and both hear each other on talkgroups. Established: QSP relays them
+(`relaying transmission ... to 3132910/TG3132910/TS2`), the frames reach the
+hotspot, and DMRGateway forwards every inbound packet to MMDVMHost — a capture
+on the Pi shows one loopback packet to port 62032 per packet received. What has
+never been seen is an MMDVMHost line reading `network voice header from KB9TYC
+to 3132910`. Next step is that grep during a private call; if the line is there,
+the radio is muting it and the radio's own DMR ID is the thing to check.
+
+**Three `PCRewrite` rules were added to the hotspot on a theory that the
+capture later contradicted.** They are harmless and probably unnecessary. Do not
+add more hotspot rules without evidence from a capture or a log — four were
+proposed for this problem and none was the answer.
+
 ---
 
 ## 7. Working conventions
@@ -334,7 +363,30 @@ every new member repeats the same afternoon.
 - **A version bump is how a changed tree stays honestly labelled.** Two
   different trees must never carry the same version, even for a
   documentation-only change.
-- Delivery: single versioned zip, `VERSION` and `CHANGELOG.md` inside.
+- Delivery: numbered patch files applied with `git am`. When one fails, run
+  `git am --abort` before anything else — a half-applied patch blocks every
+  later one, which turned a single failure into three this week.
+- **Read the operator's `git log` before assuming a patch state.** "Already
+  exists in index" means the patch landed, not that it half-landed.
+
+### Working on somebody else's machines
+
+Every one of these was learned by getting it wrong on a live network this week.
+
+- **Find a line by content, never by number.** `sed -i '/^TGRewrite0=/d'`
+  removed the line from every section of a config file, not the one intended,
+  and took a club's network down for an hour. An index computed from `grep -n`
+  is off by one against a zero-based array, which a Python `assert` caught only
+  because it was there.
+- **Read before writing.** A destructive edit proposed from inference and then
+  confirmed by reading the file *after* the edit is not confirmation.
+- **A theory that has failed twice does not get a third guess.** Four hotspot
+  rules were proposed for one problem; a packet capture then showed the premise
+  was wrong from the start.
+- **When three fixes in a row change nothing visible, the loop is broken.** That
+  is evidence about the feedback path, not a reason for a cleverer fix. Make the
+  system report its own state instead — the map was fixed within an hour of it
+  printing what it had measured.
 
 ---
 
@@ -462,6 +514,39 @@ Blocked on hardware, and blocked correctly: an IPSC capture
 ([ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md)), a two-peer voice fixture,
 an XLX reflector for outbound peer mode, and the BrandMeister request.
 
+## 7b. What is built, as of 2026-08-29
+
+The five layers of [ADR-0019](docs/adr/ADR-0019-master-repeats.md) are
+complete, and most are proven on air.
+
+| Layer | State |
+|---|---|
+| 1. Repeat | Proven on air, both directions, two stations |
+| 2. Access control | Built: registration, subscribers, per-timeslot talkgroups |
+| 3. Subscription | Built: dynamic by transmitting, static by configuration |
+| 4. Bridging | Built, including OpenBridge |
+| 5. Outbound peer | Built; never met a real far end |
+
+Beyond the layers:
+
+- **Authentication.** Accounts created from the shell (`qsp -config <path>
+  adduser <name>`, flag before the subcommand), sessions in the database,
+  lockout after five failures, `qsp unlock <name>` to clear it.
+- **Peer login throttling.** Six refusals from one address in fifteen minutes
+  and QSP stops answering it for five, including the challenge. Per address, not
+  per repeater ID.
+- **Five console pages**: overview, access control, network settings, bridges
+  and schedule, configuration history with restore, plus the join page for
+  members. Every section has a hint explaining itself.
+- **Configuration from a browser**, versioned, with every save attributed and a
+  restore that is itself a save.
+- **Parrot**, as a group call. See §6a for why a private one cannot work yet.
+- **Radio ID lookups** against RadioID.net, cached, one at a time, identifying
+  the operator by a contact address they supply.
+- **A live map**, drawn without a library.
+
+---
+
 ## 8a. How this project finds its defects
 
 Worth stating plainly, because it has been true every week and is the single
@@ -514,3 +599,25 @@ means.
 | Console | `192.168.1.247:8080` |
 | Public | `qsp.hopto.me` via Nginx Proxy Manager to :8080. **Needs UDP 62031 forwarded on the router for remote hotspots** |
 | Join page | `https://qsp.hopto.me/join` — needs seven Custom Locations until the path prefix is fixed |
+| Database | `/var/lib/qsp/qsp.db`, schema 4. `sqlite3` is installed for inspection |
+| Config | `/var/lib/qsp/qsp.json`, writable by `qsp`, editable from the console |
+| Accounts | K9MLS. Create with `sudo -u qsp qsp -config /var/lib/qsp/qsp.json adduser <name>` — **the flag comes before the subcommand** |
+
+**Deploying**, from Fedora:
+
+```sh
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/qsp ./cmd/qsp
+scp /tmp/qsp mike@192.168.1.247:/tmp/qsp
+```
+
+then on the VM:
+
+```sh
+sudo install -m755 /tmp/qsp /usr/local/bin/qsp && sudo systemctl restart qsp
+```
+
+**The two members' hotspots.** K9MLS runs WPSD at `192.168.1.155`, configured in
+`/etc/dmrgateway` under `[DMR Network Custom]`, and now points at the LAN
+address rather than `qsp.hopto.me`. Its logs are in `/var/log/pi-star/`, not the
+journal: `DMRGateway-<date>.log` for sessions and `MMDVM-<date>.log` for what
+actually reaches the radio. KB9TYC is at `198.51.100.172` in Wisconsin, Wisconsin.
