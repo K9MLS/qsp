@@ -5,6 +5,50 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **The join page generates the DMRGateway block, and stops assuming a member
+  runs nothing else.** Step one told every member to turn BrandMeister off. For
+  a quarter of this club that is wrong: they follow it and lose a network they
+  wanted, or ignore it and get a talkgroup collision instead — which presents as
+  transmitting into silence with every log healthy.
+
+  The page asks first. A single-network member gets the instruction as before. A
+  multi-network member gets a generated `[DMR Network N]` block that puts QSP
+  behind a leading digit and leaves their other networks alone.
+
+  **Both choices belong to the member.** Which leading digit and which network
+  slot are free is answerable only from `/etc/dmrgateway` on their own hotspot,
+  and the rewrite happens there before anything reaches QSP — so one member
+  choosing 7 and another choosing 3 affects neither the network nor each other.
+  That is why they are controls on the page rather than settings an
+  administrator fills in once.
+
+- **`GET /api/join/config`**, which renders the block. It returns nothing
+  `/api/join` does not already return, arranged as configuration, with the
+  password left as a placeholder that is never substituted.
+
+  **The radio ID is observed, never derived.** QSP has seen the ID of every
+  radio that transmitted through a peer, and `CallView.Source` is the radio
+  rather than the hotspot. Stripping a peer ID's two-digit suffix would be
+  arithmetic on a convention the access work already established is not a rule
+  of the protocol, and a private call rule naming the wrong radio sends a
+  member's texts somewhere they will never look. Unknown produces no private
+  call rules and says so on the page.
+
+  `JoinSettings` carries the parrot talkgroup now, so the generated block can
+  convert it from a group call to a private one with `TypeRewrite` on the
+  hotspot — which is how a member keeps the parrot already in their codeplug
+  while QSP still never rewrites a Link Control (ADR-0028).
+
+### Fixed
+- **A test that could not fail, found while checking that it could.**
+  `TestTheGeneratedBlockIsNotWrapped` asserts the generated configuration uses
+  `white-space: pre`, because a DMRGateway rule broken across two lines is one a
+  member pastes as two. The first version tested for the substring `white-space:
+  pre` — which `pre-wrap` contains — so it passed against the exact value it
+  exists to reject. It now requires the terminating semicolon and names the
+  wrapping values explicitly. Confirmed by setting `pre-wrap` and watching both
+  assertions fire.
+
 - **`internal/hotspot` generates the network block a member pastes into their
   own hotspot.** The join page describes the settings; describing them is what
   costs the evening, because a member reading prose and typing rewrite rules is

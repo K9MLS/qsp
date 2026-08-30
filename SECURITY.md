@@ -156,7 +156,8 @@ than by QSP, and no telemetry of any kind is sent anywhere.
 
 ### Read-only endpoints
 
-`/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join` and static
+`/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join`,
+`/api/join/config` and static
 console assets are unauthenticated and read-only. That includes the access
 control, network settings, bridges and history pages, which are markup like
 every other console page: the endpoints
@@ -175,6 +176,24 @@ even though the rest of the console is not. It also reports how many peers are
 connected, and identifies the caller's own hotspot by matching source
 addresses, which is a hint rather than an assertion: several members behind one
 router share a public address.
+
+`/api/join/config` renders the DMRGateway network block a member pastes into
+their own hotspot. It returns nothing `/api/join` does not already return: the
+same address, port and talkgroups, arranged as configuration. **The password is
+a placeholder in the output** and is never substituted, for the same reason
+`/api/join` omits it.
+
+Its `prefix`, `block` and `radio_id` parameters are the member's own facts
+about their own hotspot, not the club's. A value out of range falls back rather
+than failing, so an edited URL produces a page rather than an error nobody can
+act on, and every parameter is rendered into a fixed template that cannot carry
+arbitrary text into the file.
+
+When `radio_id` is absent, QSP uses the radio it has heard through the caller's
+peer, matched by source address, and omits the private call rules entirely when
+it has heard none. It does not derive an ID from the peer's two-digit suffix:
+that suffix is a convention rather than a rule of the protocol, and a rule
+naming the wrong radio would send a member's private calls to somebody else.
 
 ### Deployment guidance
 

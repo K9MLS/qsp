@@ -3,6 +3,8 @@ package server
 import (
 	"net/http"
 	"time"
+
+	"github.com/k9mls/qsp/internal/hotspot"
 )
 
 // Member onboarding.
@@ -38,6 +40,12 @@ type JoinSettings struct {
 	Talkgroups []JoinTalkgroup `json:"talkgroups"`
 	// AddressReason explains an empty Address.
 	AddressReason string `json:"address_reason,omitempty"`
+	// Parrot is the echo talkgroup, or zero when the club runs none.
+	//
+	// It is here for the generated configuration rather than for display: a
+	// member arriving from another network has parrot programmed as a private
+	// call, and the rule that converts it lives on their hotspot.
+	Parrot uint32 `json:"parrot,omitempty"`
 }
 
 // JoinTalkgroup is one talkgroup as a member must dial it.
@@ -201,4 +209,108 @@ func isDigits(s string) bool {
 		}
 	}
 	return true
+}
+
+// handleHotspotConfig renders the network block a member pastes into their own
+// hotspot.
+//
+// **The prefix and the block number are query parameters rather than
+// configuration**, because they are facts about a file only the member can see.
+// Their hotspot may already carry BrandMeister, DMR+ and two others, and which
+// leading digits and which [DMR Network N] slots are free is answerable only
+// from that machine. The rewrite happens there too, before anything reaches
+// QSP, so one member choosing 7 and another choosing 3 affects neither the
+// network nor each other.
+//
+// It is unauthenticated for the same reason the rest of this page is: everything
+// it returns is safe to show anybody who can already reach the console, and the
+// one thing that is not — the password — is a placeholder in the output.
+func (s *Server) handleHotspotConfig(w http.ResponseWriter, r *http.Request) {
+	settings := s.Join()
+
+	net := hotspot.Network{
+		Name:    settings.NetworkName,
+		Address: settings.Address,
+		Port:    settings.Port,
+		Parrot:  settings.Parrot,
+		Block:   queryInt(r, "block", 4),
+		Prefix:  queryInt(r, "prefix", 0),
+	}
+	for _, tg := range settings.Talkgroups {
+		net.Talkgroups = append(net.Talkgroups, hotspot.Talkgroup{
+			Name:     tg.Name,
+			Dialled:  tg.Dialled,
+			Arrives:  tg.Arrives,
+			Timeslot: tg.Timeslot,
+		})
+	}
+
+	// The radio ID is observed, never derived.
+	//
+	// QSP has seen the ID of every radio that has transmitted through a peer,
+	// and CallView.Source is that radio rather than the hotspot. Stripping the
+	// two-digit suffix off a peer ID would be arithmetic on a convention the
+	// access work already established is not a rule of the protocol — and a
+	// private call rule naming the wrong radio sends a member's texts somewhere
+	// they will never look. Unknown produces no rules and says so.
+	if id := queryInt(r, "radio_id", 0); id > 0 {
+		net.RadioID = uint32(id)
+	} else if s.opts.Peers != nil {
+		now := time.Now().UTC()
+		if host := clientHost(r); host != "" {
+			views := s.opts.Peers.PeerViews(now)
+			for i := range views {
+				if peerHost(views[i].Address) != host {
+					continue
+				}
+				active, recent := s.opts.Peers.CallViews(now)
+				if call := mostRecentFrom(views[i].ID, active, recent); call != nil {
+					net.RadioID = call.Source
+				}
+				break
+			}
+		}
+	}
+
+	cfg, err := hotspot.Render(net)
+	if err != nil {
+		writeJSON(w, s.log, http.StatusOK, hotspotResponse{Reason: err.Error()})
+		return
+	}
+	writeJSON(w, s.log, http.StatusOK, hotspotResponse{
+		Block:    cfg.Block,
+		Warnings: cfg.Warnings,
+		RadioID:  net.RadioID,
+		Prefix:   net.Prefix,
+	})
+}
+
+// hotspotResponse is the shape returned by /api/join/config.
+type hotspotResponse struct {
+	// Block is the text to paste, empty when Reason explains why there is none.
+	Block string `json:"block,omitempty"`
+	// Warnings are things the member must check that QSP cannot.
+	Warnings []string `json:"warnings,omitempty"`
+	// RadioID is the ID used in the block, zero when QSP has not heard them.
+	// Echoed so the page can say whether it knew or guessed nothing.
+	RadioID uint32 `json:"radio_id,omitempty"`
+	// Prefix is the leading digit used, zero for a single-network hotspot.
+	Prefix int `json:"prefix"`
+	// Reason explains an empty Block.
+	Reason string `json:"reason,omitempty"`
+}
+
+// queryInt reads a small non-negative integer from the query string, falling
+// back rather than failing: a member who edits the URL should get a page, not
+// an error they cannot act on.
+func queryInt(r *http.Request, key string, fallback int) int {
+	raw := r.URL.Query().Get(key)
+	if raw == "" || !isDigits(raw) || len(raw) > 9 {
+		return fallback
+	}
+	n := 0
+	for i := 0; i < len(raw); i++ {
+		n = n*10 + int(raw[i]-'0')
+	}
+	return n
 }

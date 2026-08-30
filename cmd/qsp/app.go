@@ -975,6 +975,11 @@ func joinSettings(cfg config.Config) server.JoinSettings {
 		out.AddressReason = "no address is configured; set dmr.join.address to the " +
 			"host or IP members should point their hotspots at"
 	}
+	// Only when parrot is actually running. Naming a talkgroup that answers
+	// nothing would produce a rule pointing at silence.
+	if cfg.DMR.Parrot.Enabled {
+		out.Parrot = cfg.DMR.Parrot.Talkgroup
+	}
 	for _, tg := range cfg.DMR.Join.Talkgroups {
 		out.Talkgroups = append(out.Talkgroups, server.JoinTalkgroup{
 			Name:     tg.Name,

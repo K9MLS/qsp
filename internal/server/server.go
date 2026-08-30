@@ -168,6 +168,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/events", s.handleEvents},
 		{"GET /api/peers", s.handlePeers},
 		{"GET /api/join", s.handleJoin},
+		{"GET /api/join/config", s.handleHotspotConfig},
 		{"POST /api/login", s.handleLogin},
 		{"POST /api/logout", s.handleLogout},
 		{"GET /api/session", s.handleSession},

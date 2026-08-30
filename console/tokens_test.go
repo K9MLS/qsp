@@ -1043,3 +1043,77 @@ func TestTheNavSaysWhenItsLinksLeadNowhere(t *testing.T) {
 		}
 	}
 }
+
+// TestTheJoinPageDoesNotAssumeOneNetwork.
+//
+// The page told every member to turn BrandMeister off. On this club that is
+// wrong for a quarter of them, and a member who follows it loses a network they
+// wanted — or ignores the step and gets a talkgroup collision instead, which
+// presents as transmitting into silence with every log healthy.
+func TestTheJoinPageDoesNotAssumeOneNetwork(t *testing.T) {
+	body, err := assets.ReadFile("static/join.html")
+	if err != nil {
+		t.Fatalf("reading join.html: %v", err)
+	}
+	html := string(body)
+
+	// The instruction may still be given — it is right for most members — but
+	// not before asking.
+	if strings.Contains(html, "turn off BrandMeister") {
+		t.Error("the join page still instructs every member to disable BrandMeister")
+	}
+	for _, want := range []string{
+		`name="other-networks"`,
+		`id="step-generated"`,
+		`id="prefix"`,
+		`id="block"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("join.html has no %s, so a multi-network member has no path", want)
+		}
+	}
+
+	script, err := assets.ReadFile("static/join.js")
+	if err != nil {
+		t.Fatalf("reading join.js: %v", err)
+	}
+	if !strings.Contains(string(script), "/api/join/config") {
+		t.Error("join.js never asks for the generated block")
+	}
+}
+
+// TestTheGeneratedBlockIsNotWrapped.
+//
+// A DMRGateway rule broken across two lines is a rule a member pastes as two
+// lines, and the second one is a syntax error in a file that takes their
+// hotspot off every network at once when it fails to parse.
+func TestTheGeneratedBlockIsNotWrapped(t *testing.T) {
+	css, err := assets.ReadFile("static/join.css")
+	if err != nil {
+		t.Fatalf("reading join.css: %v", err)
+	}
+	at := strings.Index(string(css), ".config {")
+	if at < 0 {
+		t.Fatal("join.css does not style the generated block")
+	}
+	rule := string(css)[at:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+	// **`pre-wrap` contains `pre`.** The first version of this check tested for
+	// the substring and passed against the wrapping value it exists to reject,
+	// which is a test that cannot fail — the fault this file has caught twice
+	// now in other places.
+	if !strings.Contains(rule, "white-space: pre;") {
+		t.Error("the generated block does not use white-space: pre, so a rule may wrap " +
+			"into two lines and be pasted as two")
+	}
+	for _, wrapping := range []string{"pre-wrap", "pre-line", "normal"} {
+		if strings.Contains(rule, "white-space: "+wrapping) {
+			t.Errorf("the generated block uses white-space: %s, which wraps", wrapping)
+		}
+	}
+	if !strings.Contains(rule, "overflow-x: auto") {
+		t.Error("a long rule has nowhere to go but off the page")
+	}
+}

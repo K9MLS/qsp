@@ -210,6 +210,129 @@
     renderCount(data);
   }
 
+
+  /* The generated DMRGateway block.
+   *
+   * **Both choices belong to the member, not to the club.** Which leading digit
+   * and which network slot are free is answerable only from /etc/dmrgateway on
+   * their own hotspot, and the rewrite happens there before anything reaches
+   * QSP — so one member choosing 7 and another choosing 3 affects neither the
+   * network nor each other. That is why this is a control on the page rather
+   * than a setting an administrator fills in once. */
+  function wireGenerator() {
+    var radios = document.querySelectorAll('input[name="other-networks"]');
+    for (var i = 0; i < radios.length; i++) {
+      radios[i].addEventListener("change", onModeChange);
+    }
+    bindRefresh("prefix");
+    bindRefresh("block");
+
+    var copy = $("copy-config");
+    if (copy) {
+      copy.addEventListener("click", copyBlock);
+    }
+    onModeChange();
+  }
+
+  function bindRefresh(id) {
+    var el = $(id);
+    if (el) {
+      el.addEventListener("change", refreshConfig);
+    }
+  }
+
+  function multiNetwork() {
+    var yes = document.querySelector('input[name="other-networks"][value="yes"]');
+    return !!(yes && yes.checked);
+  }
+
+  function onModeChange() {
+    var multi = multiNetwork();
+    show($("single-note"), !multi);
+    show($("multi-note"), multi);
+    show($("step-generated"), multi);
+    if (multi) {
+      refreshConfig();
+    }
+  }
+
+  function show(el, visible) {
+    if (el) {
+      el.hidden = !visible;
+    }
+  }
+
+  function value(id, fallback) {
+    var el = $(id);
+    return el && el.value ? el.value : fallback;
+  }
+
+  function refreshConfig() {
+    var pre = $("config-block");
+    var prefix = value("prefix", "7");
+    var block = value("block", "4");
+
+    text($("example-dial"), prefix + "00000" + firstDialled());
+
+    fetch("/api/join/config?prefix=" + encodeURIComponent(prefix) +
+      "&block=" + encodeURIComponent(block), { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (body) {
+        if (!body || !body.block) {
+          text(pre, (body && body.reason) || "This cannot be generated yet.");
+          renderWarnings([]);
+          return;
+        }
+        text(pre, body.block);
+        renderWarnings(body.warnings || []);
+      })
+      .catch(function () {
+        text(pre, "Cannot reach this network to generate the block.");
+        renderWarnings([]);
+      });
+  }
+
+  /* The first talkgroup, purely for the worked example above the picker. A
+   * number a member recognises makes the prefix obvious in a way a sentence
+   * about leading digits does not. */
+  function firstDialled() {
+    var row = document.querySelector("#talkgroup-rows code");
+    return row ? row.textContent : "9";
+  }
+
+  function renderWarnings(list) {
+    var el = $("config-warnings");
+    if (!el) {
+      return;
+    }
+    el.innerHTML = "";
+    for (var i = 0; i < list.length; i++) {
+      var li = document.createElement("li");
+      li.textContent = list[i];
+      el.appendChild(li);
+    }
+  }
+
+  /* Clipboard access is refused in plenty of ordinary situations — an insecure
+   * origin is one, and a club instance reached by IP is exactly that. Saying so
+   * beats a button that silently does nothing. */
+  function copyBlock() {
+    var pre = $("config-block");
+    var note = $("copy-note");
+    if (!pre) {
+      return;
+    }
+    if (!navigator.clipboard) {
+      text(note, "This browser will not copy for us. Select the block and copy it.");
+      return;
+    }
+    navigator.clipboard.writeText(pre.textContent).then(function () {
+      text(note, "Copied.");
+    }).catch(function () {
+      text(note, "This browser will not copy for us. Select the block and copy it.");
+    });
+  }
+
   function poll() {
     fetch("/api/join", { cache: "no-store" })
       .then(function (response) {
@@ -233,5 +356,6 @@
       });
   }
 
+  wireGenerator();
   poll();
 })();

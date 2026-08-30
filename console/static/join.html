@@ -40,16 +40,36 @@
   <ol class="steps">
 
     <li class="step">
-      <h2 class="step__title">Open your hotspot and turn off BrandMeister</h2>
+      <h2 class="step__title">Open your hotspot</h2>
       <p class="step__body">
         In a browser, go to your hotspot's dashboard — usually
         <code>pi-star.local</code> or <code>wpsd.local</code> — then open
-        <strong>Admin → Configuration → DMR Configuration</strong> and set
-        <strong>BrandMeister Network Enable</strong> to <strong>off</strong>.
+        <strong>Admin &rarr; Configuration &rarr; DMR Configuration</strong>.
       </p>
-      <p class="step__note">
-        Two networks at once compete for the same talkgroups, and yours would
+      <p class="step__body">
+        <strong>Will this hotspot carry any other DMR network as well?</strong>
+      </p>
+
+      <div class="choice" role="radiogroup" aria-label="Other networks">
+        <label class="choice__option">
+          <input type="radio" name="other-networks" value="no" checked>
+          <span>No &mdash; this hotspot is for this network only</span>
+        </label>
+        <label class="choice__option">
+          <input type="radio" name="other-networks" value="yes">
+          <span>Yes &mdash; I also use BrandMeister, DMR+ or another</span>
+        </label>
+      </div>
+
+      <p class="step__note" id="single-note">
+        Then set every other network on the page to <strong>off</strong>. Two
+        networks at once compete for the same talkgroup numbers, and yours would
         reach whichever answered first. You can switch back at any time.
+      </p>
+      <p class="step__note" id="multi-note" hidden>
+        Leave your other networks alone. Step&nbsp;3 gives you a block to paste
+        that keeps them all working, by putting this network behind a leading
+        digit of your choosing.
       </p>
     </li>
 
@@ -89,6 +109,52 @@
         Then press <strong>Apply Changes</strong>. Your hotspot restarts, which
         takes a few seconds.
       </p>
+    </li>
+
+    <li class="step" id="step-generated" hidden>
+      <h2 class="step__title">Paste this into DMRGateway</h2>
+      <p class="step__body">
+        Your hotspot keeps its other networks. This block adds ours behind a
+        leading digit, so dialling <code id="example-dial">7000009</code> reaches
+        us and every number you already use still reaches where it always did.
+      </p>
+
+      <div class="picker">
+        <label class="picker__field">
+          <span class="picker__label">Leading digit</span>
+          <select class="picker__input" id="prefix">
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7" selected>7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+          </select>
+        </label>
+        <label class="picker__field">
+          <span class="picker__label">Network slot</span>
+          <select class="picker__input" id="block">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4" selected>4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+          </select>
+        </label>
+      </div>
+
+      <p class="step__note">
+        Open <code>/etc/dmrgateway</code> on your hotspot and check which of
+        these two are still free. Nothing on this page can see that file.
+      </p>
+
+      <pre class="config" id="config-block">Loading…</pre>
+      <button class="button" id="copy-config" type="button">Copy this block</button>
+      <span class="config__copied" id="copy-note" role="status"></span>
+
+      <ul class="config__warnings" id="config-warnings"></ul>
     </li>
 
     <li class="step">

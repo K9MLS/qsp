@@ -300,3 +300,107 @@
 .fields--talkgroups td:first-child {
   font-family: var(--font-mono);
 }
+
+/* ---- Choosing whether other networks stay ----------------------------- */
+
+/* A quarter of a club runs another network alongside this one, and the page
+   used to tell all of them to turn it off. The answer changes which steps
+   apply, so it is asked once, at the top, rather than assumed. */
+.choice {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+
+.choice__option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.choice__option:hover {
+  border-color: var(--color-foreground-muted);
+}
+
+.choice__option input {
+  margin: 0;
+  /* The control is small and the whole row is the target, which is what the
+     44px minimum asks for without a 44px radio button. */
+  min-width: 16px;
+  min-height: 16px;
+}
+
+/* ---- The generated block --------------------------------------------- */
+
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-3);
+}
+
+.picker__field {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.picker__label {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.picker__input {
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+}
+
+/* Wrapping a configuration file would put a rule on two lines and invite a
+   member to paste it as two, so this scrolls instead. */
+.config {
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre;
+}
+
+.config__copied {
+  margin-left: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+}
+
+/* Not styled as warnings. Every one of these is an ordinary thing to check,
+   and painting four of them amber on a page a member reads once teaches them
+   that amber is decoration. */
+.config__warnings {
+  margin: var(--space-4) 0 0;
+  padding-left: var(--space-5);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.config__warnings li {
+  margin-bottom: var(--space-2);
+}
