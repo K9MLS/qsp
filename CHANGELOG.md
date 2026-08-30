@@ -5,6 +5,39 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`qsp -config <file> -check` validates a configuration and exits**, binding
+  nothing, opening no database, dropping no member. It exists because a
+  configuration edit was verified by restarting the service, an invalid file
+  then stopped a live network, and systemd gave up after five attempts. The
+  validation was always there; the only thing missing was a way to ask for it
+  without a restart. Exit status is non-zero and the reason names the field.
+
+### Fixed
+- **Two validation rules that did not know about each other stopped a live
+  network.** One required an enabled link to carry `export` or `import`. The
+  other, added the same afternoon, required a bridge to name it. A
+  configuration with a bridge and no export satisfied one and failed the
+  other — and the failure was a service that would not start, on a network with
+  a member connected.
+
+  **The export rule is gone rather than reconciled.** Those lists route
+  nothing: no code reads them to move a frame, which is why bridges gained the
+  ability to name a link in the first place. Requiring a field that does
+  nothing, alongside a rule requiring the field that does, is worse than either
+  alone. `Upstream.Export` and `Upstream.Import` stay in the schema — removing a
+  documented field would refuse configurations already written against it — and
+  now say plainly in their own documentation that they carry nothing yet.
+
+  `TestUpstreamCarryingNothingIsRefused` asserted the removed rule and is
+  replaced by one that checks what actually carries traffic, plus
+  `TestTheConfigurationThatStoppedALiveNetwork`, which is the exact shape of the
+  file that broke.
+
+  The claim that `Export` and `Import` are read by nothing was made earlier the
+  same day and was half wrong: no *router* reads them, and a *validator* did.
+  It was arrived at by grepping for readers of the field, and the rule that
+  required them does not mention them by name.
+
 - **`internal/peering` makes a link between two instances something two
   administrators agree to.** Two instances were run on one machine and linked
   without either being asked to confirm anything. The link *was* consented to —

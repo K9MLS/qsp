@@ -120,20 +120,33 @@ func TestEnabledUpstreamRequiresItsEssentials(t *testing.T) {
 	}
 }
 
-// TestUpstreamCarryingNothingIsRefused.
+// TestALinkCarryingNothingIsRefused, by the check that describes what actually
+// carries traffic.
 //
-// A link with neither export nor import connects, authenticates, and does
-// nothing. That is indistinguishable from a broken link to whoever is looking
-// at it, and the far end sees a bridge with no traffic — which BrandMeister
-// eventually removes.
-func TestUpstreamCarryingNothingIsRefused(t *testing.T) {
+// **This asserted the wrong rule until it stopped a live network.** It required
+// export or import to be non-empty, which was written when those lists were
+// expected to be the routing mechanism. They never became one: no code reads
+// them to move a frame. A bridge naming the link does that.
+//
+// Two rules that did not know about each other is worse than either alone. A
+// configuration with a bridge and no export satisfied one and failed the other,
+// and the failure mode was a service that would not start.
+func TestALinkCarryingNothingIsRefused(t *testing.T) {
 	u := validUpstream()
 	u.Export = nil
 	u.Import = nil
 
-	msg := upstreamProblems(t, withUpstreams(u))
-	if !strings.Contains(msg, "carries no talkgroups") {
-		t.Errorf("a link carrying nothing was accepted:\n%s", msg)
+	// With a bridge, this is a working link and must be accepted.
+	if err := withUpstreams(u).Validate(); err != nil {
+		t.Errorf("a link with a bridge and no export lists was refused: %v", err)
+	}
+
+	// Without one, nothing can reach it and that is the fault worth naming.
+	c := withUpstreams(u)
+	c.DMR.Bridges = nil
+	msg := upstreamProblems(t, c)
+	if !strings.Contains(msg, "no bridge sends anything") {
+		t.Errorf("a link nothing routes to was accepted:\n%s", msg)
 	}
 }
 
@@ -484,5 +497,25 @@ func TestABridgeCannotNameALinkThatIsNotThere(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not match any enabled link") {
 		t.Errorf("the error does not explain: %v", err)
+	}
+}
+
+// TestTheConfigurationThatStoppedALiveNetwork.
+//
+// A link with a bridge naming it and no export or import lists. It satisfied
+// the rule that a link must be reachable and failed a second rule requiring
+// export or import — two checks that did not know about each other — and the
+// failure was a service that would not start, on a network carrying a member.
+//
+// The second rule is gone. This is the shape of the configuration that broke,
+// and it must load.
+func TestTheConfigurationThatStoppedALiveNetwork(t *testing.T) {
+	u := validUpstream()
+	u.Export = nil
+	u.Import = nil
+
+	c := withUpstreams(u)
+	if err := c.Validate(); err != nil {
+		t.Fatalf("the configuration is refused again: %v", err)
 	}
 }

@@ -32,6 +32,19 @@ func main() {
 	}
 }
 
+// errCheckFailed reports an invalid configuration to -check without printing
+// the error twice: loadConfig has already said what is wrong and where.
+var errCheckFailed = errors.New("configuration is not usable")
+
+// configName describes what was checked, for a message an operator reads while
+// deciding whether to restart anything.
+func configName(path string) string {
+	if path == "" {
+		return "the built-in defaults"
+	}
+	return path
+}
+
 // realMain exists so that every deferred function runs before the process
 // exits; os.Exit inside main would skip them.
 func realMain() error {
@@ -39,6 +52,8 @@ func realMain() error {
 		configPath  = flag.String("config", "", "path to a configuration file (default: built-in defaults)")
 		printConfig = flag.Bool("print-config", false, "write the effective configuration to stdout and exit")
 		showVersion = flag.Bool("version", false, "print the version and exit")
+		check       = flag.Bool("check", false,
+			"validate the configuration and exit, without starting anything")
 	)
 	flag.Parse()
 
@@ -49,7 +64,23 @@ func realMain() error {
 
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
+		if *check {
+			// The point of -check is to be run before a restart, so it says
+			// what is wrong rather than only that something is.
+			fmt.Fprintln(os.Stderr, err)
+			return errCheckFailed
+		}
 		return err
+	}
+
+	// **-check exists because a configuration edit was verified by restarting
+	// the service.** An invalid file then takes the network down and reports
+	// itself in a journal, and systemd gives up after five attempts. Validation
+	// happens here already; the only thing missing was a way to ask for it
+	// without binding a socket, opening a database, or dropping a member.
+	if *check {
+		fmt.Printf("%s is valid\n", configName(*configPath))
+		return nil
 	}
 
 	// Subcommands come after the flags so that -config is honoured: adduser

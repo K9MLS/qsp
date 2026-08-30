@@ -304,6 +304,18 @@ type Upstream struct {
 	// sets: a club may send its own net upstream while accepting a nationwide
 	// talkgroup down. Collapsing them makes the asymmetric case unexpressible
 	// and the symmetric case look safer than it is.
+	//
+	// **Neither list routes anything today.** No code reads them to move a
+	// frame; a bridge with an endpoint naming this link is what carries
+	// traffic to it and back. They are kept because they describe the intended
+	// direction filtering and because removing a documented field would refuse
+	// configurations already written against it — but an operator who fills
+	// them in and expects audio to cross will not get any.
+	//
+	// A rule once required one of them to be non-empty. It was removed: it
+	// disagreed with the check that a link must be named by a bridge, and a
+	// configuration satisfying one and failing the other stopped a live
+	// network from starting.
 	Import []UpstreamTalkgroup `json:"import"`
 	// RepeaterID is the ID QSP presents when logging into a master, used by
 	// the homebrew protocol instead of NetworkID.
@@ -1034,11 +1046,17 @@ func (c Config) Validate() error {
 						"and give its path here")
 			}
 
-			if len(u.Export) == 0 && len(u.Import) == 0 {
-				v.add(field, "carries no talkgroups in either direction",
-					"add an entry to \"export\" or \"import\"; a link with neither is enabled "+
-						"but does nothing")
-			}
+			// **There was a rule here requiring export or import.** It was
+			// written when those lists were expected to be the routing
+			// mechanism, and they never became one: no code has ever read them
+			// to move a frame. A bridge naming the link does that, and is
+			// checked below.
+			//
+			// Two rules that did not know about each other is worse than
+			// either alone. A configuration with a bridge and no export
+			// satisfied one and failed the other, and the failure was a
+			// service that would not start — on a live network, because the
+			// rules disagreed rather than because anything was wrong.
 
 			if u.StaleAfter < 0 {
 				v.add(field+".stale_after", "must not be negative",
