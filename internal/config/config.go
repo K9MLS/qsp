@@ -1118,9 +1118,18 @@ func (c Config) Validate() error {
 			}
 			seen[key] = tg.Name
 
-			// Only meaningful once bridges exist; an instance with none is
-			// observing rather than relaying, and says so elsewhere.
-			if len(c.DMR.Bridges) > 0 && tg.Timeslot >= 1 && tg.Timeslot <= 2 &&
+			// **Only meaningful when bridges are the only way traffic moves.**
+			// With dmr.forwarding on, a repeating master carries every
+			// talkgroup between peers and no bridge is involved — which is how
+			// most clubs run, and how this one does. Complaining that no
+			// bridge carries a talkgroup is then simply untrue, and it refused
+			// to save a configuration describing a network that works.
+			//
+			// The third place this project has found the same mistake: a rule
+			// written when bridging was the whole routing model, left behind by
+			// ADR-0019, and correct-looking until somebody ran it.
+			if !c.DMR.Forwarding && len(c.DMR.Bridges) > 0 &&
+				tg.Timeslot >= 1 && tg.Timeslot <= 2 &&
 				tg.Dialled != 0 && !reachable[key] {
 				v.add(field, fmt.Sprintf("tells members to dial %d, arriving as TG %d on TS %d, "+
 					"which no bridge carries", tg.Dialled, tg.Target(), tg.Timeslot),

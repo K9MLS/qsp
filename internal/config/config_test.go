@@ -414,3 +414,70 @@ func TestBridgesRoundTripThroughJSON(t *testing.T) {
 		t.Errorf("bridges did not round trip:\n got %+v\nwant %+v", got.DMR.Bridges, c.DMR.Bridges)
 	}
 }
+
+// TestAJoinTalkgroupNeedsNoBridgeWhenTheMasterRepeats.
+//
+// **This refused to save a configuration describing a working network.** The
+// rule complained that no bridge carried a published talkgroup, which is true
+// and irrelevant: with dmr.forwarding on, a repeating master carries every
+// talkgroup between peers and no bridge is involved. It is how most clubs run.
+//
+// Third instance of one mistake — a rule written when bridging was the whole
+// routing model and left behind by ADR-0019. The other two stopped a live
+// network from starting.
+func TestAJoinTalkgroupNeedsNoBridgeWhenTheMasterRepeats(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = true
+	c.DMR.Join = Join{
+		NetworkName: "BCARA",
+		Address:     "qsp.example",
+		Talkgroups:  []JoinTalkgroup{{Name: "Club", Dialled: 2, Timeslot: 2}},
+	}
+	// A bridge exists, for something else entirely. Its presence is what used
+	// to switch the rule on.
+	c.DMR.Bridges = []Bridge{{
+		Name: "elsewhere", Enabled: true,
+		Endpoints: []Endpoint{
+			{Talkgroup: 91, Timeslot: 2},
+			{Talkgroup: 92, Timeslot: 2},
+		},
+	}}
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a published talkgroup on a repeating master was refused: %v", err)
+	}
+}
+
+// TestAJoinTalkgroupNeedsABridgeWhenNothingRepeats. With forwarding off,
+// bridges are the only path, and a talkgroup no bridge carries is one a member
+// is told to dial into silence.
+func TestAJoinTalkgroupNeedsABridgeWhenNothingRepeats(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = false
+	c.DMR.Join = Join{
+		NetworkName: "BCARA",
+		Address:     "qsp.example",
+		Talkgroups:  []JoinTalkgroup{{Name: "Club", Dialled: 2, Timeslot: 2}},
+	}
+	c.DMR.Bridges = []Bridge{{
+		Name: "elsewhere", Enabled: true,
+		Endpoints: []Endpoint{
+			{Talkgroup: 91, Timeslot: 2},
+			{Talkgroup: 92, Timeslot: 2},
+		},
+	}}
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a talkgroup nothing carries was accepted; members would dial into silence")
+	}
+	if !strings.Contains(err.Error(), "no bridge carries") {
+		t.Errorf("the error does not explain: %v", err)
+	}
+}

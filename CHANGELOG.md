@@ -72,6 +72,23 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **The network settings page refused to save a configuration describing a
+  working network.** It reported that no bridge carried the published
+  talkgroups — true, and irrelevant: with `dmr.forwarding` on, a repeating
+  master carries every talkgroup between peers and no bridge is involved. That
+  is how most clubs run and how this one does.
+
+  **The third instance of one mistake.** A rule written when bridging was the
+  whole routing model and left behind by ADR-0019, correct-looking until
+  somebody ran it. The first refused forwarding without bridges; the second
+  required export lists on a link and stopped a live network from starting.
+  Each was found by an operator, none by the suite.
+
+  The rule now applies only when forwarding is off, which is when bridges really
+  are the only path and a talkgroup nothing carries is one a member is told to
+  dial into silence. Both directions are tested, and the failing case reproduces
+  the exact message the console showed.
+
 - **Two validation rules that did not know about each other stopped a live
   network.** One required an enabled link to carry `export` or `import`. The
   other, added the same afternoon, required a bridge to name it. A
