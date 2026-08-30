@@ -189,6 +189,30 @@ All notable changes to QSP. Dates are UTC.
   carrying nothing in one direction.
 
 ### Changed
+- **Nothing renumbers a talkgroup any more.** 2 is 2, 11 is 11, on both sides of
+  a hotspot.
+
+  The generator emitted a rule per published talkgroup, so a club adding one
+  meant every member editing a file again — and any of those rules could map a
+  number to a different number. The blanket rule already reaches every talkgroup
+  and preserves the number, so the per-talkgroup rules are gone. A talkgroup
+  added in the console now works with no change on any hotspot.
+
+  The console no longer offers an **Arrives** field. Teaching renumbering as
+  normal is how a network ends up carrying a rewrite nobody remembers writing,
+  and the symptom is a member transmitting into silence with every log healthy.
+  This project has spent parts of three days on exactly that, and the last of
+  them was a talkgroup that stopped working because a rule covered one number
+  and not the next.
+
+  `JoinTalkgroup.Arrives` stays in the schema and is marked deprecated: a club
+  that inherited a rewrite it cannot change still has to be able to describe
+  one. Nothing creates one.
+
+  **A hotspot carrying only this network needs no rewrite rules at all**, which
+  is what the generator already emits for that case and what most members
+  should run.
+
 - **[ADR-0031](docs/adr/ADR-0031-loop-prevention.md) is amended before it was
   ever implemented, because it overstated the hazard it was written for.** It
   argued that loops were open and that no link should carry traffic until a

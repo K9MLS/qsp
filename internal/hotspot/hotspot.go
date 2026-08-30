@@ -153,17 +153,16 @@ func Render(n Network) (Config, error) {
 		tg++
 	}
 
-	// Shortcuts for the talkgroups the club publishes, so a member dials a
-	// short number for the ones they use daily. Sorted, because a generator
-	// whose output reorders between runs makes a diff useless.
-	for _, t := range sorted(n.Talkgroups) {
-		if t.Timeslot != 1 && t.Timeslot != 2 {
-			continue
-		}
-		fmt.Fprintf(&b, "TGRewrite%d=%d,%d,%d,%d,1\n",
-			tg, t.Timeslot, base+t.Dialled, t.Timeslot, t.target())
-		tg++
-	}
+	// **No per-talkgroup rules.** An earlier version emitted a shortcut for
+	// every published talkgroup, so a club adding one meant every member
+	// editing a file again — and any of those rules could map a number to a
+	// different number, which is how a network ends up with a rewrite nobody
+	// remembers writing and a member transmitting into silence.
+	//
+	// The blanket rule above already reaches every talkgroup, and it preserves
+	// the number: dial the prefix followed by 11 and 11 is what arrives. Two
+	// is two, eleven is eleven, and a talkgroup added in the console works with
+	// no change on any hotspot.
 
 	// Private calls in both directions, so a member can be called and can call
 	// back. Without Id there is no member to address, and a rule naming the

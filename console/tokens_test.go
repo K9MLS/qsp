@@ -489,10 +489,24 @@ func TestTheNetworkPageIsServed(t *testing.T) {
 	if !strings.Contains(body, "/network.js") {
 		t.Error("network.html does not load network.js")
 	}
-	// The distinction that cost an operator a morning: what a radio dials is
-	// not always what this network sees, because a hotspot may rewrite it.
-	if !strings.Contains(body, "Dialled") || !strings.Contains(body, "arrives") {
-		t.Error("the talkgroup form does not distinguish what is dialled from what arrives")
+	// **The console must not offer to rewrite a talkgroup number.** It used to
+	// carry an "Arrives" field for the case where a hotspot rewrites on the way
+	// out, and teaching that as normal is how a network ends up with rules
+	// nobody remembers writing and a member transmitting into silence. A
+	// talkgroup number is the same on both sides of a hotspot: 2 is 2, 11 is 11.
+	if strings.Contains(body, "Arrives") {
+		t.Error("the talkgroup form still offers to rewrite a talkgroup number")
+	}
+	script, err := assets.ReadFile("static/network.js")
+	if err != nil {
+		t.Fatalf("reading network.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, ">Dialled<") {
+		t.Error("the talkgroup form does not show the number members dial")
+	}
+	if strings.Contains(src, `data-key="arrives"`) {
+		t.Error("the talkgroup form still writes a rewrite into the configuration")
 	}
 }
 

@@ -61,9 +61,6 @@
         '<label class="tg-row__field tg-row__field--small"><span class="field__label">Dialled</span>' +
         '<input class="field__input" data-index="' + i + '" data-key="dialled" type="number" ' +
         'inputmode="numeric" value="' + escapeText(r.dialled || "") + '"></label>' +
-        '<label class="tg-row__field tg-row__field--small"><span class="field__label">Arrives</span>' +
-        '<input class="field__input" data-index="' + i + '" data-key="arrives" type="number" ' +
-        'inputmode="numeric" placeholder="same" value="' + escapeText(r.arrives || "") + '"></label>' +
         '<label class="tg-row__field tg-row__field--small"><span class="field__label">Slot</span>' +
         '<select class="field__input" data-index="' + i + '" data-key="timeslot">' +
         '<option value="1"' + (r.timeslot === 1 ? " selected" : "") + ">1</option>" +
@@ -135,7 +132,14 @@
       .filter(function (r) { return r.dialled > 0; })
       .map(function (r) {
         var out = { name: r.name, dialled: r.dialled, timeslot: r.timeslot || 2 };
-        /* Arrives is omitted when it matches dialled, because the model treats
+        /* **Arrives is never written.** A talkgroup number is the same on both
+         * sides of a hotspot: 2 is 2 and 11 is 11. Offering a field that
+         * changes one invites a rewrite nobody afterwards remembers writing,
+         * and the symptom is a member transmitting into silence with every log
+         * healthy. Existing values are preserved by the model and no longer
+         * created here.
+         *
+         * Kept for the shape of the old comment:
          * absent as "the hotspot does not rewrite it" and storing the same
          * number twice would say something different. */
         if (r.arrives && r.arrives !== r.dialled) {

@@ -80,21 +80,38 @@ func TestAnyTalkgroupIsReachable(t *testing.T) {
 	}
 }
 
-// TestPublishedTalkgroupsGetShortcuts, in a stable order. A generator whose
-// output reorders between runs makes a diff useless to whoever is checking it.
-func TestPublishedTalkgroupsGetShortcuts(t *testing.T) {
+// TestNoTalkgroupIsEverRenumbered.
+//
+// **A talkgroup number is the same on both sides of a hotspot.** An earlier
+// version emitted a per-talkgroup rule for every published number, so a club
+// adding one made every member edit a file again — and any of those rules could
+// map a number to a different number. That is how a network ends up carrying a
+// rewrite nobody remembers writing, and the symptom is a member transmitting
+// into silence with every log healthy.
+//
+// The blanket rule reaches every talkgroup and preserves the number: dial the
+// prefix followed by 11 and 11 arrives.
+func TestNoTalkgroupIsEverRenumbered(t *testing.T) {
 	cfg, err := Render(club())
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
-	for _, want := range []string{
-		"TGRewrite2=1,7003148,1,3148,1",
-		"TGRewrite3=2,7000009,2,9,1",
-		"TGRewrite4=2,7000011,2,11,1",
-	} {
-		if !strings.Contains(cfg.Block, want) {
-			t.Errorf("missing shortcut %q", want)
+	for _, line := range strings.Split(cfg.Block, "\n") {
+		if !strings.HasPrefix(line, "TGRewrite") {
+			continue
 		}
+		parts := strings.Split(strings.SplitN(line, "=", 2)[1], ",")
+		if len(parts) != 5 {
+			t.Errorf("%q is not a rule this can read", line)
+			continue
+		}
+		if parts[1] != "7000001" || parts[3] != "1" || parts[4] != "999999" {
+			t.Errorf("%q renumbers a talkgroup; only the prefix may be stripped", line)
+		}
+	}
+	if n := strings.Count(cfg.Block, "TGRewrite"); n != 2 {
+		t.Errorf("the block carries %d talkgroup rules; a club adding a talkgroup would "+
+			"mean every member editing a file again", n)
 	}
 
 	again, err := Render(club())
@@ -103,22 +120,6 @@ func TestPublishedTalkgroupsGetShortcuts(t *testing.T) {
 	}
 	if again.Block != cfg.Block {
 		t.Error("two renders of one configuration differ; a diff cannot be trusted")
-	}
-}
-
-// TestARewrittenTalkgroupSendsWhatQSPReceives.
-//
-// Arrives is not a warning about what somebody else's hotspot might do. It is
-// the specification this generator implements: the member dials the familiar
-// number and the rule is what makes the club's number arrive.
-func TestARewrittenTalkgroupSendsWhatQSPReceives(t *testing.T) {
-	n := club()
-	n.Talkgroups = []Talkgroup{{Name: "Club", Dialled: 9, Arrives: 31480, Timeslot: 2}}
-
-	set, _ := lines(t, n)
-	if !set["TGRewrite2=2,7000009,2,31480,1"] {
-		t.Error("dialling 9 does not produce the 31480 QSP expects, so the table and the " +
-			"generated rules disagree about the same talkgroup")
 	}
 }
 

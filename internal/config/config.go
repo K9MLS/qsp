@@ -469,6 +469,14 @@ type JoinTalkgroup struct {
 	Dialled uint32 `json:"dialled"`
 	// Arrives is the talkgroup it becomes by the time QSP sees it. Zero means
 	// the hotspot does not rewrite it.
+	//
+	// **Deprecated, and no longer offered by the console.** A talkgroup number
+	// is the same on both sides of a hotspot: 2 is 2 and 11 is 11. A hotspot
+	// carrying only this network needs no rewrite rules at all, and generated
+	// configuration never renumbers a talkgroup.
+	//
+	// Still read, because a club that inherited a rewrite it cannot change has
+	// to be able to describe it. Nothing creates one any more.
 	Arrives uint32 `json:"arrives,omitempty"`
 	// Timeslot is 1 or 2.
 	Timeslot int `json:"timeslot"`

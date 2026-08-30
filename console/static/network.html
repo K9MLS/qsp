@@ -129,15 +129,12 @@
           <span class="panel__count" id="tg-count">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-tg-rewrite">
-          <p class="hint__text"><strong>Dialled is what goes into the radio; arrives is what this network sees.</strong> A hotspot running DMRGateway can rewrite a talkgroup number on its way out — a <code>TGRewrite</code> line in its configuration — so what a member enters is not always what QSP receives. When they match, leave arrives blank. When they do not and nobody has written it down, the symptom is a member who transmits into silence with every log looking healthy.</p>
+          <p class="hint__text">The numbers members dial. <strong>A talkgroup number is the same on both sides of a hotspot</strong> &mdash; 2 is 2, 11 is 11 &mdash; so nothing here rewrites anything. A hotspot carrying only this network needs no rewrite rules at all, and a talkgroup added here works without touching any Pi.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
-            <strong>Dialled is what goes into the radio; arrives is what this
-            network sees.</strong> They differ when a hotspot rewrites the
-            number on its way out, which is easy to configure and very hard to
-            diagnose from either end. Leave arrives blank when they are the
-            same.
+            The numbers members dial. A talkgroup number is the same on both sides
+            of a hotspot, so nothing here rewrites anything.
           </p>
 
           <div id="talkgroups"></div>
