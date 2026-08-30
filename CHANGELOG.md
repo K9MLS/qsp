@@ -5,6 +5,52 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/peering` makes a link between two instances something two
+  administrators agree to.** Two instances were run on one machine and linked
+  without either being asked to confirm anything. The link *was* consented to —
+  OpenBridge has no connection, so it exists only because both sides hold a
+  passphrase agreed out of band — but a script wrote both halves, which made
+  real consent look automatic. Nothing in a console showed the far end, nothing
+  recorded who agreed, and `pair-test-passphrase` was accepted without
+  complaint.
+
+  Invisible consent is worth very little. Between two instances on one desk that
+  is untidy; when club #2 is a different person's server it is the difference
+  between a network and an open relay.
+
+  **Nothing changes on the wire.** A QSP-only handshake would mean QSP peers
+  with QSP and nothing else, which is the opposite of the point — ADR-0018 chose
+  OpenBridge for interoperability and that is not reopened. The out-of-band
+  exchange becomes an artefact instead: one line of text an administrator sends
+  by whatever channel they already trust, pasted into the other console, which
+  shows who is asking and what is proposed before anything is written.
+
+  **The passphrase does not travel with the invitation.** The token carries a
+  fingerprint and never the secret. `internal/hotspot` already refuses to put a
+  peer password in generated configuration on the grounds that it is the one
+  thing that must not travel by email, and applying that to a club member but
+  not to a peering carrying the whole network's audio would be incoherent. A
+  mistyped passphrase then fails at the paste rather than as silence on a link
+  that reports itself configured.
+
+  QSP generates the passphrase — 256 bits from `crypto/rand` — and refuses one
+  under 24 characters even when it matches the fingerprint. Invitations expire
+  after fourteen days, and expiry is reported before a mismatch so an
+  administrator is told to ask for a new one rather than sent hunting for a
+  secret that would not have worked. The reply carries the agreed secret rather
+  than a new one, since a second passphrase produces a link that works one way
+  while both ends report healthy.
+
+  A truncated paste says so: the token carries a CRC, because half a token in an
+  email otherwise decodes into a plausible invitation with a wrong address.
+
+  Recorded in [ADR-0032](docs/adr/ADR-0032-peering-is-agreed.md), which also
+  writes down what this does not do — it does not verify that a callsign belongs
+  to whoever sent it, and OpenBridge authenticates without encrypting and has no
+  replay protection.
+
+  Pure, no I/O. Not yet wired to the console.
+
 - **`deploy/pair` and `scripts/pair.sh` run two instances peered to each
   other.** Every upstream path in this project is code that has never met a far
   end: OpenBridge written from its specification, outbound peer mode from
