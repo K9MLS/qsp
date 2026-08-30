@@ -39,7 +39,7 @@
       <li><a class="nav__link" href="/"><span>Overview</span></a></li>
     </ul>
     <p class="nav__heading" id="nav-admin">Administration</p>
-    <ul class="nav__group" aria-labelledby="nav-admin">
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin">
       <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
       <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
       <li><a class="nav__link" href="/bridges" aria-current="page"><span>Bridges</span></a></li>
@@ -87,9 +87,15 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Bridges</h2><button class="hint" type="button" aria-controls="hint-bridges" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-bridges">Peers on the <em>same</em> talkgroup already hear each other with no bridge at all — that is what forwarding does. A bridge is for joining talkgroups that <em>differ</em>, so traffic on one is carried to the other. An endpoint is a peer, a talkgroup and a timeslot; leave the peer blank to mean every peer carrying that talkgroup.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Bridges</h2>
+            <button class="hint" type="button" aria-controls="hint-bridges"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
           <span class="panel__count" id="bridge-count">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-bridges">
+          <p class="hint__text">Peers on the <em>same</em> talkgroup already hear each other with no bridge at all — that is what forwarding does. A bridge is for joining talkgroups that <em>differ</em>, so traffic on one is carried to the other. An endpoint is a peer, a talkgroup and a timeslot; leave the peer blank to mean every peer carrying that talkgroup.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -106,9 +112,15 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Schedule</h2><button class="hint" type="button" aria-controls="hint-schedule" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-schedule">A window turns a bridge on for part of a week. <strong>A bridge named by any window is controlled entirely by the schedule</strong> and is off outside its windows whatever its own setting says — which is worth knowing before a net fails to open rather than afterwards. The timezone must be an IANA name such as <code>America/Chicago</code>: an abbreviation cannot express "20:00 local all year" across a daylight-saving change.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Schedule</h2>
+            <button class="hint" type="button" aria-controls="hint-schedule"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
           <span class="panel__count" id="window-count">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-schedule">
+          <p class="hint__text">A window turns a bridge on for part of a week. <strong>A bridge named by any window is controlled entirely by the schedule</strong> and is off outside its windows whatever its own setting says — which is worth knowing before a net fails to open rather than afterwards. The timezone must be an IANA name such as <code>America/Chicago</code>: an abbreviation cannot express "20:00 local all year" across a daylight-saving change.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -139,6 +151,7 @@
 
 </div>
 
+<script src="/nav.js"></script>
 <script src="/hints.js"></script>
 <script src="/bridges.js"></script>
 </body>

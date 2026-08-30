@@ -39,7 +39,7 @@
       <li><a class="nav__link" href="/"><span>Overview</span></a></li>
     </ul>
     <p class="nav__heading" id="nav-admin">Administration</p>
-    <ul class="nav__group" aria-labelledby="nav-admin">
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin">
       <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
       <li><a class="nav__link" href="/network" aria-current="page"><span>Network settings</span></a></li>
       <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
@@ -89,8 +89,14 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">What members see</h2><button class="hint" type="button" aria-controls="hint-members" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-members">These appear on the join page you send to a member. The address is what their hotspot points at, so it must be reachable from outside your network — a LAN address here produces a join page that works for nobody.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">What members see</h2>
+            <button class="hint" type="button" aria-controls="hint-members"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-members">
+          <p class="hint__text">These appear on the join page you send to a member. The address is what their hotspot points at, so it must be reachable from outside your network — a LAN address here produces a join page that works for nobody.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -114,9 +120,15 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Talkgroups members can use</h2><button class="hint" type="button" aria-controls="hint-tg-rewrite" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-tg-rewrite"><strong>Dialled is what goes into the radio; arrives is what this network sees.</strong> A hotspot running DMRGateway can rewrite a talkgroup number on its way out — a <code>TGRewrite</code> line in its configuration — so what a member enters is not always what QSP receives. When they match, leave arrives blank. When they do not and nobody has written it down, the symptom is a member who transmits into silence with every log looking healthy.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Talkgroups members can use</h2>
+            <button class="hint" type="button" aria-controls="hint-tg-rewrite"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
           <span class="panel__count" id="tg-count">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-tg-rewrite">
+          <p class="hint__text"><strong>Dialled is what goes into the radio; arrives is what this network sees.</strong> A hotspot running DMRGateway can rewrite a talkgroup number on its way out — a <code>TGRewrite</code> line in its configuration — so what a member enters is not always what QSP receives. When they match, leave arrives blank. When they do not and nobody has written it down, the symptom is a member who transmits into silence with every log looking healthy.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -136,9 +148,15 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Parrot</h2><button class="hint" type="button" aria-controls="hint-parrot" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-parrot"><strong>Program it as a group call.</strong> A private call is recorded and cannot be replayed usefully: DMR carries the call's addressing inside the audio burst, so a radio mutes a replay that is not addressed to it, and rewriting that means decoding the burst — which QSP deliberately does not do. The talkgroup must also be one the member's hotspot forwards; 9990 is outside the usual pass-through range and often needs a rule adding.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Parrot</h2>
+            <button class="hint" type="button" aria-controls="hint-parrot"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
           <span class="panel__count" id="parrot-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-parrot">
+          <p class="hint__text"><strong>Program it as a group call.</strong> A private call is recorded and cannot be replayed usefully: DMR carries the call's addressing inside the audio burst, so a radio mutes a replay that is not addressed to it, and rewriting that means decoding the burst — which QSP deliberately does not do. The talkgroup must also be one the member's hotspot forwards; 9990 is outside the usual pass-through range and often needs a rule adding.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -192,6 +210,7 @@
 
 </div>
 
+<script src="/nav.js"></script>
 <script src="/hints.js"></script>
 <script src="/network.js"></script>
 </body>

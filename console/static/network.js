@@ -268,15 +268,5 @@
     if (loaded) { render(loaded); }
   });
 
-  var authState = document.getElementById("auth-state");
-  fetch("/api/session", { headers: { Accept: "application/json" } })
-    .then(function (r) { return r.json(); })
-    .then(function (body) {
-      authState.innerHTML = body && body.authenticated
-        ? '<span class="topbar__who">' + escapeText(body.username) + "</span>"
-        : '<a class="topbar__link" href="/signin">Sign in</a>';
-    })
-    .catch(function () { authState.innerHTML = ""; });
-
   load();
 })();

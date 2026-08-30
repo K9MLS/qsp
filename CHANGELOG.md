@@ -5,6 +5,22 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`console/static/nav.js`, and the administration nav says when its links lead
+  nowhere.** Signed out, the console offered four administration pages that can
+  only ever answer with a sign-in notice. Nothing behind them leaks — every
+  admin page keeps its form hidden until `/api/config` answers, and
+  `/api/config` is behind `requireSession` — but a dead end presented as a
+  destination is its own defect. The group carries one line saying so.
+
+  The links stay live. Disabling a control that would in fact respond is a
+  different lie from the one being fixed.
+
+  It also ends five copies of the same `/api/session` fetch, of which **only one
+  could sign out**: the overview page grew a sign-out button and the other four
+  did not, which is drift rather than a decision anybody made. Sign-out now
+  works from every page with a nav. A failed fetch asserts nothing rather than
+  reporting a signed-out session it cannot vouch for.
+
 - **[ADR-0020](docs/adr/ADR-0020-access-control.md) decides access control**,
   the layer 2 gap ADR-0019 named. Four lists in HBlink's vocabulary; a pure
   `internal/access` package that neither `peers` nor `routing` has to own; the
@@ -245,6 +261,54 @@ All notable changes to QSP. Dates are UTC.
   this only reclaims rows.
 
 ### Fixed
+- **A hint opened beside its title instead of beneath it, and had done since it
+  was written.** `.panel__head` is `display: flex; justify-content:
+  space-between` and the disclosure paragraph was a sibling of the title inside
+  it. Closed, the button was distributed into the dead centre of the header
+  band, touching nothing and explaining nothing. Opened, the paragraph became a
+  fourth item on the same row — beside the button, jammed against the count,
+  pulled up by the row's baseline alignment.
+
+  Neither rule was wrong. A `space-between` header is right and a disclosure
+  that positions nothing is right; the pair was wrong, and no amount of reading
+  either one would have found it.
+
+  **The existing test passed throughout.**
+  `TestHintsAreDisclosuresRatherThanTooltips` asserted the mechanism — hints.js
+  never calls `getBoundingClientRect`, always sets `aria-expanded`, wires
+  idempotently — every word of which was true while the thing rendered wrongly.
+  `TestAHintOpensBeneathItsHeading` asserts the outcome instead: it walks div
+  nesting to find each header band and fails if anything expandable is inside
+  one. A regex would stop at the first `</div>` — the one closing the heading
+  group — and report success for exactly the markup it is meant to catch.
+
+  Every disclosure now sits in a `.panel__disclosure` band between the header
+  and the content; the title and its button are grouped in `.panel__heading`, so
+  `space-between` distributes two items rather than three.
+
+- **`.hint` was two rules six hundred lines apart.** A block paragraph with
+  padding and a top border, and a 20px circular button. Same class, same
+  specificity, so the later won — and the overview page's "no voice frames yet,
+  only keepalives" note was being drawn as a 20px circle with its text spilling
+  out of it. The note is `.inline-note` now and a test fails if `.hint {` opens
+  more than once.
+
+- **The hint button's outline failed WCAG 1.4.11 at 1.64:1.** It used
+  `--color-border-strong`, which is a colour for separating two surfaces rather
+  than for the visible edge of something a user has to find and click. New
+  `--color-border-control` measures 3.77:1 on a panel header band and 3.40:1 on
+  a panel surface — both, because the same button appears in both places.
+
+  The contrast tests measured text and nothing else, so the one part of this
+  control that failed was the one part nothing checked.
+  `TestControlBoundariesMeetTheNonTextFloor` covers non-text boundaries at the
+  3:1 floor, and fails if the token is defined and referenced by nothing.
+
+- **The hint button was a 20px target against a declared 44px minimum.**
+  `--target-min` existed in `tokens.css` and was referenced by nothing. The
+  circle is 28px and the target is 44px, via a centred overlay: padding would
+  have grown the circle with it and punched a hole in the header band.
+
 - **Parrot answers a group call, and the private-call replay never worked.**
   Five replays went out at correct DMR timing to a radio that played none of
   them.
@@ -265,7 +329,6 @@ All notable changes to QSP. Dates are UTC.
   A private parrot stays possible and is a different piece of work: the first
   place QSP would have to understand a burst rather than carry it.
 
-### Fixed
 - **The console reported "Cannot reach QSP" on a working instance.** Removing
   the map deleted a neighbouring function, `renderRefused`, and left its call
   site — so every poll threw, the catch reported the instance unreachable, and
@@ -277,7 +340,6 @@ All notable changes to QSP. Dates are UTC.
   here read the files for consistency. Confirmed by deleting the same function
   again and watching it fail.
 
-### Fixed
 - **A hotspot behind a rebinding router lost its session every eight to nine
   minutes.** QSP requires a peer to authenticate again when its source address
   changes ([ADR-0011](docs/adr/ADR-0011-nat-rebind.md)) and dropped the
@@ -748,7 +810,6 @@ All notable changes to QSP. Dates are UTC.
   The page is served to anyone and shows a sign-in prompt when nobody is signed
   in; the endpoints behind it are what require a session.
 
-### Fixed
 - **OpenStreetMap refused every tile with a 403.** QSP sends
   `Referrer-Policy: no-referrer` and their tile policy requires a `Referer`
   identifying the site, so the map drew a picture saying access was blocked. The
@@ -993,6 +1054,19 @@ All notable changes to QSP. Dates are UTC.
   vendoring a library is how the no-dependency guarantee ends quietly.
 
 ### Changed
+- **An opened hint is no longer amber.** `--color-primary` and
+  `--color-degraded` are the same hue family, so a paragraph somebody chose to
+  read wore the colour this console uses to mean "something needs attention" —
+  against a note already in `console.css` saying that spending amber on an
+  ordinary condition teaches an operator to ignore amber. Open is a filled
+  neutral disc.
+
+- **The hint's `?` is drawn rather than typed.** A stroked path at the brand
+  mark's 1.6 weight, so it cannot be substituted by whatever font loads and
+  scales with the button. `hints.js` is unchanged: the markup carries the text
+  and this file only wires the buttons, which is why a structural fault in four
+  pages needed no change to the behaviour.
+
 - **[ADR-0025](docs/adr/ADR-0025-no-bundled-map.md) is amended, and its first
   version was wrong twice.** It argued that a compiled-in tile URL made every
   QSP install share one blast radius; tiles are fetched by the browser carrying
@@ -1162,7 +1236,6 @@ All notable changes to QSP. Dates are UTC.
 
   Ten tests. **Nothing routes on this yet**; private call routing is next.
 
-### Fixed
 - **The traffic hint cried wolf.** A peer connected and sending keepalives with
   no voice frames drew an amber warning saying its transmissions were not
   reaching QSP. But a hotspot sends identical keepalives whether its owner is
@@ -1304,7 +1377,6 @@ All notable changes to QSP. Dates are UTC.
   a hardware question rather than a design one. A text message to another radio
   is a private call and needs everything above.
 
-### Changed
 - **A DMR listener on an address reachable from beyond its host now refuses to
   start without an `access` block.** This is a breaking change for any instance
   bound to `0.0.0.0` or a LAN address, which is most of them.

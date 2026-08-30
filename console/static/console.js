@@ -29,7 +29,6 @@
 
   var routingEmpty = document.getElementById("routing-empty");
 
-  var authState = document.getElementById("auth-state");
 
   var mapBody = document.getElementById("map-body");
   var mapCount = document.getElementById("map-count");
@@ -132,41 +131,6 @@
       parts.push(keys[i] + " " + detail[keys[i]]);
     }
     return parts.join(", ");
-  }
-
-  // renderAuth shows who is signed in, or offers to.
-  //
-  // The console works without an account and always has: everything it shows is
-  // readable without one. This is a way in for the administrator, not a gate,
-  // and saying "Sign in" rather than demanding it is the difference.
-  function renderAuth() {
-    if (!authState) {
-      return;
-    }
-    fetch("/api/session", { headers: { Accept: "application/json" } })
-      .then(function (r) { return r.json(); })
-      .then(function (body) {
-        if (body && body.authenticated) {
-          authState.innerHTML =
-            '<span class="topbar__who">' + escapeText(body.username) + "</span> " +
-            '<button class="topbar__link" id="sign-out" type="button">Sign out</button>';
-          var out = document.getElementById("sign-out");
-          if (out) {
-            out.addEventListener("click", function () {
-              fetch("/api/logout", { method: "POST", credentials: "same-origin" })
-                .then(renderAuth)
-                .catch(renderAuth);
-            });
-          }
-          return;
-        }
-        authState.innerHTML = '<a class="topbar__link" href="/signin">Sign in</a>';
-      })
-      .catch(function () {
-        // Left empty rather than guessing. An instance that cannot answer is
-        // not one to invite somebody to type a password into.
-        authState.innerHTML = "";
-      });
   }
 
   function setStream(label) {
@@ -522,7 +486,7 @@
      * somebody setting a hotspot up for the first time. */
     if (peers > 0 && inCount > 30 && frames === 0) {
       trafficBody.innerHTML +=
-        '<p class="hint hint--neutral">No voice frames yet, only keepalives. ' +
+        '<p class="inline-note inline-note--neutral">No voice frames yet, only keepalives. ' +
         "If nobody has transmitted, that is exactly what this should look like. " +
         "If somebody has, their hotspot is probably not routing a talkgroup to " +
         "this network \u2014 check the sending side.</p>";
@@ -692,7 +656,6 @@
      * genuinely new, so the next render must not animate arrivals. */
     knownPeerIds = {};
     firstPeerLoad = true;
-  renderAuth();
   refreshHealth();
     refreshPeers();
   }

@@ -322,6 +322,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"console.js": true, "map.js": true, "join.js": true,
 		"signin.js": true, "access.js": true, "network.js": true,
 		"bridges.js": true, "history.js": true, "hints.js": true,
+		"nav.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -800,6 +801,245 @@ func TestHintsAreDisclosuresRatherThanTooltips(t *testing.T) {
 		labels := strings.Count(html, `aria-label="Explain this"`)
 		if buttons != labels {
 			t.Errorf("%s has %d hint buttons and %d labels", page, buttons, labels)
+		}
+	}
+}
+
+// TestControlBoundariesMeetTheNonTextFloor.
+//
+// WCAG 1.4.11 asks 3:1 of the visible boundary of anything a user has to find
+// and operate. Nothing here measured that, and the hint button's outline was
+// --color-border-strong: 1.64:1 against a panel's header band, which is to say
+// invisible. It had been that way since the button was written, through every
+// review, because the contrast tests measured text and the failure was not
+// text.
+//
+// The two planes both matter: the same button appears in a panel's header band
+// and inside a panel's body on the access page.
+func TestControlBoundariesMeetTheNonTextFloor(t *testing.T) {
+	const floor = 3.0
+
+	opaque, translucent := tokens(t)
+
+	surface, ok := opaque["--color-surface"]
+	if !ok {
+		t.Fatal("tokens.css no longer defines --color-surface")
+	}
+	sunken, ok := translucent["--color-surface-sunken"]
+	if !ok {
+		t.Fatal("tokens.css no longer defines --color-surface-sunken")
+	}
+	boundary, ok := translucent["--color-border-control"]
+	if !ok {
+		t.Fatal("tokens.css no longer defines --color-border-control")
+	}
+
+	planes := map[string]rgb{
+		"panel surface": surface,
+		"panel header":  over(sunken.c, sunken.alpha, surface),
+	}
+	for name, bg := range planes {
+		got := contrast(over(boundary.c, boundary.alpha, bg), bg)
+		if got < floor {
+			t.Errorf("--color-border-control on the %s is %.2f:1, below the %.1f:1 WCAG 1.4.11 floor",
+				name, got, floor)
+		}
+	}
+
+	// The token exists to be used. A boundary colour nothing references is a
+	// measurement that passes while the control it describes stays invisible.
+	css, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	if !strings.Contains(string(css), "var(--color-border-control)") {
+		t.Error("--color-border-control is defined and used by nothing")
+	}
+}
+
+// TestAHintOpensBeneathItsHeading.
+//
+// **This is the check that was missing, and the reason a broken hint shipped.**
+// TestHintsAreDisclosuresRatherThanTooltips asserted the mechanism — hints.js
+// positions nothing, sets aria-expanded, wires idempotently — every word of
+// which was true while the thing rendered wrongly.
+//
+// .panel__head is `display: flex; justify-content: space-between`, and the
+// disclosure paragraph was a sibling of the title inside it. Closed, the button
+// was distributed into the dead centre of the header band. Opened, the
+// paragraph became a fourth item on the same row: beside the button rather than
+// beneath it, jammed against the count, dragged up by the row's baseline
+// alignment. Two correct rules; the pair was wrong.
+//
+// So this asserts the outcome. Nothing that expands may live inside the header
+// band, whatever the stylesheet does.
+func TestAHintOpensBeneathItsHeading(t *testing.T) {
+	pages := []string{"static/access.html", "static/network.html",
+		"static/bridges.html", "static/history.html"}
+
+	var checked int
+	for _, page := range pages {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		html := string(body)
+
+		for _, head := range enclosedDivs(html, `<div class="panel__head">`) {
+			checked++
+			for _, banned := range []string{"hint__text", "panel__disclosure"} {
+				if strings.Contains(head, banned) {
+					t.Errorf("%s: a panel header contains %s, so opening it puts the "+
+						"paragraph beside the title rather than beneath it", page, banned)
+				}
+			}
+			// The button must be grouped with its title, or space-between
+			// strands it in the middle of the band with nothing beside it.
+			if strings.Contains(head, `class="hint"`) &&
+				!strings.Contains(head, `class="panel__heading"`) {
+				t.Errorf("%s: a hint button sits directly in a space-between header "+
+					"band, which puts it in the centre of the panel", page)
+			}
+		}
+	}
+	if checked < len(pages) {
+		t.Fatalf("only %d panel headers were examined; this check has gone blind", checked)
+	}
+	t.Logf("checked %d panel headers", checked)
+}
+
+// enclosedDivs returns the inner markup of every <div> that starts with open,
+// matching nesting rather than the next closing tag. A regex would stop at the
+// first </div>, which in a panel header is the one closing the heading group —
+// and would then report success for exactly the markup this is checking for.
+func enclosedDivs(html, open string) []string {
+	var found []string
+	for at := 0; ; {
+		i := strings.Index(html[at:], open)
+		if i < 0 {
+			return found
+		}
+		i += at
+		depth, j := 1, i+len(open)
+		for depth > 0 && j < len(html) {
+			switch {
+			case strings.HasPrefix(html[j:], "<div"):
+				depth++
+				j += 4
+			case strings.HasPrefix(html[j:], "</div>"):
+				depth--
+				j += 6
+			default:
+				j++
+			}
+		}
+		found = append(found, html[i+len(open):j])
+		at = j
+	}
+}
+
+// TestOneNameMeansOneThing.
+//
+// .hint was two rules 600 lines apart: a block paragraph with padding and a
+// top border, and a 20px circular button. Same class, same specificity, so the
+// later one won and the console's "no voice frames yet" note was being drawn as
+// a circle with its text spilling out.
+//
+// Neither rule was wrong. There is no way to catch that by reading either one.
+func TestOneNameMeansOneThing(t *testing.T) {
+	body, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	css := string(body)
+
+	// Rule openings of exactly `.hint {`, which is the button and must be
+	// declared once.
+	if n := len(regexp.MustCompile(`(?m)^\.hint \{`).FindAllString(css, -1)); n != 1 {
+		t.Errorf("console.css opens `.hint {` %d times; one class cannot mean two things", n)
+	}
+	if strings.Contains(css, ".hint--neutral") {
+		t.Error("`.hint--neutral` is back; a hint is a button and a note is a note")
+	}
+
+	// And the note that used to carry the button's name must still be styled.
+	for _, name := range []string{".inline-note {", ".inline-note--neutral {"} {
+		if !strings.Contains(css, name) {
+			t.Errorf("console.css no longer defines %s", name)
+		}
+	}
+}
+
+// TestTheHintTargetIsBigEnough. tokens.css declares --target-min: 44px and the
+// hint button was 20px square, which is the sort of thing a token exists to
+// prevent and does not prevent on its own.
+func TestTheHintTargetIsBigEnough(t *testing.T) {
+	body, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	css := string(body)
+
+	at := strings.Index(css, ".hint::after {")
+	if at < 0 {
+		t.Fatal("the hint button has no target overlay, so its tap area is its 28px circle")
+	}
+	rule := css[at:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+	for _, want := range []string{"var(--target-min)", "position: absolute"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("the hint's target overlay does not use %s", want)
+		}
+	}
+}
+
+// TestTheNavSaysWhenItsLinksLeadNowhere.
+//
+// The administration group offers four pages regardless of session. Nothing
+// behind them discloses anything — each page keeps its form hidden until
+// /api/config answers, and /api/config is behind requireSession — but four
+// links that can only say "sign in" are a dead end presented as a destination.
+//
+// Also: five pages carried five copies of the same /api/session fetch, and only
+// one of them could sign out. Copies drift.
+func TestTheNavSaysWhenItsLinksLeadNowhere(t *testing.T) {
+	nav, err := assets.ReadFile("static/nav.js")
+	if err != nil {
+		t.Fatalf("reading nav.js: %v", err)
+	}
+	src := string(nav)
+	for _, want := range []string{"nav-admin-group", "nav__note", "/api/session", "/api/logout"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("nav.js does not reference %s", want)
+		}
+	}
+
+	for _, page := range []string{"static/index.html", "static/access.html",
+		"static/network.html", "static/bridges.html", "static/history.html"} {
+		body, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		html := string(body)
+		if !strings.Contains(html, `src="/nav.js"`) {
+			t.Errorf("%s has a nav and does not load nav.js", page)
+		}
+		if !strings.Contains(html, `id="nav-admin-group"`) {
+			t.Errorf("%s does not name its administration group, so nav.js cannot mark it", page)
+		}
+	}
+
+	// The copies must be gone, not merely joined by a sixth.
+	for _, script := range []string{"static/console.js", "static/access.js",
+		"static/network.js", "static/bridges.js", "static/history.js"} {
+		body, err := assets.ReadFile(script)
+		if err != nil {
+			t.Fatalf("reading %s: %v", script, err)
+		}
+		if strings.Contains(string(body), "/api/session") {
+			t.Errorf("%s still fetches the session itself; nav.js owns the topbar", script)
 		}
 	}
 }

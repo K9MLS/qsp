@@ -39,7 +39,7 @@
       <li><a class="nav__link" href="/"><span>Overview</span></a></li>
     </ul>
     <p class="nav__heading" id="nav-admin">Administration</p>
-    <ul class="nav__group" aria-labelledby="nav-admin">
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin">
       <li><a class="nav__link" href="/access" aria-current="page"><span>Access control</span></a></li>
       <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
       <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
@@ -92,9 +92,15 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Talkgroups</h2><button class="hint" type="button" aria-controls="hint-talkgroups" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-talkgroups">A talkgroup is a channel members share. <strong>Allow everything except</strong> with an empty list carries every talkgroup, which is what a new instance does and is fine for a club. <strong>Allow only</strong> refuses anything not listed, which is what you want facing the internet. Ranges work: <code>3100-3199</code>.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Talkgroups</h2>
+            <button class="hint" type="button" aria-controls="hint-talkgroups"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
           <span class="panel__count" id="tg-summary">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-talkgroups">
+          <p class="hint__text">A talkgroup is a channel members share. <strong>Allow everything except</strong> with an empty list carries every talkgroup, which is what a new instance does and is fine for a club. <strong>Allow only</strong> refuses anything not listed, which is what you want facing the internet. Ranges work: <code>3100-3199</code>.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -109,8 +115,14 @@
 
       <section class="panel">
         <div class="panel__head">
-          <h2 class="panel__title">Who may connect</h2><button class="hint" type="button" aria-controls="hint-connect" aria-label="Explain this">?</button>
-          <p class="hint__text" id="hint-connect">Registration is checked when a hotspot logs in, before its password, so a refused ID never reaches the credential path. Subscribers are checked on every transmission — a refused radio is silenced without disconnecting the hotspot carrying it, so one member cannot knock another off the network.</p>
+          <div class="panel__heading">
+            <h2 class="panel__title">Who may connect</h2>
+            <button class="hint" type="button" aria-controls="hint-connect"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-connect">
+          <p class="hint__text">Registration is checked when a hotspot logs in, before its password, so a refused ID never reaches the credential path. Subscribers are checked on every transmission — a refused radio is silenced without disconnecting the hotspot carrying it, so one member cannot knock another off the network.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -157,6 +169,7 @@
 
 </div>
 
+<script src="/nav.js"></script>
 <script src="/hints.js"></script>
 <script src="/access.js"></script>
 </body>

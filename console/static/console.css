@@ -141,6 +141,17 @@ body {
   color: var(--color-foreground-subtle);
 }
 
+/* Added by nav.js when nobody is signed in. The links above it still work and
+   still lead somewhere — to a page that will ask for a sign-in — so this says
+   what they will say, one click earlier. */
+.nav__note {
+  margin: var(--space-2) 0 0;
+  padding: 0 var(--space-3);
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
 .nav__link {
   display: flex;
   align-items: center;
@@ -435,6 +446,17 @@ body {
   background: var(--color-surface-sunken);
 }
 
+/* The title and its hint button, grouped so `space-between` distributes two
+   items rather than three. Ungrouped, the button was a flex item in its own
+   right and space-between put it in the dead centre of the header band, next
+   to nothing and belonging to nothing. */
+.panel__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .panel__title {
   margin: 0;
   font-size: var(--text-lg);
@@ -638,17 +660,23 @@ body {
 .metric--muted .metric__value { color: var(--color-foreground-subtle); }
 .metric--warn .metric__value { color: var(--color-degraded); }
 
-.hint {
+/* A note the console writes into a panel when it has something to say about
+   what is in it — "no voice frames yet, only keepalives".
+   **This was called .hint**, and so is the disclosure button 600 lines below.
+   Two rules, one name, same specificity, so the later one won: this paragraph
+   was being drawn as a 20px circle with `border-radius: 50%` and `padding: 0`,
+   with its text spilling out of it. Neither rule was wrong. Sharing a name was. */
+.inline-note {
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--color-border);
   color: var(--color-degraded);
   font-size: var(--text-sm);
 }
 
-/* A hint that describes something possibly ordinary is not a warning.
+/* A note that describes something possibly ordinary is not a warning.
    Amber is a promise that something needs attention, and spending it on a
    condition that is usually fine teaches an operator to ignore amber. */
-.hint--neutral {
+.inline-note--neutral {
   color: var(--color-foreground-muted);
 }
 
@@ -1284,28 +1312,60 @@ select.field__input {
 /* A hint is a button that reveals a paragraph beneath it, not a floating
    tooltip. Hover is unavailable on a touch screen and unreachable from a
    keyboard, and anything floating has to be positioned — which is the class of
-   bug that cost this project a day. Nothing here is positioned. */
+   bug that cost this project a day. Nothing here is positioned.
+
+   **"Beneath" is the part that was not true.** The paragraph used to be a
+   sibling of the title inside .panel__head, which is a `space-between` flex
+   row — so unhiding it made it a fourth item on that row, beside the button
+   rather than under it, jammed against the count and pulled up by the row's
+   baseline alignment. The disclosure is outside the header band now, and a
+   test asserts that rather than asserting the mechanism.
+
+   The old test is the reason this survived five pages of review: it checked
+   that hints.js never calls getBoundingClientRect and always sets
+   aria-expanded, both of which were true the whole time the thing rendered
+   wrongly. Checking a mechanism is not checking an outcome. */
 .hint {
+  position: relative;
   display: inline-flex;
+  flex: none;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-left: var(--space-2);
+  width: 28px;
+  height: 28px;
   padding: 0;
   cursor: pointer;
-  border: 1px solid var(--color-border-strong);
+  border: 1px solid var(--color-border-control);
   border-radius: 50%;
   background: none;
   color: var(--color-foreground-muted);
-  font-family: inherit;
-  font-size: var(--text-xs);
-  line-height: 1;
-  vertical-align: middle;
+  transition:
+    border-color var(--duration-fast) var(--ease-out-expo),
+    background-color var(--duration-fast) var(--ease-out-expo),
+    color var(--duration-fast) var(--ease-out-expo);
+}
+
+/* The circle is 28px because a 44px one would be a hole punched in the header
+   band next to an 18px title. The target is 44px anyway: an overlay centred on
+   the button, which costs nothing visible and is what --target-min asks for.
+   Padding could not do this — it would grow the circle with it. */
+.hint::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--target-min);
+  height: var(--target-min);
+  transform: translate(-50%, -50%);
+}
+
+.hint__mark {
+  width: 18px;
+  height: 18px;
 }
 
 .hint:hover {
-  border-color: var(--color-primary);
+  border-color: var(--color-foreground-muted);
   color: var(--color-foreground);
 }
 
@@ -1314,20 +1374,43 @@ select.field__input {
   outline-offset: 2px;
 }
 
+/* Open is a filled state rather than a coloured one.
+   **It used to be amber.** --color-primary and --color-degraded are the same
+   hue family, so a paragraph somebody chose to read wore the colour this
+   console uses to mean "something needs attention". Amber is a promise, and
+   this file already says elsewhere that spending it on an ordinary condition
+   teaches an operator to ignore it. */
 .hint[aria-expanded="true"] {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
+  border-color: transparent;
+  background: var(--color-foreground-muted);
+  color: var(--color-background);
+}
+
+/* The disclosure itself, sitting between a panel's header band and its
+   content. The band spans the panel; the measure does not, because a
+   paragraph 140 characters wide is one nobody finishes. */
+.panel__disclosure {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface-sunken);
 }
 
 .hint__text {
-  max-width: 62ch;
-  margin: var(--space-2) 0 var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-left: 2px solid var(--color-border-strong);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  background: var(--color-surface-sunken);
+  max-width: 68ch;
+  margin: 0;
   color: var(--color-foreground-muted);
   font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* Outside a panel header — the access page builds its lists' hints into the
+   body — there is no band to sit under, so the paragraph carries its own. */
+.acl__title + .hint__text {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-left: 2px solid var(--color-border-control);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-surface-sunken);
 }
 
 .hint__text code {

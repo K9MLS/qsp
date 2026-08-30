@@ -9,6 +9,15 @@
 (function () {
   "use strict";
 
+  /* The same mark the static pages draw inline. It is a path rather than a "?"
+   * character so it inherits stroke weight from the brand mark and cannot be
+   * substituted by whatever font happens to load. */
+  var HINT_MARK =
+    '<svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" ' +
+    'stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">' +
+    '<path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/>' +
+    '<circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg>';
+
   /* The four lists, in the order they appear. Each names where it lives in the
    * configuration so the form and the document cannot drift apart. */
   var LISTS = [
@@ -140,7 +149,8 @@
       '<h3 class="acl__title">' + escapeText(spec.label) +
       (spec.detail
         ? ' <button class="hint" type="button" aria-controls="hint-' +
-          escapeText(spec.id) + '" aria-label="Explain this">?</button>'
+          escapeText(spec.id) + '" aria-label="Explain this">' + HINT_MARK +
+          "</button>"
         : "") +
       "</h3>" +
       (spec.detail
@@ -353,20 +363,6 @@
       copyNote.textContent = "This browser will not copy for us. Select the address and copy it.";
     });
   }
-
-  /* Who is signed in, in the topbar, the same as the console. */
-  var authState = document.getElementById("auth-state");
-  fetch("/api/session", { headers: { Accept: "application/json" } })
-    .then(function (r) { return r.json(); })
-    .then(function (body) {
-      if (body && body.authenticated) {
-        authState.innerHTML = '<span class="topbar__who">' +
-          escapeText(body.username) + "</span>";
-      } else {
-        authState.innerHTML = '<a class="topbar__link" href="/signin">Sign in</a>';
-      }
-    })
-    .catch(function () { authState.innerHTML = ""; });
 
   load();
 })();

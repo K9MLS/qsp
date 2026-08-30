@@ -43,6 +43,13 @@
   --color-muted: #1f1e27;
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
+  /* The visible edge of a control, which is a different job from separating
+     two surfaces. WCAG 1.4.11 asks 3:1 of anything a user has to find and
+     click, and --color-border-strong measures 1.64:1 against a panel's header
+     band — invisible, and used for a button's outline anyway. 0.40 clears the
+     floor on the band and on the surface both, which matters because the same
+     button appears in a panel header and inside a panel's body. */
+  --color-border-control: rgba(255, 255, 255, 0.4);
 
   /* ---- Text ---------------------------------------------------------- */
   --color-foreground: #ffffff;
