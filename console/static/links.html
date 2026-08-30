@@ -95,6 +95,97 @@
       </section>
     </div>
 
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Offer a peering</h2>
+          </div>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            Generates an invitation to send the other administrator, and the
+            passphrase behind it. <strong>They travel separately.</strong> The
+            invitation is safe to email; the passphrase is not, and is shown
+            here once.
+          </p>
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Talkgroup</span>
+              <input class="picker__input" id="offer-tg" type="text" inputmode="numeric" value="2">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Timeslot</span>
+              <select class="picker__input" id="offer-slot">
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+              </select>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">They send to</span>
+              <input class="picker__input" id="offer-address" type="text" placeholder="host:port">
+            </label>
+          </div>
+          <button class="button" id="offer" type="button">Generate an invitation</button>
+          <div id="offer-result" hidden>
+            <p class="picker__label">Invitation &mdash; send this by email</p>
+            <pre class="config" id="offer-token"></pre>
+            <p class="picker__label">Passphrase &mdash; send this another way</p>
+            <pre class="config" id="offer-pass"></pre>
+            <p class="link__advice">This passphrase is shown once and is not
+              stored anywhere you can read it back. Send it over something you
+              would send a password over, not the same email as the invitation.</p>
+          </div>
+          <p class="link__advice" id="offer-error" hidden></p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Accept a peering</h2>
+          </div>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            Paste an invitation and the passphrase that came separately. Nothing
+            is written until you confirm what it says.
+          </p>
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Link name</span>
+              <input class="picker__input" id="accept-name" type="text" placeholder="cameron">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Talkgroup</span>
+              <input class="picker__input" id="accept-tg" type="text" inputmode="numeric" value="2">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">We listen on</span>
+              <input class="picker__input" id="accept-listen" type="text" placeholder="host:port">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">We announce</span>
+              <input class="picker__input" id="accept-netid" type="text" inputmode="numeric">
+            </label>
+          </div>
+          <p class="picker__label">Invitation</p>
+          <textarea class="picker__input picker__input--wide" id="accept-token" rows="3"></textarea>
+          <p class="picker__label">Passphrase</p>
+          <input class="picker__input picker__input--wide" id="accept-pass" type="password">
+          <button class="button" id="accept" type="button">Read this invitation</button>
+          <div id="accept-confirm" hidden>
+            <p class="link__summary" id="accept-summary"></p>
+            <button class="button button--primary" id="accept-go" type="button">Agree to this peering</button>
+          </div>
+          <div id="accept-result" hidden>
+            <p class="picker__label">Send this back to them</p>
+            <pre class="config" id="accept-reciprocal"></pre>
+          </div>
+          <p class="link__advice" id="accept-error" hidden></p>
+        </div>
+      </section>
+
   </main>
 
 </div>

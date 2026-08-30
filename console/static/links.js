@@ -124,6 +124,104 @@
       });
   }
 
+  /* ---- Offering and accepting a peering ------------------------------- */
+
+  function el(id) { return document.getElementById(id); }
+  function val(id) { var e = el(id); return e ? e.value.trim() : ""; }
+  function num(id) { var n = parseInt(val(id), 10); return isNaN(n) ? 0 : n; }
+
+  function fail(id, message) {
+    var e = el(id);
+    if (e) {
+      e.textContent = message;
+      e.hidden = false;
+    }
+  }
+
+  function post(path, body) {
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok) { throw new Error((b && b.error) || "that did not work"); }
+        return b;
+      });
+    });
+  }
+
+  var offerButton = el("offer");
+  if (offerButton) {
+    offerButton.addEventListener("click", function () {
+      hide(el("offer-error"));
+      hide(el("offer-result"));
+      post("/api/links/offer", {
+        talkgroup: num("offer-tg"),
+        timeslot: num("offer-slot"),
+        address: val("offer-address")
+      }).then(function (b) {
+        text(el("offer-token"), b.token);
+        /* Shown once and never fetched again. It is not stored anywhere the
+         * console can read it back, which is the point of putting it here
+         * rather than in the invitation. */
+        text(el("offer-pass"), b.passphrase);
+        show(el("offer-result"));
+      }).catch(function (e) { fail("offer-error", e.message); });
+    });
+  }
+
+  /* Accepting is two steps on purpose. The first reads the invitation and
+   * shows who is asking; the second writes configuration. A peering agreed by
+   * one click is one nobody read. */
+  var acceptButton = el("accept");
+  if (acceptButton) {
+    acceptButton.addEventListener("click", function () {
+      hide(el("accept-error"));
+      hide(el("accept-result"));
+      post("/api/links/accept", request(false))
+        .then(function () { /* not reached: confirm is false */ })
+        .catch(function (e) {
+          if (e.message.indexOf("confirmed") >= 0) {
+            text(el("accept-summary"),
+              "This will add a link and a bridge, and write a passphrase file. " +
+              "Nothing is sent to the other network until you agree.");
+            show(el("accept-confirm"));
+            return;
+          }
+          fail("accept-error", e.message);
+        });
+    });
+  }
+
+  var acceptGo = el("accept-go");
+  if (acceptGo) {
+    acceptGo.addEventListener("click", function () {
+      hide(el("accept-error"));
+      post("/api/links/accept", request(true)).then(function (b) {
+        hide(el("accept-confirm"));
+        text(el("accept-reciprocal"), b.reciprocal || "");
+        show(el("accept-result"));
+        text(el("accept-summary"), "");
+        load();
+      }).catch(function (e) { fail("accept-error", e.message); });
+    });
+  }
+
+  function request(confirm) {
+    return {
+      token: val("accept-token"),
+      passphrase: (el("accept-pass") || {}).value || "",
+      name: val("accept-name"),
+      talkgroup: num("accept-tg"),
+      timeslot: 2,
+      listen: val("accept-listen"),
+      network_id: num("accept-netid"),
+      confirm: confirm
+    };
+  }
+
   load();
   window.setInterval(load, POLL_MS);
 })();

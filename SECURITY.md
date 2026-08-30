@@ -201,6 +201,23 @@ join this network. A link names somebody else's server, the address it is
 reached at, and whether their passphrase is verifying — which is theirs to
 disclose rather than this instance's.
 
+`/api/links/offer` generates a peering invitation and the passphrase behind it.
+**The passphrase is returned once and is never readable again from the
+console**: it is written to a file beside `dmr.password_file` at mode 0600 when
+a peering is accepted, and configuration — which is versioned, stored in the
+database, and shown in the console — carries only its path.
+
+`/api/links/accept` writes a link and a bridge after an administrator confirms
+what an invitation says. It refuses a request without an explicit confirmation
+flag, so a peering cannot be created by a request made in passing, and records
+an audit event naming the far end's callsign and address whether it succeeds or
+fails. A failed acceptance is worth having later; its absence would suggest
+nobody tried.
+
+Neither endpoint verifies that a callsign belongs to whoever sent the
+invitation. That is a claim, checkable against RadioID.net by a person. An
+operator agreeing to peer has already decided who they are dealing with.
+
 ### Deployment guidance
 
 - Bind the console to `127.0.0.1` and reach it through a reverse proxy with TLS.

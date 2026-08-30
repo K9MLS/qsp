@@ -1499,3 +1499,13 @@ select.field__input {
   border-color: var(--color-failing);
   color: var(--color-failing);
 }
+
+/* A field that takes a pasted invitation, which is one long line nobody reads
+   in a 140px box. */
+.picker__input--wide {
+  width: 100%;
+  max-width: 68ch;
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}

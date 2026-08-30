@@ -1231,3 +1231,62 @@ func TestTheConsoleShowsLinks(t *testing.T) {
 		}
 	}
 }
+
+// TestAPeeringIsAgreedInTwoSteps.
+//
+// ADR-0032: a peering is agreed by two people. **One click is not agreement.**
+// The first step reads the invitation and shows who is asking; the second
+// writes configuration. A page that wrote a link the moment a token was pasted
+// would make consent a formality, which is the thing this whole flow exists to
+// stop being.
+func TestAPeeringIsAgreedInTwoSteps(t *testing.T) {
+	page, err := assets.ReadFile("static/links.html")
+	if err != nil {
+		t.Fatalf("reading links.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{`id="accept"`, `id="accept-confirm"`, `id="accept-go"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("links.html has no %s, so accepting is a single click", want)
+		}
+	}
+	if !strings.Contains(html, `id="accept-confirm" hidden`) {
+		t.Error("the confirmation step is visible before an invitation is read")
+	}
+
+	script, err := assets.ReadFile("static/links.js")
+	if err != nil {
+		t.Fatalf("reading links.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "confirm: confirm") {
+		t.Error("links.js does not send a confirmation flag, so the server cannot refuse an " +
+			"unconfirmed peering")
+	}
+	if !strings.Contains(src, "/api/links/offer") || !strings.Contains(src, "/api/links/accept") {
+		t.Error("links.js does not use both halves of the peering flow")
+	}
+}
+
+// TestThePassphraseIsNotInTheInvitationBox.
+//
+// The invitation goes by email. The passphrase does not, and the page has to
+// say so where somebody about to send both in one message will read it.
+func TestThePassphraseIsNotInTheInvitationBox(t *testing.T) {
+	page, err := assets.ReadFile("static/links.html")
+	if err != nil {
+		t.Fatalf("reading links.html: %v", err)
+	}
+	html := string(page)
+	if !strings.Contains(html, "send this by email") {
+		t.Error("the page does not say the invitation is the emailable half")
+	}
+	if !strings.Contains(html, "send this another way") {
+		t.Error("the page does not say the passphrase travels separately")
+	}
+	// A password field, because a passphrase pasted into a page on a shared
+	// screen is one somebody else read.
+	if !strings.Contains(html, `id="accept-pass" type="password"`) {
+		t.Error("the passphrase is typed into a plain text field")
+	}
+}

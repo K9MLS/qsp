@@ -5,6 +5,41 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A peering can be agreed from the console.** `internal/peering` had the
+  invitation format and no page used it; a link was still a configuration edit,
+  which is how one took a live network down.
+
+  **Offer** generates an invitation and the passphrase behind it. They travel
+  separately and the page says so where somebody about to send both in one email
+  will read it: the invitation carries only a fingerprint, and the passphrase is
+  shown once and never readable from the console again.
+
+  **Accept** takes an invitation and the passphrase, and is two steps
+  deliberately. The first reads the token and shows who is asking; the second
+  writes the link, a bridge to carry it, and the passphrase file. `confirm` is a
+  required flag on the request, so a peering cannot be created by a call made in
+  passing — ADR-0032 says a peering is agreed by two people, and one click is
+  not agreement.
+
+  The bridge is written alongside the link because a link with nothing routing
+  to it opens, authenticates, and carries nothing. That is the failure this page
+  exists after.
+
+  The reply carries the agreed passphrase's fingerprint rather than a new
+  secret. OpenBridge authenticates every datagram against one shared passphrase,
+  and a second would produce a link that works one way while both ends report
+  healthy.
+
+  An audit event names the far end's callsign and address on both success and
+  failure — a failed acceptance is worth having later, and its absence would
+  suggest nobody tried. The passphrase is written beside `dmr.password_file` at
+  mode 0600; configuration is versioned, stored in the database, and shown in a
+  console, so a secret in it is a secret in all three.
+
+  Neither endpoint checks that a callsign belongs to whoever sent the
+  invitation. It is a claim, checkable against RadioID.net by a person, and an
+  operator agreeing to peer has already decided who they are dealing with.
+
 - **A Links page, because nothing showed a link anywhere.** One opened,
   authenticated, and carried audio between two servers on two machines, and the
   only report of any of it was a line in `/healthz`. An operator asked twice

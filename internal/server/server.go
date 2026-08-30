@@ -181,6 +181,8 @@ func (s *Server) apiRoutes() []apiRoute {
 		// questions are asked of the same requests, and separating them is how
 		// one gets forgotten on a new endpoint.
 		{"GET /api/links", s.requireSession(s.handleLinks)},
+		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
+		{"POST /api/links/accept", s.requireSession(s.handleAcceptPeering)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},
