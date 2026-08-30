@@ -5,6 +5,30 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A Links page, because nothing showed a link anywhere.** One opened,
+  authenticated, and carried audio between two servers on two machines, and the
+  only report of any of it was a line in `/healthz`. An operator asked twice
+  where to see it and the honest answer both times was that there was nowhere.
+  A working link and a dead one looked identical from a console, which cost an
+  afternoon of deciding which it was.
+
+  Each link shows its far end, protocol, announced network ID, and **frames
+  sent, received and rejected separately**. One direction is not evidence of the
+  other: a link that has sent thousands and received none is working perfectly
+  on a quiet network, or is unauthenticated at the far end, and no single number
+  tells those apart. Rejected is the one that names a passphrase the two ends
+  disagree about, which is otherwise indistinguishable from silence.
+
+  `GET /api/links` **requires a session, unlike `/api/peers`.** A peer list
+  describes stations whose operators chose to join this network. A link names
+  somebody else's server, its address, and whether their passphrase is
+  verifying — theirs to disclose rather than this instance's.
+
+  ADR-0032 names a console view of every link as required rather than optional,
+  and this is that half of it. Creating a link from the console — the paste-an-
+  invitation flow `internal/peering` exists for — is not built yet; a link is
+  still added by editing configuration.
+
 - **`qsp -config <file> -check` validates a configuration and exits**, binding
   nothing, opening no database, dropping no member. It exists because a
   configuration edit was verified by restarting the service, an invalid file

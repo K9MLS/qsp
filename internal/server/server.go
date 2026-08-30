@@ -48,6 +48,10 @@ type Options struct {
 	// ConsoleAssets serves the embedded console. It may be nil, in which case
 	// the console routes report that no assets are built into this binary.
 	ConsoleAssets fs.FS
+	// Links supplies what is known about links to other networks. Nil means
+	// this build has none, which is different from an instance with none
+	// configured.
+	Links LinkSource
 	// Peers supplies the peer list. Nil means the DMR listener is not enabled,
 	// which /api/peers reports rather than returning an empty list that would
 	// look like "nobody is connected".
@@ -169,12 +173,14 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/peers", s.handlePeers},
 		{"GET /api/join", s.handleJoin},
 		{"GET /api/join/config", s.handleHotspotConfig},
+
 		{"POST /api/login", s.handleLogin},
 		{"POST /api/logout", s.handleLogout},
 		{"GET /api/session", s.handleSession},
 		// Behind requireSession, which also enforces the origin check: the two
 		// questions are asked of the same requests, and separating them is how
 		// one gets forgotten on a new endpoint.
+		{"GET /api/links", s.requireSession(s.handleLinks)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},
@@ -237,6 +243,9 @@ func (s *Server) handler() http.Handler {
 		})
 		mux.HandleFunc("GET /bridges", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/bridges.html", http.StatusFound)
+		})
+		mux.HandleFunc("GET /links", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/links.html", http.StatusFound)
 		})
 		mux.HandleFunc("GET /history", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/history.html", http.StatusFound)

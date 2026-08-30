@@ -368,6 +368,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		ShutdownTimeout:     cfg.Server.ShutdownTimeout.AsDuration(),
 		BehindProxy:         cfg.Server.BehindProxy,
 		ConsoleAssets:       assets,
+		Links:               linkSource(a.upstreams, cfg),
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
@@ -1181,4 +1182,54 @@ func privateTargetName(c calls.Call, known map[uint32]string, names *callsigns.S
 		return ""
 	}
 	return resolve(c.Target, known, names)
+}
+
+// linkSource adapts the upstream set for the console.
+//
+// The configuration is carried alongside because a link knows its own state and
+// not what it was configured from: the far end's address and the announced
+// network ID live in the configuration, and an operator looking at a console
+// needs both halves to tell a working link from a misaddressed one.
+func linkSource(set *upstream.Set, cfg config.Config) server.LinkSource {
+	if set == nil || len(cfg.DMR.Upstreams) == 0 {
+		return nil
+	}
+	return &links{set: set, cfg: cfg}
+}
+
+type links struct {
+	set *upstream.Set
+	cfg config.Config
+}
+
+func (l *links) LinkStatuses() []server.LinkStatus {
+	byName := map[string]config.Upstream{}
+	for _, u := range l.cfg.DMR.Upstreams {
+		byName[u.Name] = u
+	}
+
+	statuses := l.set.Statuses()
+	out := make([]server.LinkStatus, 0, len(statuses))
+	for _, st := range statuses {
+		u := byName[st.Name]
+		entry := server.LinkStatus{
+			Name:         st.Name,
+			Protocol:     u.Protocol,
+			FarEnd:       u.Address,
+			Listening:    u.ListenAddress,
+			NetworkID:    u.NetworkID,
+			Open:         st.Open,
+			Sent:         st.Stats.Sent,
+			Received:     st.Stats.Received,
+			Rejected:     st.Stats.Rejected,
+			EverReceived: st.EverReceived,
+			Summary:      st.Summary,
+			Advice:       st.Advice,
+		}
+		if st.EverReceived {
+			entry.IdleSeconds = int(st.Since.Seconds())
+		}
+		out = append(out, entry)
+	}
+	return out
 }

@@ -195,6 +195,12 @@ it has heard none. It does not derive an ID from the peer's two-digit suffix:
 that suffix is a convention rather than a rule of the protocol, and a rule
 naming the wrong radio would send a member's private calls to somebody else.
 
+`/api/links` reports the links to other networks and requires a session,
+unlike `/api/peers`. A peer list describes stations whose operators chose to
+join this network. A link names somebody else's server, the address it is
+reached at, and whether their passphrase is verifying — which is theirs to
+disclose rather than this instance's.
+
 ### Deployment guidance
 
 - Bind the console to `127.0.0.1` and reach it through a reverse proxy with TLS.

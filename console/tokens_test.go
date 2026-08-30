@@ -322,7 +322,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"console.js": true, "map.js": true, "join.js": true,
 		"signin.js": true, "access.js": true, "network.js": true,
 		"bridges.js": true, "history.js": true, "hints.js": true,
-		"nav.js": true,
+		"nav.js": true, "links.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -1181,5 +1181,53 @@ func TestHiddenMeansHidden(t *testing.T) {
 	}
 	if users < 4 {
 		t.Errorf("only %d pages hide by attribute; this check has gone blind", users)
+	}
+}
+
+// TestTheConsoleShowsLinks.
+//
+// **An operator asked twice where to see a link and the answer was /healthz.**
+// One opened, authenticated, carried audio between two servers, and no page
+// showed that another network existed — which made a working link and a dead
+// one look identical. ADR-0032 names this as required rather than optional.
+func TestTheConsoleShowsLinks(t *testing.T) {
+	page, err := assets.ReadFile("static/links.html")
+	if err != nil {
+		t.Fatalf("reading links.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{`id="links"`, `src="/links.js"`, `id="signed-out"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("links.html has no %s", want)
+		}
+	}
+
+	script, err := assets.ReadFile("static/links.js")
+	if err != nil {
+		t.Fatalf("reading links.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "/api/links") {
+		t.Error("links.js never asks for the links")
+	}
+	// Both directions, always. One is not evidence of the other: a link that
+	// has sent thousands and received none is working perfectly on a quiet
+	// network, or is unauthenticated at the far end.
+	for _, want := range []string{"l.sent", "l.received", "l.rejected"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("links.js does not show %s, so a one-way link looks like a working one", want)
+		}
+	}
+
+	// And every admin page must offer the page, or it is unreachable.
+	for _, name := range []string{"static/access.html", "static/network.html",
+		"static/bridges.html", "static/history.html", "static/links.html"} {
+		body, err := assets.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if !strings.Contains(string(body), `href="/links"`) {
+			t.Errorf("%s does not link to the links page", name)
+		}
 	}
 }

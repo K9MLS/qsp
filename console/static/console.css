@@ -1417,3 +1417,85 @@ select.field__input {
   font-family: var(--font-mono);
   color: var(--color-foreground);
 }
+
+/* ---- Links to other networks ----------------------------------------- */
+
+.link {
+  padding: var(--space-4) 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.link:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.link__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.link__name {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+}
+
+/* A grid rather than a table: seven facts about one link read better stacked
+   on a narrow window than squeezed into seven columns. */
+.link__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin: 0 0 var(--space-3);
+}
+
+.link__fact dt {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.link__fact dd {
+  margin: var(--space-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--color-foreground);
+}
+
+.link__summary {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* Advice is amber because it is the one thing here that asks for action, and
+   this file spends amber on nothing else. */
+.link__advice {
+  max-width: 68ch;
+  margin: var(--space-2) 0 0;
+  color: var(--color-degraded);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+/* Link state, as three answers to the questions an operator asks in order: is
+   the socket up, has anything ever come back, is it still coming. */
+.pill--good {
+  border-color: var(--color-healthy);
+  color: var(--color-healthy);
+}
+
+.pill--warn {
+  border-color: var(--color-degraded);
+  color: var(--color-degraded);
+}
+
+.pill--bad {
+  border-color: var(--color-failing);
+  color: var(--color-failing);
+}

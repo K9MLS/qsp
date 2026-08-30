@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Links — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__meta">
+      <span class="topbar__auth" id="auth-state"></span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li><a class="nav__link" href="/"><span>Overview</span></a></li>
+    </ul>
+    <p class="nav__heading" id="nav-admin">Administration</p>
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin">
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
+      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/links" aria-current="page"><span>Links</span></a></li>
+      <li><a class="nav__link" href="/history"><span>History</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
+    </ul>
+  </nav>
+
+  <main class="main" id="main">
+
+    <h1 class="page__title">Links</h1>
+    <p class="page__lede">
+      Links to other networks. A link is an agreement between two
+      administrators: neither end can carry traffic without a passphrase the
+      other gave them.
+    </p>
+
+    <div class="empty" id="loading">
+      <p class="empty__title">Loading</p>
+      <p class="empty__body">Reading this instance's links.</p>
+    </div>
+
+    <div class="notice notice--warn" id="signed-out" hidden>
+      <p class="notice__title">Sign in to see links</p>
+      <p class="notice__body"><a href="/signin">Sign in</a> as an administrator.
+        A link names somebody else's server and whether their passphrase is
+        working, which is theirs to disclose rather than ours.</p>
+    </div>
+
+    <div id="form" hidden>
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Configured links</h2>
+            <button class="hint" type="button" aria-controls="hint-links"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="link-count">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-links">
+          <p class="hint__text">Sent and received are counted separately because
+            one is not evidence of the other. A link that has sent thousands of
+            frames and received none is either working perfectly on a quiet
+            network or unauthenticated at the far end, and no single number
+            tells those apart. <strong>Rejected is the one to watch</strong>: a
+            steady trickle almost always means the two ends disagree about the
+            passphrase.</p>
+        </div>
+        <div class="panel__body">
+          <div id="links"></div>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="/nav.js"></script>
+<script src="/hints.js"></script>
+<script src="/links.js"></script>
+</body>
+</html>
