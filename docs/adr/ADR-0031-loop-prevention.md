@@ -1,8 +1,41 @@
 # ADR-0031: A transmission is recognised by who sent it, not by where it arrived
 
-**Status:** Proposed
+**Status:** Proposed — amended before implementation
 **Relates to:** [ADR-0014](ADR-0014-contention.md),
 [ADR-0018](ADR-0018-openbridge.md), [ADR-0024](ADR-0024-outbound-peer-mode.md)
+
+## Amendment: the loop was already prevented, and this record overstated it
+
+**The first version of this ADR argued that loops were an open hazard and that
+no link should carry traffic until this was built. That was wrong, and it was
+wrong because the code was not read far enough.**
+
+`routing.Core.route` already refuses to send a frame that arrived on a link to
+any link, and `RouteFromUpstream` documents the reasoning: a club exporting and
+importing the same talkgroup would relay every frame from BrandMeister straight
+back to BrandMeister, which is a broadcast storm on somebody else's network
+produced by a configuration that looks entirely reasonable. It also already
+rejects the hop count this record considered, on the grounds that it requires
+every participant to cooperate and fails into the storm it was meant to prevent
+when one does not.
+
+That rule is stronger than what is decided below. It does not detect loops, it
+makes them unformable: a QSP in the middle of A to B to C never relays at all,
+so circulation cannot begin.
+
+**What survives is duplicate suppression, which is a narrower and less urgent
+problem.** Two links to one far network under different names, or a far end
+that reaches this instance by two paths, deliver one transmission twice. Neither
+copy arrived from a link this instance would send back to, so the existing rule
+does not see them. The fingerprint below is what does.
+
+The decision that follows is unchanged and still worth having. The claim that
+peering must wait for it is withdrawn.
+
+**And the shallowness this record recommends is already the implemented
+behaviour rather than advice.** A QSP cannot relay between two other servers
+even if an administrator configures it to. Club B cannot reach Club C through
+Club A, and no setting makes it possible.
 
 ## Context
 

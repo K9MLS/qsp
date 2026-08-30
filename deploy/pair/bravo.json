@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "server": {
+    "listen_address": "127.0.0.1:8092"
+  },
+  "database": {
+    "driver": "sqlite",
+    "dsn": "/tmp/qsp-pair/bravo.db",
+    "max_open_conns": 4,
+    "conn_max_lifetime": "1h",
+    "busy_timeout": "5s"
+  },
+  "logging": {
+    "level": "debug",
+    "format": "json"
+  },
+  "events": {
+    "history_size": 256,
+    "subscriber_buffer": 64
+  },
+  "dmr": {
+    "enabled": true,
+    "listen_address": "127.0.0.1:62042",
+    "password_file": "/tmp/qsp-pair/bravo.peer.pass",
+    "access": {
+      "registration": {
+        "mode": "deny",
+        "ids": []
+      },
+      "subscribers": {
+        "mode": "deny",
+        "ids": []
+      },
+      "talkgroups": {
+        "timeslot_1": {
+          "mode": "deny",
+          "ids": []
+        },
+        "timeslot_2": {
+          "mode": "deny",
+          "ids": []
+        }
+      }
+    },
+    "peer_timeout": "60s",
+    "login_timeout": "30s",
+    "max_peers": 4,
+    "subscriber_timeout": "2h",
+    "forwarding": false,
+    "bridges": [],
+    "schedule": [],
+    "triggers": [],
+    "join": {
+      "network_name": "QSP bravo",
+      "address": "127.0.0.1",
+      "talkgroups": [
+        {
+          "name": "Pair test",
+          "dialled": 9,
+          "timeslot": 2
+        }
+      ]
+    },
+    "upstreams": [
+      {
+        "name": "pair",
+        "protocol": "openbridge",
+        "enabled": true,
+        "address": "127.0.0.1:62045",
+        "listen_address": "127.0.0.1:62046",
+        "network_id": 3199001,
+        "passphrase_file": "/tmp/qsp-pair/pair.pass",
+        "export": [
+          {
+            "talkgroup": 9,
+            "timeslot": 2
+          }
+        ],
+        "import": [
+          {
+            "talkgroup": 9,
+            "timeslot": 2
+          }
+        ],
+        "stale_after": "4h"
+      }
+    ]
+  }
+}

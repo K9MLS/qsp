@@ -5,6 +5,54 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`deploy/pair` and `scripts/pair.sh` run two instances peered to each
+  other.** Every upstream path in this project is code that has never met a far
+  end: OpenBridge written from its specification, outbound peer mode from
+  ADR-0024, both exercised only by tests that supply their own other side. A
+  test that provides both halves of a conversation proves the halves agree, not
+  that either is right.
+
+  Two processes on loopback, ports nothing else uses, everything under `/tmp`,
+  and nothing touching the production instance. `docs/FEDERATION-TEST.md` says
+  what to watch and — more usefully — what it does not prove: no NAT, no MTU
+  limit, no jitter, and nothing at all about whether a radio opens its squelch
+  at the far end.
+
+  The pair exports and imports the same talkgroup on purpose. That is the
+  ordinary club configuration and the one that would loop, so it is the one
+  worth watching not loop with a real socket in between.
+
+- **`TestShippedExamplesAreValid` loads every configuration under `deploy/`.**
+  A broken example is worse than none: somebody following it has no reason to
+  doubt a file the project ships, so a typo is debugged as a fault in QSP.
+  Nothing read these files before. It found two faults in the pair
+  configurations on its first run.
+
+  **`TestThePairFacesItself`** reads both halves together, because OpenBridge
+  has no connection establishment and each end sends to an address agreed in
+  advance. A mismatched port pair produces a link reporting itself healthy while
+  carrying nothing in one direction.
+
+### Changed
+- **[ADR-0031](docs/adr/ADR-0031-loop-prevention.md) is amended before it was
+  ever implemented, because it overstated the hazard it was written for.** It
+  argued that loops were open and that no link should carry traffic until a
+  fingerprint scheme existed.
+
+  `routing.Core.route` already refuses to send a frame that arrived on a link to
+  any link, and `RouteFromUpstream` already documents why — a club exporting and
+  importing one talkgroup relays every frame from BrandMeister straight back to
+  BrandMeister — and already rejects the hop count the ADR considered, on the
+  grounds that it needs every participant to cooperate. That rule is stronger
+  than the one proposed: it does not detect loops, it makes them unformable.
+
+  The record was written after searching for `StreamID` and `sourceKey` and not
+  reading `route` past the point that answered them. What survives is duplicate
+  suppression — two links to one far network, or a far end reaching this
+  instance twice — which is real and much less urgent. The claim that peering
+  must wait is withdrawn, and the recommendation that federation stay shallow is
+  restated as what the code already enforces rather than as advice.
+
 - **The join page generates the DMRGateway block, and stops assuming a member
   runs nothing else.** Step one told every member to turn BrandMeister off. For
   a quarter of this club that is wrong: they follow it and lose a network they

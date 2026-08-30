@@ -40,4 +40,4 @@ conclusion.
 | [0028](ADR-0028-parrot.md) | Parrot replays bytes it never understood | Proposed |
 | [0029](ADR-0029-ipsc-from-capture.md) | IPSC is built from a capture, and the capture is the hard part | Proposed |
 | [0030](ADR-0030-radio-id-lookup.md) | Radio IDs are looked up one at a time, and QSP says who is asking | Proposed |
-| [0031](ADR-0031-loop-prevention.md) | A transmission is recognised by who sent it, not by where it arrived | Proposed |
+| [0031](ADR-0031-loop-prevention.md) | A transmission is recognised by who sent it, not by where it arrived | Proposed — amended |
