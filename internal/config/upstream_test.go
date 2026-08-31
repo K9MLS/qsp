@@ -519,3 +519,70 @@ func TestTheConfigurationThatStoppedALiveNetwork(t *testing.T) {
 		t.Fatalf("the configuration is refused again: %v", err)
 	}
 }
+
+// TestOneCallsignServesEveryLink.
+//
+// **UpstreamIdentity is per link, and only per link.** An instance with three
+// links stated its callsign three times with nothing keeping them consistent,
+// and the first peering an operator ever attempted had none of them — because
+// an instance with no links had no identity either.
+//
+// A station has one callsign and one position.
+func TestOneCallsignServesEveryLink(t *testing.T) {
+	c := withUpstreams(homebrewUpstream())
+	c.DMR.Identity = Identity{Callsign: "K9MLS", Latitude: 33.238, Longitude: -97.1134}
+	c.DMR.Upstreams[0].Identity = &UpstreamIdentity{}
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("a link with no callsign of its own was refused: %v", err)
+	}
+
+	got := c.DMR.Identity.Merge(*c.DMR.Upstreams[0].Identity)
+	if got.Callsign != "K9MLS" {
+		t.Errorf("the link announces %q rather than the instance's callsign", got.Callsign)
+	}
+	if got.Latitude != 33.238 {
+		t.Errorf("the link announces latitude %v rather than the instance's", got.Latitude)
+	}
+}
+
+// TestALinkMayDisagreeDeliberately.
+//
+// Per-link wins where it is set: an administrator who states something on one
+// link means it, and defaulting over the top would silently discard a choice.
+func TestALinkMayDisagreeDeliberately(t *testing.T) {
+	i := Identity{Callsign: "K9MLS", Location: "Denton, TX"}
+	got := i.Merge(UpstreamIdentity{Callsign: "K9MLS/P", Location: "Portable"})
+
+	if got.Callsign != "K9MLS/P" || got.Location != "Portable" {
+		t.Errorf("the instance's identity overwrote the link's: %+v", got)
+	}
+}
+
+// TestAnUnidentifiedHomebrewLinkIsRefused, because a blank callsign appears on
+// the far end's dashboard as an unidentified station.
+func TestAnUnidentifiedHomebrewLinkIsRefused(t *testing.T) {
+	c := withUpstreams(homebrewUpstream())
+	c.DMR.Identity = Identity{}
+	c.DMR.Upstreams[0].Identity = &UpstreamIdentity{}
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a link with no callsign anywhere was accepted")
+	}
+	if !strings.Contains(err.Error(), "identity.callsign") {
+		t.Errorf("the error does not explain: %v", err)
+	}
+}
+
+// TestOpenBridgeNeedsNoCallsign. It sends no configuration message and has no
+// dashboard to appear on; requiring one would refuse a working link over a
+// field it never transmits.
+func TestOpenBridgeNeedsNoCallsign(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Identity = Identity{}
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("an OpenBridge link was refused for having no callsign: %v", err)
+	}
+}

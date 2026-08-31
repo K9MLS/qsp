@@ -169,12 +169,22 @@ func (c Config) validateHomebrewUpstream(v *validator, field string, u Upstream,
 				"its path here; the password is never stored in this configuration")
 	}
 
-	if u.Identity == nil || strings.TrimSpace(u.Identity.Callsign) == "" {
+	// **Checked after the merge.** A station has one callsign, and this rule
+	// used to demand it again on every link — so an instance that had set
+	// dmr.identity.callsign was still refused, and a second rule elsewhere
+	// checking the merged value disagreed with this one. Two rules that do not
+	// know about each other is the fault that stopped a live network from
+	// starting once already.
+	var have UpstreamIdentity
+	if u.Identity != nil {
+		have = *u.Identity
+	}
+	if strings.TrimSpace(c.DMR.Identity.Merge(have).Callsign) == "" {
 		// A blank callsign appears on the far end's dashboard as an
 		// unidentified station.
 		v.add(field+".identity.callsign", "must not be empty for a homebrew link",
-			"the far end shows this to its own users; use the callsign of the station "+
-				"responsible for this link")
+			"set dmr.identity.callsign, which every link uses unless it says otherwise, "+
+				"or give this link one of its own")
 	}
 
 	if u.Identity != nil {

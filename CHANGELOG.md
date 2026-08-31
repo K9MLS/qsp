@@ -5,6 +5,35 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`dmr.identity` — one callsign and one position for the instance.**
+  `UpstreamIdentity` carries both on every link, so an instance with three links
+  stated its callsign three times with nothing keeping them consistent. Worse,
+  the peering console read only the links, so the first peering an operator ever
+  attempted had no callsign at all — on precisely the instance that has never
+  peered with anything.
+
+  A station has one callsign and one position. A link may still override any
+  field, and per-link wins where it is set: an administrator who states
+  something on one link means it, and defaulting over the top would silently
+  discard a deliberate choice.
+
+  **Decimal degrees**, matching Pi-Star, the DMR configuration message and every
+  dashboard in this ecosystem. A conversion at each boundary is where sign
+  errors live. Optional — an instance that would rather not publish a position
+  leaves them out.
+
+### Fixed
+- **Two callsign rules that did not know about each other.** The existing check
+  demanded a callsign on every homebrew link and would have refused an instance
+  that set `dmr.identity.callsign` once. It checks the merged value now, and the
+  duplicate rule added alongside it is gone rather than left to disagree — which
+  is the fault that stopped a live network from starting once already.
+
+  The rule also applies only to homebrew links. OpenBridge sends no
+  configuration message and has no dashboard to appear on; requiring a callsign
+  there would refuse a working link over a field it never transmits.
+
+### Added
 - **The peer table shows which talkgroups each peer is receiving.** ADR-0023
   named this as a consequence of building attachment at all: *"why can I not
   hear that talkgroup" is the most common question on any DMR network, and the

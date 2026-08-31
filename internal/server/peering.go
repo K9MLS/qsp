@@ -367,7 +367,17 @@ func decodeJSON(w http.ResponseWriter, log *slog.Logger, r *http.Request, into a
 // QSP, because an operator agreeing to peer has already decided who they are
 // dealing with.
 func linkCallsign(cfg config.Config) string {
+	// **The instance first.** This used to read only the links, so the first
+	// peering an operator ever attempted had no callsign to offer — on
+	// precisely the instance that has never peered with anything, which is
+	// every instance the first time.
+	if c := strings.TrimSpace(cfg.DMR.Identity.Callsign); c != "" {
+		return c
+	}
 	for _, u := range cfg.DMR.Upstreams {
+		if u.Identity == nil {
+			continue
+		}
 		if c := strings.TrimSpace(u.Identity.Callsign); c != "" {
 			return c
 		}

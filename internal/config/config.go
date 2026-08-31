@@ -140,6 +140,70 @@ type DMR struct {
 	Callsigns Callsigns `json:"callsigns"`
 	// Calls is how long a record of who transmitted is kept. See ADR-0033.
 	Calls Calls `json:"calls"`
+	// Identity is who this instance says it is.
+	Identity Identity `json:"identity"`
+}
+
+// Identity is what this instance says about itself to other networks.
+//
+// **It was per link, and only per link.** `UpstreamIdentity` carries a callsign
+// and a position on every upstream, so an instance with three links stated its
+// callsign three times with nothing keeping them consistent — and the first
+// peering an operator ever attempted had none of them, because an instance with
+// no links has no identity either.
+//
+// A station has one callsign and one position. A link may still override any
+// field, for the case where a far end needs something different, but nothing has
+// to be repeated to be true.
+type Identity struct {
+	// Callsign is the licensed identity of whoever runs this instance. A blank
+	// one makes QSP appear on somebody else's dashboard as an unidentified
+	// station, which is rude and unhelpful in equal measure.
+	Callsign string `json:"callsign,omitempty"`
+	// Latitude and Longitude are decimal degrees.
+	//
+	// **Decimal degrees rather than a grid square**, because that is what
+	// Pi-Star, the DMR configuration message and every dashboard in this
+	// ecosystem already carry — and a conversion at every boundary is where
+	// sign errors live. Optional: an instance that would rather not publish a
+	// position leaves them out and is not plotted.
+	Latitude  float64 `json:"latitude,omitempty"`
+	Longitude float64 `json:"longitude,omitempty"`
+	// Height is metres above ground, for a link that asks.
+	Height int `json:"height,omitempty"`
+	// Location and Description are free text shown on a far end's dashboard.
+	Location    string `json:"location,omitempty"`
+	Description string `json:"description,omitempty"`
+	// URL is shown beside the station on a far end's dashboard.
+	URL string `json:"url,omitempty"`
+}
+
+// Merge fills empty fields of a link's identity from the instance's.
+//
+// **Per-link wins where it is set.** An administrator who states something on
+// one link means it, and defaulting over the top of it would silently discard a
+// deliberate choice — the same reasoning that makes static and dynamic
+// attachments a union rather than a precedence.
+func (i Identity) Merge(u UpstreamIdentity) UpstreamIdentity {
+	if strings.TrimSpace(u.Callsign) == "" {
+		u.Callsign = i.Callsign
+	}
+	if u.Latitude == 0 && u.Longitude == 0 {
+		u.Latitude, u.Longitude = i.Latitude, i.Longitude
+	}
+	if u.Height == 0 {
+		u.Height = i.Height
+	}
+	if strings.TrimSpace(u.Location) == "" {
+		u.Location = i.Location
+	}
+	if strings.TrimSpace(u.Description) == "" {
+		u.Description = i.Description
+	}
+	if strings.TrimSpace(u.URL) == "" {
+		u.URL = i.URL
+	}
+	return u
 }
 
 // Calls configures the record of completed transmissions.

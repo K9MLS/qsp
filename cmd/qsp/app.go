@@ -1175,7 +1175,7 @@ func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hb
 			err  error
 		)
 		if u.HomebrewProtocol() {
-			link, err = buildPeerLink(log, u, receive)
+			link, err = buildPeerLink(log, u, cfg.DMR.Identity, receive)
 		} else {
 			link, err = buildOpenBridgeLink(log, u, receive)
 		}
@@ -1217,7 +1217,7 @@ func buildOpenBridgeLink(log *slog.Logger, u config.Upstream, receive func(strin
 // building the capability did not change it. QSP does not detect the far end,
 // because carrying one network's hostnames in the codebase is what §0 refused
 // for talkgroup lists and for the same reasons.
-func buildPeerLink(log *slog.Logger, u config.Upstream, receive func(string, hbp.Data)) (upstream.Connection, error) {
+func buildPeerLink(log *slog.Logger, u config.Upstream, id config.Identity, receive func(string, hbp.Data)) (upstream.Connection, error) {
 	password, err := config.LoadPeerPassword(os.ReadFile, u.PasswordFile)
 	if err != nil {
 		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
@@ -1235,22 +1235,27 @@ func buildPeerLink(log *slog.Logger, u config.Upstream, receive func(string, hbp
 			"it to its own users", u.Name)
 	}
 
+	// **Filled from the instance's identity where the link says nothing.** A
+	// station has one callsign and one position; stating them once per link was
+	// three chances to disagree with itself.
+	ident := id.Merge(*u.Identity)
+
 	hb, err := homebrew.New(homebrew.Config{
 		Name:       u.Name,
 		RepeaterID: hbp.RepeaterID(u.RepeaterID),
 		Password:   password,
 		Identity: homebrew.Identity{
-			Callsign:    u.Identity.Callsign,
-			RXFrequency: u.Identity.RXFrequency,
-			TXFrequency: u.Identity.TXFrequency,
-			ColourCode:  u.Identity.ColourCode,
-			Latitude:    u.Identity.Latitude,
-			Longitude:   u.Identity.Longitude,
-			Height:      u.Identity.Height,
-			Location:    u.Identity.Location,
-			Description: u.Identity.Description,
-			URL:         u.Identity.URL,
-			Timeslots:   u.Identity.Timeslots,
+			Callsign:    ident.Callsign,
+			RXFrequency: ident.RXFrequency,
+			TXFrequency: ident.TXFrequency,
+			ColourCode:  ident.ColourCode,
+			Latitude:    ident.Latitude,
+			Longitude:   ident.Longitude,
+			Height:      ident.Height,
+			Location:    ident.Location,
+			Description: ident.Description,
+			URL:         ident.URL,
+			Timeslots:   ident.Timeslots,
 			SoftwareID:  "QSP " + buildVersion(),
 		},
 	})
