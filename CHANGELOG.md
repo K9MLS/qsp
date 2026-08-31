@@ -72,6 +72,35 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **The links page rendered its form as browser defaults.** White boxes on a
+  dark background, labels sitting inline, the button jammed against the
+  paragraph above it. The `.picker` and `.config` rules existed in `join.css`,
+  which that page does not load.
+
+  `TestEveryClassTheScriptsUseIsStyled` passed throughout, because the classes
+  *are* styled — it never asked whether the page using them can see the file.
+  Checking that a rule exists somewhere is not checking that it reaches the
+  markup, which is the same fault as asserting a mechanism instead of an
+  outcome.
+
+  `TestEveryClassIsStyledBySomethingThePageLoads` reads each page's own `<link>`
+  tags and checks every class against only those stylesheets. It found `.config`
+  on its first run, which I had not noticed.
+
+### Added
+- **Guidance on the peering page**, which asked for a network ID, a listen
+  address and a talkgroup with nothing explaining any of them.
+
+  Both panels have hints now, covering what the page cannot say in a label: that
+  an offer is not a connection and nothing happens until the other operator
+  accepts, and that a passphrase arriving in the same email as its invitation
+  should be replaced.
+
+  Every field has a placeholder showing the shape of an answer **and** a note
+  that stays while it is being typed into. A placeholder is a hint and never a
+  label: it disappears at the moment somebody is checking whether they got the
+  format right.
+
 - **The audit trail never reached the database.** Migration 0002 created
   `audit_events` with two indexes, the schema reached version 4 carrying it,
   SECURITY.md said the trail records who did what and that roles are

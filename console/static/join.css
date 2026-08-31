@@ -338,57 +338,12 @@
 
 /* ---- The generated block --------------------------------------------- */
 
-.picker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-  margin: var(--space-4) 0 var(--space-3);
-}
+/* The picker and field rules live in console.css, which the join page also
+   loads. They were duplicated here and only here, which is why the links page
+   rendered its inputs as browser defaults. */
 
-.picker__field {
-  display: grid;
-  gap: var(--space-1);
-}
-
-.picker__label {
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--color-foreground-subtle);
-}
-
-.picker__input {
-  min-height: var(--target-min);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--color-border-control);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-sunken);
-  color: var(--color-foreground);
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-}
-
-/* Wrapping a configuration file would put a rule on two lines and invite a
-   member to paste it as two, so this scrolls instead. */
-.config {
-  overflow-x: auto;
-  margin: 0 0 var(--space-3);
-  padding: var(--space-4);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-sunken);
-  color: var(--color-foreground);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  line-height: var(--leading-normal);
-  white-space: pre;
-}
-
-.config__copied {
-  margin-left: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--color-foreground-muted);
-}
+/* The generated-block rules live in console.css, which the links page also
+   needs them for. */
 
 /* Not styled as warnings. Every one of these is an ordinary thing to check,
    and painting four of them amber on a page a member reads once teaches them

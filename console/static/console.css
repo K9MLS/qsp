@@ -1509,3 +1509,96 @@ select.field__input {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
 }
+
+/* ---- Fields an administrator fills in --------------------------------- */
+
+/* **These rules lived only in join.css.** The links page loads console.css, so
+   none of them applied to it: the inputs rendered as browser defaults — white
+   boxes on a dark page — the labels sat inline because the grid never ran, and
+   the button jammed against the paragraph above because nothing gave it a
+   margin.
+
+   TestEveryClassTheScriptsUseIsStyled passed throughout, because the classes
+   *are* styled. It never asked whether the page using them loads the file. */
+.picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin: var(--space-4) 0 var(--space-5);
+}
+
+.picker__field {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.picker__label {
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.picker__input {
+  min-height: var(--target-min);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-control);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
+}
+
+.picker__input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* A placeholder is a hint and never a label.
+   It disappears the moment somebody starts typing, which is exactly when they
+   are checking whether the format is right, so it shows the *shape* of an
+   answer while .field__note carries anything that must still be readable
+   afterwards. */
+.picker__input::placeholder {
+  color: var(--color-foreground-subtle);
+  opacity: 1;
+}
+
+/* Stays while the field is being typed into, which is the whole point. */
+.field__note {
+  max-width: 44ch;
+  margin: var(--space-1) 0 0;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+/* A button directly after a paragraph or a field row needs air. It had none. */
+.panel__body > .button {
+  margin-top: var(--space-2);
+}
+
+/* Wrapping a configuration file would put a rule on two lines and invite a
+   member to paste it as two, so this scrolls instead. */
+.config {
+  overflow-x: auto;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre;
+}
+
+.config__copied {
+  margin-left: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+}
+

@@ -1102,13 +1102,14 @@ func TestTheJoinPageDoesNotAssumeOneNetwork(t *testing.T) {
 // lines, and the second one is a syntax error in a file that takes their
 // hotspot off every network at once when it fails to parse.
 func TestTheGeneratedBlockIsNotWrapped(t *testing.T) {
-	css, err := assets.ReadFile("static/join.css")
+	// In console.css since both the join page and the links page render one.
+	css, err := assets.ReadFile("static/console.css")
 	if err != nil {
-		t.Fatalf("reading join.css: %v", err)
+		t.Fatalf("reading console.css: %v", err)
 	}
 	at := strings.Index(string(css), ".config {")
 	if at < 0 {
-		t.Fatal("join.css does not style the generated block")
+		t.Fatal("no stylesheet styles the generated block")
 	}
 	rule := string(css)[at:]
 	if end := strings.Index(rule, "}"); end >= 0 {
@@ -1302,5 +1303,72 @@ func TestThePassphraseIsNotInTheInvitationBox(t *testing.T) {
 	// screen is one somebody else read.
 	if !strings.Contains(html, `id="accept-pass" type="password"`) {
 		t.Error("the passphrase is typed into a plain text field")
+	}
+}
+
+// TestEveryClassIsStyledBySomethingThePageLoads.
+//
+// **`TestEveryClassTheScriptsUseIsStyled` passed while the links page rendered
+// its inputs as white boxes on a dark background.** The `.picker` rules existed
+// — in `join.css`, which that page does not load. The class was styled; the page
+// could not see it.
+//
+// Checking that a rule exists somewhere is not checking that it reaches the
+// markup using it. Same fault as asserting a mechanism instead of an outcome.
+func TestEveryClassIsStyledBySomethingThePageLoads(t *testing.T) {
+	sheets := map[string]string{}
+	for _, name := range []string{"tokens.css", "console.css", "join.css"} {
+		body, err := assets.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		sheets[name] = string(body)
+	}
+
+	class := regexp.MustCompile(`class="([^"]+)"`)
+	link := regexp.MustCompile(`<link[^>]+href="/([^"]+\.css)"`)
+
+	pages, err := assets.ReadDir("static")
+	if err != nil {
+		t.Fatalf("listing static: %v", err)
+	}
+
+	var checked int
+	for _, entry := range pages {
+		if !strings.HasSuffix(entry.Name(), ".html") {
+			continue
+		}
+		body, err := assets.ReadFile("static/" + entry.Name())
+		if err != nil {
+			t.Fatalf("reading %s: %v", entry.Name(), err)
+		}
+		html := string(body)
+
+		// What this page can actually see.
+		var visible string
+		for _, m := range link.FindAllStringSubmatch(html, -1) {
+			visible += sheets[m[1]]
+		}
+		if visible == "" {
+			continue
+		}
+		checked++
+
+		for _, m := range class.FindAllStringSubmatch(html, -1) {
+			for _, name := range strings.Fields(m[1]) {
+				// Modifiers and state classes are applied by scripts and may
+				// legitimately have no rule of their own.
+				if strings.Contains(name, "--") {
+					continue
+				}
+				if !strings.Contains(visible, "."+name) {
+					t.Errorf("%s uses .%s, which none of its stylesheets defines",
+						entry.Name(), name)
+				}
+			}
+		}
+	}
+	if checked < 5 {
+		t.Fatalf("only %d pages were checked; this has gone blind", checked)
 	}
 }

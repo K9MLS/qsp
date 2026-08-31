@@ -100,7 +100,12 @@
         <div class="panel__head">
           <div class="panel__heading">
             <h2 class="panel__title">Offer a peering</h2>
+            <button class="hint" type="button" aria-controls="hint-offer"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
           </div>
+        </div>
+        <div class="panel__disclosure" id="hint-offer">
+          <p class="hint__text">A peering carries traffic between this network and another club's. Neither end can carry anything until both administrators hold the same passphrase, so <strong>this generates an offer, not a connection</strong> — nothing happens until the other operator accepts it and sends you their own details back. The passphrase is shown once here and is not stored anywhere you can read it again.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -112,7 +117,9 @@
           <div class="picker">
             <label class="picker__field">
               <span class="picker__label">Talkgroup</span>
-              <input class="picker__input" id="offer-tg" type="text" inputmode="numeric" value="2">
+              <input class="picker__input" id="offer-tg" type="text" inputmode="numeric"
+                     value="2" placeholder="2">
+              <p class="field__note">The talkgroup to carry both ways.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">Timeslot</span>
@@ -123,11 +130,17 @@
             </label>
             <label class="picker__field">
               <span class="picker__label">They send to</span>
-              <input class="picker__input" id="offer-address" type="text" placeholder="host:port">
+              <input class="picker__input" id="offer-address" type="text"
+                     placeholder="qsp.example.com:62045">
+              <p class="field__note">Where their server sends. Your public name
+                or address, and a UDP port you have open.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">We announce</span>
-              <input class="picker__input" id="offer-netid" type="text" inputmode="numeric">
+              <input class="picker__input" id="offer-netid" type="text" inputmode="numeric"
+                     placeholder="3132910">
+              <p class="field__note">The ID this network announces on the link.
+                Your own DMR ID is the usual choice.</p>
             </label>
           </div>
           <button class="button" id="offer" type="button">Generate an invitation</button>
@@ -148,7 +161,12 @@
         <div class="panel__head">
           <div class="panel__heading">
             <h2 class="panel__title">Accept a peering</h2>
+            <button class="hint" type="button" aria-controls="hint-accept"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
           </div>
+        </div>
+        <div class="panel__disclosure" id="hint-accept">
+          <p class="hint__text">Paste what the other administrator sent you. Reading it shows who is asking and what they propose to exchange; <strong>nothing is written until you agree to it</strong>. The passphrase should have arrived by a different route from the invitation — if they came in the same email, ask for a new one.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -159,24 +177,37 @@
             <label class="picker__field">
               <span class="picker__label">Link name</span>
               <input class="picker__input" id="accept-name" type="text" placeholder="cameron">
+              <p class="field__note">What you will call this link. Yours alone;
+                the other end never sees it.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">Talkgroup</span>
-              <input class="picker__input" id="accept-tg" type="text" inputmode="numeric" value="2">
+              <input class="picker__input" id="accept-tg" type="text" inputmode="numeric"
+                     value="2" placeholder="2">
+              <p class="field__note">In your own numbering. Nothing is
+                renumbered.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">We listen on</span>
-              <input class="picker__input" id="accept-listen" type="text" placeholder="host:port">
+              <input class="picker__input" id="accept-listen" type="text"
+                     placeholder="0.0.0.0:62045">
+              <p class="field__note">Where this server receives. The port must
+                reach you from the internet.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">We announce</span>
-              <input class="picker__input" id="accept-netid" type="text" inputmode="numeric">
+              <input class="picker__input" id="accept-netid" type="text" inputmode="numeric"
+                     placeholder="3132910">
+              <p class="field__note">The ID this network announces. It must
+                differ from theirs.</p>
             </label>
           </div>
           <p class="picker__label">Invitation</p>
-          <textarea class="picker__input picker__input--wide" id="accept-token" rows="3"></textarea>
+          <textarea class="picker__input picker__input--wide" id="accept-token" rows="3"
+                    placeholder="QSP-PEER-1.…"></textarea>
           <p class="picker__label">Passphrase</p>
-          <input class="picker__input picker__input--wide" id="accept-pass" type="password">
+          <input class="picker__input picker__input--wide" id="accept-pass" type="password"
+                 placeholder="sent to you separately">
           <button class="button" id="accept" type="button">Read this invitation</button>
           <div id="accept-confirm" hidden>
             <p class="link__summary" id="accept-summary"></p>
