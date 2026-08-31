@@ -130,6 +130,33 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **The dropped counter could not be investigated without destroying it.**
+  Production showed `2` dropped, painted amber, unchanged across three stations
+  and thousands of frames. The reason for each drop is logged at **debug**;
+  production runs at **info**; raising the level needs a restart, and the counter
+  reads *since start*. So an operator could not see why a number was what it was
+  without resetting the number.
+
+  It was almost certainly the MSTNAK rebind path of ADR-0011 — QSP working
+  exactly as intended — and it was unverifiable.
+
+  **The counter is two counters now.** A datagram QSP *answered* is the protocol
+  working: a keepalive from a peer that has not registered is answered so the
+  peer logs in again. A datagram it *ignored* is traffic nobody asked for.
+  Counting them together produced one permanently non-zero amber number that
+  looked like a fault, and a permanently amber number meaning "correct" teaches
+  an operator to ignore amber — which `console.css` already argues about
+  spending it on ordinary conditions. Only *ignored* wears amber now.
+
+  **And the reasons are kept in memory**, the last twenty, shown beneath the
+  traffic panel with the time, whether QSP answered, and what the master said
+  verbatim. No restart, no log level, no debugging a number by deleting it.
+
+  The debug log level stays as it was: a master on the public internet is
+  scanned constantly, and warning on every stray packet would bury the signal.
+  The fix was never the log level — it was that the counter had to carry its own
+  explanation.
+
 - **A test that could not run where it was written.**
   `TestLastHeardSurvivesARestart` lived in `cmd/qsp` and asserted through the
   DMR listener, which `testConfig` never builds because `config.Default()` has

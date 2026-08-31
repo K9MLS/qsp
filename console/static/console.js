@@ -458,11 +458,19 @@
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
+    renderDrops(t.recent_drops || []);
     trafficBody.innerHTML =
       '<div class="metrics">' +
       metric(inCount, "datagrams in") +
       metric(t.datagrams_out || 0, "datagrams out") +
-      metric(t.dropped || 0, "dropped", (t.dropped || 0) > 0 ? "metric--warn" : "metric--muted") +
+      /* **Two numbers, because they mean different things.** A refusal QSP
+       * answered is the protocol working — a keepalive from a peer that has not
+       * registered is answered so it logs in again — and counting it beside a
+       * stray port scan produced one permanently amber number that looked like
+       * a fault and was not. Only traffic nobody asked for gets amber, and even
+       * then only the count; the reasons are below. */
+      metric(t.refused || 0, "refused", "metric--muted") +
+      metric(t.ignored || 0, "ignored", (t.ignored || 0) > 0 ? "metric--warn" : "metric--muted") +
       metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
       metric(t.frames_forwarded || 0, "forwarded", (t.frames_forwarded || 0) === 0 ? "metric--muted" : "") +
       metric(t.collisions || 0, "collisions", (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
@@ -749,3 +757,40 @@
   window.setInterval(refreshPeers, PEER_POLL_MS);
   connect();
 })();
+
+/* The reasons behind the refused and ignored counts.
+ *
+ * **A counter an operator cannot investigate only generates worry.** The reason
+ * for a drop is logged at debug, production runs at info, and raising the level
+ * needs a restart — which resets the counter. So an operator could not see why a
+ * number was what it was without destroying the number. These are the last
+ * twenty, kept in memory, needing no restart and no log level. */
+function renderDrops(notes) {
+  var el = document.getElementById("drop-reasons");
+  if (!el) {
+    return;
+  }
+  if (notes.length === 0) {
+    el.innerHTML = "";
+    el.hidden = true;
+    return;
+  }
+
+  var rows = "";
+  for (var i = 0; i < notes.length; i++) {
+    var n = notes[i];
+    rows +=
+      "<li><span class=\"drop__when\">" +
+      escapeText(new Date(n.at).toLocaleTimeString()) +
+      "</span> " +
+      '<span class="pill pill--' + (n.answered ? "good" : "warn") + '">' +
+      (n.answered ? "answered" : "ignored") +
+      "</span> " +
+      escapeText(n.reason) +
+      "</li>";
+  }
+  el.innerHTML =
+    '<p class="drop__title">Why datagrams were refused</p>' +
+    '<ul class="drop__list">' + rows + "</ul>";
+  el.hidden = false;
+}

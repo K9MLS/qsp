@@ -1632,3 +1632,41 @@ select.field__input {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
+
+/* ---- Why datagrams were refused --------------------------------------- */
+
+/* **A counter an operator cannot investigate only generates worry.** The reason
+   for a drop is logged at debug and production runs at info, so raising the
+   level to find out needs a restart — which resets the counter. These are the
+   last twenty, kept in memory, and they need neither. */
+.drop {
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.drop__title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.drop__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.drop__list li {
+  margin-bottom: var(--space-2);
+}
+
+.drop__when {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+}

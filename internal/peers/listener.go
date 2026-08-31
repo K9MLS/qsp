@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -116,14 +117,21 @@ type Listener struct {
 	conn *net.UDPConn
 
 	// Observability counters, read by the health check from other goroutines.
-	received  atomic.Uint64
-	sent      atomic.Uint64
-	dropped   atomic.Uint64
-	frames    atomic.Uint64
-	forwarded atomic.Uint64
-	collided  atomic.Uint64
-	peers     atomic.Int64
-	writeErr  atomic.Uint64
+	received atomic.Uint64
+	sent     atomic.Uint64
+	dropped  atomic.Uint64
+	refused  atomic.Uint64
+	ignored  atomic.Uint64
+	// recentDrops explains the counters without a restart. Guarded by its own
+	// mutex because it is written from the serve goroutine and read by the
+	// console.
+	dropMu      sync.Mutex
+	recentDrops []DropNote
+	frames      atomic.Uint64
+	forwarded   atomic.Uint64
+	collided    atomic.Uint64
+	peers       atomic.Int64
+	writeErr    atomic.Uint64
 
 	// scheduleState is the set of bridges the schedule last said should be
 	// enabled, so a change can be detected without rebuilding every sweep.
@@ -317,6 +325,18 @@ func (l *Listener) handle(datagram []byte, from netip.AddrPort) {
 
 	if out.Dropped != "" {
 		l.dropped.Add(1)
+		// **A datagram QSP answered is a different thing from one it ignored.**
+		// A keepalive from a peer that has not registered is refused and
+		// answered with MSTNAK so the peer logs in again — the protocol working
+		// exactly as ADR-0011 intends — and counting it beside a stray scan
+		// produces a permanently non-zero number that looks like a fault and
+		// is not.
+		if len(out.Responses) > 0 {
+			l.refused.Add(1)
+		} else {
+			l.ignored.Add(1)
+		}
+
 		// Debug rather than warn: a busy master on the public internet is
 		// scanned constantly, and warning on every stray packet would bury the
 		// signal. Refusals that an operator needs to see, such as a failed
@@ -325,6 +345,13 @@ func (l *Listener) handle(datagram []byte, from netip.AddrPort) {
 			slog.String("from", from.String()),
 			slog.String("reason", out.Dropped),
 		)
+
+		// **Kept in memory as well as logged.** The reason was written only at
+		// debug, production runs at info, and raising the level needs a restart
+		// which resets the counter — so an operator could not see why a number
+		// was what it was without destroying the number. Twenty is enough to
+		// explain a small count and too few to be a log.
+		l.noteDrop(from, out.Dropped, len(out.Responses) > 0)
 	}
 
 	for _, r := range out.Responses {
@@ -751,9 +778,14 @@ func (l *Listener) publish(evs []Event) {
 
 // Stats is a snapshot of listener counters.
 type Stats struct {
-	Received        uint64
-	Sent            uint64
+	Received uint64
+	Sent     uint64
+	// Dropped is every datagram refused, and Refused and Ignored are the two
+	// kinds. A refusal QSP answered is the protocol working; one it ignored is
+	// traffic nobody asked for.
 	Dropped         uint64
+	Refused         uint64
+	Ignored         uint64
 	Frames          uint64
 	Forwarded       uint64
 	Collisions      uint64
@@ -775,6 +807,8 @@ func (l *Listener) Stats() Stats {
 		Received:        l.received.Load(),
 		Sent:            l.sent.Load(),
 		Dropped:         l.dropped.Load(),
+		Refused:         l.refused.Load(),
+		Ignored:         l.ignored.Load(),
 		Frames:          l.frames.Load(),
 		Forwarded:       l.forwarded.Load(),
 		Collisions:      l.collided.Load(),
@@ -924,4 +958,50 @@ func (l *Listener) storeCall(c calls.Call) {
 		l.log.Warn("cannot record a call in the history",
 			logging.PeerID(c.Source), "error", err)
 	}
+}
+
+// DropNote is one refused datagram, kept so a counter can explain itself.
+type DropNote struct {
+	// At is when it arrived, in UTC.
+	At time.Time `json:"at"`
+	// From is the source address.
+	From string `json:"from"`
+	// Reason is what the master said, verbatim.
+	Reason string `json:"reason"`
+	// Answered reports whether QSP replied, which distinguishes the protocol
+	// working from traffic nobody asked for.
+	Answered bool `json:"answered"`
+}
+
+// maxDropNotes bounds the explanation.
+//
+// Twenty is enough to account for a small count — the number an operator
+// actually questions — and too few to become a log by accident.
+const maxDropNotes = 20
+
+func (l *Listener) noteDrop(from netip.AddrPort, reason string, answered bool) {
+	l.dropMu.Lock()
+	defer l.dropMu.Unlock()
+
+	l.recentDrops = append(l.recentDrops, DropNote{
+		At:       time.Now().UTC(),
+		From:     from.String(),
+		Reason:   reason,
+		Answered: answered,
+	})
+	if len(l.recentDrops) > maxDropNotes {
+		l.recentDrops = l.recentDrops[len(l.recentDrops)-maxDropNotes:]
+	}
+}
+
+// RecentDrops returns the most recent refused datagrams, newest first.
+func (l *Listener) RecentDrops() []DropNote {
+	l.dropMu.Lock()
+	defer l.dropMu.Unlock()
+
+	out := make([]DropNote, len(l.recentDrops))
+	for i, n := range l.recentDrops {
+		out[len(l.recentDrops)-1-i] = n
+	}
+	return out
 }

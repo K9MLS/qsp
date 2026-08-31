@@ -106,6 +106,21 @@ type Traffic struct {
 	DatagramsOut uint64 `json:"datagrams_out"`
 	// Dropped is datagrams refused, each for a logged reason.
 	Dropped uint64 `json:"dropped"`
+	// Refused is the subset QSP answered, and Ignored the subset it did not.
+	//
+	// **A refusal QSP answered is the protocol working.** A keepalive from a
+	// peer that has not registered is answered with MSTNAK so the peer logs in
+	// again, which is what ADR-0011 intends — and counting it beside a stray
+	// port scan produced a permanently non-zero number that looked like a fault
+	// and was not.
+	Refused uint64 `json:"refused"`
+	Ignored uint64 `json:"ignored"`
+	// RecentDrops explains those counters without a restart.
+	//
+	// The reason for a drop is logged at debug, production runs at info, and
+	// raising the level needs a restart — which resets the counter. An operator
+	// could not see why a number was what it was without destroying the number.
+	RecentDrops []peers.DropNote `json:"recent_drops,omitempty"`
 	// FramesAccepted is voice frames accepted from registered peers.
 	FramesAccepted uint64 `json:"frames_accepted"`
 	// FramesForwarded is frames relayed to another peer.

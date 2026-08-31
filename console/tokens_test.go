@@ -1497,3 +1497,45 @@ func TestTheCallRecordIsReadable(t *testing.T) {
 		}
 	}
 }
+
+// TestTheDroppedCounterExplainsItself.
+//
+// **An operator could not see why a number was what it was without destroying
+// the number.** Production showed 2 dropped, painted amber, unchanged across
+// three stations and thousands of frames. The reason for each drop is logged at
+// debug; production runs at info; raising the level requires a restart, and the
+// counter reads since start.
+//
+// It was almost certainly the MSTNAK rebind of ADR-0011 — QSP working — and it
+// was unverifiable. A permanently amber number meaning "correct" teaches an
+// operator to ignore amber, which console.css already argues about spending it
+// on ordinary conditions.
+func TestTheDroppedCounterExplainsItself(t *testing.T) {
+	script, err := assets.ReadFile("static/console.js")
+	if err != nil {
+		t.Fatalf("reading console.js: %v", err)
+	}
+	src := string(script)
+
+	// Two counters, because a refusal QSP answered and a stray scan are not the
+	// same event.
+	for _, want := range []string{"t.refused", "t.ignored", "recent_drops"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("console.js does not use %s", want)
+		}
+	}
+
+	// Only traffic nobody asked for may wear amber.
+	if strings.Contains(src, `metric(t.dropped || 0, "dropped", (t.dropped || 0) > 0 ? "metric--warn"`) {
+		t.Error("a single dropped counter is still painted amber, so the protocol working " +
+			"looks like a fault")
+	}
+
+	page, err := assets.ReadFile("static/index.html")
+	if err != nil {
+		t.Fatalf("reading index.html: %v", err)
+	}
+	if !strings.Contains(string(page), `id="drop-reasons"`) {
+		t.Error("the overview has nowhere to show why datagrams were refused")
+	}
+}
