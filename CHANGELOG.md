@@ -5,6 +5,41 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **Completed calls are kept, so last heard survives a restart.** It held fifty
+  in memory and lost them on every deploy. That is a display and it worked as
+  one — until an operator named the use it was actually being put to: **a net
+  control station recovering a check-in they missed.**
+
+  That is a record, and it is the only one. Nobody writes down twenty callsigns
+  in real time as a backup for software that already saw every one of them. So
+  it has to hold a whole net, survive the restart that follows the evening, and
+  be readable tomorrow.
+
+  One row per completed call, never per frame: a busy club evening is a few
+  hundred rows and SQLite does not notice. **The in-memory ring stays** — it
+  answers what is happening now, at memory speed, polled every few seconds,
+  which is not a question worth a query.
+
+  `dmr.calls.retain` defaults to **30 days**, and retention is by age rather
+  than by count because the question a club asks is what happened at Tuesday's
+  net — a count means a busy Saturday silently erases it. **Zero keeps
+  nothing**, which is a real answer for a club that would rather not hold a
+  record of who transmitted when, and the configuration should be able to say so
+  rather than making everybody keep a month.
+
+  Pruned at startup and six-hourly after, not on every write: deleting on each
+  insert makes every transmission pay for the policy. A failed write costs the
+  record and not the display, because the ring keeps the call regardless and a
+  member transmitting is not the moment to fail loudly at somebody who cannot
+  act on it.
+
+  No audio is stored. QSP carries bursts it never decodes, and a record of who
+  spoke is not a recording of what they said.
+
+  [ADR-0033](docs/adr/ADR-0033-last-heard-is-a-record.md) and migration 0005.
+  **The console has no view of this yet** — the page that reads a net back to
+  net control is separate work, and the feature is not finished until it exists.
+
 - **A peering can be agreed from the console.** `internal/peering` had the
   invitation format and no page used it; a link was still a configuration edit,
   which is how one took a live network down.

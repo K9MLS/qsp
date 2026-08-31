@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
 )
 
 // testConfig returns a configuration safe to build an app from.
@@ -627,5 +629,110 @@ func TestTheAuditTrailReachesTheDatabase(t *testing.T) {
 	}
 	if !strings.Contains(detail, "kept") {
 		t.Errorf("redaction removed a value that was not sensitive: %s", detail)
+	}
+}
+
+// TestACompletedCallSurvivesARestart.
+//
+// **The last-heard list held fifty calls in memory and lost them on restart.**
+// That is a display and it works as one — until a net control station uses it to
+// recover a check-in they missed, which is the use it was actually being put
+// to. Then it is the only record of who was on the net, and it has to survive
+// the deploy that follows the evening. See ADR-0033.
+func TestACompletedCallSurvivesARestart(t *testing.T) {
+	cfg := testConfig(t)
+
+	a, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if a.callStore == nil || !a.callStore.Enabled() {
+		t.Fatal("no call history is kept despite a registered driver and a retention window")
+	}
+
+	started := time.Now().UTC().Add(-30 * time.Second)
+	call := calls.Call{
+		Key:     calls.Key{Peer: 3132910, Stream: 889716896, Timeslot: hbp.Timeslot2},
+		Source:  3132910,
+		Target:  2,
+		Group:   true,
+		Voice:   true,
+		Frames:  148,
+		Started: started,
+		Ended:   started.Add(3 * time.Second),
+	}
+	if err := a.callStore.Record(context.Background(), call); err != nil {
+		t.Fatalf("recording: %v", err)
+	}
+	if err := a.shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+
+	// A second instance against the same database is what a deploy looks like.
+	b, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	defer func() { _ = b.shutdown(context.Background()) }()
+
+	got, err := b.callStore.Since(context.Background(), started.Add(-time.Minute), 10)
+	if err != nil {
+		t.Fatalf("reading history: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("history holds %d calls after a restart; the evening is gone", len(got))
+	}
+	if got[0].Source != 3132910 || got[0].Target != 2 || !got[0].Voice {
+		t.Errorf("the call came back wrong: %+v", got[0])
+	}
+	if got[0].Frames != 148 {
+		t.Errorf("frame count is %d, not 148", got[0].Frames)
+	}
+}
+
+// TestRetentionIsByAgeAndCanBeNothing.
+//
+// By age rather than count, because the question a club asks is "what happened
+// at Tuesday's net" — a count means a busy Saturday silently erases it. And zero
+// keeps nothing, which is a real answer for a club that would rather not hold a
+// record of who transmitted when.
+func TestRetentionIsByAgeAndCanBeNothing(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.DMR.Calls.Retain = config.Duration(time.Hour)
+
+	a, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	defer func() { _ = a.shutdown(context.Background()) }()
+
+	now := time.Now().UTC()
+	for _, age := range []time.Duration{10 * time.Minute, 3 * time.Hour} {
+		start := now.Add(-age)
+		if err := a.callStore.Record(context.Background(), calls.Call{
+			Key:     calls.Key{Peer: 1, Stream: hbp.StreamID(age), Timeslot: hbp.Timeslot2},
+			Source:  3132910,
+			Target:  2,
+			Started: start,
+			Ended:   start.Add(time.Second),
+		}); err != nil {
+			t.Fatalf("recording: %v", err)
+		}
+	}
+
+	n, err := a.callStore.Prune(context.Background(), now)
+	if err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("pruning removed %d calls, want the one outside the window", n)
+	}
+
+	left, err := a.callStore.Since(context.Background(), now.Add(-24*time.Hour), 10)
+	if err != nil {
+		t.Fatalf("reading: %v", err)
+	}
+	if len(left) != 1 {
+		t.Errorf("%d calls survived a one-hour window", len(left))
 	}
 }

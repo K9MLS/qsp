@@ -82,6 +82,14 @@ type ListenerConfig struct {
 	// It is owned by the serve goroutine, like Master, and must not be touched
 	// by the caller after Start.
 	Calls *calls.Tracker
+	// CallStore keeps completed calls beyond the life of the process.
+	// Optional; nil keeps only the in-memory list.
+	//
+	// The ring buffer is a display and this is the record. A net control
+	// station recovering a check-in they missed needs the second, and fifty
+	// entries in memory survive neither the evening nor the deploy that
+	// follows it. See ADR-0033.
+	CallStore *calls.Store
 	// Parrot records and replays on one talkgroup. Optional; nil disables it.
 	//
 	// A frame parrot handles never reaches the routing core: a recording faces
@@ -603,6 +611,7 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 	}
 	if ended != nil {
 		l.publishCall(events.TypeCallEnded, *ended)
+		l.storeCall(*ended)
 	}
 	l.refreshCalls()
 }
@@ -886,3 +895,25 @@ func (h PeersHealthCheck) Check(context.Context) health.Result {
 // calls. It is exported so that the relationship with calls.StreamTimeout can
 // be asserted in a test rather than maintained by memory.
 func SweepInterval() time.Duration { return sweepInterval }
+
+// storeCall writes a completed call to the record.
+//
+// **The ring keeps it regardless.** A full or locked database costs the record
+// and not the display, and a member transmitting is not the moment to fail
+// loudly at somebody who cannot act on it — so this warns and carries on.
+//
+// One row per completed call, never per frame: a busy club evening is a few
+// hundred writes rather than fifty a second, which is what keeps this off the
+// path ADR-0002 protects.
+func (l *Listener) storeCall(c calls.Call) {
+	if l.cfg.CallStore == nil || !l.cfg.CallStore.Enabled() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := l.cfg.CallStore.Record(ctx, c); err != nil {
+		l.log.Warn("cannot record a call in the history",
+			logging.PeerID(c.Source), "error", err)
+	}
+}

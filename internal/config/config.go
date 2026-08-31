@@ -138,6 +138,28 @@ type DMR struct {
 	// Callsigns resolves radio IDs to names through the amateur DMR registry.
 	// See ADR-0030.
 	Callsigns Callsigns `json:"callsigns"`
+	// Calls is how long a record of who transmitted is kept. See ADR-0033.
+	Calls Calls `json:"calls"`
+}
+
+// Calls configures the record of completed transmissions.
+type Calls struct {
+	// Retain is how long a completed call is kept.
+	//
+	// **This is a log of members' activity**, readable by any administrator:
+	// who transmitted, what they called, and when. It exists because a net
+	// control station uses the last-heard list to recover a check-in they
+	// missed, and fifty entries in memory cannot survive the evening or the
+	// deploy that follows it.
+	//
+	// Thirty days by default: enough for a monthly net, a member arguing about
+	// last week, and an administrator who was away. A few hundred rows a day
+	// costs nothing.
+	//
+	// **Zero keeps nothing**, which is a real answer for a club that would
+	// rather not hold a record of who transmitted when, and the configuration
+	// should be able to say so rather than making everybody keep a month.
+	Retain Duration `json:"retain"`
 }
 
 // Subscription is layer 3: which peers receive which talkgroups.
@@ -644,6 +666,8 @@ func Default() Config {
 			PeerTimeout:   Duration(60 * time.Second),
 			LoginTimeout:  Duration(30 * time.Second),
 			MaxPeers:      200,
+			// Thirty days of who transmitted and when. See ADR-0033.
+			Calls: Calls{Retain: Duration(30 * 24 * time.Hour)},
 			// Two hours: a working shift. Long enough that a private call to
 			// somebody who spoke this morning still reaches them, short enough
 			// that it does not follow them to yesterday's hotspot.

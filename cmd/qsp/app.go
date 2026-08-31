@@ -43,6 +43,7 @@ type app struct {
 	bus       *events.Bus
 	db        *database.DB
 	audit     audit.Recorder
+	callStore *calls.Store
 	srv       *server.Server
 	dmr       *peers.Listener
 	health    *health.Registry
@@ -89,6 +90,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	a.audit = trail
 
 	var dbUnavailableReason string
+	var callStore *calls.Store
 	db, err := database.Open(ctx, log, database.Options{
 		Driver:          cfg.Database.Driver,
 		DSN:             cfg.Database.DSN,
@@ -126,6 +128,25 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		// have held any.
 		trail.Add(audit.NewSQLRecorder(db.SQL(), log))
 		log.Info("audit trail persisted", slog.String("table", "audit_events"))
+
+		callStore = calls.NewStore(db.SQL(), log, cfg.DMR.Calls.Retain.AsDuration())
+		a.callStore = callStore
+		if callStore.Enabled() {
+			// **Pruned at startup and then on a timer**, not on every write:
+			// deleting on each insert makes every transmission pay for the
+			// retention policy. A row outliving its window by an hour matters
+			// to nobody. See ADR-0033.
+			if n, err := callStore.Prune(ctx, time.Now().UTC()); err != nil {
+				log.Warn("cannot prune the call history", "error", err)
+			} else if n > 0 {
+				log.Info("pruned the call history", slog.Int64("removed", n))
+			}
+			log.Info("call history persisted",
+				slog.String("table", "calls"),
+				slog.String("retain", cfg.DMR.Calls.Retain.AsDuration().String()))
+		} else {
+			log.Info("call history is not kept; set dmr.calls.retain to keep one")
+		}
 	}
 
 	// **Before anything that reads it.** This was built after the console's
@@ -277,6 +298,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Master:        master,
 			Bus:           a.bus,
 			Calls:         calls.NewTracker(calls.Options{}),
+			CallStore:     callStore,
 			Parrot:        parrotRecorder,
 			Routing:       core,
 			Upstreams:     upstreamSender(links),
@@ -524,6 +546,11 @@ func (a *app) run(ctx context.Context) error {
 		go a.sweepSessions(ctx)
 	}
 
+	// The call history is trimmed on the same principle: retention is measured
+	// in days, so nothing observes the boundary, and pruning on every write
+	// would make each transmission pay for the policy.
+	go a.pruneCalls(ctx)
+
 	// The listener exists by now, so a save can reach the goroutine that owns
 	// the routing core. Wired here rather than in build because the listener
 	// is constructed after the server that will call it.
@@ -567,6 +594,36 @@ func (a *app) sweepSessions(ctx context.Context) {
 			}
 			if n > 0 {
 				a.log.Debug("swept expired sessions", slog.Int("removed", n))
+			}
+		}
+	}
+}
+
+// callPruneInterval is how often the call history is trimmed.
+//
+// Six-hourly, because retention is measured in days and nothing observes the
+// boundary. A row outliving its window by an afternoon costs a few kilobytes;
+// pruning on every write would make each transmission pay for the policy.
+const callPruneInterval = 6 * time.Hour
+
+func (a *app) pruneCalls(ctx context.Context) {
+	if a.callStore == nil || !a.callStore.Enabled() {
+		return
+	}
+	ticker := time.NewTicker(callPruneInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			n, err := a.callStore.Prune(ctx, time.Now().UTC())
+			if err != nil {
+				a.log.Warn("cannot prune the call history", slog.String("error", err.Error()))
+				continue
+			}
+			if n > 0 {
+				a.log.Debug("pruned the call history", slog.Int64("removed", n))
 			}
 		}
 	}
