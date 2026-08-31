@@ -448,3 +448,67 @@ func TestAMultiFrameStreamIsNotMerged(t *testing.T) {
 		t.Errorf("history holds %d entries, want 3; multi-frame streams were merged", len(h))
 	}
 }
+
+// TestSeedFillsTheHistoryFromARecord.
+//
+// **Last heard emptied on every restart**, and storing completed calls in a
+// database did not fix it: the panel an operator looks at reads this ring, and
+// the ring began at nothing. Seeding here fixes it once for every consumer of
+// the tracker rather than teaching each display to merge two sources.
+//
+// Written in this package deliberately. The first version lived in cmd/qsp and
+// asserted through a listener that testConfig never builds, so it could not run
+// in the development container and failed the moment it reached a machine with
+// a driver. A test that cannot be executed where it is written is not a test.
+func TestSeedFillsTheHistoryFromARecord(t *testing.T) {
+	tr := calls.NewTracker(calls.Options{History: 4})
+
+	base := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	// As a store returns them: newest first.
+	tr.Seed([]calls.Call{
+		{Source: 3, Started: base.Add(2 * time.Minute), Ended: base.Add(2*time.Minute + time.Second)},
+		{Source: 2, Started: base.Add(time.Minute), Ended: base.Add(time.Minute + time.Second)},
+		{Source: 1, Started: base, Ended: base.Add(time.Second)},
+	})
+
+	got := tr.History()
+	if len(got) != 3 {
+		t.Fatalf("history holds %d calls after seeding, want 3", len(got))
+	}
+	// History returns newest first, which is how the panel renders and how
+	// somebody reads a net back.
+	if got[0].Source != 3 || got[2].Source != 1 {
+		t.Errorf("seeded history is in the wrong order: %d then %d",
+			got[0].Source, got[2].Source)
+	}
+}
+
+// TestSeedRespectsCapacityAndOnlyRunsOnce.
+//
+// The ring is still a ring, and a seed arriving after anything has been heard
+// must not displace it.
+func TestSeedRespectsCapacityAndOnlyRunsOnce(t *testing.T) {
+	base := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	many := make([]calls.Call, 0, 10)
+	for i := 0; i < 10; i++ {
+		at := base.Add(time.Duration(-i) * time.Minute)
+		many = append(many, calls.Call{
+			Source:  uint32(100 - i),
+			Started: at,
+			Ended:   at.Add(time.Second),
+		})
+	}
+
+	tr := calls.NewTracker(calls.Options{History: 4})
+	tr.Seed(many)
+	if got := tr.History(); len(got) != 4 {
+		t.Fatalf("seeding kept %d calls against a capacity of 4", len(got))
+	}
+
+	// A second seed finds a history that is not empty and leaves it alone.
+	tr.Seed([]calls.Call{{Source: 999, Started: base, Ended: base.Add(time.Second)}})
+	got := tr.History()
+	if len(got) != 4 || got[0].Source == 999 {
+		t.Errorf("a second seed displaced what was already there: %d", got[0].Source)
+	}
+}

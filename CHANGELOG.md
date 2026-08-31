@@ -130,6 +130,21 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **A test that could not run where it was written.**
+  `TestLastHeardSurvivesARestart` lived in `cmd/qsp` and asserted through the
+  DMR listener, which `testConfig` never builds because `config.Default()` has
+  DMR off. The development container has no SQLite driver, so every test in that
+  package is skipped there — the failure was invisible until it reached a
+  machine with one.
+
+  Moved to `internal/calls`, where it runs everywhere, and rewritten against the
+  public API: seeding fills the history newest-first, respects the ring's
+  capacity, and leaves alone a history that already holds something.
+
+  **A test that cannot be executed where it is written is not a test**, which is
+  the same lesson as the three assertions found earlier that passed against the
+  code they existed to reject.
+
 - **Last heard still emptied on every restart, which is what was actually
   asked for.** ADR-0033 kept completed calls in a database and gave them their
   own page — and the panel an operator looks at reads the in-memory ring, which
