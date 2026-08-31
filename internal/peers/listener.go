@@ -177,6 +177,14 @@ func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
 		// would only sometimes schedule.
 		l.playback = newPlayback(l.log, nil)
 	}
+
+	// **Published once at construction**, so a tracker seeded from the record
+	// is visible before the first frame arrives. The snapshot is otherwise
+	// refreshed only when one does, which left Last heard empty after a restart
+	// until somebody transmitted — with the history sitting in the tracker the
+	// whole time.
+	l.refreshCalls()
+
 	return l, nil
 }
 

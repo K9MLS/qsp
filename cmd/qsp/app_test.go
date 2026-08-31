@@ -736,3 +736,63 @@ func TestRetentionIsByAgeAndCanBeNothing(t *testing.T) {
 		t.Errorf("%d calls survived a one-hour window", len(left))
 	}
 }
+
+// TestLastHeardSurvivesARestart.
+//
+// **This is the thing an operator actually asked for, and the first attempt did
+// not do it.** ADR-0033 kept completed calls in a database and gave them their
+// own page, which is not the same: the Last heard panel still began at nothing
+// after every deploy, because it reads the in-memory ring and the ring starts
+// empty.
+//
+// Seeding the ring from the record fixes it once for every consumer of the
+// tracker, rather than teaching each display to merge two sources.
+func TestLastHeardSurvivesARestart(t *testing.T) {
+	cfg := testConfig(t)
+
+	a, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+
+	started := time.Now().UTC().Add(-time.Minute)
+	for i := 0; i < 3; i++ {
+		at := started.Add(time.Duration(i) * time.Second)
+		if err := a.callStore.Record(context.Background(), calls.Call{
+			Key:     calls.Key{Peer: 3132910, Stream: hbp.StreamID(100 + i), Timeslot: hbp.Timeslot2},
+			Source:  uint32(3132910 + i),
+			Target:  2,
+			Group:   true,
+			Voice:   true,
+			Frames:  50,
+			Started: at,
+			Ended:   at.Add(2 * time.Second),
+		}); err != nil {
+			t.Fatalf("recording: %v", err)
+		}
+	}
+	if err := a.shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+
+	// A second instance against the same database is what a deploy looks like.
+	b, err := build(context.Background(), cfg, "", logging.Discard())
+	if err != nil {
+		t.Fatalf("second build: %v", err)
+	}
+	defer func() { _ = b.shutdown(context.Background()) }()
+
+	if b.dmr == nil {
+		t.Fatal("no listener on the second build")
+	}
+	history := b.dmr.Calls().Recent
+	if len(history) != 3 {
+		t.Fatalf("last heard holds %d calls after a restart, want 3", len(history))
+	}
+
+	// Newest first, which is how the panel renders and how somebody reads a net
+	// back. The last call recorded must be the first shown.
+	if history[0].Source != 3132912 {
+		t.Errorf("the newest call is from %d, want the last one recorded", history[0].Source)
+	}
+}

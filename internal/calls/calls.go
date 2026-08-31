@@ -340,3 +340,31 @@ func (t *Tracker) History() []Call {
 
 // ActiveCount returns the number of in-progress calls.
 func (t *Tracker) ActiveCount() int { return len(t.active) }
+
+// Seed fills the history from a record kept across restarts.
+//
+// **Last heard is the panel an operator looks at, and it was empty after every
+// deploy.** ADR-0033 put completed calls in a database and gave them their own
+// page, which is not the same thing: the list somebody actually reads still
+// began at nothing. Seeding the ring here fixes it once, for every consumer of
+// the tracker, rather than teaching each display to merge two sources.
+//
+// Calls are given newest first, as a store returns them, and stored oldest
+// first, as the ring holds them. Anything beyond capacity is discarded: the ring
+// is still a ring, and the record is still the record.
+//
+// Ignored once anything has been heard, so a late seed cannot displace live
+// traffic.
+func (t *Tracker) Seed(newestFirst []Call) {
+	if t == nil || len(newestFirst) == 0 || len(t.history) > 0 {
+		return
+	}
+	n := len(newestFirst)
+	if n > t.capacity {
+		n = t.capacity
+	}
+	t.history = make([]Call, 0, n)
+	for i := n - 1; i >= 0; i-- {
+		t.history = append(t.history, newestFirst[i])
+	}
+}

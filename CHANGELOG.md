@@ -5,6 +5,29 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A Call record page, which is the half of ADR-0033 that makes it useful.**
+  The record was stored and nothing displayed it, so a net control station still
+  could not read back the check-in they missed — which is the entire reason it
+  exists.
+
+  Every completed transmission, newest first, with a window from two hours to
+  thirty days. **The radio ID always shows**, with the callsign beside it when
+  the registry knows one: the ID is what the record is about, and a name is a
+  convenience that can be missing or wrong. Text messages are marked as such
+  rather than counted as transmissions, and can be hidden — a text arrives as
+  several one-frame data bursts and would otherwise bury the voice.
+
+  Times are shown in local time, because somebody reading a net back is thinking
+  in the clock on their wall.
+
+  `GET /api/calls` **requires a session, unlike the live list on the overview.**
+  The overview shows what is happening now, which anybody within range of a
+  repeater can hear anyway. This is up to thirty days of who transmitted and
+  when. Callsigns are resolved at read time rather than stored: a callsign can
+  be wrong when a call happens and right a week later, and the record's job is
+  to say which radio transmitted rather than to freeze a guess about whose it
+  was.
+
 - **Completed calls are kept, so last heard survives a restart.** It held fifty
   in memory and lost them on every deploy. That is a display and it worked as
   one — until an operator named the use it was actually being put to: **a net
@@ -107,6 +130,24 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **Last heard still emptied on every restart, which is what was actually
+  asked for.** ADR-0033 kept completed calls in a database and gave them their
+  own page — and the panel an operator looks at reads the in-memory ring, which
+  still began at nothing. Storing a thing and displaying it somewhere else is
+  not the same as fixing it, and an operator said so twice before I heard it.
+
+  The tracker is seeded from the record at startup, which fixes it once for
+  every consumer of the tracker rather than teaching each display to merge two
+  sources.
+
+  **And seeding alone was not enough.** The call snapshot the console reads is
+  refreshed only when a frame arrives, so a seeded ring stayed invisible until
+  somebody transmitted — the history sitting in the tracker the whole time. The
+  listener publishes its snapshot once at construction now.
+
+  Two correct-looking pieces that between them did nothing. The test asserts a
+  second instance against the same database, which is what a deploy is.
+
 - **A navigation heading looked like a link.** "Operations" and "Administration"
   sat at the same indent as the items beneath them, in the same weight,
   differing only by size and colour — which reads as a link that happens to be

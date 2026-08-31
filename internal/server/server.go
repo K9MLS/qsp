@@ -48,6 +48,12 @@ type Options struct {
 	// ConsoleAssets serves the embedded console. It may be nil, in which case
 	// the console routes report that no assets are built into this binary.
 	ConsoleAssets fs.FS
+	// Calls reads the record of completed transmissions. Nil means none is
+	// kept, which is different from a quiet network.
+	Calls CallHistory
+	// Callsign resolves a radio ID to a display name. Nil leaves the record
+	// showing numbers, which is honest and less useful.
+	Callsign func(uint32) string
 	// Links supplies what is known about links to other networks. Nil means
 	// this build has none, which is different from an instance with none
 	// configured.
@@ -180,6 +186,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		// Behind requireSession, which also enforces the origin check: the two
 		// questions are asked of the same requests, and separating them is how
 		// one gets forgotten on a new endpoint.
+		{"GET /api/calls", s.requireSession(s.handleCalls)},
 		{"GET /api/links", s.requireSession(s.handleLinks)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
 		{"POST /api/links/accept", s.requireSession(s.handleAcceptPeering)},
@@ -245,6 +252,9 @@ func (s *Server) handler() http.Handler {
 		})
 		mux.HandleFunc("GET /bridges", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/bridges.html", http.StatusFound)
+		})
+		mux.HandleFunc("GET /record", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/record.html", http.StatusFound)
 		})
 		mux.HandleFunc("GET /links", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/links.html", http.StatusFound)

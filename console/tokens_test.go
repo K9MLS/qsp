@@ -322,7 +322,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"console.js": true, "map.js": true, "join.js": true,
 		"signin.js": true, "access.js": true, "network.js": true,
 		"bridges.js": true, "history.js": true, "hints.js": true,
-		"nav.js": true, "links.js": true,
+		"nav.js": true, "links.js": true, "record.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -1446,5 +1446,54 @@ func TestAFieldRowDoesNotStretch(t *testing.T) {
 	if !strings.Contains(rule, "align-content: start") {
 		t.Error("a field's rows stretch, so a control with no note beneath it sits lower " +
 			"than the ones beside it")
+	}
+}
+
+// TestTheCallRecordIsReadable.
+//
+// **ADR-0033 stored the record and nothing displayed it**, which left the
+// feature finished in the database and absent from the console — a net control
+// station could not read back the check-in they missed, which is the entire
+// reason it exists.
+func TestTheCallRecordIsReadable(t *testing.T) {
+	page, err := assets.ReadFile("static/record.html")
+	if err != nil {
+		t.Fatalf("reading record.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{`id="record"`, `src="/record.js"`, `id="signed-out"`, `id="window"`} {
+		if !strings.Contains(html, want) {
+			t.Errorf("record.html has no %s", want)
+		}
+	}
+
+	script, err := assets.ReadFile("static/record.js")
+	if err != nil {
+		t.Fatalf("reading record.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "/api/calls") {
+		t.Error("record.js never asks for the record")
+	}
+	// The radio ID always shows, with or without a callsign. The ID is what the
+	// record is about; a name is a convenience that can be missing or wrong.
+	if !strings.Contains(src, "c.source") {
+		t.Error("record.js does not show the radio ID")
+	}
+	// Text messages arrive as one-frame data bursts and would otherwise bury
+	// the voice traffic the list exists to show.
+	if !strings.Contains(src, "c.voice") {
+		t.Error("record.js does not distinguish voice from text")
+	}
+
+	for _, name := range []string{"static/access.html", "static/network.html",
+		"static/bridges.html", "static/history.html", "static/links.html"} {
+		body, err := assets.ReadFile(name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if !strings.Contains(string(body), `href="/record"`) {
+			t.Errorf("%s does not link to the call record", name)
+		}
 	}
 }

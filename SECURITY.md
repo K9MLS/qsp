@@ -231,6 +231,15 @@ Neither endpoint verifies that a callsign belongs to whoever sent the
 invitation. That is a claim, checkable against RadioID.net by a person. An
 operator agreeing to peer has already decided who they are dealing with.
 
+`/api/calls` reads the record of completed transmissions and **requires a
+session, unlike the live list on the overview**. The overview shows what is
+happening now, which anybody within range of a repeater can hear anyway. This is
+up to `dmr.calls.retain` of who transmitted and when — a record of members'
+activity, and one an administrator should have to sign in to read.
+
+It returns no audio. QSP carries bursts it never decodes, and a record of who
+spoke is not a recording of what they said.
+
 ### Deployment guidance
 
 - Bind the console to `127.0.0.1` and reach it through a reverse proxy with TLS.

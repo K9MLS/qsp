@@ -1623,3 +1623,12 @@ select.field__input {
   font-size: var(--text-sm);
   color: var(--color-foreground-muted);
 }
+
+
+/* The radio ID beside a callsign. The ID is what the record is about; the name
+   is a convenience that can be missing or wrong, so the number never leaves. */
+.record__id {
+  color: var(--color-foreground-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

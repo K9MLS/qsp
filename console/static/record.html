@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Call record — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__meta">
+      <span class="topbar__auth" id="auth-state"></span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li><a class="nav__link" href="/"><span>Overview</span></a></li>
+    </ul>
+    <p class="nav__heading" id="nav-admin">Administration</p>
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin">
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
+      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/links"><span>Links</span></a></li>
+      <li><a class="nav__link" href="/record" aria-current="page"><span>Call record</span></a></li>
+      <li><a class="nav__link" href="/history"><span>History</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
+    </ul>
+  </nav>
+
+  <main class="main" id="main">
+
+    <h1 class="page__title">Call record</h1>
+    <p class="page__lede">
+      Every completed transmission this network carried, kept beyond a restart.
+      The overview shows what is happening now; this is what happened.
+    </p>
+
+    <div class="empty" id="loading">
+      <p class="empty__title">Loading</p>
+      <p class="empty__body">Reading the record.</p>
+    </div>
+
+    <div class="notice notice--warn" id="signed-out" hidden>
+      <p class="notice__title">Sign in to read the record</p>
+      <p class="notice__body"><a href="/signin">Sign in</a> as an administrator.
+        This is a record of who transmitted and when, which is more than the live
+        list on the overview shows.</p>
+    </div>
+
+    <div id="form" hidden>
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Transmissions</h2>
+            <button class="hint" type="button" aria-controls="hint-record"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="record-count">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-record">
+          <p class="hint__text"><strong>This exists for net control.</strong> A
+            station taking check-ins who misses a callsign can read it back here
+            afterwards, which the live list could not do — it held fifty entries
+            and lost them on every restart. Text messages arrive as one-frame
+            data bursts and are marked as such, so they do not bury the voice
+            traffic. How long the record is kept is <code>dmr.calls.retain</code>
+            in the configuration.</p>
+        </div>
+        <div class="panel__body">
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Show</span>
+              <select class="picker__input" id="window">
+                <option value="2">The last 2 hours</option>
+                <option value="12" selected>The last 12 hours</option>
+                <option value="24">The last day</option>
+                <option value="168">The last week</option>
+                <option value="720">The last 30 days</option>
+              </select>
+              <p class="field__note">Newest first, which is how a net reads
+                back.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Voice only</span>
+              <select class="picker__input" id="voice-only">
+                <option value="no" selected>No, show everything</option>
+                <option value="yes">Yes, hide text messages</option>
+              </select>
+              <p class="field__note">A text message is several one-frame
+                bursts.</p>
+            </label>
+          </div>
+          <div id="record"></div>
+        </div>
+      </section>
+    </div>
+
+  </main>
+
+</div>
+
+<script src="/nav.js"></script>
+<script src="/hints.js"></script>
+<script src="/record.js"></script>
+</body>
+</html>

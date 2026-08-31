@@ -293,11 +293,26 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		// rather than from a member's phone call.
 		a.master = master
 
+		// **Seeded from the record, so Last heard is not empty after a deploy.**
+		// ADR-0033 kept completed calls and gave them their own page, which is
+		// not the same thing: the panel an operator actually looks at still
+		// began at nothing on every restart.
+		tracker := calls.NewTracker(calls.Options{})
+		if callStore != nil && callStore.Enabled() {
+			recent, serr := callStore.Since(ctx, time.Now().UTC().Add(-24*time.Hour), calls.DefaultHistory)
+			if serr != nil {
+				log.Warn("cannot seed last heard from the record", "error", serr)
+			} else if len(recent) > 0 {
+				tracker.Seed(recent)
+				log.Info("last heard seeded from the record", slog.Int("calls", len(recent)))
+			}
+		}
+
 		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
 			ListenAddress: cfg.DMR.ListenAddress,
 			Master:        master,
 			Bus:           a.bus,
-			Calls:         calls.NewTracker(calls.Options{}),
+			Calls:         tracker,
 			CallStore:     callStore,
 			Parrot:        parrotRecorder,
 			Routing:       core,
@@ -403,6 +418,8 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		ShutdownTimeout:     cfg.Server.ShutdownTimeout.AsDuration(),
 		BehindProxy:         cfg.Server.BehindProxy,
 		ConsoleAssets:       assets,
+		Calls:               callHistory(callStore),
+		Callsign:            func(id uint32) string { return resolve(id, nil, a.names) },
 		Links:               linkSource(a.upstreams, cfg),
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
@@ -1302,4 +1319,16 @@ func (l *links) LinkStatuses() []server.LinkStatus {
 		out = append(out, entry)
 	}
 	return out
+}
+
+// callHistory adapts the call store for the console, keeping a nil store nil
+// rather than handing the server an interface holding one.
+//
+// A typed nil in an interface is not nil, and the handler's check would pass on
+// a store that cannot answer.
+func callHistory(store *calls.Store) server.CallHistory {
+	if store == nil {
+		return nil
+	}
+	return store
 }
