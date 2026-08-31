@@ -130,6 +130,22 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **Traffic and Connected peers stopped rendering.** `renderDrops` was appended
+  after `console.js`'s closing `})();`, so it could not see `escapeText` and
+  threw on the first render. The traffic panel and the peer list are painted
+  after that call and stayed empty; Last heard, painted before it, was fine. The
+  API returned 200 with correct JSON throughout, which is what made the console
+  look like a network fault.
+
+  `TestEveryScriptKeepsItsHelpersInScope` fails on any declaration at column
+  zero after a script's closure. Nothing here executes JavaScript, so it checks
+  the one property that matters and can be checked.
+
+- **The overview had no Links or Call record entry.** Both were added by
+  matching markup the admin pages share and `index.html` does not, so the page
+  an operator starts from lost both — and the tests that check every page links
+  to them omitted `index.html`, so nothing noticed. Both lists include it now.
+
 - **A new counter collided with an existing field.** `/api/peers` already
   carries a `refused` list of registration refusals, with addresses and reasons,
   and the split drop counter reused that key for a number — two meanings under

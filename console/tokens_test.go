@@ -1234,9 +1234,12 @@ func TestTheConsoleShowsLinks(t *testing.T) {
 		}
 	}
 
-	// And every admin page must offer the page, or it is unreachable.
-	for _, name := range []string{"static/access.html", "static/network.html",
-		"static/bridges.html", "static/history.html", "static/links.html"} {
+	// And every page with a nav must offer it, or it is unreachable. The
+	// overview is included deliberately: it is the page an operator starts
+	// from, and it was the one this list originally left out.
+	for _, name := range []string{"static/index.html", "static/access.html",
+		"static/network.html", "static/bridges.html", "static/history.html",
+		"static/links.html"} {
 		body, err := assets.ReadFile(name)
 		if err != nil {
 			t.Fatalf("reading %s: %v", name, err)
@@ -1486,8 +1489,13 @@ func TestTheCallRecordIsReadable(t *testing.T) {
 		t.Error("record.js does not distinguish voice from text")
 	}
 
-	for _, name := range []string{"static/access.html", "static/network.html",
-		"static/bridges.html", "static/history.html", "static/links.html"} {
+	// **index.html included.** The first version of this list left it out, and
+	// the overview lost both new entries without a single test noticing — a
+	// page reachable only by typing its URL is one an operator does not know
+	// exists, and the overview is the page they start from.
+	for _, name := range []string{"static/index.html", "static/access.html",
+		"static/network.html", "static/bridges.html", "static/history.html",
+		"static/links.html"} {
 		body, err := assets.ReadFile(name)
 		if err != nil {
 			t.Fatalf("reading %s: %v", name, err)
@@ -1537,5 +1545,53 @@ func TestTheDroppedCounterExplainsItself(t *testing.T) {
 	}
 	if !strings.Contains(string(page), `id="drop-reasons"`) {
 		t.Error("the overview has nowhere to show why datagrams were refused")
+	}
+}
+
+// TestEveryScriptKeepsItsHelpersInScope.
+//
+// **A function appended after the closing `})();` cannot see anything inside
+// it.** `renderDrops` landed outside `console.js`'s IIFE, so its call to
+// `escapeText` threw on the first render — and because the traffic panel and
+// the peer list are painted after that call, both stayed empty while Last
+// heard, painted before it, rendered fine. The API was returning 200 with
+// correct JSON throughout.
+//
+// Nothing here executes JavaScript, so this checks the one property that
+// matters and can be checked: every function a script defines is inside the
+// closure that holds its helpers.
+func TestEveryScriptKeepsItsHelpersInScope(t *testing.T) {
+	scripts := []string{"console.js", "access.js", "network.js", "bridges.js",
+		"history.js", "links.js", "record.js", "join.js", "nav.js", "hints.js"}
+
+	var checked int
+	for _, name := range scripts {
+		body, err := assets.ReadFile("static/" + name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		src := string(body)
+
+		// Only scripts written as an IIFE, which is all of them that hold
+		// helpers.
+		close := strings.LastIndex(src, "\n})();")
+		if close < 0 {
+			continue
+		}
+		checked++
+
+		// Anything at column zero after the closing line is outside the
+		// closure. A comment or a blank line is fine; a declaration is not.
+		trailing := src[close+len("\n})();"):]
+		for _, line := range strings.Split(trailing, "\n") {
+			if strings.HasPrefix(line, "function ") || strings.HasPrefix(line, "var ") ||
+				strings.HasPrefix(line, "const ") || strings.HasPrefix(line, "let ") {
+				t.Errorf("%s declares %q outside its closure, where the script's helpers "+
+					"are not visible", name, strings.TrimSpace(line))
+			}
+		}
+	}
+	if checked < 8 {
+		t.Fatalf("only %d scripts were examined; this has gone blind", checked)
 	}
 }
