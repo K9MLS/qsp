@@ -68,7 +68,7 @@ No phase advances on a passing test suite alone. By that rule:
 | Phase | Gate | Status |
 |---|---|---|
 | 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
-| 2 — Console | A newcomer is running in under 10 minutes, unassisted | **open, and closable for the first time.** AD0MI joined on 2026-08-30 — the first member who was not present when the network was built. Whether he did it unassisted, and in what time, has not been asked. **Ask him before claiming this gate**, and ask specifically what he had to work out for himself |
+| 2 — Console | A newcomer is running in under 10 minutes, unassisted | **open, and closable for the first time.** AD0MI joined on 2026-08-30 — the first member who joined after this project started. Whether he did it unassisted, and in what time, has not been asked. **Ask him before claiming this gate**, and ask specifically what he had to work out for himself |
 | 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak running since 2026-08-27 but interrupted by daily deploys. See §9 |
 | 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
 
@@ -717,7 +717,7 @@ change on any Pi.
 ### Open, in the order I would take them
 
 1. **Ask AD0MI what he had to work out for himself.** He is the first member who
-   was not present when the network was built, which makes him the only evidence
+   joined after this project started, which makes him the only evidence
    that exists about phase 2's gate. His answer decides whether the gate closes
    and what the join page is still missing. This costs one conversation and is
    worth more than any amount of code.
