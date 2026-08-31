@@ -49,16 +49,16 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.9 |
-| Tests | 743, all passing |
+| Version | 0.1.10 |
+| Tests | 796, all passing |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
-| Health report | 11 subsystems |
-| Hardware validated | **yes** — live voice 2026-08-25, and a two-station QSO across a real network 2026-08-28, see §6 |
-| Members | two: K9MLS (Denton, TX) and KB9TYC (Wisconsin, WI) |
+| Health report | 11 subsystems, plus one per configured link |
+| Hardware validated | **yes** — live voice 2026-08-25, a two-station QSO 2026-08-28, and a three-station network with private calls working both directions 2026-08-30, see §6 and §6b |
+| Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin, WI) and AD0MI (Post Falls, ID), joined 2026-08-30 |
 | CI | green, 8 jobs, `github.com/K9MLS/qsp` (private) |
-| Static analysis | `staticcheck` clean, pinned at 2024.1.1. **It runs in the development container**: the release binary comes from GitHub, which the network policy allows, unlike the module proxy |
+| Static analysis | `staticcheck` clean, pinned at 2026.2.1. **It runs in the development container**: the release binary comes from GitHub, which the network policy allows, unlike the module proxy |
 | Migrations | 4 — configuration versions, audit events, users and sessions, callsign cache |
 
 ### Phase gates (BLUEPRINT §16)
@@ -68,7 +68,7 @@ No phase advances on a passing test suite alone. By that rule:
 | Phase | Gate | Status |
 |---|---|---|
 | 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
-| 2 — Console | A newcomer is running in under 10 minutes, unassisted | open — the console is built out, with five administration pages, but **no newcomer has tried it**. The one thing that would close this gate is somebody who is not the author following the join page |
+| 2 — Console | A newcomer is running in under 10 minutes, unassisted | **open, and closable for the first time.** AD0MI joined on 2026-08-30 — the first member who was not present when the network was built. Whether he did it unassisted, and in what time, has not been asked. **Ask him before claiming this gate**, and ask specifically what he had to work out for himself |
 | 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak running since 2026-08-27 but interrupted by daily deploys. See §9 |
 | 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
 
@@ -434,6 +434,80 @@ says what it does and does not prove.
 What it exposed: there was nowhere in the console to see a link. That is what
 the Links page and `/api/links` are for.
 
+### The console is not yet a tool an administrator can rely on
+
+Two findings from the evening of 2026-08-30, both from an operator asking why
+something looked wrong rather than assuming it was fine. Neither is a broken
+network; both are the console failing at the job it exists for.
+
+**Last heard holds fifty entries and loses them on restart.** `calls.DefaultHistory`
+is a package constant, not configuration, and the ring buffer drops the oldest
+when full — confirmed on air by keying up six times at 47 and watching it stop at
+50. It is in memory only.
+
+The use case that decides the design is **net control taking check-ins**. A net
+runs, twenty stations check in, and the log is the only record of who was
+actually there when somebody's callsign was missed. That makes it a *record*
+rather than a display, and a record has to hold a whole net and survive the
+restart that follows a deploy. Three stations on one talkgroup filled a third of
+the buffer in two hours; a net plus the conversation either side of it would push
+the early check-ins off before anybody read them.
+
+Persisting it because losing it is annoying is the weak argument. Persisting it
+because net control needs it tomorrow is the one that also settles retention,
+export, and how much to keep.
+
+**The dropped-datagram counter cannot be investigated.** Production shows `2`
+dropped, unchanged across three stations and thousands of frames, painted amber.
+The reason for each drop is logged at **debug**, and production runs at `info` —
+so the explanation was never written. Raising the log level requires a restart,
+and the counter reads `SINCE START`.
+
+**An operator cannot see why a number is what it is without destroying the
+number.** That is the defect. The count is almost certainly the MSTNAK rebind
+path of ADR-0011, which is QSP working correctly, and it is unverifiable.
+
+A permanently amber number that means "working correctly" teaches an operator to
+ignore amber — which `console.css` already argues about spending amber on
+ordinary conditions. Candidate answers, none built: log a refusal at `info`;
+count refused-and-answered separately from genuinely lost; and do not paint the
+expected kind amber.
+
+### The private call is resolved, and the cause was not isolated
+
+K9MLS and KB9TYC held a private-call QSO on 2026-08-30. It had been failing in
+one direction since 2026-08-28.
+
+Three things changed on that path in between: the MSTNAK amendment to ADR-0011,
+repointing the Denton hotspot at the LAN address, and **stripping fourteen
+rewrite rules from the QSP block**, six of which were `PCRewrite` lines. §6a
+records three of those as having been added on a theory a later capture
+contradicted, so that is the suspicion — a `PCRewrite` naming the wrong ID drops
+a private call exactly this quietly. It was not isolated and should not be
+written up as though it were.
+
+**§6a's advice to give each member a `PCRewrite` covering their own radio ID is
+superseded**, in the same way its talkgroup advice is: a QSP-only hotspot needs
+no rewrite rules at all, and removing them is what coincided with the fix.
+
+### An echo that is still unexplained
+
+During that QSO, after unkeying, K9MLS heard roughly a second of his own audio
+return once.
+
+QSP is provably not the cause. Every `relaying transmission` line in the journal
+excludes the originating peer — a frame from 3132910 goes to 3155413 and 3127045
+and never back — so the repeat path is correct. The third station is in Idaho and
+cannot be transmitting into a Denton receiver.
+
+Also unexplained, and possibly related: **the same peer produced the same 32-bit
+stream ID twice, 34 seconds apart**, within that QSO. Two identical stream IDs by
+chance is roughly one in four billion. An earlier session saw six `call started`
+events in three seconds from one operator, six distinct IDs.
+
+Do not theorise further without a packet capture. Four theories were proposed for
+the private call and none was the answer.
+
 ## 7. Working conventions
 
 - **Approval Gate** — propose and self-review before writing substantial code;
@@ -626,7 +700,14 @@ Read §6b first. It supersedes parts of §6a.
   than detectable. [ADR-0031](docs/adr/ADR-0031-loop-prevention.md) was written
   before that was read and is amended to say so.
 
-### Working, on air, as of tonight
+### Working, on air, as of 2026-08-30
+
+Three stations across three states: Denton TX, Wisconsin WI, Post Falls ID. Voice,
+private calls both directions, text and parrot. AD0MI's hotspot announces 0, 0
+and is refused a position on the map until he sets one, which the console says
+plainly.
+
+
 
 The Denton hotspot carries **no rewrite rules** — `PassAllTG` and `PassAllPC` on
 both slots, `Location=1`, and every talkgroup passes untouched. Both stations
@@ -635,9 +716,16 @@ change on any Pi.
 
 ### Open, in the order I would take them
 
-1. **The private call from KB9TYC.** Still unexplained, needs Paul. §6a has the
-   diagnostic; the NAT rebind fix may already have resolved it.
-2. **Paul's TYT model and firmware.** Decides whether Talker Alias is a
+1. **Ask AD0MI what he had to work out for himself.** He is the first member who
+   was not present when the network was built, which makes him the only evidence
+   that exists about phase 2's gate. His answer decides whether the gate closes
+   and what the join page is still missing. This costs one conversation and is
+   worth more than any amount of code.
+2. **The console as a tool an administrator relies on** — last heard as a record
+   that survives a restart, and a dropped counter an operator can investigate.
+   Both are in §6b. This wants an ADR before code, because "how much history does
+   a club need" is a judgement about clubs.
+3. **Paul's TYT model and firmware.** Decides whether Talker Alias is a
    pass-through that already works, a userdb flash on his radio, or a feature
    that has to be built. Ask before designing anything: BrandMeister does *not*
    look names up — it passes through what a transmitting radio sends.
