@@ -4,6 +4,19 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Removed
+- **The list of refusal reasons is gone from the overview.** It answered a
+  one-time question — "what is that 2?" — with a permanent panel on the page an
+  operator looks at most, showing three identical lines about MSTNAK rebinds
+  after every restart. A permanent display of something working correctly is
+  noise, and noise on the overview teaches somebody to stop reading it. That is
+  the same fault as painting the counter amber, made in the course of fixing it.
+
+  The counters stay: `answered` for refusals QSP replied to, `ignored` for
+  traffic nobody asked for. Those are the numbers, and a number is what a
+  routine event deserves. The reasons remain in `/api/peers` for whoever needs
+  them.
+
 ### Added
 - **A Call record page, which is the half of ADR-0033 that makes it useful.**
   The record was stored and nothing displayed it, so a net control station still

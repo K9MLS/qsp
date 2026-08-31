@@ -1527,7 +1527,7 @@ func TestTheDroppedCounterExplainsItself(t *testing.T) {
 
 	// Two counters, because a refusal QSP answered and a stray scan are not the
 	// same event.
-	for _, want := range []string{"t.answered", "t.ignored", "recent_drops"} {
+	for _, want := range []string{"t.answered", "t.ignored"} {
 		if !strings.Contains(src, want) {
 			t.Errorf("console.js does not use %s", want)
 		}
@@ -1539,12 +1539,19 @@ func TestTheDroppedCounterExplainsItself(t *testing.T) {
 			"looks like a fault")
 	}
 
+	// **The reasons are deliberately not on the overview.** They were, briefly,
+	// as a permanent list — and a permanent list answering a one-time question
+	// is noise on the page an operator looks at most, which teaches them to
+	// stop reading it. Three MSTNAK rebinds per restart is QSP working, and it
+	// needs a number rather than three lines of prose.
+	//
+	// The reasons remain in /api/peers for whoever needs them.
 	page, err := assets.ReadFile("static/index.html")
 	if err != nil {
 		t.Fatalf("reading index.html: %v", err)
 	}
-	if !strings.Contains(string(page), `id="drop-reasons"`) {
-		t.Error("the overview has nowhere to show why datagrams were refused")
+	if strings.Contains(string(page), `id="drop-reasons"`) {
+		t.Error("the overview carries a permanent list of routine refusals again")
 	}
 }
 

@@ -458,7 +458,6 @@
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
-    renderDrops(t.recent_drops || []);
     trafficBody.innerHTML =
       '<div class="metrics">' +
       metric(inCount, "datagrams in") +
@@ -756,40 +755,5 @@
    * slow refresh even when nothing has changed. */
   window.setInterval(refreshPeers, PEER_POLL_MS);
   connect();
-  /* The reasons behind the refused and ignored counts.
-   *
-   * **A counter an operator cannot investigate only generates worry.** The reason
-   * for a drop is logged at debug, production runs at info, and raising the level
-   * needs a restart — which resets the counter. So an operator could not see why a
-   * number was what it was without destroying the number. These are the last
-   * twenty, kept in memory, needing no restart and no log level. */
-  function renderDrops(notes) {
-    var el = document.getElementById("drop-reasons");
-    if (!el) {
-      return;
-    }
-    if (notes.length === 0) {
-      el.innerHTML = "";
-      el.hidden = true;
-      return;
-    }
 
-    var rows = "";
-    for (var i = 0; i < notes.length; i++) {
-      var n = notes[i];
-      rows +=
-        "<li><span class=\"drop__when\">" +
-        escapeText(new Date(n.at).toLocaleTimeString()) +
-        "</span> " +
-        '<span class="pill pill--' + (n.answered ? "good" : "warn") + '">' +
-        (n.answered ? "answered" : "ignored") +
-        "</span> " +
-        escapeText(n.reason) +
-        "</li>";
-    }
-    el.innerHTML =
-      '<p class="drop__title">Why datagrams were refused</p>' +
-      '<ul class="drop__list">' + rows + "</ul>";
-    el.hidden = false;
-  }
 })();
