@@ -107,6 +107,21 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **A navigation heading looked like a link.** "Operations" and "Administration"
+  sat at the same indent as the items beneath them, in the same weight,
+  differing only by size and colour — which reads as a link that happens to be
+  quieter, and somebody clicks it. Being dimmer is not being different in kind.
+
+  Each heading now has a rule above it, wider letter spacing, and
+  `cursor: default`, so the pointer stops promising something the element cannot
+  do.
+
+- **A form field with no note under it sat lower than its neighbours.** The
+  timeslot select on the peering page, visibly below the inputs beside it. A
+  flex row sizes every field to the tallest, and a grid whose content is shorter
+  than its box distributes the slack between its rows, so the control drifted
+  down by the height of a note it did not have. `align-content: start`.
+
 - **The links page rendered its form as browser defaults.** White boxes on a
   dark background, labels sitting inline, the button jammed against the
   paragraph above it. The `.picker` and `.config` rules existed in `join.css`,

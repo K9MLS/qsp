@@ -131,14 +131,30 @@ body {
   list-style: none;
 }
 
+/* **A heading is not a link and must not read as one.** It sat at the same
+   indent as the items beneath it, in the same weight, differing only by size and
+   colour — which reads as a link that happens to be quieter, and somebody clicks
+   it. Being dimmer is not being different in kind.
+
+   So it is set apart rather than merely dimmed: a rule above it, air between the
+   groups, and letters spaced wide enough that it reads as a label for what
+   follows rather than as one of them. */
 .nav__heading {
-  margin: 0 0 var(--space-2);
-  padding: 0 var(--space-3);
-  font-size: var(--text-xs);
+  margin: 0 0 var(--space-3);
+  padding: var(--space-4) var(--space-3) 0;
+  border-top: 1px solid var(--color-border);
+  font-size: 10px;
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-wide);
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--color-foreground-subtle);
+  cursor: default;
+}
+
+/* The first heading has nothing above it to be separated from. */
+.nav > .nav__heading:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 /* Added by nav.js when nobody is signed in. The links above it still work and
@@ -1531,6 +1547,12 @@ select.field__input {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
+  /* **Without this the rows stretch.** A flex row sizes every field to the
+     tallest, and a grid whose content is shorter than its box distributes the
+     slack between its rows — so a field with no note underneath it pushed its
+     control down the difference. The timeslot select sat visibly lower than the
+     inputs beside it. */
+  align-content: start;
 }
 
 .picker__label {

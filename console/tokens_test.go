@@ -1372,3 +1372,79 @@ func TestEveryClassIsStyledBySomethingThePageLoads(t *testing.T) {
 		t.Fatalf("only %d pages were checked; this has gone blind", checked)
 	}
 }
+
+// TestANavigationHeadingDoesNotReadAsALink.
+//
+// **They looked the same.** A heading sat at the same indent as the items under
+// it, in the same weight, differing only by size and colour — which reads as a
+// link that happens to be quieter, and somebody clicks it. An operator said so.
+//
+// Being dimmer is not being different in kind. The heading is set apart by a
+// rule above it and by letter spacing, and carries `cursor: default` so the
+// pointer does not promise something the element cannot do.
+func TestANavigationHeadingDoesNotReadAsALink(t *testing.T) {
+	body, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	css := string(body)
+
+	loc := regexp.MustCompile(`(?m)^\.nav__heading \{`).FindStringIndex(css)
+	if loc == nil {
+		t.Fatal("console.css does not style navigation headings")
+	}
+	rule := css[loc[0]:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+
+	for _, want := range []string{"border-top", "cursor: default", "letter-spacing"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("a navigation heading has no %s, so it still reads as a quieter link", want)
+		}
+	}
+
+	// And every page must use the class, or the distinction exists nowhere.
+	var used int
+	for _, page := range []string{"static/index.html", "static/access.html",
+		"static/network.html", "static/bridges.html", "static/history.html",
+		"static/links.html"} {
+		html, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		if strings.Contains(string(html), `class="nav__heading"`) {
+			used++
+		}
+	}
+	if used < 6 {
+		t.Errorf("only %d pages label their navigation groups", used)
+	}
+}
+
+// TestAFieldRowDoesNotStretch.
+//
+// A flex row sizes every field to the tallest, and a grid whose content is
+// shorter than its box distributes the slack between its rows — so a field with
+// no note underneath pushed its control down the difference. The timeslot select
+// sat visibly lower than the inputs beside it.
+func TestAFieldRowDoesNotStretch(t *testing.T) {
+	body, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	css := string(body)
+
+	loc := regexp.MustCompile(`(?m)^\.picker__field \{`).FindStringIndex(css)
+	if loc == nil {
+		t.Fatal("console.css does not style form fields")
+	}
+	rule := css[loc[0]:]
+	if end := strings.Index(rule, "}"); end >= 0 {
+		rule = rule[:end]
+	}
+	if !strings.Contains(rule, "align-content: start") {
+		t.Error("a field's rows stretch, so a control with no note beneath it sits lower " +
+			"than the ones beside it")
+	}
+}
