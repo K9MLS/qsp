@@ -822,7 +822,7 @@ func (p peerViews) Traffic() server.Traffic {
 		DatagramsIn:     s.Received,
 		DatagramsOut:    s.Sent,
 		Dropped:         s.Dropped,
-		Refused:         s.Refused,
+		Answered:        s.Refused,
 		Ignored:         s.Ignored,
 		FramesAccepted:  s.Frames,
 		FramesForwarded: s.Forwarded,

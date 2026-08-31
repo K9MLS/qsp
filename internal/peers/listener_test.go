@@ -408,8 +408,17 @@ func TestSnapshotIsSafeUnderConcurrentReads(t *testing.T) {
 	c.send(hbp.Config{RepeaterID: testID, Callsign: "K9MLS"})
 	c.recv()
 
+	// **Wait for the callsign, not merely for a peer.** A peer enters the
+	// snapshot when it logs in, and its callsign arrives later with the Config
+	// message — so waiting for a non-empty snapshot and then asserting the
+	// callsign is a race that passes whenever the machine is quick enough. It
+	// failed once on a developer's machine and not in seventy runs here, which
+	// is exactly the shape of a wait on the wrong condition.
 	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) && len(l.Snapshot()) == 0 {
+	for time.Now().Before(deadline) {
+		if snap := l.Snapshot(); len(snap) == 1 && snap[0].Callsign() == "K9MLS" {
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	close(stop)

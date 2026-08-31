@@ -469,7 +469,7 @@
        * stray port scan produced one permanently amber number that looked like
        * a fault and was not. Only traffic nobody asked for gets amber, and even
        * then only the count; the reasons are below. */
-      metric(t.refused || 0, "refused", "metric--muted") +
+      metric(t.answered || 0, "answered", "metric--muted") +
       metric(t.ignored || 0, "ignored", (t.ignored || 0) > 0 ? "metric--warn" : "metric--muted") +
       metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
       metric(t.frames_forwarded || 0, "forwarded", (t.frames_forwarded || 0) === 0 ? "metric--muted" : "") +

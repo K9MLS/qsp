@@ -130,6 +130,19 @@ All notable changes to QSP. Dates are UTC.
   without a restart. Exit status is non-zero and the reason names the field.
 
 ### Fixed
+- **A new counter collided with an existing field.** `/api/peers` already
+  carries a `refused` list of registration refusals, with addresses and reasons,
+  and the split drop counter reused that key for a number — two meanings under
+  one name in one object. The counter is `answered` now, which is also the more
+  accurate word: it names what QSP did rather than what it declined to do.
+
+- **A test waited on the wrong condition.** `TestSnapshotIsSafeUnderConcurrentReads`
+  waited for the peer snapshot to be non-empty and then asserted the callsign,
+  but a peer enters the snapshot when it logs in and its callsign arrives later
+  with the Config message. It passed whenever the machine was quick enough,
+  failed once on a developer's machine, and did not fail in seventy runs here.
+  It waits for the callsign now.
+
 - **The dropped counter could not be investigated without destroying it.**
   Production showed `2` dropped, painted amber, unchanged across three stations
   and thousands of frames. The reason for each drop is logged at **debug**;

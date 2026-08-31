@@ -106,15 +106,20 @@ type Traffic struct {
 	DatagramsOut uint64 `json:"datagrams_out"`
 	// Dropped is datagrams refused, each for a logged reason.
 	Dropped uint64 `json:"dropped"`
-	// Refused is the subset QSP answered, and Ignored the subset it did not.
+	// Answered is the subset QSP replied to, and Ignored the subset it did not.
+	//
+	// **Named "answered" rather than "refused" deliberately.** This payload
+	// already carries a `refused` list of registration refusals, with addresses
+	// and reasons, and two different meanings under one key in one object is
+	// how a console reads the wrong thing.
 	//
 	// **A refusal QSP answered is the protocol working.** A keepalive from a
 	// peer that has not registered is answered with MSTNAK so the peer logs in
 	// again, which is what ADR-0011 intends — and counting it beside a stray
 	// port scan produced a permanently non-zero number that looked like a fault
 	// and was not.
-	Refused uint64 `json:"refused"`
-	Ignored uint64 `json:"ignored"`
+	Answered uint64 `json:"answered"`
+	Ignored  uint64 `json:"ignored"`
 	// RecentDrops explains those counters without a restart.
 	//
 	// The reason for a drop is logged at debug, production runs at info, and

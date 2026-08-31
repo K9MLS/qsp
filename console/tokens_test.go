@@ -1519,7 +1519,7 @@ func TestTheDroppedCounterExplainsItself(t *testing.T) {
 
 	// Two counters, because a refusal QSP answered and a stray scan are not the
 	// same event.
-	for _, want := range []string{"t.refused", "t.ignored", "recent_drops"} {
+	for _, want := range []string{"t.answered", "t.ignored", "recent_drops"} {
 		if !strings.Contains(src, want) {
 			t.Errorf("console.js does not use %s", want)
 		}
