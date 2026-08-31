@@ -1602,3 +1602,41 @@ func TestEveryScriptKeepsItsHelpersInScope(t *testing.T) {
 		t.Fatalf("only %d scripts were examined; this has gone blind", checked)
 	}
 }
+
+// TestThePeerTableAnswersTheCommonestQuestion.
+//
+// ADR-0023 names this as a consequence of building attachment at all: **"why
+// can I not hear that talkgroup" is the most common question on any DMR
+// network, and the answer is a list QSP holds and does not currently
+// display.** It held it for a while longer.
+func TestThePeerTableAnswersTheCommonestQuestion(t *testing.T) {
+	script, err := assets.ReadFile("static/console.js")
+	if err != nil {
+		t.Fatalf("reading console.js: %v", err)
+	}
+	src := string(script)
+
+	if !strings.Contains(src, "p.attachments") {
+		t.Error("the peer table does not show what a peer is receiving")
+	}
+	// Static and dynamic must be distinguishable: "you cannot drop this" and
+	// "this lapses if you stop using it" are different promises.
+	if !strings.Contains(src, "a.static") {
+		t.Error("the peer table does not distinguish a static attachment from one the " +
+			"member made by transmitting")
+	}
+	// A column with no header is a column nobody can read.
+	if !strings.Contains(src, ">Talkgroups</th>") {
+		t.Error("the talkgroup column has no header")
+	}
+
+	css, err := assets.ReadFile("static/console.css")
+	if err != nil {
+		t.Fatalf("reading console.css: %v", err)
+	}
+	for _, want := range []string{".tg {", ".tg--static {"} {
+		if !strings.Contains(string(css), want) {
+			t.Errorf("console.css does not define %s", want)
+		}
+	}
+}

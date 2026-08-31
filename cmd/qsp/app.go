@@ -910,6 +910,7 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 		if peer.Config != nil {
 			v.ColorCode = peer.Config.ColorCode
 		}
+		v.Attachments = attachmentViews(p.listener, peer.ID, now)
 		// What the peer says about where it is. Unverified, and reported only
 		// when it parses — a pin in the wrong place is believed, while a
 		// missing one prompts somebody to ask.
@@ -1368,4 +1369,31 @@ func callHistory(store *calls.Store) server.CallHistory {
 		return nil
 	}
 	return store
+}
+
+// attachmentViews lists what a peer is receiving, static first then by
+// talkgroup.
+//
+// Nil when subscription is off: every peer then receives everything, and a list
+// would imply a limit that does not exist.
+func attachmentViews(l *peers.Listener, peer hbp.RepeaterID, now time.Time) []server.AttachmentView {
+	if l == nil || !l.SubscriptionEnabled() {
+		return nil
+	}
+	var out []server.AttachmentView
+	for _, a := range l.Attachments() {
+		if a.Peer != peer {
+			continue
+		}
+		view := server.AttachmentView{
+			Talkgroup: a.Talkgroup,
+			Timeslot:  int(a.Timeslot),
+			Static:    a.Static,
+		}
+		if !a.LastUsed.IsZero() {
+			view.IdleFor = now.Sub(a.LastUsed).Truncate(time.Second).String()
+		}
+		out = append(out, view)
+	}
+	return out
 }

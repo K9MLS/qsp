@@ -6,6 +6,19 @@ import (
 	"time"
 )
 
+// AttachmentView is one talkgroup a peer is receiving.
+type AttachmentView struct {
+	Talkgroup uint32 `json:"talkgroup"`
+	Timeslot  int    `json:"timeslot"`
+	// Static distinguishes what an administrator pinned from what the member
+	// attached by transmitting — the difference between "you cannot drop this"
+	// and "this lapses if you stop using it".
+	Static bool `json:"static"`
+	// IdleFor is how long since it last carried traffic, empty for a static
+	// attachment nobody has used.
+	IdleFor string `json:"idle_for,omitempty"`
+}
+
 // PeerView is one peer as the console sees it.
 //
 // It is a deliberate projection rather than the domain type. The registry holds
@@ -44,6 +57,14 @@ type PeerView struct {
 	Longitude *float64 `json:"longitude,omitempty"`
 	// Height is metres above ground, omitted when zero or unannounced.
 	Height int `json:"height,omitempty"`
+	// Attachments are the talkgroups this peer is receiving, static first.
+	//
+	// **"Why can I not hear that talkgroup" is the most common question on any
+	// DMR network**, and until now the answer was a list QSP held and did not
+	// display. Omitted entirely when subscription is off, because then every
+	// peer receives everything and a list would imply a limit that does not
+	// exist.
+	Attachments []AttachmentView `json:"attachments,omitempty"`
 	// PositionRefused explains coordinates that arrived and were not used.
 	//
 	// A peer that announced nothing and one that announced 0,0 both produce no

@@ -4,6 +4,19 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **The peer table shows which talkgroups each peer is receiving.** ADR-0023
+  named this as a consequence of building attachment at all: *"why can I not
+  hear that talkgroup" is the most common question on any DMR network, and the
+  answer is a list QSP holds and does not currently display.* It held it for a
+  while longer.
+
+  Static attachments are filled and dynamic ones outlined, because "you cannot
+  drop this" and "this lapses if you stop using it" are different promises and a
+  member needs to tell them apart at a glance. An em dash when subscription is
+  off, since every peer then receives everything and a list of talkgroups would
+  imply a limit that does not exist.
+
 ### Fixed
 - **Per-peer talkgroup attachment was fully built and never switched on.**
   `internal/peers/attachments.go` has static and dynamic attachment, the

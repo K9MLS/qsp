@@ -237,6 +237,7 @@
         '<td class="mono">' + escapeText(p.connected_for || "—") + "</td>" +
         '<td class="mono">' + escapeText(p.idle_for) + "</td>" +
         '<td class="mono">' + escapeText(p.color_code || "—") + "</td>" +
+        '<td class="cell--wrap">' + peerAttachments(p) + "</td>" +
         '<td class="cell--wrap">' + peerPlace(p) + "</td>" +
         '<td class="mono">' + escapeText(p.address) + "</td>" +
         "</tr>";
@@ -249,12 +250,42 @@
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
       "<th scope=\"col\">State</th><th scope=\"col\">Connected</th>" +
       "<th scope=\"col\">Idle</th><th scope=\"col\">CC</th>" +
+      "<th scope=\"col\" class=\"cell--wrap\">Talkgroups</th>" +
       "<th scope=\"col\" class=\"cell--wrap\">Location</th>" +
       "<th scope=\"col\">Address</th>" +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
 
     knownPeerIds = seen;
     firstPeerLoad = false;
+  }
+
+  /* peerAttachments lists the talkgroups a peer is receiving.
+   *
+   * **"Why can I not hear that talkgroup" is the most common question on any
+   * DMR network**, and until now the answer was a list QSP held and did not
+   * display.
+   *
+   * An em dash when subscription is off, because then every peer receives
+   * everything and a list of talkgroups would imply a limit that does not
+   * exist. Static ones are marked: the difference between "you cannot drop
+   * this" and "this lapses if you stop using it" is the difference between a
+   * member being confused and a member being told. */
+  function peerAttachments(p) {
+    var list = p.attachments || [];
+    if (list.length === 0) {
+      return '<span class="muted">—</span>';
+    }
+    var parts = [];
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      parts.push(
+        '<span class="tg' + (a.static ? " tg--static" : "") + '" title="' +
+        (a.static ? "Configured; a disconnect does not drop it"
+                  : "Attached by transmitting; lapses when unused") +
+        '">' + a.talkgroup + "<span class=\"tg__slot\">TS" + a.timeslot + "</span></span>"
+      );
+    }
+    return parts.join(" ");
   }
 
   // peerPlace renders what a peer says about where it is.

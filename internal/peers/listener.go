@@ -1062,3 +1062,26 @@ func (l *Listener) RecentDrops() []DropNote {
 	}
 	return out
 }
+
+// Attachments returns every talkgroup attachment the master holds.
+//
+// Exposed through the listener because the console reaches the network through
+// it, and because a caller holding the Master could change what it reads.
+func (l *Listener) Attachments() []Attachment {
+	if l == nil || l.cfg.Master == nil {
+		return nil
+	}
+	return l.cfg.Master.Attachments()
+}
+
+// SubscriptionEnabled reports whether per-peer attachment is in force.
+//
+// The console needs it to tell "this peer receives these talkgroups" from
+// "every peer receives everything", which look identical in a list and mean
+// opposite things.
+func (l *Listener) SubscriptionEnabled() bool {
+	if l == nil || l.cfg.Master == nil {
+		return false
+	}
+	return l.cfg.Master.SubscriptionEnabled()
+}
