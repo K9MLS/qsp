@@ -83,6 +83,11 @@ type ListenerConfig struct {
 	// It is owned by the serve goroutine, like Master, and must not be touched
 	// by the caller after Start.
 	Calls *calls.Tracker
+	// UnlinkTalkgroup, transmitted on, drops a peer's dynamic attachments.
+	// Zero means the network offers no such thing.
+	UnlinkTalkgroup uint32
+	// UnlinkTimeslot restricts which slot that works on. Zero means either.
+	UnlinkTimeslot int
 	// CallStore keeps completed calls beyond the life of the process.
 	// Optional; nil keeps only the in-memory list.
 	//
@@ -125,6 +130,10 @@ type Listener struct {
 	// recentDrops explains the counters without a restart. Guarded by its own
 	// mutex because it is written from the serve goroutine and read by the
 	// console.
+	// lastUnlink stops one keyup on the unlink talkgroup being acted on fifty
+	// times. Serve-goroutine only.
+	lastUnlink map[hbp.RepeaterID]hbp.StreamID
+
 	dropMu      sync.Mutex
 	recentDrops []DropNote
 	frames      atomic.Uint64
@@ -428,10 +437,58 @@ func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
 		}
 	}
 
+	// **Unlink is handled here, before routing, and goes no further.** A member
+	// dialling the disconnect talkgroup is addressing this server rather than
+	// anybody else on the network, and relaying it would put a burst of their
+	// audio onto whatever that number happens to mean elsewhere.
+	if l.unlink(from, frame) {
+		return
+	}
+
 	if l.cfg.Routing == nil {
 		return
 	}
 	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+}
+
+// unlink drops a peer's dynamic attachments when it transmits on the talkgroup
+// configured for it, and reports whether the frame was consumed.
+//
+// Static attachments survive: a member pressing disconnect says what they want
+// to stop hearing, and an administrator's static attachment is a statement about
+// what a peer must always carry.
+func (l *Listener) unlink(from hbp.RepeaterID, frame hbp.Data) bool {
+	if l.cfg.UnlinkTalkgroup == 0 {
+		return false
+	}
+	if frame.CallType != hbp.CallGroup || frame.TargetID != l.cfg.UnlinkTalkgroup {
+		return false
+	}
+	if l.cfg.UnlinkTimeslot != 0 && int(frame.Timeslot) != l.cfg.UnlinkTimeslot {
+		return false
+	}
+	// **Once per keyup, keyed on the stream.** A three-second transmission is
+	// about fifty frames; acting on each would drop the attachments once and
+	// then log forty-nine times. There is no voice-header predicate on hbp.Data
+	// and inventing one from a data-type guess is how this project has been
+	// wrong before, so this uses the field that already identifies one keyup.
+	//
+	// The map is touched only from the serve goroutine, which is the sole
+	// caller of handle.
+	if l.lastUnlink == nil {
+		l.lastUnlink = make(map[hbp.RepeaterID]hbp.StreamID)
+	}
+	if seen, ok := l.lastUnlink[from]; ok && seen == frame.StreamID {
+		return true
+	}
+	l.lastUnlink[from] = frame.StreamID
+
+	n := l.cfg.Master.DropAttachments(from)
+	l.log.Info("talkgroups dropped at the member's request",
+		logging.PeerID(uint32(from)),
+		slog.Int("dropped", n),
+	)
+	return true
 }
 
 // replay hands a finished recording to the playback goroutine.

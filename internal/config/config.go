@@ -175,6 +175,24 @@ type Subscription struct {
 	// cannot serve: a calling channel that must be there before anybody speaks,
 	// and a repeater that should always carry its regional talkgroup.
 	Static []StaticAttachment `json:"static,omitempty"`
+	// Unlink is a talkgroup that, transmitted on, drops every dynamic
+	// attachment the peer holds. Zero means the network offers no such thing.
+	//
+	// **Configuration rather than a constant, for parrot's reason.** 4000 is
+	// what most members have programmed because BrandMeister uses it, and a
+	// club is free to pick something else — PNWDigital does not use 4000 at
+	// all. Hardcoding it would be QSP deciding a talkgroup number, which is
+	// the one thing §0 says it must never do.
+	//
+	// **Static attachments survive it.** A member pressing disconnect says
+	// what they want to stop hearing; a static attachment is an administrator's
+	// statement about what a peer must always carry, and a PTT does not
+	// overrule it. Otherwise somebody drops themselves off the club calling
+	// channel and cannot work out why they have gone deaf.
+	Unlink uint32 `json:"unlink,omitempty"`
+	// UnlinkTimeslot is which slot the unlink talkgroup is dialled on. Zero
+	// means either.
+	UnlinkTimeslot int `json:"unlink_timeslot,omitempty"`
 }
 
 // StaticAttachment is one talkgroup a peer always receives.

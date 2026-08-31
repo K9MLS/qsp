@@ -123,6 +123,30 @@ func (m *Master) Attachments() []Attachment {
 	return out
 }
 
+// DropAttachments removes every dynamic attachment a peer holds and reports how
+// many, which is what a member asks for by transmitting on the unlink
+// talkgroup.
+//
+// **Static attachments survive.** A member pressing disconnect says what they
+// want to stop hearing; a static attachment is an administrator's statement
+// about what a peer must always carry, and a PTT does not overrule it —
+// otherwise somebody drops themselves off the club calling channel and cannot
+// work out why they have gone deaf.
+//
+// Waiting out the timeout is not a control, it is a delay. Somebody landing on a
+// talkgroup, finding it empty and moving on wants to leave now, and doing that
+// repeatedly is what exploring a network looks like.
+func (m *Master) DropAttachments(peer hbp.RepeaterID) int {
+	var n int
+	for k, a := range m.attachments {
+		if k.peer == peer && !a.Static {
+			delete(m.attachments, k)
+			n++
+		}
+	}
+	return n
+}
+
 // AttachmentCount returns how many attachments are held.
 func (m *Master) AttachmentCount() int { return len(m.attachments) }
 

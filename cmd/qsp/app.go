@@ -308,18 +308,52 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			}
 		}
 
+		// **The master already implements all of this and was never told to.**
+		// internal/peers/attachments.go has static and dynamic attachment, the
+		// timeout, expiry and the Attached the routing core consults — and
+		// SetSubscription had no caller anywhere in the program, so every peer
+		// received every talkgroup regardless of configuration. The same shape
+		// as the audit trail: built, wired, and never switched on.
+		if cfg.DMR.Subscription.Enabled {
+			static := make([]peers.Attachment, 0, len(cfg.DMR.Subscription.Static))
+			for _, a := range cfg.DMR.Subscription.Static {
+				static = append(static, peers.Attachment{
+					Peer:      hbp.RepeaterID(a.Peer),
+					Talkgroup: a.Talkgroup,
+					Timeslot:  hbp.Timeslot(a.Timeslot),
+					Static:    true,
+				})
+			}
+			master.SetSubscription(peers.SubscriptionConfig{
+				Enabled: true,
+				Timeout: cfg.DMR.Subscription.Timeout.AsDuration(),
+				Static:  static,
+			})
+			log.Info("per-peer talkgroup attachment enabled",
+				slog.String("timeout", cfg.DMR.Subscription.Timeout.AsDuration().String()),
+				slog.Int("static", len(static)),
+				slog.Int("unlink_talkgroup", int(cfg.DMR.Subscription.Unlink)))
+		}
+
 		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
 			ListenAddress: cfg.DMR.ListenAddress,
 			Master:        master,
 			Bus:           a.bus,
 			Calls:         tracker,
 			CallStore:     callStore,
-			Parrot:        parrotRecorder,
-			Routing:       core,
-			Upstreams:     upstreamSender(links),
-			ScheduleState: bridgeState(sched, triggers),
-			Triggers:      triggers,
-			Rebuild:       func(now time.Time) (*routing.Table, error) { return buildTable(cfg, sched, triggers, now) },
+			UnlinkTalkgroup: func() uint32 {
+				if !cfg.DMR.Subscription.Enabled {
+					return 0
+				}
+				return cfg.DMR.Subscription.Unlink
+			}(),
+			UnlinkTimeslot: cfg.DMR.Subscription.UnlinkTimeslot,
+			Parrot:         parrotRecorder,
+			Routing:        core,
+			Upstreams:      upstreamSender(links),
+			ScheduleState:  bridgeState(sched, triggers),
+			Triggers:       triggers,
+			Rebuild:        func(now time.Time) (*routing.Table, error) { return buildTable(cfg, sched, triggers, now) },
 		})
 		if lerr != nil {
 			return nil, lerr

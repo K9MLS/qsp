@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **Per-peer talkgroup attachment was fully built and never switched on.**
+  `internal/peers/attachments.go` has static and dynamic attachment, the
+  timeout, expiry, and the `Attached` the routing core already consults —
+  ADR-0023 implemented in full. `Master.SetSubscription` **had no caller
+  anywhere in the program**, so `dmr.subscription.enabled` did nothing and every
+  peer received every talkgroup regardless.
+
+  The same shape as the audit trail and the export lists: built, wired,
+  documented, and never called. Found by starting to write a second
+  implementation and discovering the first.
+
+### Added
+- **A member can drop their talkgroups from the radio.**
+  `dmr.subscription.unlink` names a talkgroup that, transmitted on, releases
+  every dynamic attachment the peer holds. Configuration rather than a constant,
+  for parrot's reason: 4000 is what most members have programmed because
+  BrandMeister uses it, and PNWDigital does not use it at all. Hardcoding a
+  talkgroup number is the one thing §0 says QSP must never do.
+
+  **Static attachments survive it.** A member pressing disconnect says what they
+  want to stop hearing; a static attachment is an administrator's statement
+  about what a peer must always carry, and a PTT does not overrule it —
+  otherwise somebody drops themselves off the club calling channel and cannot
+  work out why they have gone deaf.
+
+  Waiting out the fifteen-minute timeout is not a control, it is a delay.
+  Landing on a talkgroup, finding it empty and moving on is what exploring a
+  network looks like, and it wants to happen now.
+
+  The frame is consumed rather than relayed: a member dialling disconnect is
+  addressing this server, not the network, and forwarding it would put a burst
+  of their audio onto whatever that number means elsewhere. Acted on once per
+  keyup, keyed on the stream ID, so a three-second transmission drops the
+  attachments once instead of logging forty-nine times.
+
 ### Removed
 - **The list of refusal reasons is gone from the overview.** It answered a
   one-time question — "what is that 2?" — with a permanent panel on the page an
