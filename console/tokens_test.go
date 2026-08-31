@@ -1640,3 +1640,39 @@ func TestThePeerTableAnswersTheCommonestQuestion(t *testing.T) {
 		}
 	}
 }
+
+// TestTheStationIdentityIsEditable.
+//
+// **Three settings were added and none had a console**, which leaves an
+// administrator editing /var/lib/qsp/qsp.json by hand — and a hand-edited
+// configuration is what stopped this network for twenty minutes. A setting with
+// no page is a setting that gets changed the dangerous way.
+func TestTheStationIdentityIsEditable(t *testing.T) {
+	page, err := assets.ReadFile("static/network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{
+		`id="identity-callsign"`, `id="identity-location"`,
+		`id="identity-latitude"`, `id="identity-longitude"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("network.html has no %s", want)
+		}
+	}
+
+	script, err := assets.ReadFile("static/network.js")
+	if err != nil {
+		t.Fatalf("reading network.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "next.dmr.identity") {
+		t.Error("network.js never writes the identity, so the form cannot save")
+	}
+	// A coordinate must not be saved as zero when it is simply absent: zero is a
+	// real place, and QSP already refuses to plot a hotspot announcing 0,0.
+	if !strings.Contains(src, "function coordinate(") {
+		t.Error("network.js does not guard against saving an unset coordinate as zero")
+	}
+}

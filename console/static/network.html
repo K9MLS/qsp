@@ -148,6 +148,55 @@
       <section class="panel">
         <div class="panel__head">
           <div class="panel__heading">
+            <h2 class="panel__title">This station</h2>
+            <button class="hint" type="button" aria-controls="hint-identity"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="identity-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-identity">
+          <p class="hint__text">Who this instance says it is when it links to
+            another network. <strong>A blank callsign appears on the far end's
+            dashboard as an unidentified station.</strong> Every link uses these
+            unless it is given something of its own, so they are stated once
+            rather than repeated per link. Coordinates are decimal degrees, the
+            same as a hotspot announces, and are optional &mdash; leave them out
+            and this station is simply not plotted.</p>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            Shown to other networks, not to your own members.
+          </p>
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Callsign</span>
+              <input class="picker__input" id="identity-callsign" type="text"
+                     placeholder="K9MLS">
+              <p class="field__note">The licensed identity of whoever runs
+                this.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Location</span>
+              <input class="picker__input" id="identity-location" type="text"
+                     placeholder="Denton, TX">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Latitude</span>
+              <input class="picker__input" id="identity-latitude" type="text"
+                     inputmode="decimal" placeholder="33.238">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Longitude</span>
+              <input class="picker__input" id="identity-longitude" type="text"
+                     inputmode="decimal" placeholder="-97.1134">
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
             <h2 class="panel__title">Parrot</h2>
             <button class="hint" type="button" aria-controls="hint-parrot"
                     aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>

@@ -25,6 +25,12 @@
   var networkAddress = document.getElementById("network-address");
   var talkgroups = document.getElementById("talkgroups");
   var tgCount = document.getElementById("tg-count");
+  var identityCallsign = document.getElementById("identity-callsign");
+  var identityLocation = document.getElementById("identity-location");
+  var identityLatitude = document.getElementById("identity-latitude");
+  var identityLongitude = document.getElementById("identity-longitude");
+  var identityState = document.getElementById("identity-state");
+
   var parrotEnabled = document.getElementById("parrot-enabled");
   var parrotTalkgroup = document.getElementById("parrot-talkgroup");
   var parrotTimeslot = document.getElementById("parrot-timeslot");
@@ -114,6 +120,16 @@
     });
     renderTalkgroups();
 
+    var identity = (cfg.dmr && cfg.dmr.identity) || {};
+    identityCallsign.value = identity.callsign || "";
+    identityLocation.value = identity.location || "";
+    /* Blank rather than 0 for an absent coordinate. Zero is a real place in the
+     * Gulf of Guinea, which is why a hotspot announcing 0,0 is refused a pin —
+     * and a form that shows 0 for "not set" invites somebody to save it. */
+    identityLatitude.value = identity.latitude ? String(identity.latitude) : "";
+    identityLongitude.value = identity.longitude ? String(identity.longitude) : "";
+    refreshIdentityState();
+
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
     parrotTalkgroup.value = parrot.talkgroup || "";
@@ -121,9 +137,31 @@
     refreshParrotState();
   }
 
+  function refreshIdentityState() {
+    identityState.textContent = identityCallsign.value.trim()
+      ? identityCallsign.value.trim().toUpperCase()
+      : "no callsign";
+  }
+
+  /* A coordinate is written only when it parses. An unparseable one is left out
+   * rather than saved as zero, because zero is a real place and being plotted
+   * in the Gulf of Guinea is worse than not being plotted. */
+  function coordinate(el) {
+    var raw = el.value.trim();
+    if (raw === "") { return 0; }
+    var n = Number(raw);
+    return isFinite(n) ? n : 0;
+  }
+
   function collect() {
     var next = JSON.parse(JSON.stringify(loaded));
     if (!next.dmr) { next.dmr = {}; }
+
+    next.dmr.identity = next.dmr.identity || {};
+    next.dmr.identity.callsign = identityCallsign.value.trim().toUpperCase();
+    next.dmr.identity.location = identityLocation.value.trim();
+    next.dmr.identity.latitude = coordinate(identityLatitude);
+    next.dmr.identity.longitude = coordinate(identityLongitude);
 
     next.dmr.join = next.dmr.join || {};
     next.dmr.join.network_name = networkName.value.trim();
@@ -262,6 +300,7 @@
     renderTalkgroups();
   });
 
+  identityCallsign.addEventListener("input", refreshIdentityState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

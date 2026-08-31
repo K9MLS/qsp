@@ -5,6 +5,19 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **The station identity is editable from the console.** `dmr.identity` was
+  added and had no page, which leaves an administrator editing
+  `/var/lib/qsp/qsp.json` by hand — and a hand-edited configuration is what
+  stopped this network for twenty minutes. A setting with no page is a setting
+  that gets changed the dangerous way.
+
+  Callsign, location and coordinates, on the network settings page. A coordinate
+  is written only when it parses: an unset one is left out rather than saved as
+  zero, because **zero is a real place** and being plotted in the Gulf of Guinea
+  is worse than not being plotted — which is exactly why QSP already refuses a
+  hotspot announcing 0,0.
+
+### Added
 - **`dmr.identity` — one callsign and one position for the instance.**
   `UpstreamIdentity` carries both on every link, so an instance with three links
   stated its callsign three times with nothing keeping them consistent. Worse,
