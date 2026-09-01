@@ -5,6 +5,23 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **Subscription and call retention are editable from the console**, so no
+  setting added today still needs `/var/lib/qsp/qsp.json` opened by hand.
+
+  The subscription panel says plainly what turning it on does: **until somebody
+  transmits they hear nothing**, so a talkgroup everyone must always have needs
+  pinning to each peer first — which is not yet editable here and is named as
+  such rather than left to be discovered.
+
+  Retention offers *nothing is kept* as a first-class choice, because a club
+  that would rather not hold a log of who transmitted when should be able to say
+  so from the page rather than by knowing that zero means off.
+
+  A stored duration the list does not offer is left alone rather than rewritten
+  to whichever option happens to be selected. A form that quietly changes what
+  it was shown is worse than one that cannot express it.
+
+### Added
 - **The station identity is editable from the console.** `dmr.identity` was
   added and had no page, which leaves an administrator editing
   `/var/lib/qsp/qsp.json` by hand — and a hand-edited configuration is what

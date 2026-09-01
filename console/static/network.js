@@ -31,6 +31,13 @@
   var identityLongitude = document.getElementById("identity-longitude");
   var identityState = document.getElementById("identity-state");
 
+  var subEnabled = document.getElementById("subscription-enabled");
+  var subTimeout = document.getElementById("subscription-timeout");
+  var subUnlink = document.getElementById("subscription-unlink");
+  var subState = document.getElementById("subscription-state");
+  var retain = document.getElementById("retain");
+  var retainState = document.getElementById("retain-state");
+
   var parrotEnabled = document.getElementById("parrot-enabled");
   var parrotTalkgroup = document.getElementById("parrot-talkgroup");
   var parrotTimeslot = document.getElementById("parrot-timeslot");
@@ -130,11 +137,47 @@
     identityLongitude.value = identity.longitude ? String(identity.longitude) : "";
     refreshIdentityState();
 
+    var sub = (cfg.dmr && cfg.dmr.subscription) || {};
+    subEnabled.checked = !!sub.enabled;
+    /* Only select a stored value the list actually offers. Forcing an unlisted
+     * one would silently rewrite a duration an administrator chose in the file
+     * — a form that quietly changes what it was shown is worse than one that
+     * cannot express it. */
+    setIfOffered(subTimeout, sub.timeout);
+    subUnlink.value = sub.unlink ? String(sub.unlink) : "";
+    refreshSubState();
+
+    var calls = (cfg.dmr && cfg.dmr.calls) || {};
+    setIfOffered(retain, calls.retain);
+    refreshRetainState();
+
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
     parrotTalkgroup.value = parrot.talkgroup || "";
     parrotTimeslot.value = String(parrot.timeslot || 2);
     refreshParrotState();
+  }
+
+  function setIfOffered(select, value) {
+    if (!select || !value) { return; }
+    for (var i = 0; i < select.options.length; i++) {
+      if (select.options[i].value === value) {
+        select.value = value;
+        return;
+      }
+    }
+  }
+
+  function refreshSubState() {
+    subState.textContent = subEnabled.checked
+      ? "on, lapses after " + subTimeout.value
+      : "off, everyone hears everything";
+  }
+
+  function refreshRetainState() {
+    retainState.textContent = retain.value === "0s"
+      ? "nothing is kept"
+      : "kept " + retain.options[retain.selectedIndex].text.toLowerCase();
   }
 
   function refreshIdentityState() {
@@ -156,6 +199,16 @@
   function collect() {
     var next = JSON.parse(JSON.stringify(loaded));
     if (!next.dmr) { next.dmr = {}; }
+
+    next.dmr.subscription = next.dmr.subscription || {};
+    next.dmr.subscription.enabled = subEnabled.checked;
+    next.dmr.subscription.timeout = subTimeout.value;
+    /* Blank means the network offers no disconnect talkgroup, which is a real
+     * choice: PNWDigital does not use 4000 at all. */
+    next.dmr.subscription.unlink = parseInt(subUnlink.value, 10) || 0;
+
+    next.dmr.calls = next.dmr.calls || {};
+    next.dmr.calls.retain = retain.value;
 
     next.dmr.identity = next.dmr.identity || {};
     next.dmr.identity.callsign = identityCallsign.value.trim().toUpperCase();
@@ -301,6 +354,9 @@
   });
 
   identityCallsign.addEventListener("input", refreshIdentityState);
+  subEnabled.addEventListener("change", refreshSubState);
+  subTimeout.addEventListener("change", refreshSubState);
+  retain.addEventListener("change", refreshRetainState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

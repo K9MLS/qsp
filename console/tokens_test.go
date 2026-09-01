@@ -1676,3 +1676,55 @@ func TestTheStationIdentityIsEditable(t *testing.T) {
 		t.Error("network.js does not guard against saving an unset coordinate as zero")
 	}
 }
+
+// TestSubscriptionAndRetentionAreEditable.
+//
+// Both were added as configuration with no page, which leaves an administrator
+// editing /var/lib/qsp/qsp.json by hand — and a hand-edited configuration is
+// what stopped this network for twenty minutes.
+//
+// Retention especially: thirty days of who transmitted and when is a policy a
+// club should be able to see and change, not a field buried in a file.
+func TestSubscriptionAndRetentionAreEditable(t *testing.T) {
+	page, err := assets.ReadFile("static/network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{
+		`id="subscription-enabled"`, `id="subscription-timeout"`,
+		`id="subscription-unlink"`, `id="retain"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("network.html has no %s", want)
+		}
+	}
+
+	// Turning subscription on silences everybody who has not transmitted, so
+	// the page has to say so where the switch is.
+	if !strings.Contains(html, "Turn it on carefully") {
+		t.Error("the page does not warn that enabling subscription silences members " +
+			"until they transmit")
+	}
+	// Keeping nothing is a real answer for a club that would rather not hold a
+	// log of who transmitted when.
+	if !strings.Contains(html, `value="0s"`) {
+		t.Error("the retention list cannot express keeping nothing")
+	}
+
+	script, err := assets.ReadFile("static/network.js")
+	if err != nil {
+		t.Fatalf("reading network.js: %v", err)
+	}
+	src := string(script)
+	for _, want := range []string{"next.dmr.subscription", "next.dmr.calls"} {
+		if !strings.Contains(src, want) {
+			t.Errorf("network.js never writes %s, so the form cannot save", want)
+		}
+	}
+	// A stored duration the list does not offer must be left alone rather than
+	// silently rewritten to whichever option happens to be selected.
+	if !strings.Contains(src, "function setIfOffered(") {
+		t.Error("network.js may overwrite a duration an administrator set in the file")
+	}
+}
