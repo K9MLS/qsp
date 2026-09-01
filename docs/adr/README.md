@@ -45,3 +45,4 @@ conclusion.
 | [0033](ADR-0033-last-heard-is-a-record.md) | Last heard is a record, and net control is who it is for | Accepted |
 | [0034](ADR-0034-p25-is-native.md) | P25 is a network of its own, and audio is never transcoded to reach it | Accepted |
 | [0035](ADR-0035-per-peer-passwords.md) | A member can be removed without changing everybody's password | Accepted |
+| [0036](ADR-0036-ipsc-voice-is-not-a-dmr-burst.md) | IPSC voice is not a DMR burst, and bridging is not a copy | Accepted |

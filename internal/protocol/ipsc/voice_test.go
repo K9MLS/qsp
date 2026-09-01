@@ -182,3 +182,89 @@ func TestBothRegistrationStatesAreInOneFile(t *testing.T) {
 			"retries and the single answer that ended them", requests, replies)
 	}
 }
+
+// TestTheVocoderPayloadIsNineteenBytesNotThirtyThree is the finding that
+// decides how QSP will have to bridge Motorola.
+//
+// A DMR burst is 33 bytes: vocoder data wrapped in FEC and sync. Every one of
+// the fifty-four captured IPSC voice frames carries 19. So IPSC does **not**
+// carry the burst verbatim, and a bridge between IPSC and HBP cannot be a copy.
+func TestTheVocoderPayloadIsNineteenBytesNotThirtyThree(t *testing.T) {
+	cap := readCapture(t, probeVoice)
+	var voice, distinct int
+	seen := map[string]bool{}
+	for _, pkt := range cap.UDP {
+		msg, err := ipsc.Parse(pkt.Payload)
+		if err != nil {
+			t.Fatalf("packet %d: %v", pkt.Index, err)
+		}
+		class, vocoder, trailer, ok := msg.Payload()
+		if !ok {
+			continue
+		}
+		voice++
+		if len(vocoder) != ipsc.VocoderLen {
+			t.Errorf("packet %d: vocoder payload %d bytes, want %d", pkt.Index, len(vocoder), ipsc.VocoderLen)
+		}
+		if len(vocoder) == 33 {
+			t.Errorf("packet %d: 33 bytes would be a DMR burst; the whole finding is that it is not", pkt.Index)
+		}
+		switch len(trailer) {
+		case 0, 5, 14:
+		default:
+			t.Errorf("packet %d: trailer %d bytes, want 0, 5 or 14", pkt.Index, len(trailer))
+		}
+		switch class {
+		case 0x40, 0x06, 0x16:
+		default:
+			t.Errorf("packet %d: payload class %#02x was never captured", pkt.Index, class)
+		}
+		if !seen[string(vocoder)] {
+			seen[string(vocoder)] = true
+			distinct++
+		}
+	}
+	if voice == 0 {
+		t.Fatal("no voice payloads")
+	}
+	// If the vocoder bytes never changed they would not be audio.
+	if distinct < voice/2 {
+		t.Errorf("%d distinct vocoder payloads in %d frames; too few to be speech", distinct, voice)
+	}
+}
+
+// TestLinkControlAgreesWithTheHeader is the corroboration that makes the
+// Destination reading worth more than a position in a struct.
+//
+// The long frames of a superframe carry Link Control, which DMR sends so a radio
+// joining mid-transmission learns who is talking to whom. It encodes the same
+// destination and source as the header, in a different layout, in the same
+// packet.
+func TestLinkControlAgreesWithTheHeader(t *testing.T) {
+	cap := readCapture(t, probeVoice)
+	var checked int
+	for _, pkt := range cap.UDP {
+		msg, err := ipsc.Parse(pkt.Payload)
+		if err != nil {
+			t.Fatalf("packet %d: %v", pkt.Index, err)
+		}
+		v, isVoice := msg.AsVoice()
+		if !isVoice {
+			continue
+		}
+		dst, src, ok := msg.LinkControl()
+		if !ok {
+			continue
+		}
+		checked++
+		if dst != v.Destination {
+			t.Errorf("packet %d: link control destination %d, header %d", pkt.Index, dst, v.Destination)
+		}
+		if src != v.SourceID {
+			t.Errorf("packet %d: link control source %d, header %d", pkt.Index, src, v.SourceID)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no frames carried link control; the superframe should produce one per six")
+	}
+}

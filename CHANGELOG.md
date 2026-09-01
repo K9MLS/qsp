@@ -5,6 +5,52 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **IPSC does not carry a DMR burst, and that decides how QSP will bridge
+  Motorola** ([ADR-0036](docs/adr/ADR-0036-ipsc-voice-is-not-a-dmr-burst.md)).
+  HBP delivers a **33-byte** burst — vocoder data inside the FEC and sync a
+  radio put on the air — and QSP relays it verbatim, which is why the audio on
+  this network is as good as the radio that made it. The hope was that IPSC did
+  the same and that bridging would be a copy.
+
+  Every one of the fifty-four captured IPSC voice frames carries **19 bytes**.
+  19 bytes is 152 bits and three AMBE+2 frames at 49 bits is 147, so IPSC almost
+  certainly carries the vocoder parameters without DMR's protective wrapper —
+  that step is arithmetic rather than observation and is recorded as inference.
+  What is observed is 19 bytes in every frame, changing frame to frame the way
+  speech does, and nothing like 33.
+
+  **A bridge therefore reconstructs the burst rather than copying it, and this
+  is not transcoding.** The vocoder parameters cross unchanged; only the wrapper
+  differs. The distinction is written into an ADR because "we have to transform
+  the payload" is exactly the sentence that ends with somebody decoding and
+  re-encoding audio for convenience. If reconstruction cannot be made lossless,
+  IPSC voice does not ship — a club whose audio is quietly worse than their old
+  a commercial DMR server blames the radio.
+
+- **The voice payload layout**, and a `Payload` accessor for it: frame class at
+  byte 30 (header, voice or terminator), a length at 31, a payload class at 32,
+  nineteen vocoder bytes, then a trailer of 0, 5 or 14 bytes that cycles with the
+  DMR superframe.
+
+- **`LinkControl`, which corroborates the destination field.** The long frame of
+  each superframe carries Link Control — what DMR sends so a radio joining
+  mid-transmission learns who is talking to whom — and it encodes the same
+  24-bit destination and source as the header, in a different layout, in the
+  same packet. Two encodings agreeing is the strongest evidence available for
+  `Destination` short of moving it. Still one repeater and still one talkgroup,
+  so the field stays marked unverified; but a coincidence of position twice over
+  in one packet is unlikely.
+
+### Notes
+- **Nothing has been captured of a master sending voice to a repeater.** The
+  probe never answered a voice frame and the repeater never asked it to, so the
+  reverse direction — and whatever makes a repeater play audio rather than only
+  send it — is entirely unknown.
+- **A club running only Motorola repeaters needs no bridge at all.** QSP would
+  be an IPSC master among IPSC peers and the bursts never leave the protocol.
+  That case avoids everything above and may well be worth building first.
+
+### Added
 - **A Motorola repeater registered with QSP software and sent voice through
   it.** `cmd/ipsc-probe` answered an XPR8300's registration, held the link on
   fifteen-second keepalives, and received sixty-six voice frames across three

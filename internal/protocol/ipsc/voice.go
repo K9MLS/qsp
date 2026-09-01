@@ -92,3 +92,77 @@ func (m Message) AsVoice() (Voice, bool) {
 		Timestamp:   binary.BigEndian.Uint32(b[17:21]),
 	}, true
 }
+
+// Frame classes, byte 30 of a KindVoice message.
+//
+// The name of each describes where it sat in a transmission, which is all the
+// captures show.
+const (
+	// FrameHeader opens a transmission. Three were sent before any audio.
+	FrameHeader byte = 0x01
+	// FrameVoice carries vocoder data.
+	FrameVoice byte = 0x8a
+	// FrameTerminator closes a transmission.
+	FrameTerminator byte = 0x02
+)
+
+// VocoderLen is the length of the vocoder payload in every voice frame: 19
+// bytes, in every one of the fifty-four captured.
+//
+// **A DMR burst is 33 bytes and this is 19, so IPSC does not carry the burst.**
+// 19 bytes is 152 bits, and three AMBE+2 frames at 49 bits each is 147 — so
+// this is very likely the vocoder parameters without the FEC and sync that DMR
+// wraps them in. That last step is inference from arithmetic and is marked as
+// such; what is demonstrated is the length, that it varies frame to frame, and
+// that it is nothing like 33.
+const VocoderLen = 19
+
+// Payload splits the part of a voice frame after the header.
+//
+// Layout, from the fifty-four captured frames:
+//
+//	[30]     frame class: header, voice or terminator
+//	[31]     length of everything from byte 32 onward
+//	[32]     payload class: 0x40, 0x06 or 0x16 on voice frames
+//	[33:52]  vocoder payload, always 19 bytes
+//	[52:]    trailer of 0, 5 or 14 bytes
+//
+// The three trailer lengths cycle with the DMR superframe. The 14-byte one
+// carries Link Control; see LinkControl.
+func (m Message) Payload() (payloadClass byte, vocoder, trailer []byte, ok bool) {
+	if m.Kind != KindVoice || len(m.Body) < 21+2+VocoderLen {
+		return 0, nil, nil, false
+	}
+	b := m.Body
+	if b[25] != FrameVoice {
+		return 0, nil, nil, false
+	}
+	length := int(b[26])
+	if length != len(b)-27 {
+		return 0, nil, nil, false
+	}
+	return b[27], b[28 : 28+VocoderLen], b[28+VocoderLen:], true
+}
+
+// LinkControl is the destination and source a voice frame carries in its
+// trailer, independently of the header.
+//
+// DMR sends Link Control inside the voice superframe so that a radio joining
+// mid-transmission learns who is talking to whom, and IPSC carries it through:
+// the 14-byte trailer holds the same 24-bit destination and source that bytes 9
+// to 11 and 6 to 8 of the header hold.
+//
+// **Two independent encodings agreeing in one packet is the strongest evidence
+// available for the Destination field short of moving it.** They are not
+// independent observations of the protocol — one repeater built both — but a
+// field that appears twice in two different layouts is a field, and a
+// coincidence of position twice over is unlikely.
+func (m Message) LinkControl() (destination, source uint32, ok bool) {
+	_, _, trailer, valid := m.Payload()
+	if !valid || len(trailer) < 14 {
+		return 0, 0, false
+	}
+	d := uint32(trailer[7])<<16 | uint32(trailer[8])<<8 | uint32(trailer[9])
+	s := uint32(trailer[10])<<16 | uint32(trailer[11])<<8 | uint32(trailer[12])
+	return d, s, true
+}
