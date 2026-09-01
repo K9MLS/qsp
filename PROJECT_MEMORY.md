@@ -856,20 +856,34 @@ Everything in §8b's list, plus:
 
 ### Open, in order
 
-1. **IPSC, and specifically the capture that unblocks it.** The largest gap by
-   reach: a club with a Motorola repeater cannot use QSP at all. There are now
-   two repeaters available — the operator's XPR8300 in his lab and an SLR5700
-   belonging to a colleague — which is what a peer list and a real registration
-   need. [`testdata/ipsc/CAPTURE-PLAN.md`](testdata/ipsc/CAPTURE-PLAN.md) is
-   the operational plan for this equipment;
-   [`testdata/IPSC-CAPTURE-REQUEST.md`](testdata/IPSC-CAPTURE-REQUEST.md)
-   remains the version handed to a stranger.
+1. **IPSC. The captures exist; what is missing is voice and a listener.** On
+   2026-09-01 two Motorola repeaters registered to each other over the internet
+   with a capture host in the path — a K9MLS XPR8300 as master and a remote
+   repeater as peer. Six fixtures in `testdata/ipsc/`, seven message types, and
+   `internal/protocol/ipsc` parses the envelope they all share.
 
-   **[ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) holds: no IPSC wire
-   format code before a capture exists — not a parser, not a constant, not a
-   message type.** And DMRlink and HBlink3 stay unread until a capture is in
-   hand and has been shown not to answer something, because reading them binds
-   the project to a derivative work permanently and cannot be undone.
+   **What is known:** byte 0 is the type, bytes 1–4 are the sender's own radio
+   ID big-endian, confirmed across seven types and two repeater models.
+   Registration is six packets, not two. An unregistered peer retries at ten
+   seconds; a registered one keepalives at fifteen. A peer never sources from
+   the master's port. ICMP unreachable is ignored, so a master cannot refuse
+   anybody by staying silent.
+
+   **What is not:** voice, private calls, text, disconnect. Nine of `0x91`'s
+   sixteen bytes and thirty-nine of `0xf1`'s forty-four. The purposes of `0x85`,
+   `0xf0` and `0xf1`. Whether a master behind NAT advertises an address a remote
+   peer can reach — the link came up through NAT but nothing has been decoded
+   that would say how.
+
+   **Next:** a session with somebody at the far end who can key up. Voice on
+   both timeslots, a private call, text, and a clean disconnect, in one capture,
+   with the same bridge. A third repeater would make `0xf1` worth decoding,
+   because one peer cannot distinguish a list from a fixed record.
+
+   **[ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) still holds** for
+   everything not captured: no constant, no message type, no parser for anything
+   the fixtures do not contain. DMRlink and HBlink3 remain unread and must stay
+   that way — reading them binds the project to a derivative work permanently.
 
 2. **The peering retry between two machines.** The console flow was built and no
    button has been pressed. The loopback pair proved the protocol and proved
@@ -902,6 +916,16 @@ either, and §7 says a theory that has failed twice does not get a third guess.
 
 CI runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on
 push**. One job, about six minutes. `gh workflow run CI`.
+
+**A Motorola repeater has two port fields and they are not the same thing.**
+`Master UDP Port` is the master it dials; `UDP Port` is the port it binds. Set
+to 50000 and 50001, a master that looked correctly configured served a port
+nobody was calling, sent no UDP at all for fifteen minutes, and answered every
+request with an ICMP unreachable from its own IP stack. Two plausible theories
+came before the right one and both were wrong; what ended it was `nmap -sU`
+against the repeater, which found exactly one open port. **When a device's own
+stack sends the refusal, ask the device what it bound rather than re-reading the
+configuration page.**
 
 `cmd/qsp` has known failures in the development container because no SQLite
 driver is registered there. **List them by name rather than counting them** —

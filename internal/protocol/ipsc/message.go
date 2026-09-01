@@ -9,123 +9,163 @@ import (
 // Kind identifies a message by its leading byte.
 //
 // IPSC has no published specification, so this is not a list of what the
-// protocol contains. It is a list of what testdata/ipsc/ contains.
+// protocol contains. It is a list of what testdata/ipsc/ contains: seven types
+// seen between two repeaters, of which four have an understood purpose and
+// three do not.
 type Kind byte
 
+// Message kinds observed in testdata/ipsc/.
+//
+// The four named for their behaviour were named by watching what they do, not
+// from any specification. The three named for their byte are the ones whose
+// purpose is genuinely unknown; giving them a descriptive name would be a claim
+// about them, and this package does not make claims it cannot demonstrate.
 const (
-	// KindRegisterRequest is the fourteen-byte message a peer sends to its
-	// master, unprompted, every ten seconds until answered.
-	//
-	// The name describes what the message was observed doing, not what
-	// Motorola calls it. No reply has ever been captured, so whether this is
-	// the whole of registration or the first step of several is unknown.
+	// KindRegisterRequest is sent by a peer to its master, unprompted, every
+	// ten seconds until answered. It is answered by KindRegisterReply.
 	KindRegisterRequest Kind = 0x90
+	// KindRegisterReply is the master's answer, sent within a millisecond.
+	// This is the message a QSP master will have to produce; nine of its
+	// sixteen bytes are unexplained.
+	KindRegisterReply Kind = 0x91
+	// KindKeepaliveRequest is sent by a registered peer every fifteen
+	// seconds. Fifteen is the registered cadence: an unregistered peer retries
+	// KindRegisterRequest at ten. One interval does not cover both states.
+	KindKeepaliveRequest Kind = 0x96
+	// KindKeepaliveReply is the master's answer, sent within milliseconds.
+	KindKeepaliveReply Kind = 0x97
+
+	// Kind85 is eleven bytes, seen in both directions, on a cadence of its
+	// own: the peer sent it every 64.26 seconds, stopped for twelve minutes,
+	// then resumed. The master sent exactly one, during the gap. Its body is
+	// identical in every instance apart from the sender ID. Purpose unknown.
+	Kind85 Kind = 0x85
+	// KindF0 is nine bytes, sent once by the peer immediately after
+	// KindRegisterReply and never again. Purpose unknown.
+	KindF0 Kind = 0xf0
+	// KindF1 is the master's answer to KindF0: forty-four bytes, sent once,
+	// the largest message captured, with sixteen bytes that look like entropy
+	// rather than structure. A peer list is the obvious guess and it is only a
+	// guess — the capture contains one peer, so nothing distinguishes a list
+	// from a fixed record. Purpose unknown.
+	KindF1 Kind = 0xf1
 )
 
-// RegisterRequestLen is the length of every KindRegisterRequest observed.
-// All thirty-five in testdata/ipsc/ are exactly this long.
-const RegisterRequestLen = 14
+// HeaderLen is the part of a message this package understands: one type byte
+// and a four-byte sender ID.
+const HeaderLen = 5
 
 // Errors returned by this package.
 var (
-	// ErrShort means the input is too small to be the message its leading
-	// byte claims.
-	ErrShort = errors.New("ipsc: message is shorter than its type requires")
-	// ErrTrailingBytes means the input is longer than the message allows.
-	ErrTrailingBytes = errors.New("ipsc: message has unexpected trailing bytes")
-	// ErrNotCaptured means the leading byte belongs to a message no capture
-	// in testdata/ipsc/ contains, so this package refuses to guess at it.
-	// See doc.go and ADR-0029.
+	// ErrShort means the input is too small to carry a type and a sender ID.
+	ErrShort = errors.New("ipsc: message is shorter than a type byte and a sender ID")
+	// ErrNotCaptured means the leading byte belongs to a message no capture in
+	// testdata/ipsc/ contains, so this package refuses to guess at it.
 	ErrNotCaptured = errors.New("ipsc: message type not present in any capture")
 )
 
-// ObservedTrailer is the nine bytes following the peer ID in every captured
-// request.
+// observedLen records the length at which each kind was captured.
 //
-// **Its meaning is unknown and it is not a validity rule.** Both captures came
-// from one XPR8300 on firmware R02.30.20, and the only setting that differed
-// between them was the Radio ID — so these bytes being identical says nothing
-// about whether another repeater, another firmware or another configuration
-// would send the same. Parse deliberately accepts any trailer. This exists so
-// that a test can assert what was seen, and so that the day a capture disagrees
-// is a visible event rather than a silent one.
-var ObservedTrailer = [9]byte{0x6a, 0x00, 0x00, 0x80, 0x4c, 0x04, 0x06, 0x04, 0x00}
-
-// RegisterRequest is a parsed KindRegisterRequest.
-type RegisterRequest struct {
-	// PeerID is the repeater's Radio ID: a big-endian uint32 at offset 1.
-	//
-	// This is the one field in the message with an established meaning.
-	// Capture A carries 100 and capture B carries 3132910, matching what CPS
-	// was set to in each case, and nothing else in the payload moved between
-	// them.
-	PeerID uint32
-
-	// Trailer is bytes 5 to 13 inclusive, verbatim and uninterpreted.
-	//
-	// Kept whole rather than split into named fields, because naming a field
-	// is a claim about it. When a capture arrives whose trailer differs, the
-	// difference is what will name these bytes.
-	Trailer [9]byte
+// **It is not enforced, deliberately.** Every kind was seen at exactly one
+// length, but the captures contain one peer: KindF1 at forty-four bytes may
+// well grow with the number of peers a master knows about, and a parser that
+// rejected forty-eight would fail on the day a third repeater joins — the day
+// IPSC starts being worth having. A test asserts these lengths so that a change
+// is visible; the parser accepts what arrives.
+var observedLen = map[Kind]int{
+	KindRegisterRequest:  14,
+	KindRegisterReply:    16,
+	KindKeepaliveRequest: 14,
+	KindKeepaliveReply:   14,
+	Kind85:               11,
+	KindF0:               9,
+	KindF1:               44,
 }
 
-// Kind reports the message type.
-func (RegisterRequest) Kind() Kind { return KindRegisterRequest }
+// ObservedLen reports the length at which a kind was captured, and whether the
+// kind was captured at all.
+func ObservedLen(k Kind) (int, bool) {
+	n, ok := observedLen[k]
+	return n, ok
+}
+
+// Message is one parsed IPSC packet.
+//
+// # Why one type rather than seven
+//
+// Every message in every capture shares the same first five bytes: a type and
+// the sender's own ID. That is the only structure seven message types, two
+// repeater models and two firmware versions all agree on, so it is the only
+// structure this package encodes. Splitting the body into named fields would
+// mean naming bytes whose meaning nothing has demonstrated.
+type Message struct {
+	// Kind is the leading byte.
+	Kind Kind
+
+	// SenderID is the radio ID of whichever end sent the message: a big-endian
+	// uint32 at offset 1.
+	//
+	// It identifies the sender rather than the subject. A registration request
+	// carries the peer's ID and its reply carries the master's, which is what
+	// distinguishes this from an addressing field — and is why both directions
+	// had to be captured before it could be claimed.
+	SenderID uint32
+
+	// Body is everything after the sender ID, verbatim and uninterpreted.
+	//
+	// Kept whole because naming a field is a claim about it. When a capture
+	// arrives whose body moves under a known change, the difference is what
+	// will name these bytes — the method that named SenderID.
+	Body []byte
+}
 
 // Marshal renders the message back to the wire.
 //
-// Marshal(Parse(b)) == b for every frame in testdata/ipsc/, which is the
-// property that makes the parser's reading of the bytes checkable rather than
-// merely plausible.
-func (r RegisterRequest) Marshal() []byte {
-	out := make([]byte, RegisterRequestLen)
-	out[0] = byte(KindRegisterRequest)
-	binary.BigEndian.PutUint32(out[1:5], r.PeerID)
-	copy(out[5:], r.Trailer[:])
+// Marshal(Parse(b)) == b for every frame in testdata/ipsc/, which is what makes
+// the parser's reading checkable rather than merely plausible.
+func (m Message) Marshal() []byte {
+	out := make([]byte, HeaderLen+len(m.Body))
+	out[0] = byte(m.Kind)
+	binary.BigEndian.PutUint32(out[1:5], m.SenderID)
+	copy(out[5:], m.Body)
 	return out
 }
 
 // String renders the message for a log line.
-func (r RegisterRequest) String() string {
-	return fmt.Sprintf("register request from peer %d", r.PeerID)
-}
-
-// Message is one parsed IPSC packet.
-type Message interface {
-	Kind() Kind
-	Marshal() []byte
+func (m Message) String() string {
+	switch m.Kind {
+	case KindRegisterRequest:
+		return fmt.Sprintf("register request from %d", m.SenderID)
+	case KindRegisterReply:
+		return fmt.Sprintf("register reply from %d", m.SenderID)
+	case KindKeepaliveRequest:
+		return fmt.Sprintf("keepalive from %d", m.SenderID)
+	case KindKeepaliveReply:
+		return fmt.Sprintf("keepalive reply from %d", m.SenderID)
+	default:
+		return fmt.Sprintf("type %#02x from %d, purpose unknown, %d body bytes",
+			byte(m.Kind), m.SenderID, len(m.Body))
+	}
 }
 
 // Parse reads one IPSC message.
 //
-// It handles exactly the message types present in testdata/ipsc/ and returns
+// It accepts exactly the seven types present in testdata/ipsc/ and returns
 // ErrNotCaptured for everything else, including leading bytes that other
 // implementations are known to use. A wrong guess about a message type produces
 // a master that misbehaves quietly, which is worse than one that plainly says
 // it cannot handle something yet.
 func Parse(b []byte) (Message, error) {
-	if len(b) == 0 {
-		return nil, fmt.Errorf("%w: empty input", ErrShort)
+	if len(b) < HeaderLen {
+		return Message{}, fmt.Errorf("%w: %d bytes, want at least %d", ErrShort, len(b), HeaderLen)
 	}
-	switch Kind(b[0]) {
-	case KindRegisterRequest:
-		return parseRegisterRequest(b)
-	default:
-		return nil, fmt.Errorf("%w: leading byte %#02x", ErrNotCaptured, b[0])
+	k := Kind(b[0])
+	if _, ok := observedLen[k]; !ok {
+		return Message{}, fmt.Errorf("%w: leading byte %#02x", ErrNotCaptured, b[0])
 	}
-}
-
-func parseRegisterRequest(b []byte) (RegisterRequest, error) {
-	if len(b) < RegisterRequestLen {
-		return RegisterRequest{}, fmt.Errorf("%w: register request is %d bytes, want %d",
-			ErrShort, len(b), RegisterRequestLen)
-	}
-	if len(b) > RegisterRequestLen {
-		return RegisterRequest{}, fmt.Errorf("%w: register request is %d bytes, want %d",
-			ErrTrailingBytes, len(b), RegisterRequestLen)
-	}
-	var r RegisterRequest
-	r.PeerID = binary.BigEndian.Uint32(b[1:5])
-	copy(r.Trailer[:], b[5:])
-	return r, nil
+	return Message{
+		Kind:     k,
+		SenderID: binary.BigEndian.Uint32(b[1:5]),
+		Body:     append([]byte(nil), b[5:]...),
+	}, nil
 }

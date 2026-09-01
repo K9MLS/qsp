@@ -5,6 +5,88 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **Two Motorola repeaters registered to each other over the internet, and the
+  capture is in the repository.** A K9MLS XPR8300 as master, a remote repeater
+  fourteen hops away as peer, and a bridged capture host in the path. This is
+  the file the phase table has been blocked on: it took IPSC from one message
+  type to seven and contains **the reply to `0x90`**, which is the message a QSP
+  master will have to produce.
+
+- **Four new fixtures, including two failures kept on purpose.**
+  `ipsc-phase2-registration.pcap` holds the six-packet registration exchange;
+  `ipsc-phase2-established.pcap` holds twenty-four minutes of a settled link;
+  `ipsc-phase2-master-not-bound.pcap` holds fifteen minutes of a master refusing
+  everything; and `ipsc-rehearsal-two-peers.pcap` holds registration requests
+  from two different repeaters in one file. All trimmed to the repeater
+  conversation — 4.5 MB of bridged LAN broadcast down to 31 KB — because a
+  bridge floods broadcast out every port and a fixture should not carry somebody's
+  SSH session.
+
+- **The envelope, which is the only structure everything agrees on.** Byte 0 is
+  the type and bytes 1 to 4 are the sender's own radio ID, big-endian, across
+  seven message types, two directions, two repeater models and two firmware
+  versions.
+
+  **It is the sender, not the subject**, and one repeater talking into silence
+  could not have shown that. Phase 1 proved those bytes track the configured
+  Radio ID by changing it, but with only one party there was nothing to
+  distinguish "who sent this" from "who this concerns". In the phase 2 exchange,
+  seconds apart, the peer's messages carry 315544 and the master's carry
+  3132910.
+
+- **Seven message kinds, four named for behaviour and three named for their
+  byte.** `0x90`/`0x91` register, `0x96`/`0x97` keep alive. `0x85`, `0xf0` and
+  `0xf1` are named for their bytes because their purpose is unknown and a
+  descriptive name would be a claim. `0xf1` is forty-four bytes with sixteen
+  that look like entropy; a peer list is the obvious guess and stays a guess,
+  because the capture contains one peer and nothing distinguishes a list from a
+  fixed record.
+
+- **Registered and unregistered peers run on different clocks.** An unanswered
+  peer retries `0x90` every ten seconds, flat. A registered peer sends `0x96`
+  every fifteen, held to within twenty milliseconds across ninety-five intervals.
+  An implementation using one interval for both is wrong in whichever state it
+  was not written for, and looks correct when tested against itself.
+
+### Changed
+- **`internal/protocol/ipsc` is rebuilt around one `Message` type** rather than
+  a struct per kind. Seven types agreeing on five bytes and on nothing else is
+  an argument for encoding those five bytes and no more. `Body` stays whole and
+  uninterpreted, because naming a field is a claim about it.
+
+- **Observed lengths are recorded and deliberately not enforced**, for the
+  reason patch 0167's trailer was not enforced — and that decision has now been
+  vindicated twice in one day. The rehearsal capture shows two repeaters sending
+  **different** `0x90` bodies: two of the nine bytes past the sender ID differ
+  between an XPR8300 and the remote unit. Had 0167 enforced the trailer it had
+  seen, QSP would have rejected the peer that made every phase 2 finding
+  possible. `0xf1` is the same shape of risk in advance: captured at forty-four
+  bytes with one peer registered, it may well grow with the number of peers, and
+  a parser that rejected forty-eight would fail on the day IPSC starts being
+  worth having.
+
+### Fixed
+- **An over-claim in the package documentation.** It said a peer "sources from
+  50002", from a single repeater. The remote repeater sources from 50004. The
+  invariant is that a peer does not use the master's port as its own — reply to
+  the port a datagram came from, never the port it was sent to.
+
+### Notes for the next session
+- **A Motorola repeater has two port fields and they are not the same thing.**
+  `Master UDP Port` is the master it dials; `UDP Port` is the port it binds. Set
+  to 50000 and 50001, a master that looked correctly configured served a port
+  nobody was calling, sent no UDP at all for fifteen minutes, and answered every
+  request with an ICMP unreachable **from its own IP stack**. Two plausible
+  theories came before the right one and both were wrong. What ended it was
+  `nmap -sU` against the repeater, which found exactly one open port in the
+  range. When a device's own stack sends the refusal, ask the device what it
+  bound rather than re-reading its configuration page.
+- **An IPSC port open to the internet will be found.** The rehearsal capture
+  turned up a remote repeater already retrying against this network, unattended
+  and unannounced. That is what made the phase 2 captures possible the same
+  afternoon, and it is also a thing to expect rather than be surprised by.
+
+### Added
 - **The first Motorola IPSC traffic ever captured for this project, and a
   parser for the one message in it.** `testdata/ipsc/` was empty and that was
   the whole reason there was no IPSC implementation. It now holds two files.

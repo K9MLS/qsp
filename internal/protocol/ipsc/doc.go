@@ -12,35 +12,56 @@
 //
 // # What has been observed
 //
-// One message type, in one direction, from one repeater on one firmware.
+// Seven message types between two repeaters that registered to each other over
+// the internet, plus one repeater talking into silence.
 //
-// A Motorola XPR8300 running firmware R02.30.20, configured as an IPSC peer,
-// was pointed at a host running nothing. It sent a fourteen-byte message
-// beginning 0x90 every ten seconds, indefinitely, and the two captures differ
-// in exactly one respect: the repeater's Radio ID was 100 in one and 3132910 in
-// the other. That is what identifies the peer ID field and its width, and it is
-// the only field in the message this package claims to understand.
+// A K9MLS XPR8300 on firmware R02.30.20 acted as master; a second repeater,
+// remote and behind fourteen hops, acted as peer. Registration is a six-packet
+// exchange rather than a request and an acknowledgement, and the link then
+// settled into keepalives for twenty minutes.
+//
+// Four types have an understood purpose: 0x90 and 0x91 register, 0x96 and 0x97
+// keep alive. Three do not: 0x85, 0xf0 and 0xf1. They are named for their bytes
+// rather than given descriptive names, because a descriptive name is a claim.
+//
+// # The one structure everything agrees on
+//
+// Byte 0 is the type and bytes 1 to 4 are the sender's own radio ID, big-endian.
+// That holds across seven types, two directions, two repeater models and two
+// firmware versions, and it is the only structure this package encodes.
+//
+// It is the sender rather than the subject: a registration request carries the
+// peer's ID and its reply carries the master's. One repeater talking into
+// silence could not have shown that, because there was only ever one party —
+// it took a capture with both ends in it.
 //
 // # What has not been observed
 //
-// Everything else. No master has ever replied to one of these messages, so the
-// registration handshake beyond its first packet is unknown, as are keepalives,
-// the peer list, voice, private calls, text and disconnect. Nine of the
-// fourteen bytes have no known meaning. This package therefore parses 0x90 and
-// rejects every other leading byte with ErrNotCaptured, rather than guessing.
+// Voice, private calls, text, and a clean disconnect. Nine of the sixteen bytes
+// of 0x91 and thirty-nine of the forty-four of 0xf1 have no known meaning, and
+// sixteen of the latter look like entropy rather than structure. A peer list is
+// the obvious guess for 0xf1 and remains a guess: the capture contains one
+// peer, so nothing distinguishes a list from a fixed record.
 //
-// # Three behaviours worth knowing before implementing a master
+// # Four behaviours worth knowing before implementing a master
 //
-// The retry interval is ten seconds flat, measured across thirty-five requests
-// in two captures with a spread of three milliseconds. There is no backoff and
-// no give-up: the repeater was still trying after five minutes.
+// Registered and unregistered peers run on different clocks. An unanswered peer
+// retries 0x90 every ten seconds, flat, with no backoff and no give-up. A
+// registered peer sends 0x96 every fifteen. An implementation using one
+// interval for both is wrong in whichever state it was not written for, and
+// looks correct when tested against itself.
 //
-// The peer sources from UDP 50002 while addressing the master on 50000. It does
-// not use the master's port as its own, so an implementation that assumes
-// symmetry will work against itself and fail against Motorola.
+// The peer does not source from the master's port. The XPR8300 addressed 50000
+// and sent from 50002; the remote repeater addressed 50000 and sent from 50004.
+// Reply to the port a datagram came from, never to the port it was sent to.
 //
-// ICMP port unreachable is ignored. The host's kernel answered every request
-// with one, eighty microseconds behind it, and the repeater's cadence did not
-// change. A master cannot refuse a peer by staying silent, so refusal has to be
-// an IPSC-level message — and no such message has been captured.
+// ICMP port unreachable is ignored. A kernel refused every request eighty
+// microseconds after it arrived and the cadence did not change, so a master
+// cannot turn a peer away by staying silent. Refusal has to be an IPSC-level
+// message, and no capture contains one.
+//
+// A Motorola repeater has two port settings and they are not the same field.
+// One is the master it dials, one is the port it binds. Set to 50000 and 50001,
+// a master that looked correctly configured served a port nobody was calling.
+// testdata/ipsc/ipsc-phase2-master-not-bound.pcap is what that looks like.
 package ipsc

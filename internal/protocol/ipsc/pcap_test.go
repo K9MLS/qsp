@@ -10,18 +10,21 @@ import (
 // capturedPacket is one UDP payload recovered from a fixture.
 type capturedPacket struct {
 	Index   int
+	SrcIP   string
+	DstIP   string
 	SrcPort uint16
 	DstPort uint16
 	Payload []byte
 	Micros  uint64
 }
 
-// icmpCount is how many ICMP packets a fixture contains.
+// captureSummary is a whole fixture: its UDP payloads, and how many ICMP
+// packets accompanied them.
 //
-// It matters here because the IPSC captures were taken with a host filter
-// rather than a UDP one, so they record the kernel's port-unreachable replies
-// as well as the repeater's requests. That the repeater ignored them is a
-// finding, and a finding a fixture demonstrates should have a test.
+// ICMP is counted because it is evidence. The phase 1 captures record a kernel
+// refusing a port that nothing had bound, and the repeater ignoring the refusal
+// is the reason a QSP master will not be able to turn a peer away by staying
+// silent.
 type captureSummary struct {
 	UDP  []capturedPacket
 	ICMP int
@@ -110,6 +113,8 @@ func decodeEthernetIP(rec []byte) (capturedPacket, byte, bool) {
 	if ihl < 20 || len(ip) < ihl {
 		return p, 0, false
 	}
+	p.SrcIP = dotted(ip[12:16])
+	p.DstIP = dotted(ip[16:20])
 	proto := ip[9]
 	if proto != 17 {
 		return p, proto, true
@@ -126,4 +131,8 @@ func decodeEthernetIP(rec []byte) (capturedPacket, byte, bool) {
 	p.DstPort = binary.BigEndian.Uint16(udp[2:4])
 	p.Payload = udp[8:length]
 	return p, proto, true
+}
+
+func dotted(b []byte) string {
+	return fmt.Sprintf("%d.%d.%d.%d", b[0], b[1], b[2], b[3])
 }

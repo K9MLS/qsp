@@ -1,18 +1,22 @@
 # IPSC fixtures
 
-**Two, both of one message type in one direction, and no master has ever
-replied.**
+**Six captures, seven message types, and two Motorola repeaters that registered
+to each other over the internet on 2026-09-01.**
 
 | File | What it is |
 |---|---|
 | [`ipsc-phase1-a-id100.pcap`](ipsc-phase1-a-id100.md) | An XPR8300 registering against a host running nothing. 28 requests, ten seconds apart |
-| [`ipsc-phase1-b-id3132910.pcap`](ipsc-phase1-b-id3132910.md) | The same, with the Radio ID changed and nothing else. This is what names the peer ID field |
+| [`ipsc-phase1-b-id3132910.pcap`](ipsc-phase1-b-id3132910.md) | The same with the Radio ID changed and nothing else. This is what named the sender ID field |
+| [`ipsc-rehearsal-two-peers.pcap`](ipsc-rehearsal-two-peers.md) | Registration requests from **two different repeaters**, whose bodies differ. This is why nothing past the sender ID is enforced |
+| [`ipsc-phase2-master-not-bound.pcap`](ipsc-phase2-master-not-bound.md) | A failure kept on purpose: a master serving 50001 while advertising 50000 |
+| [`ipsc-phase2-registration.pcap`](ipsc-phase2-registration.md) | **Two repeaters registering over the internet.** Six-packet exchange, seven message types, the reply to `0x90` |
+| [`ipsc-phase2-established.pcap`](ipsc-phase2-established.md) | Twenty-four minutes of a settled link doing nothing |
 
-Together they establish the `0x90` registration request, a big-endian uint32
-peer ID at offset 1, a flat ten-second retry with no backoff, an asymmetric
-source port, and that ICMP unreachable is ignored. They establish nothing about
-a reply, keepalives, the peer list, voice, or disconnect, and nine of the
-fourteen payload bytes remain unexplained.
+Together they establish seven message types, an envelope of one type byte and a
+big-endian sender ID, a ten-second retry when unregistered and a fifteen-second
+keepalive when registered, an asymmetric source port, and that ICMP unreachable
+is ignored. They establish nothing about voice, private calls, text or
+disconnect, and thirty-nine of `0xf1`'s forty-four bytes remain unexplained.
 
 `internal/protocol/ipsc` implements exactly that and refuses every other leading
 byte with `ErrNotCaptured`.
