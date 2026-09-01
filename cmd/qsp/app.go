@@ -505,6 +505,15 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		return nil, "", err
 	}
 
+	// A member is removed by deleting one file, rather than by changing the
+	// password every other member is using. See ADR-0035.
+	peerPasswords := config.NewPeerPasswords(
+		cfg.DMR.PeerPasswords, password, os.ReadFile, os.Stat)
+	if peerPasswords.PerPeer() {
+		log.Info("per-peer passwords enabled",
+			slog.String("directory", cfg.DMR.PeerPasswords))
+	}
+
 	// Validate has already accepted these, so a parse failure here would mean
 	// the two disagree. Reporting it is better than starting a master whose
 	// access lists silently defaulted to permitting everything.
@@ -519,7 +528,22 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 	master, err := peers.NewMaster(log, peers.MasterConfig{
 		// One shared password for every peer, which is how these networks are
 		// operated in practice. Per-peer secrets would come from storage.
-		Password:     func(hbp.RepeaterID) ([]byte, bool) { return password, true },
+		// **Per-peer where a file exists, shared otherwise.** The signature
+		// allowed this from the start and nothing supplied it, so removing one
+		// member meant changing everybody's password. See ADR-0035.
+		Password: func(id hbp.RepeaterID) ([]byte, bool) {
+			secret, err := peerPasswords.For(uint32(id))
+			if err != nil {
+				// Refused rather than falling back: falling back on a
+				// permissions mistake turns it into a silently weakened
+				// network, and a peer whose file cannot be read is one an
+				// administrator meant to control.
+				log.Warn("refusing a peer whose password cannot be resolved",
+					slog.Uint64("peer_id", uint64(id)), slog.String("error", err.Error()))
+				return nil, false
+			}
+			return secret, true
+		},
 		PeerTimeout:  cfg.DMR.PeerTimeout.AsDuration(),
 		LoginTimeout: cfg.DMR.LoginTimeout.AsDuration(),
 		MaxPeers:     cfg.DMR.MaxPeers,

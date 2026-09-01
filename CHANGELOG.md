@@ -5,6 +5,41 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **[ADR-0035](docs/adr/ADR-0035-per-peer-passwords.md): a member can be removed
+  without changing everybody's password.** `dmr.peer_passwords` names a
+  directory of files, each named for a radio ID. A peer with a file of its own
+  authenticates against it; every other peer uses the shared password exactly as
+  before.
+
+  One shared secret means removing one person requires a new password and every
+  remaining member reconfiguring their hotspot on the same evening — twelve
+  members, twelve reconfigurations, to remove one. It also leaks through whoever
+  is least careful with it, and nobody can tell which of them it was: one of this
+  network's passwords reached a chat log inside a week.
+
+  **A per-peer password overrides rather than adds**, and that is the property
+  revocation depends on. If the shared password still worked for a peer that has
+  its own, deleting somebody's file would silently return them to the secret they
+  already know, and an administrator would believe they had revoked access they
+  had in fact restored — quiet, and it looks like success.
+
+  An unreadable or world-readable file is a refusal for that peer, never a
+  fallback: falling back on a permissions mistake turns it into a silently
+  weakened network. A directory of paths rather than values, for the reason
+  ADR-0012 gives about the configuration document being versioned, exportable
+  and diffable — and because removal is then `rm`, which works when the console
+  is down and the person doing it is on a phone over SSH.
+
+  **The shared password stays, and stays the default.** A three-member club
+  issuing three individual secrets has added work and removed nothing, and a
+  scheme that is tedious at small scale is one people work around by sharing one
+  file — the shared password again, with extra steps.
+
+  `MasterConfig.Password` has been keyed by repeater ID since it was written,
+  with a comment saying per-peer secrets are supported because the signature
+  allows them. Nothing ever supplied one.
+
+### Added
 - **[ADR-0034](docs/adr/ADR-0034-p25-is-native.md): P25 is a network of its own,
   and audio is never transcoded to reach it.**
 

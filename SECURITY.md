@@ -240,6 +240,22 @@ activity, and one an administrator should have to sign in to read.
 It returns no audio. QSP carries bursts it never decodes, and a record of who
 spoke is not a recording of what they said.
 
+`dmr.peer_passwords` names a directory of per-peer password files, each named
+for a radio ID. A peer with a file of its own authenticates against it and
+**not** against the shared password, so removing a member is deleting one file
+and nobody else reconfigures anything.
+
+The override is the property revocation depends on: if the shared password still
+worked for a peer that has its own, deleting somebody's file would silently
+return them to the secret they already know. An unreadable or world-readable
+file is a refusal for that peer rather than a fallback, because falling back on
+a permissions mistake turns it into a silently weakened network.
+
+Removal is not disconnection. A peer already registered keeps its session until
+it times out or the service restarts; deleting a file stops the next login. For
+somebody who must be off the network now, the registration access list is what
+does it.
+
 ### Deployment guidance
 
 - Bind the console to `127.0.0.1` and reach it through a reverse proxy with TLS.

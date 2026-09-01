@@ -69,6 +69,21 @@ type DMR struct {
 	// password. Leading and trailing whitespace is stripped. The file should be
 	// mode 0600.
 	PasswordFile string `json:"password_file"`
+	// PeerPasswords is a directory of per-peer password files, each named for
+	// a radio ID. Empty means every peer uses the shared password.
+	//
+	// **A member can be removed without changing everybody's password.** One
+	// shared secret means removing one person requires a new password and every
+	// remaining member reconfiguring their hotspot on the same evening, and it
+	// gets worse with every member who joins. A peer with a file of its own
+	// authenticates against that and not against the shared one, so removal is
+	// deleting the file. See ADR-0035.
+	//
+	// A directory of paths rather than values, for the reason the shared
+	// password is one: this document is versioned, exportable and diffable, and
+	// a secret in it is a secret in the version history, in every backup, and on
+	// screen in a diff.
+	PeerPasswords string `json:"peer_passwords,omitempty"`
 	// PeerTimeout is how long a registered peer may be silent before it is
 	// removed. Observed keepalive interval is 10 s.
 	PeerTimeout Duration `json:"peer_timeout"`
