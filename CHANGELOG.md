@@ -5,6 +5,24 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`dmr.peer_passwords` is editable from the network settings page**, which the
+  previous patch needed and did not have: issuing a member their own password
+  refused until a directory was named, and nothing on any page named one.
+
+  It is written even when blank, so clearing the field actually returns the
+  network to one shared password rather than leaving the old directory in place
+  — an operator who thinks they have turned something off should have turned it
+  off.
+
+- **Two refusals on that path.** It must be **absolute**, because a relative one
+  resolves against wherever systemd happened to start the process, so a member's
+  password would be written somewhere nobody thinks to look and read from
+  somewhere else after a change to the unit file. And it must not be the same
+  path as `dmr.password_file`, since a directory and a file are different things
+  and pointing one at the other puts a member's password where the shared one
+  lives.
+
+### Added
 - **A member's password can be issued and removed from the console**, on the
   access control page beside the list that refuses a radio ID. ADR-0035 made
   removal a matter of deleting one file; **a feature that requires SSH to use is

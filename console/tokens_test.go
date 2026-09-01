@@ -1771,3 +1771,34 @@ func TestAMembersPasswordCanBeIssuedFromTheConsole(t *testing.T) {
 		}
 	}
 }
+
+// TestThePeerPasswordDirectoryIsEditable.
+//
+// The previous patch built a feature that could not be switched on from the
+// console: issuing a member their own password refuses until
+// `dmr.peer_passwords` names a directory, and nothing on any page set it.
+func TestThePeerPasswordDirectoryIsEditable(t *testing.T) {
+	page, err := assets.ReadFile("static/network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+	if !strings.Contains(string(page), `id="peer-passwords"`) {
+		t.Error("network.html has no field for the member password directory")
+	}
+
+	script, err := assets.ReadFile("static/network.js")
+	if err != nil {
+		t.Fatalf("reading network.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "next.dmr.peer_passwords") {
+		t.Error("network.js never writes the directory, so the form cannot save")
+	}
+	// Written even when blank, or clearing the field leaves the old directory in
+	// place and the network stays on per-member passwords the operator thought
+	// they had turned off.
+	if !strings.Contains(src, "peerPasswords.value.trim();") {
+		t.Error("network.js does not write an empty directory, so clearing the field " +
+			"cannot return the network to one shared password")
+	}
+}

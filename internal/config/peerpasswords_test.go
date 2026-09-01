@@ -134,3 +134,58 @@ func TestAnEmptyFileIsRefused(t *testing.T) {
 		t.Errorf("the error does not say how to return the peer to the shared password: %v", err)
 	}
 }
+
+// TestThePeerPasswordDirectoryMustBeAbsolute.
+//
+// A relative path resolves against wherever systemd happened to start the
+// process, so a member's password would be written somewhere nobody thinks to
+// look and read from somewhere else after a change to the unit file.
+func TestThePeerPasswordDirectoryMustBeAbsolute(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = true
+	c.DMR.PeerPasswords = "peers"
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("a relative peer password directory was accepted")
+	}
+	if !strings.Contains(err.Error(), "absolute") {
+		t.Errorf("the error does not explain: %v", err)
+	}
+}
+
+// TestThePeerPasswordDirectoryIsNotTheSharedFile. A directory and a file are
+// different things, and pointing one at the other would put a member's password
+// where the shared one lives.
+func TestThePeerPasswordDirectoryIsNotTheSharedFile(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = true
+	c.DMR.PeerPasswords = "/etc/qsp/peer.pass"
+
+	err := c.Validate()
+	if err == nil {
+		t.Fatal("the peer password directory was allowed to be the shared password file")
+	}
+	if !strings.Contains(err.Error(), "same path") {
+		t.Errorf("the error does not explain: %v", err)
+	}
+}
+
+// TestNoPeerPasswordDirectoryIsFine, which is what every club has today.
+func TestNoPeerPasswordDirectoryIsFine(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "/etc/qsp/peer.pass"
+	c.DMR.Forwarding = true
+
+	if err := c.Validate(); err != nil {
+		t.Fatalf("an instance with one shared password was refused: %v", err)
+	}
+}

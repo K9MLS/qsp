@@ -197,6 +197,43 @@
       <section class="panel">
         <div class="panel__head">
           <div class="panel__heading">
+            <h2 class="panel__title">Member passwords</h2>
+            <button class="hint" type="button" aria-controls="hint-peerpw"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="peerpw-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-peerpw">
+          <p class="hint__text">Every member shares one password unless a
+            directory is named here. With one, a member can be given their own,
+            and <strong>removing that member is deleting one file &mdash; nobody
+            else reconfigures anything</strong>. Without one, removing a member
+            means a new shared password and every remaining member changing
+            their hotspot on the same evening. Members without a password of
+            their own keep using the shared one, so this can be adopted a member
+            at a time. Passwords are issued on the access control page; the
+            directory only says where they live.</p>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            Where a member's own password is kept, if the club gives them one.
+          </p>
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Directory</span>
+              <input class="picker__input picker__input--wide" id="peer-passwords"
+                     type="text" placeholder="/var/lib/qsp/peers">
+              <p class="field__note">Beside the shared password file. QSP
+                creates it, readable only by the service. Blank means every
+                member uses the shared password.</p>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
             <h2 class="panel__title">What each member hears</h2>
             <button class="hint" type="button" aria-controls="hint-subscription"
                     aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>

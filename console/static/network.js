@@ -31,6 +31,9 @@
   var identityLongitude = document.getElementById("identity-longitude");
   var identityState = document.getElementById("identity-state");
 
+  var peerPasswords = document.getElementById("peer-passwords");
+  var peerPasswordsState = document.getElementById("peerpw-state");
+
   var subEnabled = document.getElementById("subscription-enabled");
   var subTimeout = document.getElementById("subscription-timeout");
   var subUnlink = document.getElementById("subscription-unlink");
@@ -137,6 +140,9 @@
     identityLongitude.value = identity.longitude ? String(identity.longitude) : "";
     refreshIdentityState();
 
+    peerPasswords.value = (cfg.dmr && cfg.dmr.peer_passwords) || "";
+    refreshPeerPasswordState();
+
     var sub = (cfg.dmr && cfg.dmr.subscription) || {};
     subEnabled.checked = !!sub.enabled;
     /* Only select a stored value the list actually offers. Forcing an unlisted
@@ -166,6 +172,12 @@
         return;
       }
     }
+  }
+
+  function refreshPeerPasswordState() {
+    peerPasswordsState.textContent = peerPasswords.value.trim()
+      ? "members may have their own"
+      : "one shared password";
   }
 
   function refreshSubState() {
@@ -199,6 +211,11 @@
   function collect() {
     var next = JSON.parse(JSON.stringify(loaded));
     if (!next.dmr) { next.dmr = {}; }
+
+    /* Written even when blank, so clearing the field actually returns the
+     * network to one shared password rather than leaving the old directory in
+     * place. */
+    next.dmr.peer_passwords = peerPasswords.value.trim();
 
     next.dmr.subscription = next.dmr.subscription || {};
     next.dmr.subscription.enabled = subEnabled.checked;
@@ -354,6 +371,7 @@
   });
 
   identityCallsign.addEventListener("input", refreshIdentityState);
+  peerPasswords.addEventListener("input", refreshPeerPasswordState);
   subEnabled.addEventListener("change", refreshSubState);
   subTimeout.addEventListener("change", refreshSubState);
   retain.addEventListener("change", refreshRetainState);

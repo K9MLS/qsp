@@ -24,6 +24,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -994,6 +995,26 @@ func (c Config) Validate() error {
 			v.add("dmr.password_file", "must not be empty when the DMR listener is enabled",
 				"create a file containing the shared peer password, mode 0600, and give its path here; "+
 					"the password is never stored in this configuration")
+		}
+		if dir := strings.TrimSpace(c.DMR.PeerPasswords); dir != "" {
+			// **Absolute, because the service's working directory is not
+			// obvious.** A relative path resolves against wherever systemd
+			// happened to start the process, so a member's password would be
+			// written somewhere nobody thinks to look and read from somewhere
+			// else after a change to the unit file.
+			if !filepath.IsAbs(dir) {
+				v.add("dmr.peer_passwords", fmt.Sprintf("%q is not an absolute path", dir),
+					"give a full path, for example \"/var/lib/qsp/peers\"; a relative one "+
+						"resolves against the service's working directory")
+			}
+			// A directory and a file are different things, and pointing one at
+			// the other would put a member's password where the shared one
+			// lives, or make the shared password unreadable.
+			if dir == strings.TrimSpace(c.DMR.PasswordFile) {
+				v.add("dmr.peer_passwords", "is the same path as dmr.password_file",
+					"the shared password is a file and this is a directory of per-member "+
+						"files; give this one a path of its own")
+			}
 		}
 		v.positiveDuration("dmr.peer_timeout", c.DMR.PeerTimeout,
 			"use \"60s\"; peers send a keepalive every 10 s, so this tolerates five losses")
