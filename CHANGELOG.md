@@ -5,6 +5,51 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **[ADR-0034](docs/adr/ADR-0034-p25-is-native.md): P25 is a network of its own,
+  and audio is never transcoded to reach it.**
+
+  The operator's rule — **audio is king** — decides this one, and it decides it
+  against the design most cross-mode software has chosen. P25 Phase 1 carries
+  IMBE and DMR carries AMBE+2; routing one through the other means decoding and
+  re-encoding, and tandem vocoding always sounds worse. That is not a quality of
+  implementation a careful program can avoid.
+
+  So a P25 call between P25 endpoints crosses QSP without a vocoder, exactly as
+  a DMR call does. ADR-0028's guarantee is extended to P25 rather than broken
+  for it.
+
+  **A club running only P25 is not a degraded DMR club.** Most clubs will run
+  one protocol or the other, and P25-only is the whole product for that club —
+  which rules out an architecture where P25 is a translation layer over a DMR
+  core, since that club would pay a transcode for traffic that never touches
+  DMR.
+
+  One binary, both listeners, chosen by configuration rather than at install
+  time: an install-time choice is irreversible in practice, and a club adding a
+  P25 repeater next year should not reinstall. Bridging the two is explicit,
+  opt-in, and states its cost where somebody turns it on.
+
+- **`testdata/p25/CAPTURE-REQUEST.md`.** The idle capture exists and contains no
+  voice, which is the only remaining blocker. The request asks for the capture
+  to start before the gateway does and to cover **two** transmissions: one shows
+  the shape, two show what changes between them, and a field constant across one
+  call is a field nobody can identify.
+
+### Changed
+- **Phase 2's gate is closed.** AD0MI was given the join page and a password and
+  got onto the network unassisted — the first member to join after this project
+  started, and the only evidence that will ever exist for that gate, since
+  nobody is a first-time newcomer twice.
+
+- **PROJECT_MEMORY records "audio is king" as the rule that breaks ties.** It has
+  already decided that Talker Alias is passed through rather than injected:
+  writing one into bursts B–E is reported to cause distorted or lost audio on
+  Motorola repeaters, and those bursts carry the Link Control a radio joining
+  mid-transmission needs. Two ways to hurt audio for a cosmetic gain — and
+  BrandMeister's own default alias is the callsign and the ID again rather than
+  a name, so the gain is smaller than it appears.
+
+### Added
 - **Subscription and call retention are editable from the console**, so no
   setting added today still needs `/var/lib/qsp/qsp.json` opened by hand.
 
