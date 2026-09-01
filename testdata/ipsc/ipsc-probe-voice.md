@@ -79,11 +79,14 @@ not been taken.
 
 ## What this still does not answer
 
-**Whether the DMR burst crosses IPSC verbatim.** That decides whether QSP can
-bridge Motorola to DMR with no transcoding at all, which under *audio is king*
-is the question that matters most, and 26 to 40 bytes of payload per frame is
-not obviously 33. Comparing these bursts against the HBP fixtures is the next
-piece of desk work and needs no equipment.
+**Answered on 2026-09-01: it does not, and it does not matter.** The payload is
+a 19-byte vocoder core plus a trailer of 0, 5 or 14 bytes. The 14-byte case
+totals 33, which is a DMR burst size and a coincidence — the Link Control sits
+at the end where a real burst carries it in the middle.
+
+`internal/dmrfec` converts between the two shapes and the conversion is
+bit-exact over 884 real bursts, so bridging costs computation and no audio. See
+[ADR-0037](../../docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md).
 
 Also absent: private calls, text, and what a master must send to make a repeater
 *play* audio rather than only send it. The probe never replied to a voice frame

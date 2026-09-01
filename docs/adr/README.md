@@ -46,3 +46,4 @@ conclusion.
 | [0034](ADR-0034-p25-is-native.md) | P25 is a network of its own, and audio is never transcoded to reach it | Accepted |
 | [0035](ADR-0035-per-peer-passwords.md) | A member can be removed without changing everybody's password | Accepted |
 | [0036](ADR-0036-ipsc-voice-is-not-a-dmr-burst.md) | IPSC voice is not a DMR burst, and bridging is not a copy | Accepted |
+| [0037](ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md) | The DMR FEC is a wrapper, and QSP may add or remove it | Accepted |

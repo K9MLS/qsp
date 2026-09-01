@@ -5,6 +5,53 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/dmrfec`: the bridge between Motorola and Homebrew is buildable,
+  and it is provably lossless** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).
+  ADR-0036 said IPSC voice would not ship unless reconstruction could be made
+  lossless. It can, and this is the proof rather than the argument.
+
+  **884 real bursts from `testdata/hbp/` were stripped to vocoder parameters,
+  rebuilt, and compared. Zero changed.** 2,660 of 2,664 vocoder frames decode
+  with a zero Golay syndrome; the four that do not carry genuine over-the-air
+  bit errors, twelve of which the codes corrected. The synchronisation pattern
+  falls in one burst in six, which is what a 360 ms superframe of six 60 ms
+  frames requires.
+
+- **The transformation, from published standards and nobody's implementation.**
+  ETSI TS 102 361-1 defines the burst as 264 bits carrying three 72-bit vocoder
+  frames including FEC plus a 48-bit synchronisation field in the *middle*, so
+  the payload is two halves rather than one run. The 49-to-72 encoding is the
+  P25 half-rate vocoder specification: a [24,12] extended Golay code and a
+  [23,12] Golay code protecting the twenty-four most sensitive bits, twenty-five
+  bits left bare because they tolerate errors, and a pseudo-random mask keyed on
+  the first twelve. ADR-0029 stands: no IPSC implementation was read, and one
+  that surfaced during research was deliberately not opened.
+
+- **The interleave geometry was determined by experiment, not read off a page.**
+  Three candidate readings were run against 2,748 frames of real captured
+  speech. One scores 99% and the others score **zero**. That asymmetry is better
+  evidence than a citation, and it is the method this project has used all day —
+  every reading taken by eye today was wrong and every differential was right.
+
+### Changed
+- **A correction to ADR-0036's arithmetic.** It said every IPSC voice frame
+  carries 19 bytes. The *vocoder core* is always 19; the full payload is 19, 24
+  or 33 depending on position in the superframe. **33 is a DMR burst size and a
+  coincidence** — the Link Control sits at the end, where a real burst carries
+  it in the middle. Left uncorrected it would have invited somebody to build on
+  a resemblance.
+
+### Notes
+- **This is not transcoding and the ADR says so in advance.** The forty-nine
+  parameter bits are never inspected, decoded or re-encoded; they are copied,
+  and only the wrapper changes. A change to `internal/dmrfec` that reads a
+  parameter bit is out of scope for ADR-0037 and needs a new one, because *"we
+  have to transform the payload"* is the sentence that ends with somebody
+  decoding audio for convenience.
+- **Nothing here implements a vocoder.** AMBE+2 is patented; QSP moves parameter
+  bits between two wrappers and never encodes or decodes speech.
+
+### Added
 - **QSP serves Motorola repeaters.** `internal/ipsclink` is an IPSC listener
   wired to configuration, the health report and the application lifecycle. A
   repeater registers, keepalives are answered, transmissions are recorded, and
