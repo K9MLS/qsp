@@ -5,6 +5,56 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A Motorola repeater registered with QSP software and sent voice through
+  it.** `cmd/ipsc-probe` answered an XPR8300's registration, held the link on
+  fifteen-second keepalives, and received sixty-six voice frames across three
+  transmissions. `testdata/ipsc/ipsc-probe-voice.pcap` is the file.
+
+  **The replayed bytes were good enough.** Nine of eleven body bytes in `0x91`
+  are still unexplained and one of them is an XPR8300's device byte that QSP has
+  no business emitting, and the repeater did not care. That is the answer the
+  probe existed to get and it was not available by reasoning.
+
+- **What had to be got right first, because the failure looked like a protocol
+  failure.** The probe was first told its master ID was 3132910 — the repeater's
+  own — and was refused thirty-nine times over six minutes, replies sent
+  promptly and ignored completely. **A repeater will not register with itself.**
+  One flag fixed it. The capture holds both states, refused and accepted,
+  because the capture was started before the probe by accident.
+
+- **`KindVoice` (`0x80`) and a decoder for its header.** Sequence advances by
+  one per frame and the timestamp by exactly 480 — 480 samples at eight
+  kilohertz is sixty milliseconds, and sixty milliseconds is one DMR voice
+  frame, so it is a media clock rather than an arrival time. Frame lengths cycle
+  52, 57, 57, 57, 66, 57: six frames, a DMR superframe, bursts A to F.
+
+  A call has a **marked beginning and end** — flags read `0x80dd` on the first
+  frame, `0x805d` during and `0x805e` on the last. QSP learned on HBP what a
+  stream with no terminator costs.
+
+- **The field whose position invited the wrong reading.** Byte 5 sits exactly
+  where a timeslot would sit and it is a **call counter**: it counted 1, 2, 3, 4
+  across four key-ups including a restart of the probe, so the repeater is
+  counting transmissions rather than sessions. It was called a timeslot in this
+  session before four transmissions said otherwise.
+
+- **Source is 24-bit where the envelope's sender is 32-bit.** Two fields at two
+  widths, and they held the same number in these captures only because the radio
+  keyed was the repeater's own ID. A test logs the day they differ.
+
+### Notes
+- **`Destination` is exposed and marked unverified**, and a test asserts that
+  nothing has ever moved it. All four transmissions read 455 because all four
+  went to the same place, so its position is a reading rather than an
+  observation. Two key-ups on different talkgroups settle it in two minutes.
+  When that capture exists the test should fail and be replaced.
+- **Whether the DMR burst crosses IPSC verbatim is still open**, and under
+  *audio is king* it is the question that matters most: it decides whether QSP
+  can bridge Motorola to DMR with no transcoding at all. Frame payloads run 26
+  to 40 bytes, which is not obviously 33. Comparing them against the HBP
+  fixtures is desk work and needs no equipment.
+
+### Added
 - **`cmd/ipsc-probe`, an experiment that answers a Motorola repeater**, so that
   the question "are these bytes enough to be a master?" is settled by a repeater
   rather than by argument. It replays the bodies the captured XPR8300 master

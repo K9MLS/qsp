@@ -73,6 +73,10 @@ var (
 // IPSC starts being worth having. A test asserts these lengths so that a change
 // is visible; the parser accepts what arrives.
 var observedLen = map[Kind]int{
+	// Voice frames were seen at 52, 54, 57 and 66 bytes across one superframe,
+	// so this kind has no single observed length and the zero here means only
+	// "recognised". Its header is fixed; its payload is not.
+	KindVoice:            0,
 	KindRegisterRequest:  14,
 	KindRegisterReply:    16,
 	KindKeepaliveRequest: 14,

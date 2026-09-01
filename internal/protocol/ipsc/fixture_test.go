@@ -23,6 +23,10 @@ const (
 	registration = "../../../testdata/ipsc/ipsc-phase2-registration.pcap"
 	established  = "../../../testdata/ipsc/ipsc-phase2-established.pcap"
 
+	// The first capture of QSP software answering a Motorola repeater, and of
+	// voice crossing IPSC. cmd/ipsc-probe as master, an XPR8300 as peer.
+	probeVoice = "../../../testdata/ipsc/ipsc-probe-voice.pcap"
+
 	// K9MLS's XPR8300, firmware R02.30.20. Master in phase 2.
 	masterID = 3132910
 	// The remote repeater, reached over the internet. Peer in phase 2.
@@ -32,7 +36,7 @@ const (
 )
 
 func allFixtures() []string {
-	return []string{phase1A, phase1B, rehearsal, notBound, registration, established}
+	return []string{phase1A, phase1B, rehearsal, notBound, registration, established, probeVoice}
 }
 
 // TestEveryCapturedMessageRoundTrips is the property that keeps the parser
@@ -134,7 +138,7 @@ func TestEveryObservedKindAppearsInAFixture(t *testing.T) {
 	for _, k := range []ipsc.Kind{
 		ipsc.KindRegisterRequest, ipsc.KindRegisterReply,
 		ipsc.KindKeepaliveRequest, ipsc.KindKeepaliveReply,
-		ipsc.Kind85, ipsc.KindF0, ipsc.KindF1,
+		ipsc.Kind85, ipsc.KindF0, ipsc.KindF1, ipsc.KindVoice,
 	} {
 		if seen[k] == 0 {
 			t.Errorf("kind %#02x is recognised by this package but appears in no fixture", byte(k))
@@ -161,6 +165,12 @@ func TestEachKindWasCapturedAtItsObservedLength(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s packet %d: kind %#02x parsed but has no observed length",
 					path, pkt.Index, byte(msg.Kind))
+			}
+			// A zero observed length means the kind has no single one. Voice
+			// frames were seen at 52, 54, 57 and 66 bytes across one
+			// superframe: the burst payload varies with the burst.
+			if want == 0 {
+				continue
 			}
 			if len(pkt.Payload) != want {
 				t.Errorf("%s packet %d: kind %#02x is %d bytes, observed length is %d",
@@ -281,7 +291,7 @@ func TestTwoRepeatersDisagreeOnTheUnexplainedBytes(t *testing.T) {
 
 // TestUncapturedMessageTypesAreRefused is the ADR-0029 boundary as a test.
 func TestUncapturedMessageTypesAreRefused(t *testing.T) {
-	for _, lead := range []byte{0x00, 0x80, 0x92, 0x93, 0x9a, 0xff} {
+	for _, lead := range []byte{0x00, 0x82, 0x92, 0x93, 0x9a, 0xff} {
 		_, err := ipsc.Parse(append([]byte{lead}, bytes.Repeat([]byte{0}, 13)...))
 		if !errors.Is(err, ipsc.ErrNotCaptured) {
 			t.Errorf("leading byte %#02x: %v, want ErrNotCaptured", lead, err)
