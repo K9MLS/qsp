@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **A Motorola repeater and an MMDVM hotspot produce the identical vocoder
+  frame for silence, and that one observation closed the audio path.** The IPSC
+  captures give `0x1F003533F19C1`; decoding the Homebrew captures through
+  `internal/dmrfec` gives `0x1F003533F19C1` as by far the most common parameter
+  frame, 236 times. Different days, different equipment, different protocols.
+
+  It confirms three things at once: the IPSC packing, the FEC decode, and the
+  claim that both protocols carry the same audio. Any one of them being wrong
+  would have broken it. **56 of 162 captured Motorola vocoder frames appear
+  verbatim in the Homebrew captures.**
+
+- **`UnpackIPSCCore` and `PackIPSCCore`**, converting between IPSC's 19-byte
+  vocoder payload and three parameter frames.
+
+- **`BurstFromIPSC` and `IPSCFromBurst`**, the whole conversion in one call.
+  **884 real Homebrew bursts were converted to the Motorola payload and back
+  unchanged**, and every captured Motorola payload was built into a burst and
+  taken apart again with nothing altered.
+
+### Changed
+- **The IPSC vocoder slot is 50 bits, not 49.** Three 49-bit frames would pack
+  into 147 bits with a stride of 49, which is the obvious reading and is wrong.
+  In a silence transmission — where one vocoder frame repeats — a captured core
+  matches itself at an offset of exactly 50 bits and at no other offset at all.
+  So each frame sits in a 50-bit slot with a spare bit, and two more spare at
+  the end of the nineteen bytes.
+
+  **Which end the spare bit sits at could not be measured from IPSC alone**, and
+  was settled by the silence cross-check above: reading the frame as the first
+  49 bits of its slot produces a value the Homebrew captures contain 236 times,
+  and the other reading produces one they do not contain once.
+
+### Notes
+- That makes four readings in one day that looked obvious and were wrong — the
+  trailer, the master ID, the "timeslot" that was a call counter, and now a
+  49-bit stride that is 50. Each was settled by measurement rather than
+  argument, and none by looking at another implementation.
+- **The audio path is now complete and proved in both directions.** What remains
+  before a Motorola repeater can be heard on a hotspot is the 48-bit field in
+  the middle of each burst: a synchronisation pattern on the first burst of a
+  superframe and embedded Link Control on the others. IPSC supplies the material
+  in its 5- and 14-byte trailers; assembling it is the next patch.
+
 ### Changed
 - **`PROJECT_MEMORY.md` §8d replaces §8c as where a session starts.** §8c was
   written this morning and said IPSC was blocked on a capture that did not
