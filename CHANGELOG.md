@@ -5,6 +5,43 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`cmd/ipsc-probe`, an experiment that answers a Motorola repeater**, so that
+  the question "are these bytes enough to be a master?" is settled by a repeater
+  rather than by argument. It replays the bodies the captured XPR8300 master
+  sent, with the sender ID substituted, and logs every datagram in and out.
+
+  **It cannot be right by construction, and that is the point.** Nine of the
+  eleven body bytes of `0x91` have no known meaning, and the first of them is
+  known to belong to the *device* rather than the protocol — `0x6a` on the
+  XPR8300 and `0x66` on the other repeater captured. QSP has no idea what its
+  own should be and emits an XPR8300's. Whether a repeater cares is not
+  available by thinking harder about the capture; it is available in five
+  minutes with a repeater on a bench. If it registers and holds, the bytes are
+  good enough. If it does not, the way it fails narrows which of them matters.
+
+  It is deliberately **not** part of `cmd/qsp`. QSP does not ship an IPSC
+  listener until one exists that was built rather than replayed, and `ipsc` goes
+  on reporting unavailable in the health report until then.
+
+- **`0xf1` is not a peer list.** It was the obvious reading — the largest
+  message in any capture, sent once, at the end of registration — and it is
+  wrong. The body contains neither the peer's radio ID in either byte order, nor
+  either endpoint's IP address, nor either port. Sixteen of its thirty-nine
+  bytes look like a single 128-bit value. A test asserts the absence, because
+  the guess was attractive enough to be worth writing down as refuted.
+
+  That matters practically: replaying one master's `0xf1` would be reckless for
+  a list and is merely unknown for whatever this is.
+
+### Notes
+- **The voice capture produced no voice.** Three minutes with the link up and a
+  radio to hand yielded 38 IPSC packets, all keepalives and `0x85`. Either
+  nothing was keyed or the calls did not cross the link, and the difference
+  matters: the second would be a talkgroup configuration question rather than a
+  protocol one. Voice, private calls, text and disconnect remain uncaptured and
+  are the last unknowns of any size.
+
+### Added
 - **Two Motorola repeaters registered to each other over the internet, and the
   capture is in the repository.** A K9MLS XPR8300 as master, a remote repeater
   fourteen hops away as peer, and a bridged capture host in the path. This is
