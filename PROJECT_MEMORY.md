@@ -58,8 +58,8 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.12 |
-| Tests | **825 test functions**, 3,733 results including subtests, all passing. Count them as `grep -rhoE '^func (Test|Fuzz|Example)[A-Za-z0-9_]*' --include=*_test.go . \| wc -l`, so the number means the same thing next time |
+| Version | 0.1.19 |
+| Tests | **863 test functions**, 4,202 results including subtests, all passing. Count them as `grep -rhoE '^func (Test|Fuzz|Example)[A-Za-z0-9_]*' --include=*_test.go . \| wc -l`, so the number means the same thing next time |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -79,7 +79,7 @@ No phase advances on a passing test suite alone. By that rule:
 | 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
 | 2 — Console | A newcomer is running in under 10 minutes, unassisted | **CLOSED 2026-08-31** — AD0MI was given the join page and a password and got onto the network without help. He is the only evidence this gate will ever have: nobody is a first-time newcomer twice, and the next member joins a console he did not see |
 | 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak running since 2026-08-27 but interrupted by daily deploys. See §9 |
-| 4 — IPSC | A Motorola repeater is a peer of a QSP master | **next after DMR is finished**, promoted ahead of P25 on 2026-08-31 at the operator's direction. Blocked on a capture ([ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md)), and on nothing else |
+| 4 — IPSC | A Motorola repeater is a peer of a QSP master | **gate met 2026-09-01.** An XPR8300 is registered to the production server and its transmissions are recorded. It is not yet routed; see §8d |
 | 5 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice. Native, never transcoded ([ADR-0034](docs/adr/ADR-0034-p25-is-native.md)) |
 
 Phase 3's gate is two weeks of wall-clock time and cannot be compressed, so it
@@ -840,9 +840,12 @@ GitHub Actions minutes are finite and were at 90% of the month on 2026-08-30.
 **CI runs on push, not on commit.** Apply patches and test locally; push once
 when CI is actually wanted, or use `[skip ci]` in the commit message.
 
-## 8c. Where this session starts, as of 2026-09-01
+## 8c. Where a session started on the morning of 2026-09-01
 
-Read §0, then §6b and §6c for the rules that break ties, then this.
+**Superseded by §8d**, which is where a session starts now. Kept because its
+*settled, do not reopen* list is still in force, and because the "open, in
+order" list below shows what the day looked like before it: IPSC was blocked on
+a capture that did not exist.
 
 ### Settled, do not reopen
 
@@ -930,6 +933,101 @@ configuration page.**
 `cmd/qsp` has known failures in the development container because no SQLite
 driver is registered there. **List them by name rather than counting them** —
 two new failures once hid inside a count that looked normal.
+
+---
+
+## 8d. Where the next session starts, as of the evening of 2026-09-01
+
+Read §0, then §6b and §6c for the rules that break ties, then this.
+
+**IPSC went from an empty directory to a Motorola repeater registered on the
+production server in one day.** Seven fixtures, nine message types, two ADRs, a
+listener in the binary and a proved-lossless audio conversion. None of it came
+from reading anybody's implementation.
+
+### What exists
+
+- `internal/protocol/ipsc` parses nine message types. The envelope is a type
+  byte and a big-endian **sender** ID — the sender, not the subject, which one
+  repeater talking into silence could not have shown.
+- `internal/ipsclink` is a listener wired to configuration, health and the
+  lifecycle. A repeater registers, keepalives are answered at fifteen seconds,
+  transmissions are recorded as calls. Live on `qsp-server:50000`.
+- `internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+  72-bit protected frames a DMR burst carries.
+  [ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md). **884 real
+  bursts round-tripped bit-exact.**
+- `cmd/ipsc-probe`, an experiment that answers a repeater with recorded bytes.
+  Not part of `qsp` and should stay that way.
+
+### Open, in order
+
+1. **IPSC → HBP routing.** Motorola in, hotspots out. **Every piece exists** —
+   parser, FEC, routing core — and it needs no new capture and no equipment.
+   Key the XPR8300 and hear it in Wisconsin.
+
+2. **HBP → IPSC, which is blocked and must stay blocked.** *Nothing has ever
+   captured a master sending voice to a repeater.* What QSP would emit is a
+   guess, and a repeater that receives malformed voice may key its transmitter
+   with it. Build direction 1 first, then use it: send a burst known to be
+   well-formed and watch whether the repeater transmits.
+
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater is visible in `/healthz` and the journal but not on the
+   dashboard.
+
+4. **Two key-ups on different talkgroups.** Two minutes at the radio. Every
+   captured transmission read destination 455, so nothing has ever *moved* that
+   field — the Link Control in the same packet agrees with it, which is
+   corroboration and not proof.
+
+5. **Subscription on air**, then **P25**, unchanged from §8c.
+
+### Settled, do not reopen
+
+Everything in §8b and §8c, plus:
+
+- **The FEC conversion is a wrapper, not a codec** (ADR-0037). Parameter bits
+  are copied and never inspected. A change to `internal/dmrfec` that reads one
+  is out of scope and needs a new ADR.
+- **`0xf1` is not a peer list.** It contains neither the peer's radio ID in
+  either byte order nor any address or port. Tested.
+- **DMRlink and HBlink3 remain unread**, and one implementation that surfaced
+  during research on 2026-09-01 was deliberately not opened. ETSI TS 102 361 and
+  the P25 half-rate vocoder specification are published standards and reading
+  them is a different thing entirely.
+
+### What cost the most time, and would again
+
+- **A repeater will not register with a master carrying its own radio ID.** An
+  XPR8300 retried thirty-nine times over six minutes against correct replies
+  sent promptly, and the failure was indistinguishable from a protocol fault.
+  `ipsc.master_id` now refuses the collision at validation.
+- **A Motorola repeater has two port fields and they are not the same thing.**
+  `Master UDP Port` is what it dials; `UDP Port` is what it binds. Set to 50000
+  and 50001, a master that looked correct served a port nobody was calling and
+  answered every request with an ICMP unreachable **from its own IP stack**. Two
+  plausible theories came before the right one and both were wrong; `nmap -sU`
+  against the repeater ended it. **When a device's own stack sends the refusal,
+  ask the device what it bound.**
+- **Silence is the only refusal IPSC has.** ICMP port unreachable is provably
+  ignored, and no capture contains a rejection.
+- **Nothing says goodbye.** A repeater that is unplugged simply stops, so
+  silence past a timeout is the only evidence of departure.
+- **An IPSC port on a public address will be found.** One repeater turned up
+  unannounced during a bench test.
+
+### The method, stated plainly because it was proved four times in one day
+
+**Every byte read by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, the
+interleave geometry — each was settled by changing exactly one thing and
+diffing, or by running candidate readings against thousands of real frames and
+taking the one that scored 99% where the others scored zero.
+
+Two captures differing in one known way beat ten differing in unknown ways. When
+a reading is plausible and cheap to test, test it.
 
 ---
 

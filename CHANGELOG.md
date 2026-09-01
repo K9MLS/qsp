@@ -4,6 +4,44 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **`PROJECT_MEMORY.md` §8d replaces §8c as where a session starts.** §8c was
+  written this morning and said IPSC was blocked on a capture that did not
+  exist; by evening there were seven fixtures, nine message types, a listener in
+  production and a proved-lossless audio conversion. That file is the first
+  thing a new session reads, so every hour it stayed stale was an hour of work
+  starting from a version of this project that had stopped existing.
+
+  **Phase 4's gate is met.** A Motorola repeater is a peer of a QSP master. It
+  is not yet routed, and §8d says so rather than letting the closed gate imply
+  more than it means.
+
+- **What cost the most time is written down, because it would cost it again.**
+  That a repeater will not register with a master carrying its own radio ID and
+  that the failure is indistinguishable from a protocol fault. That a Motorola
+  repeater has two port fields and the wrong one served a port nobody was
+  calling. That silence is the only refusal IPSC has, that nothing says goodbye,
+  and that an IPSC port on a public address will be found.
+
+- **The method is stated plainly, because it was proved four times in one day.**
+  Every byte read by eye was wrong — the trailer, the master ID, the "timeslot"
+  that was a call counter, the interleave geometry. Every differential was
+  right. Two captures differing in one known way beat ten differing in unknown
+  ways.
+
+- **`NEW-SESSION.md` and `HANDOVER.md` rewritten.** The network is three
+  stations rather than two, and it has a Motorola repeater on it. Patch
+  numbering moves to 0175. The Go bootstrap chain the container needs is
+  recorded, since a documentation-only patch still has to pass a gate that is a
+  Go test.
+
+### Notes
+- **The next thing is IPSC → HBP routing, and it needs no new capture and no
+  equipment.** Parser, FEC and routing core all exist.
+- **The reverse direction stays blocked.** Nothing has ever captured a master
+  sending voice to a repeater, so what QSP would emit is a guess — and a
+  repeater that receives malformed voice may key its transmitter with it.
+
 ### Added
 - **`internal/dmrfec`: the bridge between Motorola and Homebrew is buildable,
   and it is provably lossless** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).

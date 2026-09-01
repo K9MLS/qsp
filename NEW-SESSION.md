@@ -8,9 +8,14 @@ I'm Mike, K9MLS. I'm building **QSP**, a free open-source DMR network routing
 and linking server in pure Go — a community alternative to commercial a commercial DMR server
 software. The repository is `github.com/K9MLS/qsp`.
 
-**It carries a real network.** Two stations use it daily: mine in Denton, Texas,
-and KB9TYC's in Wisconsin, Wisconsin, about a thousand miles apart. Voice, private
+**It carries a real network.** Three stations use it: mine in Denton, Texas,
+KB9TYC's in Wisconsin, Wisconsin, and AD0MI's in Post Falls, Idaho. Voice, private
 calls, text messages and parrot all work on air.
+
+**And a Motorola repeater.** As of 2026-09-01 an XPR8300 is registered to the
+production server over IP Site Connect and its transmissions are recorded. It is
+not yet routed to the rest of the network — see §8d, item 1, which needs no new
+capture and no equipment.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -19,7 +24,7 @@ Attached is a git bundle of the whole repository. Please start by reading
 - **§6a**, what two members on a real network taught us
 - **§6b**, what a second day taught us — it supersedes parts of §6a, especially
   about talkgroup rewriting
-- **§8b**, where this session should start, and what was settled and should not
+- **§8d**, where this session should start, and what was settled and should not
   be reopened
 - **§7**, working conventions — the section on working on my machines is all
   learned from things that went wrong
@@ -32,7 +37,7 @@ decision records.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0165**. Commits use my
+`git am` on my Fedora machine. Number them from **0175**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 Never commit `go.mod` or `go.sum` — stage with
@@ -49,7 +54,15 @@ tar -C /tmp -xzf /tmp/sc.tgz && cp /tmp/staticcheck/staticcheck /usr/local/bin/
 
 `cmd/qsp` has eight known failures in your container because
 no SQLite driver is registered there; move `cmd/qsp/driver_sqlite.go` aside to
-compile it.
+compile it, and move it back before generating a patch.
+
+**Your container ships without Go, and no allowed domain carries a Go binary.**
+`go.dev/dl` and the module proxy are both blocked, `golang/go` on GitHub
+publishes source rather than binaries, and Ubuntu's newest package is 1.22. The
+bootstrap minimum is enforced at run time, so the chain is **1.22 → 1.23 → 1.24
+→ 1.27** from the source tags on `codeload.github.com`, about twenty minutes. Do
+it first: a documentation-only patch still has to pass the accuracy gate, and
+the accuracy gate is a Go test.
 
 **I have three terminals open** — my Fedora development machine, `qsp-server`
 (the Ubuntu VM running QSP), and `pi-star` (my hotspot). Always say which
@@ -66,6 +79,15 @@ and that P25 is carried natively and never transcoded to reach DMR
 **Talkgroup numbers are never renumbered.** 2 is 2 and 11 is 11, on both sides
 of a hotspot. A QSP-only hotspot needs no rewrite rules at all. See §6b, which
 supersedes part of §6a.
+
+## How this project actually finds things out
+
+**Every byte read by eye on 2026-09-01 was wrong. Every differential was right.**
+Change exactly one setting, capture again, and diff — or run candidate readings
+against thousands of real frames and take the one that scores 99% where the
+others score zero. Two captures differing in one known way beat ten differing in
+unknown ways. When a reading is plausible and cheap to test, test it rather than
+arguing for it. See §8a and §8d.
 
 ## Before you edit PROJECT_MEMORY.md
 
