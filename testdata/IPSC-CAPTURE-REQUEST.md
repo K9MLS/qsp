@@ -27,14 +27,23 @@ its cold start, through voice on both timeslots, to shutdown.
 
 ## Before you start
 
-**Find the port.** IPSC commonly uses UDP **50000**, but it is configurable in
-the repeater's CPS and installations vary widely. Check the repeater's
-programming for the master's UDP port and use that number below.
+**Do not filter on a port you have not confirmed.** IPSC commonly uses UDP
+**50000**, but it is configurable in the repeater's CPS and installations vary
+widely. Filter on the repeater's **IP address** instead, and read the port out
+of what arrives — a capture filtered to the wrong port is empty, and an empty
+capture looks like a broken repeater for about an hour.
 
 **Capture on the master's side**, or on a machine that sees both directions. A
 capture taken at one repeater in a multi-site system shows only that repeater's
 half of the conversation, and the registration handshake is the part where both
 halves matter most.
+
+**A repeater is a closed box and a switch is not a hub.** `tcpdump` cannot run
+on the repeater, and running it on another machine that merely shares the LAN
+records nothing, because a switch forwards unicast to one port. The capture host
+has to be somewhere the packets genuinely pass through: physically in line with
+the repeater, on a mirrored switch port, or on the router the traffic crosses.
+[`ipsc/CAPTURE-PLAN.md`](ipsc/CAPTURE-PLAN.md) sets out all three.
 
 **The registration happens once, at startup.** Start the capture *before* the
 repeater connects, or the most important part is already over. That means either
@@ -45,8 +54,11 @@ restarting the repeater or restarting whatever it registers with.
 ## The capture
 
 ```sh
-sudo tcpdump -i any -n -s0 -w ipsc-session.pcap udp port 50000
+sudo tcpdump -i eth0 -n -s0 -w ipsc-session.pcap host <repeater-ip>
 ```
+
+Use the **real interface name**, not `-i any`: on Linux `-i any` records
+Linux cooked-mode headers and discards the Ethernet header.
 
 `-s0` records whole packets. Without it they are truncated and the fixture is
 worthless for anything but counting.

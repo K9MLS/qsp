@@ -5,6 +5,103 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Changed
+- **`PROJECT_MEMORY.md` is current again, at 0.1.12.** It had drifted three ways
+  from what the network actually is, and a new session reads it before anything
+  else — so every hour it stayed stale was an hour of a session working from a
+  version of this project that stopped existing on 2026-08-31.
+
+  **§2** now says one CI job rather than eight, and says CI does not run on push.
+  Version 0.1.12, schema 5, and a test count with the command that produces it
+  written beside it, so the number means the same thing next time somebody
+  compares it.
+
+  **Phase 2's gate is closed**, not "closable". AD0MI was given the join page and
+  a password and got onto the network without help. He is the only evidence that
+  gate will ever have, because nobody is a first-time newcomer twice and the next
+  member joins a console he did not see. Recording it as still open invites a
+  future session to propose re-testing something that cannot be re-tested.
+
+  **IPSC is promoted ahead of P25**, at the operator's direction, and the phase
+  table renumbers to match. The reason is reach rather than difficulty: a club
+  with a Motorola repeater cannot use QSP at all today, and those are already DMR
+  clubs running the talkgroups QSP routes. P25 opens a mode nobody on this
+  network operates. Both are blocked only on captures.
+
+- **§6c: the two rules that break ties.** *Audio is king* — the best audio
+  deliverable to the amateur community is the first requirement and it overrules
+  features, convenience and elegance. It has already decided that Talker Alias is
+  passed through and never injected, because injecting means writing bursts B–E,
+  which is reported to distort or lose audio on Motorola repeaters and overwrites
+  the Link Control a radio joining mid-transmission needs. With the correction
+  that **BrandMeister does inject** when a radio sends nothing, prefixing the
+  callsign to the SelfCare *APRS Text* field — not a name lookup, so smaller than
+  its reputation. And that P25 is native and never transcoded to reach DMR
+  (ADR-0034), because routing IMBE through AMBE+2 is tandem vocoding.
+
+  Per-peer passwords (ADR-0035) are recorded in the same section, including the
+  property revocation depends on: a per-peer password **overrides** rather than
+  adds, so deleting a file cannot quietly return somebody to the shared secret
+  they already know.
+
+- **§8c replaces §8b as where a session starts.** §8b is kept for its
+  *settled, do not reopen* list, which is still in force.
+
+### Added
+- **`testdata/ipsc/CAPTURE-PLAN.md`** — the operational plan for the equipment
+  that actually exists: a K9MLS XPR8300 in the lab and an SLR5700 belonging to a
+  colleague. `testdata/IPSC-CAPTURE-REQUEST.md` stays as the version handed to a
+  club nobody knows; this one names machines and assumes two people on a phone
+  call.
+
+  **The difficulty is placing the capture host, not reading the protocol.** A
+  MOTOTRBO repeater is a closed box with no shell, and a switch forwards unicast
+  to one port — so capturing on a machine that merely shares the LAN records
+  broadcast traffic and nothing else, which looks exactly like two repeaters
+  refusing to link. Three placements work and are given in order: a bridged
+  bump-in-the-wire, a mirrored switch port, and the router when it runs Linux or
+  BSD.
+
+  **Phase 1 needs one repeater and nobody else.** Point the XPR8300 at a Linux
+  box running only `tcpdump`; the registration attempts are *addressed to the
+  capture host*, so no mirror, bridge or second repeater is needed, and nothing
+  goes on the air. It yields the registration request whole, the peer ID on the
+  wire — checkable against what CPS says, which is the best sanity check
+  available without a specification — and the retry behaviour.
+
+  **And the technique that makes it worth more than one file:** capture the same
+  event twice with exactly one setting changed and diff them. Change the radio ID
+  in CPS and re-capture, and the field's offset, width and endianness fall out
+  with no specification and without reading anybody's implementation. Two
+  captures differing in one known way beat ten differing in unknown ways.
+
+  Phase 0 names the three things that can cancel the session before it is booked:
+  IP Site Connect is a purchased MOTOTRBO feature and may not be licensed on
+  either unit; one CPS version may not program both platforms; and the two may
+  not link across that generational gap at all — marked unverified, because there
+  is no fixture for it and §7 says protocol and equipment claims are backed by
+  one or marked.
+
+### Fixed
+- **`testdata/IPSC-CAPTURE-REQUEST.md` gave two instructions that produce a
+  useless capture.** It said `-i any`, which on Linux records cooked-mode headers
+  and discards the Ethernet header; and it said to filter `udp port 50000`, which
+  is a common default rather than a fact about anyone's repeater. Filtering on an
+  unconfirmed port produces an empty file, and an empty file looks like broken
+  equipment for about an hour. Both now filter on the repeater's address and read
+  the port out of what arrives.
+
+### Notes for the next session
+- **The development container ships without Go**, and no domain in the egress
+  allowlist carries a Go binary: `go.dev/dl` and the module proxy are both
+  blocked, `golang/go` on GitHub publishes source rather than binaries, and
+  Ubuntu's newest package is 1.22. The toolchain has to be built from the source
+  tag on `codeload.github.com`, and **1.22 cannot build 1.27 directly** — the
+  bootstrap minimum is checked at run time rather than by a build tag, so the
+  chain is 1.22 → 1.23 → 1.24 → 1.27 and takes about twenty minutes. Recorded in
+  §7, because a documentation-only patch still has to pass the accuracy gate and
+  the accuracy gate is a Go test.
+
+### Changed
 - **CI runs on request, weekly, and on a release tag — not on every push.** It
   ran eight jobs per commit to main, each paying its own checkout and Go setup,
   and about three minutes of every run was runner startup before any work

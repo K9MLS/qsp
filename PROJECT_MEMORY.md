@@ -14,6 +14,15 @@ administrator configuration. When a question sounds like "which talkgroup does
 the club want?", the answer is "that is a field, not a decision". K9MLS's club
 (BCARA) is the test bed, not the specification.
 
+**Two rules break ties.** When a decision could reasonably go either way, these
+settle it rather than leaving it to taste. Both are stated in full in §6c.
+
+1. **Audio is king.** The best audio that can be delivered to the amateur
+   community is the first requirement, and it overrules features, convenience
+   and elegance.
+2. **Talkgroup numbers are never renumbered.** 2 is 2 and 11 is 11, on both
+   sides of a hotspot. See §6b.
+
 **The layers, in order. Build downward before upward.**
 
 | Layer | What it is | State |
@@ -49,17 +58,17 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.10 |
-| Tests | 796, all passing |
+| Version | 0.1.12 |
+| Tests | **825 test functions**, 3,733 results including subtests, all passing. Count them as `grep -rhoE '^func (Test|Fuzz|Example)[A-Za-z0-9_]*' --include=*_test.go . \| wc -l`, so the number means the same thing next time |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
 | Health report | 11 subsystems, plus one per configured link |
 | Hardware validated | **yes** — live voice 2026-08-25, a two-station QSO 2026-08-28, and a three-station network with private calls working both directions 2026-08-30, see §6 and §6b |
 | Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin, WI) and AD0MI (Post Falls, ID), joined 2026-08-30 |
-| CI | green, 8 jobs, `github.com/K9MLS/qsp` (private) |
+| CI | green, **one job**, `github.com/K9MLS/qsp` (private). It runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on push**. Five of the old six jobs repeated what the development machine already runs before every patch; the two that do not are the three cross-compiles and `go mod tidy`. Run it with `gh workflow run CI` |
 | Static analysis | `staticcheck` clean, pinned at 2026.2.1. **It runs in the development container**: the release binary comes from GitHub, which the network policy allows, unlike the module proxy |
-| Migrations | 4 — configuration versions, audit events, users and sessions, callsign cache |
+| Migrations | **5** — configuration versions, audit events, users and sessions, callsign cache, call history (ADR-0033) |
 
 ### Phase gates (BLUEPRINT §16)
 
@@ -68,19 +77,27 @@ No phase advances on a passing test suite alone. By that rule:
 | Phase | Gate | Status |
 |---|---|---|
 | 1 — HBP master core | A hotspot keys up and its transmission decodes | **CLOSED 2026-08-25** — 5 streams, 556 frames, 0 dropped |
-| 2 — Console | A newcomer is running in under 10 minutes, unassisted | **open, and closable for the first time.** AD0MI joined on 2026-08-30 — the first member who joined after this project started. Whether he did it unassisted, and in what time, has not been asked. **Ask him before claiming this gate**, and ask specifically what he had to work out for himself |
+| 2 — Console | A newcomer is running in under 10 minutes, unassisted | **CLOSED 2026-08-31** — AD0MI was given the join page and a password and got onto the network without help. He is the only evidence this gate will ever have: nobody is a first-time newcomer twice, and the next member joins a console he did not see |
 | 3 — Scheduler + PTT | A scheduled net links and unlinks unattended for **two weeks** | open — code complete, soak running since 2026-08-27 but interrupted by daily deploys. See §9 |
-| 4 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice |
+| 4 — IPSC | A Motorola repeater is a peer of a QSP master | **next after DMR is finished**, promoted ahead of P25 on 2026-08-31 at the operator's direction. Blocked on a capture ([ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md)), and on nothing else |
+| 5 — P25 | P25 and DMR live on one instance | blocked on ADR-0008 and on a capture containing P25 voice. Native, never transcoded ([ADR-0034](docs/adr/ADR-0034-p25-is-native.md)) |
 
 Phase 3's gate is two weeks of wall-clock time and cannot be compressed, so it
 is the critical path. Phase 1 closing is what unblocked it.
+
+**IPSC is ahead of P25 because of reach, not difficulty.** A club with a
+Motorola repeater cannot use QSP at all today, and those clubs are already DMR
+clubs running the talkgroups QSP routes — so IPSC converts a refusal into a
+customer. P25 opens a mode nobody on this network operates yet. Both are blocked
+only on captures and the operator has access to the equipment for both, which is
+what makes the ordering a choice rather than a constraint.
 
 **The soak has not had two weeks of anything.** It has been deployed to almost
 daily since it began, and every restart is explained — but a fortnight of
 explained restarts is not the unattended fortnight the gate describes. The clock
 should be treated as running from the last deploy.
 
-Phase 2 does not gate the soak, and the two can run concurrently.
+Phase 2 no longer gates anything; the soak is the only clock still running.
 
 ### Working
 
@@ -508,6 +525,60 @@ events in three seconds from one operator, six distinct IDs.
 Do not theorise further without a packet capture. Four theories were proposed for
 the private call and none was the answer.
 
+## 6c. Two rules that break ties, 2026-08-31
+
+### Audio is king
+
+**The best audio that can be delivered to the amateur community is the first
+requirement, and it overrules features, convenience and elegance.** This is the
+rule that decides an argument nobody can win on the merits, and it has already
+decided two.
+
+**Talker Alias is passed through and never injected.** QSP carries the burst
+verbatim, so an alias a radio already sends crosses untouched and costs nothing.
+Injecting one means writing bursts B–E into the voice superframe, which is
+reported to produce distorted or lost audio on Motorola repeaters and overwrites
+the Link Control that a radio joining mid-transmission needs to know who is
+talking. Trading audio quality for a name on a screen is exactly the trade this
+rule forbids.
+
+Note the correction that came with it: **BrandMeister does inject**, when a
+radio sends nothing. It prefixes the callsign to the operator's SelfCare *APRS
+Text* field, defaulting to `DMR ID:nnnnnnn`. It is not a name lookup against a
+database, so what it actually delivers is smaller than its reputation suggests,
+and copying it would cost more than it returns.
+
+**P25 is native and is never transcoded to reach DMR**
+([ADR-0034](docs/adr/ADR-0034-p25-is-native.md)). IMBE and AMBE+2 are different
+vocoders; routing one through the other is tandem vocoding, and tandem vocoding
+is the single worst thing that can be done to speech in this hobby. A P25
+network and a DMR network on one instance are two networks, not one.
+
+### A member is removed without changing everybody's password
+
+[ADR-0035](docs/adr/ADR-0035-per-peer-passwords.md). `dmr.peer_passwords` names
+a directory of files, one per radio ID. A peer with a file of its own
+authenticates against it; every other peer uses the shared password unchanged.
+
+One shared secret means removing one person costs a new password and every
+remaining member reconfiguring a hotspot on the same evening — twelve members,
+twelve reconfigurations, to remove one. It also leaks through whoever is least
+careful with it and nobody can tell which of them it was; one of this network's
+passwords reached a chat log inside a week.
+
+**A per-peer password overrides rather than adds**, and revocation depends on
+that property. If the shared password still worked for a peer that has its own,
+deleting somebody's file would quietly return them to the secret they already
+know, and an administrator would believe they had revoked access they had in
+fact restored. Both issue and removal are in the console, and both write an
+audit event naming the administrator and the radio ID, because *who removed
+whom, and when* is the question a club asks afterwards.
+
+Removing a password stops the **next** login, not the current session. The
+access list is what puts somebody off the network now, and the panel says so.
+
+---
+
 ## 7. Working conventions
 
 - **Approval Gate** — propose and self-review before writing substantial code;
@@ -522,6 +593,18 @@ the private call and none was the answer.
   throwaway-script errors this project against zero shipped defects. Checks
   belong in Go, under CI.
 - **Race detector is a blocking gate** — it has caught three real defects.
+- **The development container ships without Go, and no allowed domain carries a
+  Go binary.** `go.dev/dl` and the module proxy are both outside the egress
+  allowlist; `golang/go` on GitHub publishes source, not binaries; Ubuntu's
+  newest package is 1.22. So the toolchain is bootstrapped from the source tag
+  on `codeload.github.com`, and 1.22 cannot build 1.27 directly — the bootstrap
+  minimum is enforced at run time, not by a build tag, so the chain is
+  **1.22 → 1.23 → 1.24 → 1.27**, about twenty minutes. Do it first, before
+  writing anything, because a documentation-only patch still has to pass the
+  accuracy gate and the accuracy gate is a Go test.
+- **`modernc.org/sqlite` cannot be fetched in the container either.** Move
+  `cmd/qsp/driver_sqlite.go` aside and the tree builds with the standard library
+  alone, which is the point of ADR-0017. Move it back before generating a patch.
 - **Documentation accuracy is a CI gate, not a habit.** Stale prose is a bug and
   is treated as one. Where a claim can be derived from code instead of asserted
   in prose, derive it — `handleNoConsole` builds its endpoint list from
@@ -683,7 +766,8 @@ an XLX reflector for outbound peer mode, and the BrandMeister request.
 
 ## 8b. Where the next session starts, as of 2026-08-30
 
-Read §6b first. It supersedes parts of §6a.
+**Superseded by §8c.** Kept because its *settled, do not reopen* list is still
+in force. Read §6b first; it supersedes parts of §6a.
 
 ### Settled today, do not reopen
 
@@ -755,6 +839,75 @@ change on any Pi.
 GitHub Actions minutes are finite and were at 90% of the month on 2026-08-30.
 **CI runs on push, not on commit.** Apply patches and test locally; push once
 when CI is actually wanted, or use `[skip ci]` in the commit message.
+
+## 8c. Where this session starts, as of 2026-09-01
+
+Read §0, then §6b and §6c for the rules that break ties, then this.
+
+### Settled, do not reopen
+
+Everything in §8b's list, plus:
+
+- **Phase 2's gate is closed.** AD0MI joined unassisted from the join page and a
+  password. Do not propose re-testing it; there is no second first-time member.
+- **IPSC comes before P25.** Reach, not difficulty. See §2.
+- **Audio is king**, and **talkgroup numbers are never renumbered**. §6c and §6b.
+- **Talker Alias is pass-through.** Nothing injects bursts B–E.
+
+### Open, in order
+
+1. **IPSC, and specifically the capture that unblocks it.** The largest gap by
+   reach: a club with a Motorola repeater cannot use QSP at all. There are now
+   two repeaters available — the operator's XPR8300 in his lab and an SLR5700
+   belonging to a colleague — which is what a peer list and a real registration
+   need. [`testdata/ipsc/CAPTURE-PLAN.md`](testdata/ipsc/CAPTURE-PLAN.md) is
+   the operational plan for this equipment;
+   [`testdata/IPSC-CAPTURE-REQUEST.md`](testdata/IPSC-CAPTURE-REQUEST.md)
+   remains the version handed to a stranger.
+
+   **[ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) holds: no IPSC wire
+   format code before a capture exists — not a parser, not a constant, not a
+   message type.** And DMRlink and HBlink3 stay unread until a capture is in
+   hand and has been shown not to answer something, because reading them binds
+   the project to a derivative work permanently and cannot be undone.
+
+2. **The peering retry between two machines.** The console flow was built and no
+   button has been pressed. The loopback pair proved the protocol and proved
+   nothing about NAT, a public address, or a far end that restarts. The one real
+   attempt took production down for twenty minutes, which is the argument for
+   `qsp -config <file> -check` having been built first.
+
+3. **Subscription on air.** Built, never run with a radio. Turning it on
+   silences everybody who has not yet transmitted, so static attachments have to
+   be configured first — and those are still not editable from the console. That
+   ordering is the whole risk.
+
+4. **P25**, once DMR is finished. `testdata/p25/CAPTURE-REQUEST.md` is written;
+   the idle capture exists and contains no voice.
+
+### Unexplained. Do not theorise without a capture
+
+- **An echo.** K9MLS heard about a second of his own audio return after
+  unkeying, once. QSP is provably not looping: every `relaying transmission`
+  line excludes the originating peer, and the third station is 1,300 miles away.
+- **A repeated stream ID.** One peer produced the same 32-bit stream ID twice,
+  34 seconds apart, in the same QSO. Roughly one in four billion by chance. An
+  earlier session saw six `call started` events in three seconds from one
+  operator, with six distinct IDs.
+
+Both are recorded rather than investigated because there is no capture of
+either, and §7 says a theory that has failed twice does not get a third guess.
+
+### Costs to respect
+
+CI runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on
+push**. One job, about six minutes. `gh workflow run CI`.
+
+`cmd/qsp` has known failures in the development container because no SQLite
+driver is registered there. **List them by name rather than counting them** —
+two new failures once hid inside a count that looked normal.
+
+---
 
 ## 7b. What is built, as of 2026-08-29
 
