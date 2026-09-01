@@ -5,6 +5,42 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **The two protocols line up burst for burst, and the last piece of the audio
+  path is now visible.** A DMR burst puts 48 bits between its payload halves: an
+  8-bit EMB, a 32-bit embedded Link Control fragment, another 8-bit EMB. The
+  Homebrew captures show exactly six distinct middles across 888 voice bursts,
+  148 of each — one superframe's worth. The IPSC captures show the same
+  structure with the EMB omitted, because Motorola knows its own colour code and
+  regenerates it.
+
+  | Burst | Homebrew middle | IPSC class | IPSC trailer |
+  |---|---|---|---|
+  | A | `755fd7df75f7` (sync) | `0x40` | none |
+  | B–E | `b2`·fragment·`69` etc. | `0x06` / `0x16` | fragment, plus assembled LC once |
+  | F | `b0`·`00000000`·`1a` | `0x06` | `00000000`·`40` |
+
+  **The final burst of every superframe carries an all-zero fragment in both
+  protocols.** Two independently captured protocols agreeing on a value that had
+  no reason to match unless both describe the same field. That is what confirms
+  the mapping rather than merely suggesting it.
+
+- **`EmbeddedFragment` and `SuperframePosition`** on an IPSC voice message.
+  `SuperframePosition` deliberately does not return a letter A to F: the
+  captures pin the sync burst and the 1:4:1 shape, and naming the middle four
+  individually would be a claim the evidence does not support.
+
+### Notes
+- **What is left before a Motorola repeater can be heard on a hotspot is the
+  8-bit EMB either side of the fragment.** It is the one field IPSC never sends
+  and Homebrew always does, so it has to be synthesised: colour code and a
+  two-bit LCSS, protected by a short code. The Homebrew captures contain every
+  value a single colour code produces, which is a small enough space to verify
+  exhaustively.
+- The `0x16` frame is Motorola handing over the assembled Link Control
+  alongside its fragment, so a bridge does not have to reassemble four fragments
+  to learn who is talking to whom.
+
+### Added
 - **A Motorola repeater and an MMDVM hotspot produce the identical vocoder
   frame for silence, and that one observation closed the audio path.** The IPSC
   captures give `0x1F003533F19C1`; decoding the Homebrew captures through

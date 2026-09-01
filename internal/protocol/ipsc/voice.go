@@ -166,3 +166,63 @@ func (m Message) LinkControl() (destination, source uint32, ok bool) {
 	s := uint32(trailer[10])<<16 | uint32(trailer[11])<<8 | uint32(trailer[12])
 	return d, s, true
 }
+
+// Payload classes, byte 32 of a voice frame.
+//
+// Each marks a position in the DMR superframe, which is why there are three of
+// them in a 1:4:1 ratio across six frames.
+const (
+	// PayloadSync is the first burst of a superframe. Its trailer is empty
+	// because the burst carries a synchronisation pattern rather than
+	// signalling, and the pattern is a constant both ends already know.
+	PayloadSync byte = 0x40
+	// PayloadFragment carries a 32-bit embedded Link Control fragment in a
+	// five-byte trailer.
+	PayloadFragment byte = 0x06
+	// PayloadFragmentWithLC carries a fragment and, after it, the assembled
+	// Link Control: destination and source, decoded. Motorola sends the whole
+	// thing once per superframe rather than making the far end reassemble the
+	// four fragments.
+	PayloadFragmentWithLC byte = 0x16
+)
+
+// EmbeddedFragment returns the 32-bit Link Control fragment a voice frame
+// carries, and whether it has one.
+//
+// # Why this matters for a bridge
+//
+// A DMR burst puts 48 bits between its two payload halves: an 8-bit EMB, a
+// 32-bit fragment, another 8-bit EMB. The Homebrew captures show exactly that
+// shape, and the IPSC trailers carry the same 32-bit fragments — the last burst
+// of a superframe has an all-zero fragment in *both* protocols, which is what
+// confirms the two are describing the same thing.
+//
+// Motorola omits the EMB because it knows its own colour code and regenerates
+// it. A bridge toward Homebrew has to supply one.
+func (m Message) EmbeddedFragment() (uint32, bool) {
+	_, _, trailer, ok := m.Payload()
+	if !ok || len(trailer) < 4 {
+		return 0, false
+	}
+	return binary.BigEndian.Uint32(trailer[:4]), true
+}
+
+// SuperframePosition reports where a voice frame sits, as far as the captures
+// establish it: the sync burst, a burst carrying a fragment, or neither.
+//
+// It deliberately does not return a letter A to F. The captures show a 1:4:1
+// ratio and the order sync, fragment, fragment, fragment, fragment-with-LC,
+// fragment — which pins the first and the shape, but naming the middle four
+// individually would be a claim the evidence does not support.
+func (m Message) SuperframePosition() (class byte, ok bool) {
+	c, _, _, valid := m.Payload()
+	if !valid {
+		return 0, false
+	}
+	switch c {
+	case PayloadSync, PayloadFragment, PayloadFragmentWithLC:
+		return c, true
+	default:
+		return c, false
+	}
+}

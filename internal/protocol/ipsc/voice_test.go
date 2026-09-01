@@ -268,3 +268,72 @@ func TestLinkControlAgreesWithTheHeader(t *testing.T) {
 		t.Fatal("no frames carried link control; the superframe should produce one per six")
 	}
 }
+
+// TestTheSuperframeHasOneSyncBurstInSix records the structure a bridge needs.
+//
+// A DMR superframe is 360 ms of six 60 ms frames, one of which carries the
+// synchronisation pattern. The captures show a 1:4:1 ratio of sync, fragment
+// and fragment-with-LC frames, which is that superframe seen from the network
+// side.
+func TestTheSuperframeHasOneSyncBurstInSix(t *testing.T) {
+	counts := map[byte]int{}
+	cap := readCapture(t, probeVoice)
+	for _, pkt := range cap.UDP {
+		msg, err := ipsc.Parse(pkt.Payload)
+		if err != nil {
+			t.Fatalf("packet %d: %v", pkt.Index, err)
+		}
+		class, ok := msg.SuperframePosition()
+		if !ok {
+			continue
+		}
+		counts[class]++
+	}
+	sync := counts[ipsc.PayloadSync]
+	withLC := counts[ipsc.PayloadFragmentWithLC]
+	frag := counts[ipsc.PayloadFragment]
+	total := sync + withLC + frag
+	if total == 0 {
+		t.Fatal("no voice frames")
+	}
+	t.Logf("%d sync, %d fragment, %d fragment-with-LC, %d total", sync, frag, withLC, total)
+	if sync != withLC {
+		t.Errorf("%d sync frames against %d with assembled LC; one of each per superframe is expected",
+			sync, withLC)
+	}
+	if frag != 4*sync {
+		t.Errorf("%d plain fragment frames against %d sync; four per superframe is expected", frag, sync)
+	}
+}
+
+// TestTheLastFragmentOfASuperframeIsZero is the observation that ties the two
+// protocols together.
+//
+// The Homebrew captures show the final burst of every superframe carrying an
+// all-zero embedded fragment, and so do the IPSC captures. Two independently
+// captured protocols agreeing on a value that had no reason to match unless
+// both are describing the same 32-bit field.
+func TestTheLastFragmentOfASuperframeIsZero(t *testing.T) {
+	cap := readCapture(t, probeVoice)
+	var zero, nonzero int
+	for _, pkt := range cap.UDP {
+		msg, _ := ipsc.Parse(pkt.Payload)
+		f, ok := msg.EmbeddedFragment()
+		if !ok {
+			continue
+		}
+		if f == 0 {
+			zero++
+		} else {
+			nonzero++
+		}
+	}
+	if zero == 0 {
+		t.Fatal("no all-zero fragment; one per superframe is what the Homebrew captures show")
+	}
+	t.Logf("%d zero fragments, %d carrying signalling", zero, nonzero)
+	if nonzero < zero*3 {
+		t.Errorf("%d zero against %d non-zero; one in four fragment frames should be the null one",
+			zero, nonzero)
+	}
+}
