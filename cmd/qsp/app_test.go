@@ -102,7 +102,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// what exists and what does not.
 	for _, name := range []string{
 		"process", "database", "network", "peers", "routing", "scheduler",
-		"p25", "vocoder", "allstar", "zello", "echolink",
+		"ipsc", "p25", "vocoder", "allstar", "zello", "echolink",
 	} {
 		if _, ok := byName[name]; !ok {
 			t.Errorf("subsystem %q is missing from the health report", name)
@@ -112,7 +112,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// A subsystem that genuinely does not exist yet says which phase brings it.
 	// Routing and the scheduler are built, so they are not in this list; their
 	// checks describe the instance instead.
-	for _, name := range []string{"p25", "vocoder", "allstar", "zello", "echolink"} {
+	for _, name := range []string{"ipsc", "p25", "vocoder", "allstar", "zello", "echolink"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("unbuilt subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)

@@ -4,6 +4,80 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **The first Motorola IPSC traffic ever captured for this project, and a
+  parser for the one message in it.** `testdata/ipsc/` was empty and that was
+  the whole reason there was no IPSC implementation. It now holds two files.
+
+  An XPR8300 on firmware R02.30.20 was configured as an IPSC peer and pointed
+  at a host running nothing at all. It sent a fourteen-byte message beginning
+  `0x90` every ten seconds and kept sending it. **The unanswered registration
+  is the capture**: the packets are addressed to the capture host, so an
+  ordinary `tcpdump` records them with no mirror port, no bridge, no second
+  repeater and nothing on the air.
+
+  **A single capture could not have named a field.** Any constant fits one
+  file. The second capture changed exactly one setting — the Radio ID, 100 to
+  3132910 — and four bytes moved:
+
+  ```
+  A  90 00 00 00 64 6a 00 00 80 4c 04 06 04 00     Radio ID 100
+  B  90 00 2f cd ee 6a 00 00 80 4c 04 06 04 00     Radio ID 3132910
+          ^^^^^^^^^^^
+  ```
+
+  `0x00000064` is 100 and `0x002FCDEE` is 3132910, both exact. **The peer ID is
+  a big-endian uint32 at offset 1** — not offset 2, and it does not reach byte
+  5, because `0x6a` held still through a change that moved everything the ID
+  touches. That is a demonstrated reading rather than a plausible one, and it
+  cost two minutes of capture rather than an afternoon of staring.
+
+- **Three behaviours a master implementation has to respect**, all measured
+  rather than assumed. The retry interval is **ten seconds flat** across
+  thirty-five requests, spread three milliseconds, with no backoff and no
+  give-up after five minutes. The peer **sources from 50002 while addressing
+  50000**, so an implementation that replies to the port it was addressed on
+  rather than the port the datagram came from will pass its own tests and fail
+  against Motorola. And **ICMP port unreachable is ignored** — the kernel
+  answered every request eighty microseconds later and the cadence did not
+  change, so a master cannot refuse a peer by staying silent. Refusal has to be
+  an IPSC-level message and no capture contains one, which means QSP cannot yet
+  refuse a peer at all. That is named here rather than discovered later.
+
+- **`internal/protocol/ipsc`, implementing exactly `0x90` and nothing else.**
+  Every other leading byte returns `ErrNotCaptured`, including bytes other
+  implementations are known to use. A wrong guess about a message type produces
+  a master that misbehaves quietly, which is worse than one that plainly says it
+  cannot handle something yet.
+
+  The nine unexplained bytes are kept whole as `Trailer` rather than split into
+  named fields, **because naming a field is a claim about it**. `ObservedTrailer`
+  records what was seen and the parser accepts any value: both captures came
+  from one repeater on one firmware with one codeplug, so their agreeing says
+  nothing about whether another repeater would agree. A test asserts the
+  observed value so that the day a capture disagrees is a visible event, and a
+  second test proves an unfamiliar trailer is still parsed.
+
+- **`ipsc` joins `unbuiltSubsystems`**, reporting `unavailable` with the phase
+  that brings it, and `p25` moves to phase 5 to match the reordered phase table.
+  A parser is not a subsystem: nothing listens, nothing answers, and a club with
+  a Motorola repeater still cannot use QSP. The health report should say so.
+
+- **Provenance for both fixtures**, with SHA-256s, equipment, firmware, codeplug
+  version and what was done — matching the HBP convention. Capture B's record
+  keeps **a false start**: the first attempt came back byte-identical to capture
+  A and was discarded, because the codeplug write landed one minute after the
+  capture ran. The repeater's own *Last Programmed* timestamp settled it,
+  independently of anything inferred from the bytes. A differential capture that
+  shows no difference looks like a finding about the protocol when it is a
+  finding about the procedure.
+
+### Changed
+- **`testdata/ipsc/README.md` no longer says there are no fixtures.** It lists
+  the two, says what they establish and — more usefully — what they do not: no
+  reply, no keepalives, no peer list, no voice, no disconnect, and nine of
+  fourteen bytes unexplained.
+
 ### Changed
 - **`PROJECT_MEMORY.md` is current again, at 0.1.12.** It had drifted three ways
   from what the network actually is, and a new session reads it before anything

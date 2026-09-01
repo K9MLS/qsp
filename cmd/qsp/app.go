@@ -1090,7 +1090,8 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 // been written yet", and docaccuracy_test.go checks the documentation against
 // it. A subsystem leaves this list on the commit that implements it.
 var unbuiltSubsystems = []struct{ name, arrives string }{
-	{"p25", "P25 peering arrives in phase 4"},
+	{"ipsc", "IPSC peering arrives in phase 4"},
+	{"p25", "P25 peering arrives in phase 5"},
 	{"vocoder", "the vocoder pool arrives in phase 5"},
 	{"allstar", "the AllStar connector arrives in phase 5"},
 	{"zello", "the Zello connector arrives in phase 6"},

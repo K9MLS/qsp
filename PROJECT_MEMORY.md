@@ -63,7 +63,7 @@ bridging.** Both are now implemented.
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
-| Health report | 11 subsystems, plus one per configured link |
+| Health report | **12** subsystems, plus one per configured link — `ipsc` joined the unbuilt list at 0.1.13 |
 | Hardware validated | **yes** — live voice 2026-08-25, a two-station QSO 2026-08-28, and a three-station network with private calls working both directions 2026-08-30, see §6 and §6b |
 | Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin, WI) and AD0MI (Post Falls, ID), joined 2026-08-30 |
 | CI | green, **one job**, `github.com/K9MLS/qsp` (private). It runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on push**. Five of the old six jobs repeated what the development machine already runs before every patch; the two that do not are the three cross-compiles and `go mod tidy`. Run it with `gh workflow run CI` |
@@ -126,7 +126,7 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
 
 ### Not built
 
-P25, vocoder pool, AllStar, Zello, EchoLink. Each registers a health check
+IPSC, P25, vocoder pool, AllStar, Zello, EchoLink. Each registers a health check
 reporting `unavailable` with the phase that brings it; the authoritative list is
 `unbuiltSubsystems` in `cmd/qsp/app.go`, and a subsystem leaves it on the commit
 that implements it.
@@ -147,7 +147,7 @@ distinguished explicitly or documentation checks acquire false exemptions.
 | No ACL check for `password_file` on Windows | POSIX hosts refuse a file readable beyond its owner; Windows cannot — `os.Stat` reports no ACL. Secure it with an ACL there |
 | No authentication on any endpoint | Designed, unbuilt. `/api/peers` discloses callsigns, radio IDs and source addresses. Bind to `127.0.0.1`; reach the console over a tunnel |
 | Docs can still over-claim | The accuracy gate catches absence claims, not promises of things that do not exist. That stays a review problem |
-| `overall: healthy` with 10 of 11 unavailable | Correct by the current rule, but reads oddly. Revisit before wiring alerting |
+| `overall: healthy` with 11 of 12 unavailable | Correct by the current rule, but reads oddly. Revisit before wiring alerting |
 
 ---
 
