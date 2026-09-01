@@ -1,12 +1,30 @@
 name: CI
 
+# **CI does not run on every push any more.**
+#
+# It ran eight jobs on every commit to main — build and vet, tests, the race
+# detector, the documentation gate, staticcheck, and three cross-compiles —
+# each paying its own checkout and Go setup. About three minutes of that was
+# runner startup before any work happened, and at the rate this project pushes
+# it consumed most of a month's minutes in a fortnight.
+#
+# Five of those six jobs also duplicate what the development machine runs before
+# every patch: gofmt, go vet, staticcheck, the full suite and the race detector.
+# Paying a hosted runner to repeat a check that has already passed locally buys
+# nothing but a second opinion on the same commit.
+#
+# So it runs when asked, weekly, and on a release tag. The weekly run is the one
+# that catches what a local run cannot: a toolchain or an action that has moved
+# under a commit nobody touched.
 on:
+  workflow_dispatch:
   push:
-    branches: [main]
-  pull_request:
+    tags: ["v*"]
+  schedule:
+    # Monday morning, so a week of drift is found before a week of work is
+    # built on top of it.
+    - cron: "0 7 * * 1"
 
-# Cancel superseded runs on the same branch: CI should tell you about the
-# commit you just pushed, not the three before it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -22,8 +40,15 @@ env:
   STATICCHECK_VERSION: "2026.2.1"
 
 jobs:
-  build:
-    name: Build and vet
+  # **One job, not eight.** Every one of them checked out the repository and
+  # installed Go before doing thirty seconds of work, and none needed to run in
+  # parallel — nothing here takes long enough for the wall-clock saving to be
+  # worth six runner startups.
+  #
+  # Ordered cheapest first, so a formatting mistake fails in twenty seconds
+  # rather than after the race detector.
+  ci:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -59,99 +84,34 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Test
-        run: go test ./...
-
-  race:
-    name: Race detector
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      # Blocking, not advisory. This has already caught a real defect:
-      # a send-on-closed-channel window in the event bus.
-      - name: Test with race detector
-        run: go test -race ./...
-
-  docs:
-    name: Documentation accuracy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      # Its own job so that stale prose is named on the summary page rather than
-      # buried in the test log. This project has shipped documentation
-      # describing a build that no longer existed four times; see
-      # cmd/qsp/docaccuracy_test.go.
-      - name: Check documentation against the code
-        run: go test ./cmd/qsp/ -run 'TestDocumented|TestEmptiness|TestNothingClaims|TestUnbuilt' -v
-
-  staticcheck:
-    name: Static analysis
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
       - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@${{ env.STATICCHECK_VERSION }}
+        run: |
+          curl -sSfL -o /tmp/staticcheck.tar.gz \
+            "https://github.com/dominikh/go-tools/releases/download/${STATICCHECK_VERSION}/staticcheck_linux_amd64.tar.gz"
+          tar -C /tmp -xzf /tmp/staticcheck.tar.gz
+          sudo mv /tmp/staticcheck/staticcheck /usr/local/bin/
 
       - name: Run staticcheck
         run: staticcheck ./...
 
-  cross-compile:
-    name: Cross-compile
-    runs-on: ubuntu-latest
-    # ADR-0001 and ADR-0009: the core must stay pure Go and cross-compilable to
-    # every target from one machine. CGO_ENABLED=0 makes a cgo dependency fail
-    # here rather than at a user's install.
-    strategy:
-      matrix:
-        include:
-          - goos: linux
-            goarch: amd64
-          - goos: linux
-            goarch: arm64
-          - goos: linux
-            goarch: arm
-            goarm: "7"
-    steps:
-      - uses: actions/checkout@v5
+      - name: Test
+        run: go test ./...
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
+      - name: Test with race detector
+        run: go test -race ./...
 
-      - name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+      # ADR-0001 and ADR-0009: the core must stay pure Go and cross-compilable
+      # to every target from one machine. CGO_ENABLED=0 makes a cgo dependency
+      # fail here rather than at a user's install.
+      #
+      # **This is the check the development machine does not do**, along with
+      # the go.mod tidiness above. Everything else in this job repeats a local
+      # run; these two are why CI still exists at all.
+      - name: Cross-compile
         env:
           CGO_ENABLED: "0"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          GOARM: ${{ matrix.goarm }}
-        run: go build -trimpath -o /dev/null ./cmd/qsp
+        run: |
+          set -e
+          GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/qsp
+          GOOS=linux GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/qsp
+          GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o /dev/null ./cmd/qsp

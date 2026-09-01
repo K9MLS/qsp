@@ -85,5 +85,10 @@ project was found that way and none by the test suite.
 
 Bigger patches rather than many small ones.
 
-**GitHub Actions minutes are finite.** CI runs on push, not on commit — so give
-me commands that apply and test a patch locally, and leave pushing to me.
+**GitHub Actions minutes are finite, and CI no longer runs on push.** It runs
+when I ask for it (`gh workflow run CI`), weekly, and on a release tag — because
+five of its six jobs repeated what my machine already runs before every patch.
+
+So give me commands that apply and test a patch locally, and leave pushing to
+me. The two things CI checks that I do not are the cross-compiles and `go mod
+tidy`.

@@ -4,6 +4,30 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **CI runs on request, weekly, and on a release tag — not on every push.** It
+  ran eight jobs per commit to main, each paying its own checkout and Go setup,
+  and about three minutes of every run was runner startup before any work
+  happened. At this project's rate that consumed most of a month's minutes in a
+  fortnight.
+
+  **Five of the six jobs repeated what the development machine already runs
+  before every patch** — gofmt, vet, staticcheck, the full suite and the race
+  detector. Paying a hosted runner to repeat a check that has already passed
+  locally buys nothing but a second opinion on the same commit.
+
+  Folded into one job, ordered cheapest first so a formatting mistake fails in
+  twenty seconds rather than after the race detector. Nothing here takes long
+  enough for parallelism to be worth six runner startups.
+
+  The weekly run is the one that earns its keep: it catches what a local run
+  cannot, which is a toolchain or an action that has moved under a commit
+  nobody touched. And the two checks the development machine genuinely does not
+  do — the three cross-compiles and `go mod tidy` — are why CI still exists at
+  all.
+
+  Run it with `gh workflow run CI`.
+
 ### Notes for the next session
 
 **Where this stands, 2026-08-31 evening.** Three stations on air across three
