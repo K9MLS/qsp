@@ -32,7 +32,7 @@ decision records.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0163**. Commits use my
+`git am` on my Fedora machine. Number them from **0165**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 Never commit `go.mod` or `go.sum` — stage with
