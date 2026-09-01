@@ -32,7 +32,7 @@ decision records.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0140**. Commits use my
+`git am` on my Fedora machine. Number them from **0163**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 Never commit `go.mod` or `go.sum` — stage with
@@ -47,13 +47,34 @@ curl -sL -o /tmp/sc.tgz https://github.com/dominikh/go-tools/releases/download/2
 tar -C /tmp -xzf /tmp/sc.tgz && cp /tmp/staticcheck/staticcheck /usr/local/bin/
 ```
 
-`cmd/qsp` has five known failures in your container because
+`cmd/qsp` has eight known failures in your container because
 no SQLite driver is registered there; move `cmd/qsp/driver_sqlite.go` aside to
 compile it.
 
 **I have three terminals open** — my Fedora development machine, `qsp-server`
 (the Ubuntu VM running QSP), and `pi-star` (my hotspot). Always say which
 machine a command is for.
+
+## Two rules that break ties
+
+**Audio is king.** The best audio that can be delivered to the amateur community
+is the first requirement, and it overrules features, convenience and elegance.
+It has already decided that Talker Alias is passed through and never injected,
+and that P25 is carried natively and never transcoded to reach DMR
+(ADR-0034). When a decision could go either way, this settles it.
+
+**Talkgroup numbers are never renumbered.** 2 is 2 and 11 is 11, on both sides
+of a hotspot. A QSP-only hotspot needs no rewrite rules at all. See §6b, which
+supersedes part of §6a.
+
+## Before you edit PROJECT_MEMORY.md
+
+**Check we hold the same bytes first**: `md5sum PROJECT_MEMORY.md`, and compare
+with your own copy. That file drifted for most of a day because a patch was
+generated against a version the development machine did not have, and three
+patches failed before anyone checked. Every patch gets a **unique filename and a
+stated md5**, and a patch that will not apply is a question about which bytes
+each side holds, not a reason to regenerate the same file name again.
 
 ## What I want from you
 

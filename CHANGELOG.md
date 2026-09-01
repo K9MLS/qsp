@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Notes for the next session
+
+**Where this stands, 2026-08-31 evening.** Three stations on air across three
+states — K9MLS Denton, KB9TYC Wisconsin, AD0MI Post Falls — carrying voice,
+private calls both directions, text and parrot. Schema at version 5. AD0MI is an
+administrator.
+
+**Phase 2's gate is closed.** AD0MI was given the join page and a password and
+got onto the network unassisted. He is the only evidence that gate will ever
+have, since nobody is a first-time newcomer twice.
+
+**P25 moves behind IPSC**, at the operator's direction: finish DMR first. IPSC
+is the larger gap by reach — a club with a Motorola repeater cannot use QSP at
+all, and those are DMR clubs. Both are blocked only on captures, and the
+operator has the equipment for both.
+
+**Two rules now break ties.** *Audio is king* — the best audio deliverable to
+the amateur community is the first requirement, and it has already decided that
+Talker Alias is passed through rather than injected and that P25 is never
+transcoded to reach DMR. And *talkgroup numbers are never renumbered*.
+
+**Still to do, in order:** exercise the peering console between two machines
+(built today, no button pressed yet); turn on subscription deliberately, with
+static attachments configured first or members go silent until they transmit;
+and ask AD0MI's TYT-owning counterpart whether his radio can display a received
+alias before anything is built for it.
+
+**`PROJECT_MEMORY.md` is not updated for today.** The development machine and
+the container hold different versions of that file, and patching it blind is
+what cost three failed applies. It needs a fresh bundle and an md5 comparison
+before the next edit — everything above is recorded here instead, where both
+sides are in sync.
+
 ### Added
 - **`dmr.peer_passwords` is editable from the network settings page**, which the
   previous patch needed and did not have: issuing a member their own password
