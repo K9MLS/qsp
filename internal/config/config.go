@@ -47,6 +47,51 @@ type Config struct {
 	Logging  Logging  `json:"logging"`
 	Events   Events   `json:"events"`
 	DMR      DMR      `json:"dmr"`
+	IPSC     IPSC     `json:"ipsc"`
+}
+
+// IPSC configures the Motorola IP Site Connect listener.
+//
+// # Why this is separate from DMR
+//
+// They are different protocols on different ports carrying the same audio in
+// different wrappers, and a club may run either, both or neither. Folding IPSC
+// into the DMR block would mean one Enabled flag for two listeners and an
+// operator unable to run a Motorola repeater without also opening HBP.
+//
+// # What it cannot do yet
+//
+// It does not route: transmissions are recorded and the audio goes nowhere.
+// IPSC carries nineteen bytes where DMR carries a thirty-three byte burst, so
+// bridging means reconstructing rather than copying, and QSP does not ship a
+// bridge that might degrade audio. See ADR-0036.
+//
+// It does not authenticate. No capture contains an authenticated registration
+// or any refusal, and ICMP unreachable is provably ignored by a repeater, so
+// the only "no" QSP can say is silence. AllowedPeers is that silence.
+type IPSC struct {
+	// Enabled turns the IPSC listener on.
+	Enabled bool `json:"enabled"`
+	// ListenAddress is the UDP host:port to bind. 50000 is the port observed
+	// in practice, but a Motorola repeater has two port settings and this one
+	// must match its *Master UDP Port*, not its *UDP Port*.
+	ListenAddress string `json:"listen_address"`
+	// MasterID is the radio ID this master announces as its own.
+	//
+	// **It must not equal any peer's.** A repeater refuses to register with a
+	// master carrying its own ID and gives no indication why: an XPR8300
+	// retried thirty-nine times over six minutes against correct replies.
+	MasterID uint32 `json:"master_id"`
+	// AllowedPeers lists the radio IDs that are answered. Empty answers every
+	// peer, which is right on a bench and wrong on a public address — an IPSC
+	// port reachable from the internet attracts whatever is pointed at it.
+	AllowedPeers []uint32 `json:"allowed_peers"`
+	// PeerTimeoutSeconds is how long a peer may be silent before it is
+	// dropped. Zero uses three missed keepalives plus a margin.
+	//
+	// No capture contains a disconnect message, so silence is the only
+	// evidence a repeater has gone.
+	PeerTimeoutSeconds int `json:"peer_timeout_seconds"`
 }
 
 // DMR configures the Homebrew Protocol listener that peers connect to.
@@ -981,6 +1026,32 @@ func (c Config) Validate() error {
 	if _, err := parseFormat(c.Logging.Format); err != nil {
 		v.add("logging.format", fmt.Sprintf("%q is not a recognised format", c.Logging.Format),
 			"use \"text\" for interactive use or \"json\" for production")
+	}
+
+	if c.IPSC.Enabled {
+		if strings.TrimSpace(c.IPSC.ListenAddress) == "" {
+			v.add("ipsc.listen_address", "must not be empty when the IPSC listener is enabled",
+				"use \"0.0.0.0:50000\" to accept repeaters on every interface")
+		} else if _, _, err := net.SplitHostPort(c.IPSC.ListenAddress); err != nil {
+			v.add("ipsc.listen_address", fmt.Sprintf("%q is not a host:port address", c.IPSC.ListenAddress),
+				"include a port, for example \"0.0.0.0:50000\"")
+		}
+		if c.IPSC.MasterID == 0 {
+			v.add("ipsc.master_id", "must be set when the IPSC listener is enabled",
+				"use this network's own DMR ID; a master announces one and 0 is not one")
+		}
+		for _, p := range c.IPSC.AllowedPeers {
+			if p == c.IPSC.MasterID {
+				v.add("ipsc.allowed_peers",
+					fmt.Sprintf("%d is also ipsc.master_id", p),
+					"give the master an ID of its own; a repeater refuses to register with a master "+
+						"carrying its own ID, and retries silently rather than reporting it")
+			}
+		}
+		if c.IPSC.PeerTimeoutSeconds < 0 {
+			v.add("ipsc.peer_timeout_seconds", "must not be negative",
+				"leave it at 0 for the default, or give a value above the fifteen-second keepalive cadence")
+		}
 	}
 
 	if c.DMR.Enabled {

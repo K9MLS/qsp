@@ -5,6 +5,55 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **QSP serves Motorola repeaters.** `internal/ipsclink` is an IPSC listener
+  wired to configuration, the health report and the application lifecycle. A
+  repeater registers, keepalives are answered, transmissions are recorded, and
+  `ipsc` reports as a real subsystem rather than one that arrives in a later
+  phase.
+
+  **What it does not do is route.** Voice frames are counted and calls are
+  tracked so an operator can see who transmitted; the audio goes nowhere. IPSC
+  carries nineteen bytes where DMR carries a thirty-three byte burst, so a
+  bridge reconstructs rather than copies ([ADR-0036](docs/adr/ADR-0036-ipsc-voice-is-not-a-dmr-burst.md)),
+  and QSP does not ship a bridge that might degrade audio.
+
+- **The `ipsc` configuration block**, separate from `dmr` because they are
+  different protocols on different ports and a club may run either, both or
+  neither. Folding them together would mean one flag for two listeners and no
+  way to run a Motorola repeater without also opening HBP.
+
+- **`ipsc.master_id` may not equal any peer's, and validation says so.** This is
+  six wasted minutes turned into a configuration error: an XPR8300 pointed at a
+  master announcing the repeater's own ID retried thirty-nine times over six
+  minutes while receiving correct replies promptly, and the failure was
+  indistinguishable from a protocol fault. A repeater will not register with
+  itself and gives no indication why.
+
+- **`ipsc.allowed_peers`, because silence is the only refusal that exists.** No
+  capture contains an authenticated registration or a rejection of any kind, and
+  ICMP port unreachable is provably ignored — a kernel refused every request
+  eighty microseconds later and the repeater's cadence did not change. So QSP's
+  entire vocabulary for "no" is to say nothing, and unlisted peers get exactly
+  that. They are counted and logged rather than silently dropped, and the health
+  check reports them as degraded, because an IPSC port reachable from the
+  internet attracts whatever is pointed at it — one turned up unannounced during
+  a bench test today.
+
+- **Peers expire on silence**, since nothing in any capture says goodbye. A
+  repeater that is unplugged simply stops, so a peer quiet past the timeout is
+  gone. The default is three missed keepalives plus a margin at the
+  **registered** fifteen-second cadence — not the ten-second unregistered
+  retry, which is a different clock for a different state.
+
+### Changed
+- **`ipsc` leaves `unbuiltSubsystems`.** The health check now reports peers,
+  voice frames and the bound address, and names `ipsc.enabled` when it is off.
+- **`ErrNotCaptured`'s wording.** It described one message type in a phrase the
+  documentation-accuracy gate reads as a claim that a whole subsystem is
+  missing, which failed the build the moment the listener existed. The gate was
+  right to be strict — a reader skimming could have taken it the same way.
+
+### Added
 - **IPSC does not carry a DMR burst, and that decides how QSP will bridge
   Motorola** ([ADR-0036](docs/adr/ADR-0036-ipsc-voice-is-not-a-dmr-burst.md)).
   HBP delivers a **33-byte** burst — vocoder data inside the FEC and sync a

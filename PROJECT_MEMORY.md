@@ -63,7 +63,7 @@ bridging.** Both are now implemented.
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
-| Health report | **12** subsystems, plus one per configured link — `ipsc` joined the unbuilt list at 0.1.13 |
+| Health report | **12** subsystems, plus one per configured link — `ipsc` became a real check at 0.1.18, having joined as unbuilt at 0.1.13 |
 | Hardware validated | **yes** — live voice 2026-08-25, a two-station QSO 2026-08-28, and a three-station network with private calls working both directions 2026-08-30, see §6 and §6b |
 | Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin, WI) and AD0MI (Post Falls, ID), joined 2026-08-30 |
 | CI | green, **one job**, `github.com/K9MLS/qsp` (private). It runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on push**. Five of the old six jobs repeated what the development machine already runs before every patch; the two that do not are the three cross-compiles and `go mod tidy`. Run it with `gh workflow run CI` |
@@ -126,7 +126,7 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
 
 ### Not built
 
-IPSC, P25, vocoder pool, AllStar, Zello, EchoLink. Each registers a health check
+P25, vocoder pool, AllStar, Zello, EchoLink. Each registers a health check
 reporting `unavailable` with the phase that brings it; the authoritative list is
 `unbuiltSubsystems` in `cmd/qsp/app.go`, and a subsystem leaves it on the commit
 that implements it.

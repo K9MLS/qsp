@@ -1,0 +1,382 @@
+// Package ipsclink serves Motorola IP Site Connect peers.
+//
+// # What this is, honestly
+//
+// It answers a repeater with bytes recorded from one XPR8300 master, with the
+// sender ID substituted. Nine of the eleven body bytes of the registration
+// reply have no known meaning and one of them belongs to the device rather than
+// the protocol. See internal/protocol/ipsc/responder.go, and
+// docs/adr/ADR-0029-ipsc-from-capture.md for why it is built this way.
+//
+// A real XPR8300 registered against exactly these bytes on 2026-09-01, held the
+// link on fifteen-second keepalives, and sent voice through it. That is the
+// only evidence that any of it is right, and it is one repeater on one
+// firmware.
+//
+// # What it does not do
+//
+// It does not route. Voice frames are counted, their calls are tracked so an
+// operator can see who transmitted, and the audio goes nowhere. Bridging IPSC
+// to DMR means reconstructing a burst rather than copying one
+// (docs/adr/ADR-0036), and QSP does not ship a bridge that might degrade audio.
+//
+// It does not authenticate. The captures contain no authenticated registration
+// and no refusal of any kind, so QSP cannot yet turn a peer away in a way a
+// repeater would understand — ICMP unreachable is provably ignored. Access is
+// therefore a list of radio IDs that are answered, and every other peer is met
+// with silence, which is the only refusal that has been observed to exist.
+package ipsclink
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/protocol/ipsc"
+)
+
+// Config configures a Listener.
+type Config struct {
+	// ListenAddress is the UDP host:port to bind.
+	ListenAddress string
+	// MasterID is the radio ID this master announces as its own.
+	//
+	// **It must differ from every peer's.** A repeater refuses to register
+	// with a master carrying its own ID: an XPR8300 retried thirty-nine times
+	// over six minutes against a master announcing the repeater's number, with
+	// replies sent promptly and ignored completely. The failure is
+	// indistinguishable from a protocol fault, so Validate rejects the
+	// collision rather than letting an operator discover it.
+	MasterID uint32
+	// AllowedPeers is the set of radio IDs answered. Empty means every peer is
+	// answered, which is the right default for a bench and the wrong one for a
+	// public address.
+	AllowedPeers []uint32
+	// PeerTimeout is how long a registered peer may go without a keepalive
+	// before it is dropped. Zero uses DefaultPeerTimeout.
+	PeerTimeout time.Duration
+}
+
+// DefaultPeerTimeout is three missed keepalives at the observed fifteen-second
+// cadence, plus a margin.
+//
+// Fifteen seconds is the *registered* cadence; an unregistered peer retries at
+// ten. Timing one state by the other's clock is the mistake this constant is
+// named to avoid.
+const DefaultPeerTimeout = 50 * time.Second
+
+// Peer is a repeater the listener has answered.
+type Peer struct {
+	// RadioID is the peer's own ID, from the envelope of every message.
+	RadioID uint32
+	// Address is where its datagrams come from. **Not where it says it is**:
+	// a peer sources from a different port than the one it addresses, and
+	// replies go to the source or they go nowhere.
+	Address string
+	// Registered is when the peer's registration was answered.
+	Registered time.Time
+	// LastHeard is the arrival time of its most recent message of any kind.
+	LastHeard time.Time
+	// Keepalives counts answered keepalives, so an operator can tell a peer
+	// that just arrived from one that has been up for hours.
+	Keepalives uint64
+	// VoiceFrames counts voice frames received from this peer.
+	VoiceFrames uint64
+	// LastCall describes the most recent transmission, if there was one.
+	LastCall *Call
+}
+
+// Call is one transmission seen from a peer.
+type Call struct {
+	// StreamID identifies the transmission; it holds for every frame of one
+	// and differs between them.
+	StreamID uint16
+	// Source is the transmitting radio's 24-bit ID.
+	Source uint32
+	// Destination is the 24-bit destination. **Unverified**: no capture has
+	// ever moved this field, though the Link Control in the same packet
+	// agrees with it. See internal/protocol/ipsc.Voice.
+	Destination uint32
+	// Started and Ended bound the transmission. Ended is zero while it runs.
+	Started, Ended time.Time
+	// Frames counts voice frames.
+	Frames uint64
+}
+
+// Listener serves IPSC peers on a UDP socket.
+type Listener struct {
+	cfg     Config
+	log     *slog.Logger
+	allowed map[uint32]bool
+
+	conn    *net.UDPConn
+	running atomic.Bool
+
+	mu    sync.Mutex
+	peers map[uint32]*Peer
+
+	// snapshot holds an immutable peer list for readers on other goroutines,
+	// for the same reason internal/peers does it: the serve loop owns the map
+	// and an HTTP handler reaching into it would be a race.
+	snapshot atomic.Pointer[[]Peer]
+
+	// ignored counts datagrams from radio IDs not in AllowedPeers, so that a
+	// misconfigured repeater is visible rather than silently dropped.
+	ignored atomic.Uint64
+	// unparsed counts datagrams this build does not recognise. It is expected
+	// to be non-zero: eight message types are known and IPSC has more.
+	unparsed atomic.Uint64
+}
+
+// Validate reports whether a configuration can be served.
+func (c Config) Validate() error {
+	if c.ListenAddress == "" {
+		return errors.New("ipsc: a listen address is required, for example \"0.0.0.0:50000\"")
+	}
+	if c.MasterID == 0 {
+		return errors.New("ipsc: a master radio ID is required; a master announces one and 0 is not one")
+	}
+	for _, p := range c.AllowedPeers {
+		if p == c.MasterID {
+			return fmt.Errorf("ipsc: peer %d is also the master ID; a repeater refuses to register "+
+				"with a master carrying its own ID, and the failure looks like a protocol fault", p)
+		}
+	}
+	return nil
+}
+
+// New constructs a Listener. It does not bind; call Start.
+func New(log *slog.Logger, cfg Config) (*Listener, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	if cfg.PeerTimeout == 0 {
+		cfg.PeerTimeout = DefaultPeerTimeout
+	}
+	l := &Listener{
+		cfg:     cfg,
+		log:     logging.Subsystem(log, "ipsc"),
+		allowed: make(map[uint32]bool, len(cfg.AllowedPeers)),
+		peers:   map[uint32]*Peer{},
+	}
+	for _, p := range cfg.AllowedPeers {
+		l.allowed[p] = true
+	}
+	l.publish()
+	return l, nil
+}
+
+// Start binds the socket and serves in the background.
+//
+// Binding is synchronous so a port conflict reaches the caller instead of a log
+// line nobody reads.
+func (l *Listener) Start(ctx context.Context) error {
+	addr, err := net.ResolveUDPAddr("udp", l.cfg.ListenAddress)
+	if err != nil {
+		return fmt.Errorf("ipsc: cannot resolve %s: %w", l.cfg.ListenAddress, err)
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return fmt.Errorf("ipsc: cannot listen on %s: %w", l.cfg.ListenAddress, err)
+	}
+	l.conn = conn
+	l.running.Store(true)
+	l.log.Info("listening", "address", conn.LocalAddr().String(), "master_id", l.cfg.MasterID,
+		"allowed_peers", len(l.allowed))
+
+	go func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	}()
+	go l.serve(ctx)
+	go l.expire(ctx)
+	return nil
+}
+
+// Address reports the bound address, empty before Start.
+func (l *Listener) Address() string {
+	if l.conn == nil {
+		return ""
+	}
+	return l.conn.LocalAddr().String()
+}
+
+// Running reports whether the serve loop is active, so health can tell "not
+// started" from "started and quiet".
+func (l *Listener) Running() bool { return l.running.Load() }
+
+// Peers returns the current peer list.
+func (l *Listener) Peers() []Peer {
+	if p := l.snapshot.Load(); p != nil {
+		return *p
+	}
+	return nil
+}
+
+// Counters reports datagrams that were not served.
+func (l *Listener) Counters() (ignored, unparsed uint64) {
+	return l.ignored.Load(), l.unparsed.Load()
+}
+
+func (l *Listener) serve(ctx context.Context) {
+	defer l.running.Store(false)
+	responder := ipsc.Responder{MasterID: l.cfg.MasterID}
+	buf := make([]byte, 2048)
+	for {
+		n, from, err := l.conn.ReadFromUDP(buf)
+		if err != nil {
+			if ctx.Err() == nil {
+				l.log.Error("read failed", "error", err)
+			}
+			return
+		}
+		l.handle(responder, from, buf[:n], time.Now())
+	}
+}
+
+func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now time.Time) {
+	msg, err := ipsc.Parse(raw)
+	if err != nil {
+		l.unparsed.Add(1)
+		id, _ := ipsc.SenderIDOf(raw)
+		l.log.Warn("unrecognised datagram", "from", from.String(), "sender_id", id,
+			"bytes", len(raw), "error", err)
+		return
+	}
+	if len(l.allowed) > 0 && !l.allowed[msg.SenderID] {
+		l.ignored.Add(1)
+		l.log.Warn("ignoring peer not on the allow list", "from", from.String(),
+			"sender_id", msg.SenderID, "type", fmt.Sprintf("%#02x", byte(msg.Kind)))
+		return
+	}
+
+	l.record(msg, from, now)
+
+	// Reply to the address the datagram came from, never to the port it was
+	// addressed to. A Motorola peer sources from a different port than it
+	// dials: an XPR8300 used 50002 against 50000 and another repeater used
+	// 50004. Assuming symmetry works against a loopback and fails on air.
+	for _, out := range r.Reply(msg) {
+		if _, werr := l.conn.WriteToUDP(out.Marshal(), from); werr != nil {
+			l.log.Error("send failed", "to", from.String(), "error", werr)
+		}
+	}
+}
+
+func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	p, known := l.peers[msg.SenderID]
+	if !known {
+		p = &Peer{RadioID: msg.SenderID}
+		l.peers[msg.SenderID] = p
+	}
+	p.Address = from.String()
+	p.LastHeard = now
+
+	switch msg.Kind {
+	case ipsc.KindRegisterRequest:
+		// A repeater that re-registers has restarted or lost the link. Its
+		// counters start again rather than carrying a previous life's totals
+		// into a new one.
+		if !known || !p.Registered.IsZero() {
+			l.log.Info("peer registered", "radio_id", msg.SenderID, "from", from.String())
+		}
+		p.Registered = now
+		p.Keepalives = 0
+	case ipsc.KindKeepaliveRequest:
+		p.Keepalives++
+	case ipsc.KindVoice:
+		p.VoiceFrames++
+		l.recordVoice(p, msg, now)
+	}
+	l.publishLocked()
+}
+
+func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) {
+	v, ok := msg.AsVoice()
+	if !ok {
+		return
+	}
+	if p.LastCall == nil || p.LastCall.StreamID != v.StreamID || !p.LastCall.Ended.IsZero() {
+		p.LastCall = &Call{
+			StreamID:    v.StreamID,
+			Source:      v.SourceID,
+			Destination: v.Destination,
+			Started:     now,
+		}
+		l.log.Info("call started", "radio_id", p.RadioID, "source", v.SourceID,
+			"destination", v.Destination, "stream", fmt.Sprintf("%#04x", v.StreamID))
+	}
+	p.LastCall.Frames++
+	if v.IsLastFrame() {
+		p.LastCall.Ended = now
+		l.log.Info("call ended", "radio_id", p.RadioID, "source", v.SourceID,
+			"frames", p.LastCall.Frames, "duration", now.Sub(p.LastCall.Started).Round(time.Millisecond))
+	}
+}
+
+// expire drops peers that stop keepaliving.
+//
+// A repeater that is unplugged sends nothing and says nothing: there is no
+// disconnect message in any capture. Silence is the only signal there is, so a
+// peer that has been quiet longer than PeerTimeout is gone, and saying so is
+// better than a console that shows a repeater which left an hour ago.
+func (l *Listener) expire(ctx context.Context) {
+	tick := time.NewTicker(l.cfg.PeerTimeout / 4)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-tick.C:
+			l.ExpireAt(now)
+		}
+	}
+}
+
+// ExpireAt drops peers silent since before the timeout, and reports how many.
+func (l *Listener) ExpireAt(now time.Time) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var dropped int
+	for id, p := range l.peers {
+		if now.Sub(p.LastHeard) <= l.cfg.PeerTimeout {
+			continue
+		}
+		delete(l.peers, id)
+		dropped++
+		l.log.Info("peer timed out", "radio_id", id, "silent_for",
+			now.Sub(p.LastHeard).Round(time.Second))
+	}
+	if dropped > 0 {
+		l.publishLocked()
+	}
+	return dropped
+}
+
+func (l *Listener) publish() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.publishLocked()
+}
+
+func (l *Listener) publishLocked() {
+	out := make([]Peer, 0, len(l.peers))
+	for _, p := range l.peers {
+		c := *p
+		if p.LastCall != nil {
+			call := *p.LastCall
+			c.LastCall = &call
+		}
+		out = append(out, c)
+	}
+	l.snapshot.Store(&out)
+}

@@ -21,6 +21,7 @@ import (
 	"github.com/k9mls/qsp/internal/database"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/ipsclink"
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
@@ -46,6 +47,7 @@ type app struct {
 	callStore *calls.Store
 	srv       *server.Server
 	dmr       *peers.Listener
+	ipsc      *ipsclink.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
 	// auth is the concrete login service, kept alongside the interface the
@@ -376,6 +378,23 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	registry := health.NewRegistry(health.Options{})
 	registry.MustRegister(database.HealthCheck{DB: a.db, UnavailableReason: dbUnavailableReason})
 	registry.MustRegister(processCheck{started: time.Now()})
+	// IPSC is its own listener on its own port. A club may run a Motorola
+	// repeater, an HBP network, both or neither, so neither enables the other.
+	ipscDisabledReason := "IPSC peering is off; set ipsc.enabled to serve Motorola repeaters"
+	if cfg.IPSC.Enabled {
+		il, ierr := ipsclink.New(log, ipsclink.Config{
+			ListenAddress: cfg.IPSC.ListenAddress,
+			MasterID:      cfg.IPSC.MasterID,
+			AllowedPeers:  cfg.IPSC.AllowedPeers,
+			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
+		})
+		if ierr != nil {
+			return nil, ierr
+		}
+		a.ipsc = il
+	}
+	registry.MustRegister(ipsclink.HealthCheck{Listener: a.ipsc, DisabledReason: ipscDisabledReason})
+
 	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(routingCheck{enabled: cfg.DMR.Forwarding, bridges: len(cfg.DMR.Bridges)})
@@ -591,6 +610,11 @@ func (a *app) run(ctx context.Context) error {
 	}
 	if a.dmr != nil {
 		if err := a.dmr.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if a.ipsc != nil {
+		if err := a.ipsc.Start(ctx); err != nil {
 			return err
 		}
 	}
@@ -1090,7 +1114,6 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 // been written yet", and docaccuracy_test.go checks the documentation against
 // it. A subsystem leaves this list on the commit that implements it.
 var unbuiltSubsystems = []struct{ name, arrives string }{
-	{"ipsc", "IPSC peering arrives in phase 4"},
 	{"p25", "P25 peering arrives in phase 5"},
 	{"vocoder", "the vocoder pool arrives in phase 5"},
 	{"allstar", "the AllStar connector arrives in phase 5"},

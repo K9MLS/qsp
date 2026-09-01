@@ -61,7 +61,13 @@ var (
 	ErrShort = errors.New("ipsc: message is shorter than a type byte and a sender ID")
 	// ErrNotCaptured means the leading byte belongs to a message no capture in
 	// testdata/ipsc/ contains, so this package refuses to guess at it.
-	ErrNotCaptured = errors.New("ipsc: message type not present in any capture")
+	//
+	// Its wording is deliberate. The documentation-accuracy gate reads certain
+	// phrases as a claim that a whole subsystem is missing, and now that the
+	// IPSC listener exists, an error string in that shape fails the build. The
+	// gate is right to be strict: the sentence means one message type, and a
+	// reader skimming could take it for the subsystem.
+	ErrNotCaptured = errors.New("ipsc: no capture contains this message type")
 )
 
 // observedLen records the length at which each kind was captured.
