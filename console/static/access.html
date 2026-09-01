@@ -140,6 +140,52 @@
 
       <section class="panel">
         <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">A member's own password</h2>
+            <button class="hint" type="button" aria-controls="hint-credential"
+                    aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-credential">
+          <p class="hint__text">One shared password means removing a member
+            requires a new one and <strong>every other member reconfiguring
+            their hotspot</strong>. Giving a member their own means removing
+            them is deleting it, and nobody else notices. A member without one
+            keeps using the shared password, so this can be done one member at a
+            time. <strong>Removing a password stops the next login, not the
+            current session</strong> &mdash; to put somebody off the network now,
+            add their ID to the list above.</p>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            Issue or remove one member's password. The rest of the network is
+            unaffected either way.
+          </p>
+          <div class="picker">
+            <label class="picker__field">
+              <span class="picker__label">Radio ID</span>
+              <input class="picker__input" id="credential-peer" type="text"
+                     inputmode="numeric" placeholder="3155413">
+              <p class="field__note">The hotspot's ID, as it appears on the
+                overview.</p>
+            </label>
+          </div>
+          <button class="button" id="credential-issue" type="button">Issue a password</button>
+          <button class="button button--quiet" id="credential-revoke" type="button">Remove it</button>
+          <div id="credential-result" hidden>
+            <p class="picker__label">Send this to them, not by the same route as
+              anything else</p>
+            <pre class="config" id="credential-password"></pre>
+            <p class="link__advice">Shown once. It is written to a file on the
+              server and cannot be read back here.</p>
+          </div>
+          <p class="link__summary" id="credential-note" hidden></p>
+          <p class="link__advice" id="credential-error" hidden></p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
           <h2 class="panel__title">Inviting a member</h2>
         </div>
         <div class="panel__body">

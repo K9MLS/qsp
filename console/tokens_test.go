@@ -1728,3 +1728,46 @@ func TestSubscriptionAndRetentionAreEditable(t *testing.T) {
 		t.Error("network.js may overwrite a duration an administrator set in the file")
 	}
 }
+
+// TestAMembersPasswordCanBeIssuedFromTheConsole.
+//
+// ADR-0035 made removal a matter of deleting one file. **A feature that requires
+// SSH to use is one that gets used once and then avoided**, and the moment a
+// credential most needs revoking is not the moment to be looking up a path.
+func TestAMembersPasswordCanBeIssuedFromTheConsole(t *testing.T) {
+	page, err := assets.ReadFile("static/access.html")
+	if err != nil {
+		t.Fatalf("reading access.html: %v", err)
+	}
+	html := string(page)
+	for _, want := range []string{
+		`id="credential-peer"`, `id="credential-issue"`, `id="credential-revoke"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("access.html has no %s", want)
+		}
+	}
+
+	// Removing a password stops the next login, not the current session. An
+	// administrator who believes otherwise has not removed anybody.
+	if !strings.Contains(html, "not the\n            current session") &&
+		!strings.Contains(html, "not the current session") {
+		t.Error("the page does not say that removing a password leaves an established " +
+			"session connected")
+	}
+
+	script, err := assets.ReadFile("static/access.js")
+	if err != nil {
+		t.Fatalf("reading access.js: %v", err)
+	}
+	src := string(script)
+	if !strings.Contains(src, "/password") {
+		t.Error("access.js never calls the credential endpoint")
+	}
+	// Both directions, or the panel can create a credential nobody can remove.
+	for _, want := range []string{`credentialCall("POST")`, `credentialCall("DELETE")`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("access.js has no %s", want)
+		}
+	}
+}

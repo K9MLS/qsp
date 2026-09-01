@@ -256,6 +256,17 @@ it times out or the service restarts; deleting a file stops the next login. For
 somebody who must be off the network now, the registration access list is what
 does it.
 
+`POST` and `DELETE` on `/api/peers/{id}/password` issue and remove one member's
+password. Both require a session and both write an audit event naming the
+administrator and the radio ID, because *who removed whom, and when* is the
+question a club asks afterwards.
+
+**A generated password is returned once and is never readable again.** It is
+written to a file at mode 0600 in a directory created at 0700, and the
+configuration records only the directory. Removing a password that does not
+exist is reported as the state rather than as a failure: an administrator asking
+twice should be told the peer was already using the shared password.
+
 ### Deployment guidance
 
 - Bind the console to `127.0.0.1` and reach it through a reverse proxy with TLS.

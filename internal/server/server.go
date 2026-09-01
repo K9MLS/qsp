@@ -188,6 +188,8 @@ func (s *Server) apiRoutes() []apiRoute {
 		// one gets forgotten on a new endpoint.
 		{"GET /api/calls", s.requireSession(s.handleCalls)},
 		{"GET /api/links", s.requireSession(s.handleLinks)},
+		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
+		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
 		{"POST /api/links/accept", s.requireSession(s.handleAcceptPeering)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},

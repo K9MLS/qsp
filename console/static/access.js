@@ -364,5 +364,66 @@
     });
   }
 
+  /* ---- A member's own password --------------------------------------- */
+
+  function el(id) { return document.getElementById(id); }
+  function show(e) { if (e) { e.hidden = false; } }
+  function hide(e) { if (e) { e.hidden = true; } }
+
+  function credentialPeer() {
+    var raw = (el("credential-peer") || {}).value || "";
+    return raw.trim();
+  }
+
+  function credentialCall(method) {
+    var peer = credentialPeer();
+    hide(el("credential-error"));
+    hide(el("credential-note"));
+    hide(el("credential-result"));
+
+    if (!peer) {
+      el("credential-error").textContent = "Enter the radio ID first.";
+      show(el("credential-error"));
+      return;
+    }
+
+    fetch("/api/peers/" + encodeURIComponent(peer) + "/password", {
+      method: method,
+      headers: { Accept: "application/json" },
+      credentials: "same-origin"
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok) { throw new Error((b && b.error) || "that did not work"); }
+        return b;
+      });
+    }).then(function (b) {
+      if (b.password) {
+        /* Shown once and never fetched again: it lives in a file on the server
+         * and the console cannot read it back. */
+        el("credential-password").textContent = b.password;
+        show(el("credential-result"));
+        return;
+      }
+      if (b.reason) {
+        el("credential-note").textContent = b.reason;
+        show(el("credential-note"));
+      }
+    }).catch(function (e) {
+      el("credential-error").textContent = e.message;
+      show(el("credential-error"));
+    });
+  }
+
+  if (el("credential-issue")) {
+    el("credential-issue").addEventListener("click", function () {
+      credentialCall("POST");
+    });
+  }
+  if (el("credential-revoke")) {
+    el("credential-revoke").addEventListener("click", function () {
+      credentialCall("DELETE");
+    });
+  }
+
   load();
 })();

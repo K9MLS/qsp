@@ -5,6 +5,27 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A member's password can be issued and removed from the console**, on the
+  access control page beside the list that refuses a radio ID. ADR-0035 made
+  removal a matter of deleting one file; **a feature that requires SSH to use is
+  one that gets used once and then avoided**, and the moment a credential most
+  needs revoking is not the moment to be looking up a path.
+
+  The generated password is shown once and is never readable again: it is
+  written at mode 0600 in a directory created at 0700, and the configuration
+  records only the directory.
+
+  Removing a password that does not exist reports the state rather than a
+  failure — an administrator asking twice should be told the peer was already
+  using the shared one. And the panel says plainly that **removing a password
+  stops the next login rather than the current session**, with the access list
+  named as what puts somebody off the network now. An administrator who believes
+  otherwise has not removed anybody.
+
+  Both actions write an audit event naming the administrator and the radio ID,
+  because *who removed whom, and when* is the question a club asks afterwards.
+
+### Added
 - **[ADR-0035](docs/adr/ADR-0035-per-peer-passwords.md): a member can be removed
   without changing everybody's password.** `dmr.peer_passwords` names a
   directory of files, each named for a radio ID. A peer with a file of its own
