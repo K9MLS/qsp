@@ -1234,7 +1234,17 @@ Where an invariant matters, enforce it in the type.
 1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
    evidence; §8a is emphatic that this project's defects are found by using the
    running system.
-2. **Capture a master sending voice to a repeater.** **Confirmed necessary, not
+2. **Confirm the transmit path on air, then capture a master to check it.**
+   0192 built the direction from inference under
+   [ADR-0041](docs/adr/ADR-0041-ipsc-transmit-from-inference.md), at the
+   operator's direction, because the capture could not be scheduled and two
+   members' repeaters could hear nobody.
+
+   **If it is silent, the four assumptions in ADR-0041 are the list**, in order:
+   that a repeater accepts what a repeater sends; bytes 12 to 14; three headers;
+   the call counter. A capture of a real master settles all four at once.
+
+   The original entry follows, and remains true. **Confirmed necessary, not
    assumed:** `ipsc-two-peers.pcap` shows two peers transmitting at once with
    every voice frame addressed to the master and none peer to peer, so IPSC
    relays rather than meshes. A mesh would have meant the format QSP must send

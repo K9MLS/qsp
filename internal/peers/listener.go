@@ -78,6 +78,17 @@ type ListenerConfig struct {
 	// Rebuild produces the routing table for an instant. Required when
 	// ScheduleState is set.
 	Rebuild func(now time.Time) (*routing.Table, error)
+	// IPSC receives every relayed frame, for onward delivery to Motorola
+	// repeaters. Optional; nil leaves IPSC one-way as it was before 0192.
+	//
+	// **This reverses a rule that used to be structural.** Until now a frame
+	// could not reach an IPSC repeater at all, because nothing had captured a
+	// master sending voice and QSP would not invent one. That capture still
+	// does not exist; this path is built from inference at the operator's
+	// direction and is recorded as an exception in ADR-0041, not as a
+	// discovery.
+	IPSC func(origin uint32, frame hbp.Data)
+
 	// Calls observes transmissions. Optional; nil disables call tracking.
 	//
 	// It is owned by the serve goroutine, like Master, and must not be touched
@@ -456,7 +467,9 @@ func (l *Listener) forward(from hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
 	}
-	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+	res := l.cfg.Routing.Route(from, frame, time.Now())
+	l.deliver(from, res)
+	l.sendToIPSC(from, frame, res)
 }
 
 // unlink drops a peer's dynamic attachments when it transmits on the talkgroup
@@ -581,7 +594,12 @@ func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
 	l.warnIfIDShared(from)
 	l.observe(from, frame)
 	l.trigger(from, frame)
-	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+	res := l.cfg.Routing.Route(from, frame, time.Now())
+	l.deliver(from, res)
+	// A Motorola repeater's own audio goes back out to the *other* Motorola
+	// repeaters, which is what makes repeater-to-repeater work without a
+	// hotspot in between.
+	l.sendToIPSC(from, frame, res)
 }
 
 // warnIfIDShared reports a radio ID belonging to both an IPSC repeater and a
@@ -622,6 +640,27 @@ func (l *Listener) warnIfIDShared(from hbp.RepeaterID) {
 			"and this repeater and that peer look like the same station"),
 		slog.String("remedy", "give the repeater a radio ID of its own, or the hotspot an ESSID suffix"),
 	)
+}
+
+// sendToIPSC offers a frame to the Motorola side.
+//
+// It is called for every frame that routing accepted, rather than for each
+// resolved destination, because IPSC repeaters are not in the destination list
+// — they announce no talkgroups and a repeater filters by its own codeplug.
+func (l *Listener) sendToIPSC(origin hbp.RepeaterID, frame hbp.Data, res routing.Result) {
+	if l.cfg.IPSC == nil {
+		return
+	}
+	// **Routing's verdict decides, not the delivery list.** Reason is set only
+	// when routing carried the frame nowhere — refused by access, held by a
+	// busy destination, on a talkgroup no bridge names. An empty Deliveries
+	// list is not the same thing: a network of Motorola repeaters and no
+	// hotspots has nowhere on the Homebrew side to deliver and the frame
+	// should still reach the other repeaters.
+	if res.Reason != "" {
+		return
+	}
+	l.cfg.IPSC(uint32(origin), frame)
 }
 
 func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
@@ -1181,4 +1220,13 @@ func (l *Listener) SubscriptionEnabled() bool {
 		return false
 	}
 	return l.cfg.Master.SubscriptionEnabled()
+}
+
+// SetIPSCSink wires the Motorola side after construction.
+//
+// It is set here rather than in ListenerConfig because the IPSC listener is
+// built after this one and needs this one to exist first: each is the other's
+// destination.
+func (l *Listener) SetIPSCSink(send func(origin uint32, frame hbp.Data)) {
+	l.cfg.IPSC = send
 }

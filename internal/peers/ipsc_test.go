@@ -96,19 +96,25 @@ func TestMotorolaAudioReachesAHotspot(t *testing.T) {
 	}
 }
 
-// TestNothingIsEverSentToAMotorolaRepeater is the rule that must not be
-// possible to break by configuration.
+// TestTheHomebrewSideStillCannotAddressARepeater keeps the half of the old rule
+// that is still true.
 //
-// Nothing has ever captured a master sending voice to an IPSC repeater, so QSP
-// does not know what such a frame contains. Rather than trusting a comment, this
-// asserts the structural reason: destinations resolve through the Homebrew peer
-// table, and a Motorola repeater is not in it — so even a bridge that names it
-// explicitly, as the table here does, yields no delivery.
-func TestNothingIsEverSentToAMotorolaRepeater(t *testing.T) {
+// **Until 0192 nothing could reach a Motorola repeater at all**, and a test here
+// asserted it by naming one as a bridge endpoint and requiring no delivery. That
+// rule is now half withdrawn: audio does reach repeaters, but not through the
+// Homebrew delivery path. It goes out of the IPSC listener's own socket, to
+// every registered repeater, because an IPSC peer announces no talkgroups and
+// filters by its own codeplug.
+//
+// So the structural fact this still checks is narrower and worth keeping: a
+// Motorola repeater is not a Homebrew peer, is not in the peer table, and
+// cannot be resolved as a Homebrew destination. A bridge naming one still
+// delivers nothing on that path, and the frame reaching it by the other route
+// is deliberate rather than accidental.
+func TestTheHomebrewSideStillCannotAddressARepeater(t *testing.T) {
 	l, core := startWithIPSC(t)
 	register(t, l.Address(), testID, "K9MLS")
 
-	// Give the registration a moment to reach the master's table.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if len(core.Table().Bridges()) > 0 {
@@ -125,9 +131,46 @@ func TestNothingIsEverSentToAMotorolaRepeater(t *testing.T) {
 
 	for _, d := range res.Deliveries {
 		if d.Peer == motorola {
-			t.Fatalf("a frame was routed to the Motorola repeater %d; "+
-				"no capture shows what a master sends to one, so QSP must not invent it", motorola)
+			t.Fatalf("routing resolved the Motorola repeater %d as a Homebrew destination; "+
+				"it is not a Homebrew peer and reaches repeaters by the IPSC socket instead",
+				motorola)
 		}
+	}
+}
+
+// TestRelayedAudioReachesTheMotorolaSide is the new direction.
+//
+// A frame routing accepted is offered to the IPSC side with the peer it came
+// from, so that side can send it to every repeater except the origin.
+func TestRelayedAudioReachesTheMotorolaSide(t *testing.T) {
+	l, _ := startWithIPSC(t)
+	register(t, l.Address(), testID, "K9MLS")
+
+	type sent struct {
+		origin uint32
+		frame  hbp.Data
+	}
+	var got []sent
+	l.SetIPSCSink(func(origin uint32, frame hbp.Data) {
+		got = append(got, sent{origin, frame})
+	})
+
+	l.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE06,
+	})
+
+	if len(got) == 0 {
+		t.Fatal("a routed frame was not offered to the IPSC side; " +
+			"repeater to repeater cannot work without it")
+	}
+	if got[0].origin != uint32(motorola) {
+		t.Errorf("the frame was offered with origin %d, want %d so it is not "+
+			"sent back to the repeater that transmitted it", got[0].origin, motorola)
+	}
+	if got[0].frame.TargetID != 2 {
+		t.Errorf("the frame offered carries TG%d, want TG2 unchanged", got[0].frame.TargetID)
 	}
 }
 

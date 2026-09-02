@@ -5,6 +5,43 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **QSP sends voice to Motorola repeaters**
+  ([ADR-0041](docs/adr/ADR-0041-ipsc-transmit-from-inference.md)). A Motorola
+  operator is now heard by the network *and* hears it, and repeater to repeater
+  works as a side effect.
+
+  **This direction has never been captured, and it is built from inference at
+  the operator's direction.** ADR-0029 is not withdrawn: it governs everything
+  else, and it governs this the moment a capture exists. What is written is a
+  hypothesis with a test plan.
+
+  Measured, not guessed: bytes 1 to 4 are the **sender's own** radio ID, so a
+  master relaying somebody else's audio signs it with its own and the
+  originating radio travels in the body's 24-bit source. That was the field most
+  likely to be wrong and a capture had already answered it.
+
+  Assumed, in the order to check if it is silent on air: that a repeater accepts
+  what a repeater sends; that bytes 12 to 14 are the constant `02 00 00` they
+  read in every capture; that three headers matter because Motorola sends three;
+  that the call counter may start anywhere.
+
+- **54 vocoder cores round-tripped Motorola to Homebrew and back, unchanged.**
+  The envelope may be wrong and a capture fixes that; audio that survived the
+  round trip is the part that could not be discovered later.
+
+- **A repeater receives everything and filters by its own codeplug.** An IPSC
+  peer announces no talkgroups, unlike a Homebrew peer, so filtering here would
+  mean guessing at somebody else's programming.
+
+### Changed
+- **A rule that was structural is now half withdrawn.** Until this patch a frame
+  could not reach a Motorola repeater at all, and a test asserted it by naming
+  one as a bridge endpoint and requiring no delivery. The test is **replaced
+  rather than deleted**: a Motorola repeater is still not a Homebrew peer and
+  cannot be resolved as a Homebrew destination. Audio reaches it out of the IPSC
+  listener's own socket, which is a different path and a deliberate one.
+
+### Added
 - **`testdata/ipsc/ipsc-two-peers.pcap`** — three repeaters registered to QSP
   with two transmitting at once, and the richest IPSC capture in the project.
 

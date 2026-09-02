@@ -164,6 +164,10 @@ type Listener struct {
 	// repeaters would be the same defect the converter's own slot separation
 	// exists to prevent, a level up.
 	bridges map[uint32]*ipscbridge.Converter
+	// encoders holds one outbound encoder per peer, for voice sent to it.
+	// Like the inbound converters they carry per-transmission state and so
+	// belong to the repeater they are addressing.
+	encoders map[uint32]*ipscbridge.Encoder
 
 	// snapshot holds an immutable peer list for readers on other goroutines,
 	// for the same reason internal/peers does it: the serve loop owns the map
@@ -224,11 +228,12 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 		}
 	}
 	l := &Listener{
-		cfg:     cfg,
-		log:     logging.Subsystem(log, "ipsc"),
-		allowed: make(map[uint32]bool, len(cfg.AllowedPeers)),
-		peers:   map[uint32]*Peer{},
-		bridges: map[uint32]*ipscbridge.Converter{},
+		cfg:      cfg,
+		log:      logging.Subsystem(log, "ipsc"),
+		allowed:  make(map[uint32]bool, len(cfg.AllowedPeers)),
+		peers:    map[uint32]*Peer{},
+		bridges:  map[uint32]*ipscbridge.Converter{},
+		encoders: map[uint32]*ipscbridge.Encoder{},
 	}
 	for _, p := range cfg.AllowedPeers {
 		l.allowed[p] = true
@@ -277,6 +282,62 @@ func (l *Listener) Address() string {
 func (l *Listener) Running() bool { return l.running.Load() }
 
 // Peers returns the current peer list.
+// SendVoice relays a Homebrew frame to every registered IPSC repeater except
+// the one it came from.
+//
+// **A repeater receives everything and decides for itself what to repeat.** It
+// has a codeplug naming the talkgroups and timeslots it carries, and QSP has no
+// way to learn that — an IPSC peer announces no subscriptions, unlike a
+// Homebrew peer which attaches to talkgroups explicitly. Filtering here would
+// mean guessing at somebody else's codeplug; sending everything matches what
+// the captures show a master's peers receiving and leaves the decision where
+// the knowledge is.
+//
+// Frames are never sent back to their origin, for the same reason a Homebrew
+// call is not echoed to the peer that transmitted it.
+func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
+	if l.conn == nil {
+		return
+	}
+
+	type outbound struct {
+		addr string
+		msgs []ipsc.Message
+	}
+	var batch []outbound
+
+	l.mu.Lock()
+	for id, p := range l.peers {
+		if id == origin || p.Address == "" {
+			continue
+		}
+		enc, ok := l.encoders[id]
+		if !ok {
+			enc = ipscbridge.NewEncoder(l.cfg.MasterID)
+			l.encoders[id] = enc
+		}
+		if msgs := enc.Encode(frame); len(msgs) > 0 {
+			batch = append(batch, outbound{addr: p.Address, msgs: msgs})
+		}
+	}
+	l.mu.Unlock()
+
+	// Encoding happens under the lock because an encoder is peer state;
+	// writing happens outside it, so a slow socket cannot stall the listener.
+	for _, o := range batch {
+		addr, err := net.ResolveUDPAddr("udp", o.addr)
+		if err != nil {
+			continue
+		}
+		for _, m := range o.msgs {
+			if _, err := l.conn.WriteToUDP(m.Marshal(), addr); err != nil {
+				l.log.Warn("could not send to an IPSC peer", "address", o.addr, "error", err)
+				break
+			}
+		}
+	}
+}
+
 func (l *Listener) Peers() []Peer {
 	if p := l.snapshot.Load(); p != nil {
 		return *p
@@ -493,6 +554,7 @@ func (l *Listener) ExpireAt(now time.Time) int {
 		// however long ago, and keeping them would grow without bound on an
 		// address that attracts strangers.
 		delete(l.bridges, id)
+		delete(l.encoders, id)
 		dropped++
 		l.log.Info("peer timed out", "radio_id", id, "silent_for",
 			now.Sub(p.LastHeard).Round(time.Second))
