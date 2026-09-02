@@ -5,6 +5,83 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **The outbound frame shape was wrong, and no test could see it**
+  ([ADR-0042](docs/adr/ADR-0042-the-outbound-frame-shape-is-measured.md)). QSP
+  sent 33-byte headers where a repeater sends 54, and 66 bytes for every voice
+  frame where a repeater cycles 52, 57, 57, 57, 66, 57. The header was built
+  with no payload at all; a real one carries a full Link Control block. Frames
+  reached a member's repeater — 494 of them on 2026-09-02 — and were ignored.
+
+  **None of ADR-0041's four assumptions could have been the cause**, because
+  the output was not the shape of an IPSC frame before the protocol question
+  arose. All of it was measurable against fixtures already held: 326 voice
+  frames and 93 headers and terminators from two repeater models, no equipment
+  and no capture session.
+
+  Measured and now built: byte 30 is the frame marker; byte 31 is
+  `len - 32` on a voice frame and the timeslot on a header; the payload class
+  at byte 32 decides the trailer and so the length; the trailer's last byte is
+  the EMB, colour code and LCSS; bytes 38 to 49 of a header are the twelve-octet
+  Link Control block, masked `0x969696` for a header and `0x999999` for a
+  terminator; byte 51 is the DMR Slot Type.
+
+  **The Link Control block reproduces bit-exact from its Link Control alone**,
+  five headers and terminators from two models on two talkgroups. It is the same
+  block BPTC(196,96) carries on the air, so the Reed-Solomon work already done
+  under ADR-0040 supplied it unchanged.
+
+- **The encoder ignored `ipsc.slot_bit_is_timeslot2`.** `Converter` read the
+  operator's setting and the encoder hardcoded one polarity, so an instance
+  configured the other way received audio on one timeslot and sent it back out
+  marked as the other. Both halves were individually correct — the §8a shape.
+
+### Added
+- **A repeater is signed with its own colour code, not the network's.** A colour
+  code is the air interface's co-channel discriminator: QSP does not filter on
+  it and does not care what it is, but it has to write one into every header's
+  Slot Type and every burst's EMB, and there is no value meaning "none". One
+  number for the whole network is the one choice that cannot be right —
+  `ipsc-two-peers.pcap` has two repeaters transmitting at the same moment on
+  colour codes 1 and 4.
+
+  The listener learns each peer's from the frames that peer sends, where it
+  appears twice over, and mirrors it back. A peer that has never transmitted
+  keeps `ipsc.colour_code`.
+
+- **`dmrfec.LinkControlBlock`**, the twelve octets that carry a Link Control,
+  factored out of `LinkControlPayload` because IPSC needs them as octets where
+  the air interface needs them as bits.
+
+- **`ipsc.Message.ColourCode`**, which reads a colour code out of either
+  encoding a voice message carries.
+
+### Notes
+- **Two claims in the previous handover did not survive the fixture.**
+
+  `body[20]` was recorded as a marker reading `0x67` on headers and
+  `0x07`/`0xe7`/`0x87` on the three voice shapes. It is the low byte of the
+  32-bit timestamp, equal to `timestamp & 0xff` in all 326 frames and taking 48
+  distinct values. The timestamp advances by exactly 480, so the low byte falls
+  by `0x20` per frame and the first superframe after the headers really does
+  read those four values against those shapes. The next one does not. **A
+  reading taken across a single superframe looked like a field.** Ninth time.
+
+  **The destination field has moved.** §8f recorded that every captured
+  transmission read 455. `ipsc-two-peers.pcap` holds both `0x000002` and
+  `0x0001c7`, with the Link Control in the same frame agreeing.
+
+- **Header bytes 52 and 53 are not derivable from any fixture held**, and are
+  written as zero. 87 distinct values across 93 frames; seven CRC-16
+  constructions over eight ranges in both byte orders match none, and sum-8,
+  XOR-8 and sum-16 match at most two. This is a fifth ADR-0041 assumption and
+  the weakest, because only a capture of a real master settles it.
+
+- **Each new test was checked by breaking the code it exists to reject**, per
+  §8a: a 14-byte trailer on every frame, a header with no payload, one wrong
+  Link Control byte, and inverted slot polarity. Each is rejected by name.
+
+
+### Fixed
 - **The IPSC transmit path was never wired, and 0192 shipped inert.**
   `SetIPSCSink` was written, exported and unit-tested, and `cmd/qsp` never
   called it: the edit that should have added the call anchored on the wrong

@@ -120,6 +120,16 @@ type Peer struct {
 	VoiceFrames uint64
 	// LastCall describes the most recent transmission, if there was one.
 	LastCall *Call
+	// ColourCode is the DMR colour code this repeater uses, learned from the
+	// frames it sends. ColourCodeKnown says whether it has been learned.
+	//
+	// **It is per repeater.** ipsc-two-peers.pcap has two peers transmitting
+	// at the same moment on colour codes 1 and 4, so a master that signs
+	// every outbound frame with one number is signing wrongly for one of
+	// them. QSP never filters on a colour code; it mirrors each repeater's
+	// own back to it.
+	ColourCode      uint8
+	ColourCodeKnown bool
 }
 
 // Call is one transmission seen from a peer.
@@ -313,8 +323,15 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		}
 		enc, ok := l.encoders[id]
 		if !ok {
-			enc = ipscbridge.NewEncoder(l.cfg.MasterID)
+			enc = ipscbridge.NewEncoder(l.cfg.MasterID, l.cfg.Bridge)
 			l.encoders[id] = enc
+		}
+		// Sign the frame with this repeater's own colour code when it has
+		// told us one, so that a network carrying several colour codes works
+		// for all of them. A peer that has never transmitted keeps the
+		// configured default.
+		if p.ColourCodeKnown {
+			enc.SetColourCode(p.ColourCode)
 		}
 		if msgs := enc.Encode(frame); len(msgs) > 0 {
 			batch = append(batch, outbound{addr: p.Address, msgs: msgs})
@@ -482,6 +499,14 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 	v, ok := msg.AsVoice()
 	if !ok {
 		return nil
+	}
+
+	if cc, ok := msg.ColourCode(); ok && (!p.ColourCodeKnown || p.ColourCode != cc) {
+		if !p.ColourCodeKnown {
+			l.log.Info("learned a peer's colour code", "radio_id", p.RadioID,
+				"colour_code", int(cc))
+		}
+		p.ColourCode, p.ColourCodeKnown = cc, true
 	}
 
 	conv := l.converterFor(p.RadioID)

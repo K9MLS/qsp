@@ -167,6 +167,98 @@ func (m Message) LinkControl() (destination, source uint32, ok bool) {
 	return d, s, true
 }
 
+// The 54-byte voice header and terminator, byte by byte.
+//
+// Every offset below was measured across 93 header and terminator frames in
+// ipsc-probe-voice.pcap, ipsc-slot-tg.pcap and ipsc-two-peers.pcap, from two
+// repeater models. Frames of both kinds are 54 bytes without exception.
+//
+//	[30]     0x01 for a header, 0x02 for a terminator
+//	[31]     bit 0x80 is the timeslot; see HeaderSlotBit
+//	[32:38]  00 0a 80 0a 00 60 in every frame captured, meaning unknown
+//	[38:50]  the twelve-octet Link Control block, masked for the data type
+//	[50]     zero in every frame captured
+//	[51]     the DMR Slot Type: colour code in the high nibble, data type low
+//	[52:54]  **unresolved.** See HeaderTailLen.
+//
+// Unlike a voice frame, a header does not carry a length at byte 31: the
+// length is fixed and the byte is used for something else.
+const (
+	// HeaderLenTotal is the length of a whole header or terminator datagram.
+	HeaderLenTotal = 54
+
+	// HeaderSlotBit is the bit of byte 31 that carries the timeslot.
+	//
+	// **It agrees with the slot bit in byte 17 in all 93 captured frames**,
+	// which is what makes it a reading rather than a guess: the two fields
+	// are independent encodings of one fact and they never disagree.
+	//
+	// Bit 0x40 of the same byte is set in 87 of the 93 and is not understood.
+	// The six exceptions are the second and third repeat headers of an
+	// SLR5700; an XPR8300 sets it on all three, and every captured
+	// terminator from either model sets it. QSP sets it always, which
+	// reproduces both models' first header and every terminator.
+	HeaderSlotBit byte = 0x80
+
+	// HeaderConstantBit is bit 0x40 of byte 31, set unconditionally.
+	HeaderConstantBit byte = 0x40
+
+	// HeaderTailLen is the length of the tail at bytes 52 and 53, which this
+	// package does not understand.
+	//
+	// **They are not derivable from any capture in the repository.** Across
+	// 93 frames they take 87 distinct values. Seven CRC-16 constructions over
+	// eight byte ranges in both byte orders match none of them; sum-8, XOR-8
+	// and sum-16 over five ranges match at most two. Byte 52 drifts slowly
+	// within a transmission and holds constant for one remote repeater, which
+	// reads like a signal or timing measurement taken at the sending
+	// repeater rather than anything computed from the frame.
+	//
+	// A master relaying somebody else's audio has no such measurement to
+	// report, so QSP writes zero and says so rather than inventing a value.
+	HeaderTailLen = 2
+)
+
+// HeaderConstants are bytes 32 to 37 of a header or terminator, which read the
+// same in every frame captured from either model and are copied rather than
+// reasoned about.
+var HeaderConstants = [6]byte{0x00, 0x0a, 0x80, 0x0a, 0x00, 0x60}
+
+// ColourCode returns the DMR colour code a voice message carries.
+//
+// # Two encodings, both measured
+//
+// A header or terminator carries it in the high nibble of byte 51, alongside
+// the data type, which is the DMR Slot Type field. A voice frame carries it in
+// the high nibble of the last byte of its trailer, alongside the LCSS, which is
+// the EMB field. The two agree for every transmission in ipsc-two-peers.pcap.
+//
+// A synchronisation frame has no trailer and so carries no colour code, which
+// is why ok exists.
+//
+// # Why a master needs it
+//
+// It is per repeater, not per network: the two peers transmitting simultaneously
+// in ipsc-two-peers.pcap use colour codes 1 and 4. A master relaying audio to a
+// repeater signs the frame with a colour code, and the only value that can be
+// right for every repeater is the one that repeater itself uses.
+func (m Message) ColourCode() (uint8, bool) {
+	if m.Kind != KindVoice {
+		return 0, false
+	}
+	b := m.Body
+	switch {
+	case len(b) >= 47 && (b[25] == FrameHeader || b[25] == FrameTerminator):
+		return b[46] >> 4, true
+	default:
+		_, _, trailer, ok := m.Payload()
+		if !ok || len(trailer) == 0 {
+			return 0, false
+		}
+		return trailer[len(trailer)-1] >> 4, true
+	}
+}
+
 // Payload classes, byte 32 of a voice frame.
 //
 // Each marks a position in the DMR superframe, which is why there are three of

@@ -117,9 +117,29 @@ func RSParity(lc []byte) ([3]byte, error) {
 	return p, nil
 }
 
-// LinkControlPayload builds the 96 bits a data burst carries: the Link Control
-// followed by its masked checksum, ready for EncodeBPTC.
-func LinkControlPayload(lc []byte, dataType uint8) ([]byte, error) {
+// LinkControlBlockBytes is the length of the block LinkControlBlock returns:
+// nine octets of Link Control and three of masked Reed-Solomon parity.
+const LinkControlBlockBytes = LinkControlBytes + 3
+
+// LinkControlBlock builds the twelve octets that carry a Link Control: the nine
+// octets themselves followed by the three parity octets, masked for the data
+// type.
+//
+// # Why this is exported separately from LinkControlPayload
+//
+// These same twelve octets appear in two places, and until IPSC transmit was
+// built only one of them was needed. On the air they are the 96-bit
+// information block of a BPTC(196,96) data burst, which is what
+// LinkControlPayload spreads into bits. Over IPSC they appear as twelve plain
+// octets inside a voice header or terminator, because Motorola sends the block
+// already decoded and lets the receiving repeater re-encode it.
+//
+// **That the two are the same twelve octets was measured, not assumed.** Five
+// captured headers and terminators from two repeater models, on two different
+// talkgroups, reproduce byte for byte: bytes 38 to 49 of a 54-byte IPSC header
+// equal this block with the voice-header mask, and the same bytes of a
+// terminator equal it with the terminator mask.
+func LinkControlBlock(lc []byte, dataType uint8) ([]byte, error) {
 	parity, err := RSParity(lc)
 	if err != nil {
 		return nil, err
@@ -129,10 +149,20 @@ func LinkControlPayload(lc []byte, dataType uint8) ([]byte, error) {
 		return nil, fmt.Errorf("dmrfec: data type %#x has no Link Control mask; "+
 			"this package builds voice headers and terminators only", dataType)
 	}
-	full := make([]byte, 0, LinkControlBytes+3)
+	full := make([]byte, 0, LinkControlBlockBytes)
 	full = append(full, lc...)
 	for j := 0; j < 3; j++ {
 		full = append(full, parity[j]^mask[j])
+	}
+	return full, nil
+}
+
+// LinkControlPayload builds the 96 bits a data burst carries: the Link Control
+// followed by its masked checksum, ready for EncodeBPTC.
+func LinkControlPayload(lc []byte, dataType uint8) ([]byte, error) {
+	full, err := LinkControlBlock(lc, dataType)
+	if err != nil {
+		return nil, err
 	}
 
 	out := make([]byte, BPTCPayloadBits)

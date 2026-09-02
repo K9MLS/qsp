@@ -25,7 +25,7 @@ func TestTheAudioSurvivesTheRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	e := ipscbridge.NewEncoder(3132911)
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
 
 	var checked int
 	for _, m := range voiceMessages(t) {
@@ -92,7 +92,7 @@ func ipscCoreOf(t *testing.T, m ipsc.Message) []byte {
 // signs it with its own ID, and the originating radio travels in the body's
 // 24-bit source instead.
 func TestASenderIDIsTheMasters(t *testing.T) {
-	e := ipscbridge.NewEncoder(3132911)
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
 	out := e.Encode(hbp.Data{
 		SourceID: 3155413, TargetID: 2, Timeslot: hbp.Timeslot2,
 		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoiceSync,
@@ -119,7 +119,7 @@ func TestASenderIDIsTheMasters(t *testing.T) {
 // TestATransmissionOpensWithThreeHeaders matches what Motorola does.
 func TestATransmissionOpensWithThreeHeaders(t *testing.T) {
 	c, _ := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
-	e := ipscbridge.NewEncoder(3132911)
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
 
 	var first []ipsc.Message
 	for _, m := range voiceMessages(t) {
