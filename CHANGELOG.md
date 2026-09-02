@@ -5,6 +5,42 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **BPTC(196,96), which is the last piece of burst construction.** A DMR data
+  burst — a voice header or a terminator — carries 96 bits inside a block
+  product turbo code: 13 rows of Hamming(15,11,3) crossed with 15 columns of
+  Hamming(13,9,3), interleaved. QSP has to build one at the start and end of
+  every bridged transmission, because that is what tells a radio who is talking
+  to whom.
+
+- **The interleave stride was measured, not assumed.** Taking the deinterleaved
+  bit at `(i*181)%196` gives valid row parity on **252 of 252 rows** across the
+  28 real data bursts in `testdata/hbp/`. The inverse mapping gives **zero of
+  252**. A wrong stride scores nothing, so a hundred per cent is not a
+  coincidence — the same asymmetry that settled the vocoder interleave.
+
+- **An oracle that makes the decode trustworthy rather than merely
+  self-consistent.** A voice header burst carries a Link Control with the same
+  source and destination as the Homebrew header that delivered it. Two
+  independent encodings of one fact, agreeing on **all 28 bursts**: 3132910 to
+  9999. Nothing about the layout could be wrong while that held.
+
+- **`EncodeBPTC` and `AssembleDataBurst`**, with the round trip proved bit-exact
+  on every captured data burst. That matters more here than elsewhere: nothing
+  has ever captured a master *sending* a voice header, so rebuilding a real one
+  from its own payload and getting the identical bits back is the strongest
+  substitute available.
+
+- **`DecodeBPTC` reports how many rows passed parity**, so a caller can tell a
+  data burst from a voice burst without this package guessing at burst types.
+  Voice bursts read as BPTC score 5% of rows against 100% for real data bursts.
+
+### Notes
+- Everything a Homebrew peer needs is now constructible from what IP Site
+  Connect sends: vocoder parameters, their FEC, the synchronisation pattern, the
+  EMB, the embedded fragment, and now the voice header and terminator. What
+  remains for Motorola audio to reach a hotspot is wiring, not discovery.
+
+### Added
 - **The superframe's LCSS order, derived from the captures and not from a
   standard.** After each synchronisation burst the sequence runs first,
   continuation, continuation, last, single. **73 of 74 superframes in

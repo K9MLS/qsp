@@ -16,6 +16,10 @@ const voiceSession = "../../testdata/hbp/hbp-voice-session.pcap"
 type dmrdBurst struct {
 	Burst     []byte
 	FrameType byte
+	// Source and Destination come from the protocol header, so they can be
+	// checked against what a burst's own Link Control says.
+	Source      uint32
+	Destination uint32
 }
 
 // readBursts pulls the DMR bursts out of captured Homebrew traffic.
@@ -65,8 +69,10 @@ func readBursts(tb testing.TB) []dmrdBurst {
 			continue
 		}
 		out = append(out, dmrdBurst{
-			Burst:     append([]byte(nil), p[20:53]...),
-			FrameType: (p[15] >> 4) & 0x3,
+			Burst:       append([]byte(nil), p[20:53]...),
+			FrameType:   (p[15] >> 4) & 0x3,
+			Source:      uint32(p[5])<<16 | uint32(p[6])<<8 | uint32(p[7]),
+			Destination: uint32(p[8])<<16 | uint32(p[9])<<8 | uint32(p[10]),
 		})
 	}
 	if len(out) == 0 {
