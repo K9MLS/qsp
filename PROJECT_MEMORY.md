@@ -1234,11 +1234,825 @@ Where an invariant matters, enforce it in the type.
 1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
    evidence; §8a is emphatic that this project's defects are found by using the
    running system.
-2. **Confirm on air, with a listener who is not the operator.** The bridge now
-   emits a complete transmission: header, audio, terminator. Whether a radio
-   un-mutes is the one thing no fixture can answer, and the station sharing a
-   radio ID with the repeater is excluded from every delivery — so the test
-   needs KB9TYC or AD0MI on the talkgroup.
+2. **Capture a master sending voice to a repeater.** This is the one thing
+   blocking audio *into* IPSC, and it is now possible for the first time: two
+   repeaters and a capture NIC are available. Put an XPR8300 or a a commercial DMR server in
+   the master role with the other repeater as its peer, key the peer, and record
+   what the master sends back. Until that exists, QSP carries IPSC one way and
+   must keep doing so — building the reverse from the DMR side would be
+   inventing IPSC behaviour, which is what ADR-0029 forbids.
+
+   It also opens Motorola to Motorola, which §8e called possibly the simplest
+   complete product.
+
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater is visible in `/healthz` and the journal but not on the
+   dashboard.
+
+4. **Two key-ups on different talkgroups.** Two minutes at the radio. Every
+   captured transmission read destination 455, so nothing has ever *moved* that
+   field — the Link Control in the same packet agrees with it, which is
+   corroboration and not proof.
+
+5. **Subscription on air**, then **P25**, unchanged from §8c.
+
+### Settled, do not reopen
+
+Everything in §8b and §8c, plus:
+
+- **The FEC conversion is a wrapper, not a codec** (ADR-0037). Parameter bits
+  are copied and never inspected. A change to `internal/dmrfec` that reads one
+  is out of scope and needs a new ADR.
+- **Where a published standard specifies the DMR side, implement the standard
+  and use the captures as the test** ([ADR-0040](docs/adr/ADR-0040-the-air-interface-is-specified.md)).
+  ADR-0029 governs IPSC unchanged, because IPSC has no specification. Reading
+  ETSI is not reading another implementation; DMRlink and HBlink3 stay unread.
+- **A wrong hypothesis scores zero, and so does a right hypothesis evaluated by
+  broken arithmetic.** Thirty thousand candidate constructions scored zero while
+  the correct field polynomial and generator roots sat inside the search space;
+  the division applying them was wrong. The score cannot tell the two apart.
+  **Where a standard gives both a generator matrix and a generator polynomial,
+  use the matrix** — no division, and division is where this went wrong.
+- **`0xf1` is not a peer list.** It contains neither the peer's radio ID in
+  either byte order nor any address or port. Tested.
+- **DMRlink and HBlink3 remain unread**, and one implementation that surfaced
+  during research on 2026-09-01 was deliberately not opened. ETSI TS 102 361 and
+  the P25 half-rate vocoder specification are published standards and reading
+  them is a different thing entirely.
+
+### What cost the most time, and would again
+
+- **A repeater will not register with a master carrying its own radio ID.** An
+  XPR8300 retried thirty-nine times over six minutes against correct replies
+  sent promptly, and the failure was indistinguishable from a protocol fault.
+  `ipsc.master_id` now refuses the collision at validation.
+- **A Motorola repeater has two port fields and they are not the same thing.**
+  `Master UDP Port` is what it dials; `UDP Port` is what it binds. Set to 50000
+  and 50001, a master that looked correct served a port nobody was calling and
+  answered every request with an ICMP unreachable **from its own IP stack**. Two
+  plausible theories came before the right one and both were wrong; `nmap -sU`
+  against the repeater ended it. **When a device's own stack sends the refusal,
+  ask the device what it bound.**
+- **Silence is the only refusal IPSC has.** ICMP port unreachable is provably
+  ignored, and no capture contains a rejection.
+- **Nothing says goodbye.** A repeater that is unplugged simply stops, so
+  silence past a timeout is the only evidence of departure.
+- **An IPSC port on a public address will be found.** One repeater turned up
+  unannounced during a bench test.
+
+### The method, stated plainly because it was proved four times in one day
+
+**Every byte read by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, the
+interleave geometry — each was settled by changing exactly one thing and
+diffing, or by running candidate readings against thousands of real frames and
+taking the one that scored 99% where the others scored zero.
+
+Two captures differing in one known way beat ten differing in unknown ways. When
+a reading is plausible and cheap to test, test it.
+
+---
+
+## 8e. Where the next session starts, as of late on 2026-09-01
+
+Read §0, then §6b and §6c, then this.
+
+**IPSC went from an empty fixture directory to a Motorola repeater on the
+production server with a proved-lossless path to the rest of the network, in one
+day.** Nineteen patches, 0.1.11 to 0.1.29. Nothing was derived from another
+implementation: DMRlink and HBlink3 remain unread, and one that surfaced during
+research was deliberately not opened.
+
+### The audio path, which is finished as a matter of discovery
+
+`internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+72-bit protected frames a DMR burst carries, and builds every part of a burst:
+
+| Piece | Evidence |
+|---|---|
+| Vocoder FEC | 884 real bursts round-tripped bit-exact |
+| The 19-byte IPSC core | three 50-bit slots, spare bit trailing |
+| The 48-bit middle | 740 captured middles rebuilt from a position and a colour code |
+| EMB | one generator of 256 fits every captured value |
+| Superframe order | 73 of 74 superframes agree |
+| BPTC(196,96) | 252 of 252 rows valid, 28 bursts round-tripped bit-exact |
+
+`internal/ipscbridge` turns a Motorola voice frame into a Homebrew burst: 54
+produced from real traffic, one sync in six, every vocoder payload unchanged.
+
+**The single strongest piece of evidence in the project**: a Motorola XPR8300
+over IPSC and an MMDVM hotspot over Homebrew, captured on different days on
+different equipment, produce the identical 49-bit vocoder frame for silence —
+`0x1F003533F19C1`, 236 times in the Homebrew capture. That one observation
+confirms the packing, the FEC and the claim that both protocols carry the same
+audio.
+
+### Open, in order
+
+1. **Wire the converter to routing.** Hand bursts to peers so a Motorola
+   repeater is audible on a hotspot. **No discovery left, only wiring.**
+2. **Three small unknowns, each cheap.**
+   - Which slot bit value means timeslot 1. **One sentence from the operator**;
+     it was never written down at the radio. `SlotBitIsTimeslot2` is
+     configuration until then.
+   - The destination field. Every transmission ever captured reads 455, so
+     nothing has *moved* bytes 9–11. One key-up on any other talkgroup.
+   - The Link Control checksum, needed for voice headers and terminators.
+     A fitting exercise against the 28 data bursts already in `testdata/hbp/`;
+     no equipment.
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater shows in `/healthz` and the journal but not the
+   dashboard.
+4. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice. Build 1 first, then use it: send a burst
+   known to be well-formed and watch whether the repeater keys.
+5. **Motorola → Motorola**, which needs no conversion at all and may be the
+   simplest complete product. Needs KD9EJA's repeater on `allowed_peers`.
+
+### Settled, do not reopen
+
+Everything in §8b, §8c and §8d, plus:
+
+- **The FEC is a wrapper, not a codec** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).
+  Parameter bits are copied and never inspected; reading one needs a new ADR.
+- **`0xf1` is not a peer list.** Tested: no peer ID in either byte order, no
+  address, no port.
+- **Byte 5 of a voice frame is a call counter, not a timeslot.** The timeslot is
+  bit `0x20` of byte 17, and bit `0x40` marks the last frame.
+
+### The method, now proved seven times in two days
+
+**Every reading taken by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, a 49-bit
+stride that is 50, the vocoder interleave, the EMB generator, the BPTC stride.
+Each settled either by changing exactly one thing and diffing, or by running
+candidate readings against thousands of real frames and taking the one that
+scores near a hundred where the others score zero.
+
+**A wrong hypothesis scores zero. That asymmetry is the evidence**, and it is
+worth more than a citation.
+
+### Two traps that cost real time
+
+- **A count of failures hides new ones.** The container always fails
+  `TestDocumentedPathsExist` for an unrelated reason, so a new failure kept the
+  total at eight and was invisible. §7 already said list them by name; the rule
+  was broken the same day it was written down. **Never count.**
+- **The obvious deduplication is wrong.** The Homebrew captures hold every burst
+  twice, once arriving and once relayed. Skipping *equal* neighbours collapses
+  the two genuine continuation positions into one and yields a plausible
+  sequence silently missing a burst. Take every second burst.
+
+---
+
+## 8f. Where the next session starts, as of 2026-09-02
+
+Read §0, then §6b and §6c, then this. It supersedes §8e's ordering; everything
+§8e settled remains settled.
+
+**A Motorola repeater is audible on the network.** The converter is wired to
+routing: `ipsclink` converts each voice frame and hands the burst to
+`peers.Listener.DeliverFromIPSC`. Item 1 of §8e is done.
+
+### Two defects, both found the same way
+
+Neither came from the test suite, and neither was visible by reading.
+
+**The converter had one set of counters for two timeslots.** A repeater carries
+two transmissions at once. Interleaved, they reset each other every frame: 66
+real frames produced 54 bursts on one slot and **18** across two, where 108 are
+due. Found by a differential — the same frames with one bit flipped — because
+asserting it from the code would have been another reading taken by eye.
+
+**`routing.Core` was reached by two goroutines and had no lock**
+([ADR-0038](docs/adr/ADR-0038-routing-core-is-shared.md)). **This shipped, on a
+path an operator can configure.** An upstream link calls `DeliverFromUpstream`
+from the link's own read goroutine while `Core` documented itself as owned by
+the DMR socket's. It never fired because no upstream has met a real far end. The
+race detector reported it on the first run of the first IPSC test, which is the
+third real defect it has caught and the reason it is a blocking gate.
+
+**The lesson worth keeping:** ADR-0002 claimed races were "structurally
+impossible rather than merely tested against". Nothing enforced it. **A comment
+claiming a concurrency invariant reads like a fact and is in truth a request.**
+Where an invariant matters, enforce it in the type.
+
+### Open, in order
+
+1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
+   evidence; §8a is emphatic that this project's defects are found by using the
+   running system.
+2. **Emit the voice header and terminator.** Every piece is now built and
+   proved — Reed-Solomon (12,9), the Golay Slot Type, the data sync pattern, 28
+   of 28 real bursts rebuilt bit-exact from their Link Control alone. What
+   remains is wiring them into `ipscbridge`: a header before the first burst of
+   a transmission, a terminator when the IPSC frame sets `FlagTerminator`.
+
+   **This is the best remaining explanation for the silence.** Clause 5.1.2.2 of
+   TS 102 361-1 says a voice transmission *shall* be preceded by a voice LC
+   header, so burst A with nothing before it is not a valid transmission. It
+   also fixes the dropped second key-up: destinations are released on the
+   terminator instead of the two-second timeout, and a capture on 2026-09-02
+   shows a transmission refused because the previous one still held every
+   destination.
+
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater is visible in `/healthz` and the journal but not on the
+   dashboard.
+
+4. **Two key-ups on different talkgroups.** Two minutes at the radio. Every
+   captured transmission read destination 455, so nothing has ever *moved* that
+   field — the Link Control in the same packet agrees with it, which is
+   corroboration and not proof.
+
+5. **Subscription on air**, then **P25**, unchanged from §8c.
+
+### Settled, do not reopen
+
+Everything in §8b and §8c, plus:
+
+- **The FEC conversion is a wrapper, not a codec** (ADR-0037). Parameter bits
+  are copied and never inspected. A change to `internal/dmrfec` that reads one
+  is out of scope and needs a new ADR.
+- **`0xf1` is not a peer list.** It contains neither the peer's radio ID in
+  either byte order nor any address or port. Tested.
+- **DMRlink and HBlink3 remain unread**, and one implementation that surfaced
+  during research on 2026-09-01 was deliberately not opened. ETSI TS 102 361 and
+  the P25 half-rate vocoder specification are published standards and reading
+  them is a different thing entirely.
+
+### What cost the most time, and would again
+
+- **A repeater will not register with a master carrying its own radio ID.** An
+  XPR8300 retried thirty-nine times over six minutes against correct replies
+  sent promptly, and the failure was indistinguishable from a protocol fault.
+  `ipsc.master_id` now refuses the collision at validation.
+- **A Motorola repeater has two port fields and they are not the same thing.**
+  `Master UDP Port` is what it dials; `UDP Port` is what it binds. Set to 50000
+  and 50001, a master that looked correct served a port nobody was calling and
+  answered every request with an ICMP unreachable **from its own IP stack**. Two
+  plausible theories came before the right one and both were wrong; `nmap -sU`
+  against the repeater ended it. **When a device's own stack sends the refusal,
+  ask the device what it bound.**
+- **Silence is the only refusal IPSC has.** ICMP port unreachable is provably
+  ignored, and no capture contains a rejection.
+- **Nothing says goodbye.** A repeater that is unplugged simply stops, so
+  silence past a timeout is the only evidence of departure.
+- **An IPSC port on a public address will be found.** One repeater turned up
+  unannounced during a bench test.
+
+### The method, stated plainly because it was proved four times in one day
+
+**Every byte read by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, the
+interleave geometry — each was settled by changing exactly one thing and
+diffing, or by running candidate readings against thousands of real frames and
+taking the one that scored 99% where the others scored zero.
+
+Two captures differing in one known way beat ten differing in unknown ways. When
+a reading is plausible and cheap to test, test it.
+
+---
+
+## 8e. Where the next session starts, as of late on 2026-09-01
+
+Read §0, then §6b and §6c, then this.
+
+**IPSC went from an empty fixture directory to a Motorola repeater on the
+production server with a proved-lossless path to the rest of the network, in one
+day.** Nineteen patches, 0.1.11 to 0.1.29. Nothing was derived from another
+implementation: DMRlink and HBlink3 remain unread, and one that surfaced during
+research was deliberately not opened.
+
+### The audio path, which is finished as a matter of discovery
+
+`internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+72-bit protected frames a DMR burst carries, and builds every part of a burst:
+
+| Piece | Evidence |
+|---|---|
+| Vocoder FEC | 884 real bursts round-tripped bit-exact |
+| The 19-byte IPSC core | three 50-bit slots, spare bit trailing |
+| The 48-bit middle | 740 captured middles rebuilt from a position and a colour code |
+| EMB | one generator of 256 fits every captured value |
+| Superframe order | 73 of 74 superframes agree |
+| BPTC(196,96) | 252 of 252 rows valid, 28 bursts round-tripped bit-exact |
+
+`internal/ipscbridge` turns a Motorola voice frame into a Homebrew burst: 54
+produced from real traffic, one sync in six, every vocoder payload unchanged.
+
+**The single strongest piece of evidence in the project**: a Motorola XPR8300
+over IPSC and an MMDVM hotspot over Homebrew, captured on different days on
+different equipment, produce the identical 49-bit vocoder frame for silence —
+`0x1F003533F19C1`, 236 times in the Homebrew capture. That one observation
+confirms the packing, the FEC and the claim that both protocols carry the same
+audio.
+
+### Open, in order
+
+1. **Wire the converter to routing.** Hand bursts to peers so a Motorola
+   repeater is audible on a hotspot. **No discovery left, only wiring.**
+2. **Three small unknowns, each cheap.**
+   - Which slot bit value means timeslot 1. **One sentence from the operator**;
+     it was never written down at the radio. `SlotBitIsTimeslot2` is
+     configuration until then.
+   - The destination field. Every transmission ever captured reads 455, so
+     nothing has *moved* bytes 9–11. One key-up on any other talkgroup.
+   - The Link Control checksum, needed for voice headers and terminators.
+     A fitting exercise against the 28 data bursts already in `testdata/hbp/`;
+     no equipment.
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater shows in `/healthz` and the journal but not the
+   dashboard.
+4. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice. Build 1 first, then use it: send a burst
+   known to be well-formed and watch whether the repeater keys.
+5. **Motorola → Motorola**, which needs no conversion at all and may be the
+   simplest complete product. Needs KD9EJA's repeater on `allowed_peers`.
+
+### Settled, do not reopen
+
+Everything in §8b, §8c and §8d, plus:
+
+- **The FEC is a wrapper, not a codec** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).
+  Parameter bits are copied and never inspected; reading one needs a new ADR.
+- **`0xf1` is not a peer list.** Tested: no peer ID in either byte order, no
+  address, no port.
+- **Byte 5 of a voice frame is a call counter, not a timeslot.** The timeslot is
+  bit `0x20` of byte 17, and bit `0x40` marks the last frame.
+
+### The method, now proved seven times in two days
+
+**Every reading taken by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, a 49-bit
+stride that is 50, the vocoder interleave, the EMB generator, the BPTC stride.
+Each settled either by changing exactly one thing and diffing, or by running
+candidate readings against thousands of real frames and taking the one that
+scores near a hundred where the others score zero.
+
+**A wrong hypothesis scores zero. That asymmetry is the evidence**, and it is
+worth more than a citation.
+
+### Two traps that cost real time
+
+- **A count of failures hides new ones.** The container always fails
+  `TestDocumentedPathsExist` for an unrelated reason, so a new failure kept the
+  total at eight and was invisible. §7 already said list them by name; the rule
+  was broken the same day it was written down. **Never count.**
+- **The obvious deduplication is wrong.** The Homebrew captures hold every burst
+  twice, once arriving and once relayed. Skipping *equal* neighbours collapses
+  the two genuine continuation positions into one and yields a plausible
+  sequence silently missing a burst. Take every second burst.
+
+---
+
+## 8f. Where the next session starts, as of 2026-09-02
+
+Read §0, then §6b and §6c, then this. It supersedes §8e's ordering; everything
+§8e settled remains settled.
+
+**A Motorola repeater is audible on the network.** The converter is wired to
+routing: `ipsclink` converts each voice frame and hands the burst to
+`peers.Listener.DeliverFromIPSC`. Item 1 of §8e is done.
+
+### Two defects, both found the same way
+
+Neither came from the test suite, and neither was visible by reading.
+
+**The converter had one set of counters for two timeslots.** A repeater carries
+two transmissions at once. Interleaved, they reset each other every frame: 66
+real frames produced 54 bursts on one slot and **18** across two, where 108 are
+due. Found by a differential — the same frames with one bit flipped — because
+asserting it from the code would have been another reading taken by eye.
+
+**`routing.Core` was reached by two goroutines and had no lock**
+([ADR-0038](docs/adr/ADR-0038-routing-core-is-shared.md)). **This shipped, on a
+path an operator can configure.** An upstream link calls `DeliverFromUpstream`
+from the link's own read goroutine while `Core` documented itself as owned by
+the DMR socket's. It never fired because no upstream has met a real far end. The
+race detector reported it on the first run of the first IPSC test, which is the
+third real defect it has caught and the reason it is a blocking gate.
+
+**The lesson worth keeping:** ADR-0002 claimed races were "structurally
+impossible rather than merely tested against". Nothing enforced it. **A comment
+claiming a concurrency invariant reads like a fact and is in truth a request.**
+Where an invariant matters, enforce it in the type.
+
+### Open, in order
+
+1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
+   evidence; §8a is emphatic that this project's defects are found by using the
+   running system.
+2. **The Link Control FEC, and it is probably why there is no audio.** Voice
+   headers and terminators need Reed-Solomon (12,9) over the nine Link Control
+   bytes — ETSI TS 102 361-1 Annex B.3.6, and the standard is a free download
+   from ETSI, so this needs no reading of another implementation.
+
+   **It is checkable without equipment.** Compute the parity over the Link
+   Control of each of the 28 real data bursts in `testdata/hbp/` and compare
+   with the parity they already carry. A wrong construction scores zero, which
+   is the asymmetry this project runs on, and 28 of 28 would settle it.
+
+   **Why it moved to the top.** TS 102 361-2 describes a receiver un-muting on
+   an embedded Link Control PDU in the voice superframe carrying a matching
+   address. §8e assumed late entry would cover a missing voice header; that
+   assumption is a reading, it has never been tested, and readings have gone
+   nought for nine. Bursts are reaching peers and no audio has been confirmed,
+   so this is the first thing to build rather than a refinement to add later.
+3. **The console page.** The IPSC listener holds peers and calls of its own
+   that nothing reads, so a repeater shows in `/healthz` and the journal but not
+   the dashboard. Traffic now reaches last heard; the peer list does not.
+4. **The Pi-Star login drops every six or seven minutes** and re-authenticates,
+   on the *local* path `192.168.1.155` to `192.168.1.247` that is supposed to
+   bypass NAT rebinding. Between the failure and the next login a delivery to
+   that peer goes nowhere. Unexplained, affects every member rather than IPSC,
+   and deliberately not mixed into an IPSC diagnosis.
+5. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice to a repeater.
+6. **Motorola → Motorola.** Needs KD9EJA's repeater (315544) on `allowed_peers`,
+   and is worth deferring until one repeater is proved audible: two peers in
+   play means a fault has two possible sources.
+
+### Settled by observation on 2026-09-02
+
+- **A hotspot user heard a Motorola repeater.** KB9TYC heard KD9EJA's SLR5700
+  over the bridge. **This is the first confirmation that the path produces
+  audible audio** rather than well-formed bursts: header, vocoder payloads and
+  terminator all reach a radio and open its squelch. Everything from
+  `internal/dmrfec` upward is now proved on air.
+- **A second repeater model works.** The SLR5700 registered and passed traffic
+  with no change to the listener. Every byte in `internal/protocol/ipsc` came
+  from one XPR8300 on one firmware, and ADR-0029 says so explicitly; a different
+  model speaking the protocol the way QSP expects is new evidence, and it is the
+  first of its kind.
+- **The destination field is real.** One repeater, one source, three values:
+  455, then 2, then 11. `Voice.Destination` is an observation, not a reading.
+- **`slot_bit_is_timeslot2` is `true`.** With it set, a transmission keyed on
+  TS2 is delivered on TS2, matching where the network already carries that
+  talkgroup.
+- **The XPR8300 is on colour code 11**, confirmed at the radio rather than taken
+  from a fixture.
+- **Terminators fixed the dropped over.** Before 0188, three key-ups seconds
+  apart produced one set of relayed frames: destinations stayed reserved until a
+  two-second timeout and the rest were refused. After it, three overs under a
+  second apart all relayed, with no `call ended without a terminator` and no
+  `released a destination held by an abandoned transmission`.
+
+### An operational limit worth knowing
+
+**A remote IPSC peer must be reprogrammed by hand whenever the master's WAN
+address changes.** Motorola CPS takes a literal Master IP; there is no name to
+point a repeater at. On a dynamic address this fails silently — the repeater
+retries at a stranger and gives no indication why, exactly as one does when the
+master ID collides with its own. Anyone running IPSC across the internet should
+know this before they need to.
+
+### Settled, do not reopen
+
+Everything in §8b's list, plus:
+
+- **Phase 2's gate is closed.** AD0MI joined unassisted from the join page and a
+  password. Do not propose re-testing it; there is no second first-time member.
+- **IPSC comes before P25.** Reach, not difficulty. See §2.
+- **Audio is king**, and **talkgroup numbers are never renumbered**. §6c and §6b.
+- **Talker Alias is pass-through.** Nothing injects bursts B–E.
+
+### Open, in order
+
+1. **IPSC. The captures exist; what is missing is voice and a listener.** On
+   2026-09-01 two Motorola repeaters registered to each other over the internet
+   with a capture host in the path — a K9MLS XPR8300 as master and a remote
+   repeater as peer. Six fixtures in `testdata/ipsc/`, seven message types, and
+   `internal/protocol/ipsc` parses the envelope they all share.
+
+   **What is known:** byte 0 is the type, bytes 1–4 are the sender's own radio
+   ID big-endian, confirmed across seven types and two repeater models.
+   Registration is six packets, not two. An unregistered peer retries at ten
+   seconds; a registered one keepalives at fifteen. A peer never sources from
+   the master's port. ICMP unreachable is ignored, so a master cannot refuse
+   anybody by staying silent.
+
+   **What is not:** voice, private calls, text, disconnect. Nine of `0x91`'s
+   sixteen bytes and thirty-nine of `0xf1`'s forty-four. The purposes of `0x85`,
+   `0xf0` and `0xf1`. Whether a master behind NAT advertises an address a remote
+   peer can reach — the link came up through NAT but nothing has been decoded
+   that would say how.
+
+   **Next:** a session with somebody at the far end who can key up. Voice on
+   both timeslots, a private call, text, and a clean disconnect, in one capture,
+   with the same bridge. A third repeater would make `0xf1` worth decoding,
+   because one peer cannot distinguish a list from a fixed record.
+
+   **[ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) still holds** for
+   everything not captured: no constant, no message type, no parser for anything
+   the fixtures do not contain. DMRlink and HBlink3 remain unread and must stay
+   that way — reading them binds the project to a derivative work permanently.
+
+2. **The peering retry between two machines.** The console flow was built and no
+   button has been pressed. The loopback pair proved the protocol and proved
+   nothing about NAT, a public address, or a far end that restarts. The one real
+   attempt took production down for twenty minutes, which is the argument for
+   `qsp -config <file> -check` having been built first.
+
+3. **Subscription on air.** Built, never run with a radio. Turning it on
+   silences everybody who has not yet transmitted, so static attachments have to
+   be configured first — and those are still not editable from the console. That
+   ordering is the whole risk.
+
+4. **P25**, once DMR is finished. `testdata/p25/CAPTURE-REQUEST.md` is written;
+   the idle capture exists and contains no voice.
+
+### Unexplained. Do not theorise without a capture
+
+- **An echo.** K9MLS heard about a second of his own audio return after
+  unkeying, once. QSP is provably not looping: every `relaying transmission`
+  line excludes the originating peer, and the third station is 1,300 miles away.
+- **A repeated stream ID.** One peer produced the same 32-bit stream ID twice,
+  34 seconds apart, in the same QSO. Roughly one in four billion by chance. An
+  earlier session saw six `call started` events in three seconds from one
+  operator, with six distinct IDs.
+
+Both are recorded rather than investigated because there is no capture of
+either, and §7 says a theory that has failed twice does not get a third guess.
+
+### Costs to respect
+
+CI runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on
+push**. One job, about six minutes. `gh workflow run CI`.
+
+**A Motorola repeater has two port fields and they are not the same thing.**
+`Master UDP Port` is the master it dials; `UDP Port` is the port it binds. Set
+to 50000 and 50001, a master that looked correctly configured served a port
+nobody was calling, sent no UDP at all for fifteen minutes, and answered every
+request with an ICMP unreachable from its own IP stack. Two plausible theories
+came before the right one and both were wrong; what ended it was `nmap -sU`
+against the repeater, which found exactly one open port. **When a device's own
+stack sends the refusal, ask the device what it bound rather than re-reading the
+configuration page.**
+
+`cmd/qsp` has known failures in the development container because no SQLite
+driver is registered there. **List them by name rather than counting them** —
+two new failures once hid inside a count that looked normal.
+
+---
+
+## 8d. Where a session started on the evening of 2026-09-01
+
+**Superseded by §8e.** Kept for its *settled, do not reopen* list and because
+its "open, in order" shows the state before the audio path was built.
+
+Read §0, then §6b and §6c for the rules that break ties, then this.
+
+**IPSC went from an empty directory to a Motorola repeater registered on the
+production server in one day.** Seven fixtures, nine message types, two ADRs, a
+listener in the binary and a proved-lossless audio conversion. None of it came
+from reading anybody's implementation.
+
+### What exists
+
+- `internal/protocol/ipsc` parses nine message types. The envelope is a type
+  byte and a big-endian **sender** ID — the sender, not the subject, which one
+  repeater talking into silence could not have shown.
+- `internal/ipsclink` is a listener wired to configuration, health and the
+  lifecycle. A repeater registers, keepalives are answered at fifteen seconds,
+  transmissions are recorded as calls. Live on `qsp-server:50000`.
+- `internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+  72-bit protected frames a DMR burst carries.
+  [ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md). **884 real
+  bursts round-tripped bit-exact.**
+- `cmd/ipsc-probe`, an experiment that answers a repeater with recorded bytes.
+  Not part of `qsp` and should stay that way.
+
+### Open, in order
+
+1. **IPSC → HBP routing.** Motorola in, hotspots out. **Every piece exists** —
+   parser, FEC, routing core — and it needs no new capture and no equipment.
+   Key the XPR8300 and hear it in Wisconsin.
+
+2. **HBP → IPSC, which is blocked and must stay blocked.** *Nothing has ever
+   captured a master sending voice to a repeater.* What QSP would emit is a
+   guess, and a repeater that receives malformed voice may key its transmitter
+   with it. Build direction 1 first, then use it: send a burst known to be
+   well-formed and watch whether the repeater transmits.
+
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater is visible in `/healthz` and the journal but not on the
+   dashboard.
+
+4. **Two key-ups on different talkgroups.** Two minutes at the radio. Every
+   captured transmission read destination 455, so nothing has ever *moved* that
+   field — the Link Control in the same packet agrees with it, which is
+   corroboration and not proof.
+
+5. **Subscription on air**, then **P25**, unchanged from §8c.
+
+### Settled, do not reopen
+
+Everything in §8b and §8c, plus:
+
+- **The FEC conversion is a wrapper, not a codec** (ADR-0037). Parameter bits
+  are copied and never inspected. A change to `internal/dmrfec` that reads one
+  is out of scope and needs a new ADR.
+- **Where a published standard specifies the DMR side, implement the standard
+  and use the captures as the test** ([ADR-0040](docs/adr/ADR-0040-the-air-interface-is-specified.md)).
+  ADR-0029 governs IPSC unchanged, because IPSC has no specification. Reading
+  ETSI is not reading another implementation; DMRlink and HBlink3 stay unread.
+- **Read the flags before the payload.** Two versions of the terminator patch
+  emitted zero terminators on real traffic, because the frame carrying the
+  last-frame flag has no readable vocoder payload and both returned early. A
+  frame that cannot be decoded can still be the end of a transmission, and
+  ending one matters more than its last 60 ms of audio.
+- **A wrong hypothesis scores zero, and so does a right hypothesis evaluated by
+  broken arithmetic.** Thirty thousand candidate constructions scored zero while
+  the correct field polynomial and generator roots sat inside the search space;
+  the division applying them was wrong. The score cannot tell the two apart.
+  **Where a standard gives both a generator matrix and a generator polynomial,
+  use the matrix** — no division, and division is where this went wrong.
+- **`0xf1` is not a peer list.** It contains neither the peer's radio ID in
+  either byte order nor any address or port. Tested.
+- **DMRlink and HBlink3 remain unread**, and one implementation that surfaced
+  during research on 2026-09-01 was deliberately not opened. ETSI TS 102 361 and
+  the P25 half-rate vocoder specification are published standards and reading
+  them is a different thing entirely.
+
+### What cost the most time, and would again
+
+- **A repeater will not register with a master carrying its own radio ID.** An
+  XPR8300 retried thirty-nine times over six minutes against correct replies
+  sent promptly, and the failure was indistinguishable from a protocol fault.
+  `ipsc.master_id` now refuses the collision at validation.
+- **A Motorola repeater has two port fields and they are not the same thing.**
+  `Master UDP Port` is what it dials; `UDP Port` is what it binds. Set to 50000
+  and 50001, a master that looked correct served a port nobody was calling and
+  answered every request with an ICMP unreachable **from its own IP stack**. Two
+  plausible theories came before the right one and both were wrong; `nmap -sU`
+  against the repeater ended it. **When a device's own stack sends the refusal,
+  ask the device what it bound.**
+- **Silence is the only refusal IPSC has.** ICMP port unreachable is provably
+  ignored, and no capture contains a rejection.
+- **Nothing says goodbye.** A repeater that is unplugged simply stops, so
+  silence past a timeout is the only evidence of departure.
+- **An IPSC port on a public address will be found.** One repeater turned up
+  unannounced during a bench test.
+
+### The method, stated plainly because it was proved four times in one day
+
+**Every byte read by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, the
+interleave geometry — each was settled by changing exactly one thing and
+diffing, or by running candidate readings against thousands of real frames and
+taking the one that scored 99% where the others scored zero.
+
+Two captures differing in one known way beat ten differing in unknown ways. When
+a reading is plausible and cheap to test, test it.
+
+---
+
+## 8e. Where the next session starts, as of late on 2026-09-01
+
+Read §0, then §6b and §6c, then this.
+
+**IPSC went from an empty fixture directory to a Motorola repeater on the
+production server with a proved-lossless path to the rest of the network, in one
+day.** Nineteen patches, 0.1.11 to 0.1.29. Nothing was derived from another
+implementation: DMRlink and HBlink3 remain unread, and one that surfaced during
+research was deliberately not opened.
+
+### The audio path, which is finished as a matter of discovery
+
+`internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+72-bit protected frames a DMR burst carries, and builds every part of a burst:
+
+| Piece | Evidence |
+|---|---|
+| Vocoder FEC | 884 real bursts round-tripped bit-exact |
+| The 19-byte IPSC core | three 50-bit slots, spare bit trailing |
+| The 48-bit middle | 740 captured middles rebuilt from a position and a colour code |
+| EMB | one generator of 256 fits every captured value |
+| Superframe order | 73 of 74 superframes agree |
+| BPTC(196,96) | 252 of 252 rows valid, 28 bursts round-tripped bit-exact |
+
+`internal/ipscbridge` turns a Motorola voice frame into a Homebrew burst: 54
+produced from real traffic, one sync in six, every vocoder payload unchanged.
+
+**The single strongest piece of evidence in the project**: a Motorola XPR8300
+over IPSC and an MMDVM hotspot over Homebrew, captured on different days on
+different equipment, produce the identical 49-bit vocoder frame for silence —
+`0x1F003533F19C1`, 236 times in the Homebrew capture. That one observation
+confirms the packing, the FEC and the claim that both protocols carry the same
+audio.
+
+### Open, in order
+
+1. **Wire the converter to routing.** Hand bursts to peers so a Motorola
+   repeater is audible on a hotspot. **No discovery left, only wiring.**
+2. **Three small unknowns, each cheap.**
+   - Which slot bit value means timeslot 1. **One sentence from the operator**;
+     it was never written down at the radio. `SlotBitIsTimeslot2` is
+     configuration until then.
+   - The destination field. Every transmission ever captured reads 455, so
+     nothing has *moved* bytes 9–11. One key-up on any other talkgroup.
+   - The Link Control checksum, needed for voice headers and terminators.
+     A fitting exercise against the 28 data bursts already in `testdata/hbp/`;
+     no equipment.
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater shows in `/healthz` and the journal but not the
+   dashboard.
+4. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice. Build 1 first, then use it: send a burst
+   known to be well-formed and watch whether the repeater keys.
+5. **Motorola → Motorola**, which needs no conversion at all and may be the
+   simplest complete product. Needs KD9EJA's repeater on `allowed_peers`.
+
+### Settled, do not reopen
+
+Everything in §8b, §8c and §8d, plus:
+
+- **The FEC is a wrapper, not a codec** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).
+  Parameter bits are copied and never inspected; reading one needs a new ADR.
+- **`0xf1` is not a peer list.** Tested: no peer ID in either byte order, no
+  address, no port.
+- **Byte 5 of a voice frame is a call counter, not a timeslot.** The timeslot is
+  bit `0x20` of byte 17, and bit `0x40` marks the last frame.
+
+### The method, now proved seven times in two days
+
+**Every reading taken by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, a 49-bit
+stride that is 50, the vocoder interleave, the EMB generator, the BPTC stride.
+Each settled either by changing exactly one thing and diffing, or by running
+candidate readings against thousands of real frames and taking the one that
+scores near a hundred where the others score zero.
+
+**A wrong hypothesis scores zero. That asymmetry is the evidence**, and it is
+worth more than a citation.
+
+### Two traps that cost real time
+
+- **A count of failures hides new ones.** The container always fails
+  `TestDocumentedPathsExist` for an unrelated reason, so a new failure kept the
+  total at eight and was invisible. §7 already said list them by name; the rule
+  was broken the same day it was written down. **Never count.**
+- **The obvious deduplication is wrong.** The Homebrew captures hold every burst
+  twice, once arriving and once relayed. Skipping *equal* neighbours collapses
+  the two genuine continuation positions into one and yields a plausible
+  sequence silently missing a burst. Take every second burst.
+
+---
+
+## 8f. Where the next session starts, as of 2026-09-02
+
+Read §0, then §6b and §6c, then this. It supersedes §8e's ordering; everything
+§8e settled remains settled.
+
+**A Motorola repeater is audible on the network.** The converter is wired to
+routing: `ipsclink` converts each voice frame and hands the burst to
+`peers.Listener.DeliverFromIPSC`. Item 1 of §8e is done.
+
+### Two defects, both found the same way
+
+Neither came from the test suite, and neither was visible by reading.
+
+**The converter had one set of counters for two timeslots.** A repeater carries
+two transmissions at once. Interleaved, they reset each other every frame: 66
+real frames produced 54 bursts on one slot and **18** across two, where 108 are
+due. Found by a differential — the same frames with one bit flipped — because
+asserting it from the code would have been another reading taken by eye.
+
+**`routing.Core` was reached by two goroutines and had no lock**
+([ADR-0038](docs/adr/ADR-0038-routing-core-is-shared.md)). **This shipped, on a
+path an operator can configure.** An upstream link calls `DeliverFromUpstream`
+from the link's own read goroutine while `Core` documented itself as owned by
+the DMR socket's. It never fired because no upstream has met a real far end. The
+race detector reported it on the first run of the first IPSC test, which is the
+third real defect it has caught and the reason it is a blocking gate.
+
+**The lesson worth keeping:** ADR-0002 claimed races were "structurally
+impossible rather than merely tested against". Nothing enforced it. **A comment
+claiming a concurrency invariant reads like a fact and is in truth a request.**
+Where an invariant matters, enforce it in the type.
+
+### Open, in order
+
+1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
+   evidence; §8a is emphatic that this project's defects are found by using the
+   running system.
+2. **Capture a master sending voice to a repeater.** This is the one thing
+   blocking audio *into* IPSC, and it is now possible for the first time: two
+   repeaters and a capture NIC are available. Put an XPR8300 or a a commercial DMR server in
+   the master role with the other repeater as its peer, key the peer, and record
+   what the master sends back. Until that exists, QSP carries IPSC one way and
+   must keep doing so — building the reverse from the DMR side would be
+   inventing IPSC behaviour, which is what ADR-0029 forbids.
+
+   It also opens Motorola to Motorola, which §8e called possibly the simplest
+   complete product.
 
 3. **The console page.** The listener holds peers and calls and nothing reads
    them, so a repeater is visible in `/healthz` and the journal but not on the

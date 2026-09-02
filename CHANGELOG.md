@@ -4,6 +4,29 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Notes
+- **A hotspot user heard a Motorola repeater**: KB9TYC heard KD9EJA's SLR5700
+  across the bridge on 2026-09-02. The first confirmation that this path
+  produces audio a person hears, rather than bursts that verify against
+  fixtures.
+- **A second repeater model registered unassisted.** Every byte in
+  `internal/protocol/ipsc` was measured from one XPR8300 on one firmware, and
+  [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) is explicit that this was
+  all the evidence there was. An SLR5700 needed no change.
+- **Terminators fixed the dropped over, confirmed on air.** Before 0188, key-ups
+  seconds apart produced one set of relayed frames — destinations stayed
+  reserved until a timeout and the rest were refused. After it, three overs
+  under a second apart all relayed, with no `call ended without a terminator`
+  and no abandoned-transmission releases.
+- **IPSC remains one way, and that is the design.** Nothing has ever captured a
+  master sending voice to a repeater, so QSP does not know what such a frame
+  contains and will not invent one. A Motorola operator is heard by the network
+  and hears nobody until that capture exists — the next milestone, and now
+  possible with two repeaters available.
+- **A remote IPSC peer cannot follow a changing WAN address.** Motorola CPS
+  takes a literal Master IP with no name to point at, so a dynamic address means
+  reprogramming every repeater by hand, and the failure is silent.
+
 ### Added
 - **A bridged transmission now opens and closes.** `ipscbridge.Converter` emits
   the voice LC header before the first burst and the terminator after the last.
