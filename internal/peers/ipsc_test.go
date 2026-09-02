@@ -369,3 +369,38 @@ func TestAnUnsharedRadioIDIsNotReported(t *testing.T) {
 		t.Errorf("a distinct radio ID was reported as a collision:\n%s", buf.String())
 	}
 }
+
+// TestTheIPSCSinkIsNotSilentlyUnwired is the guard for a defect that shipped.
+//
+// `SetIPSCSink` was written, exported, tested here — and never called from
+// cmd/qsp, because a text edit anchored on the wrong indentation and failed
+// silently. **An exported method nobody invokes compiles, passes vet, passes
+// staticcheck and passes every unit test**, and the only symptom was no audio
+// reaching a Motorola repeater, which is indistinguishable from the inference
+// in ADR-0041 being wrong.
+//
+// §8a names this shape: what is declared and read by nothing. A unit test here
+// cannot see cmd/qsp, so this asserts the half it can — that a listener with no
+// sink is inert rather than panicking, and that a listener with one is reached.
+// The other half is a startup line that now always prints one of two states.
+func TestTheIPSCSinkIsNotSilentlyUnwired(t *testing.T) {
+	l, _ := startWithIPSC(t)
+	register(t, l.Address(), testID, "K9MLS")
+
+	frame := hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE07,
+	}
+
+	// Unwired: inert, not a panic, and nothing reaches the Motorola side.
+	l.DeliverFromIPSC(motorola, frame)
+
+	// Wired: reached.
+	var calls int
+	l.SetIPSCSink(func(origin uint32, f hbp.Data) { calls++ })
+	l.DeliverFromIPSC(motorola, frame)
+	if calls == 0 {
+		t.Fatal("a sink set through SetIPSCSink was never called, so wiring it has no effect")
+	}
+}

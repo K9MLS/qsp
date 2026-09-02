@@ -425,6 +425,24 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		}
 		a.ipsc = il
 	}
+
+	// **The two listeners are each other's destination, so this is wired after
+	// both exist.** It says which of the three states it is in every time,
+	// because the first version of this call was written and never reached:
+	// an exported method nobody invokes compiles, passes vet, passes
+	// staticcheck and passes every test, and the only symptom is silence on
+	// air. §8a calls this "declared and read by nothing" and it has now
+	// happened nine times.
+	switch {
+	case a.dmr != nil && a.ipsc != nil:
+		a.dmr.SetIPSCSink(a.ipsc.SendVoice)
+		log.Info("relaying network audio to IPSC repeaters",
+			slog.String("caveat", "built from inference; no capture of a master sending voice exists (ADR-0041)"))
+	case a.ipsc != nil:
+		log.Warn("IPSC repeaters will not hear the network: no DMR listener to relay from",
+			slog.String("remedy", "enable dmr"))
+	}
+
 	registry.MustRegister(ipsclink.HealthCheck{Listener: a.ipsc, DisabledReason: ipscDisabledReason})
 
 	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})

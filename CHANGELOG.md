@@ -4,6 +4,30 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **The IPSC transmit path was never wired, and 0192 shipped inert.**
+  `SetIPSCSink` was written, exported and unit-tested, and `cmd/qsp` never
+  called it: the edit that should have added the call anchored on the wrong
+  indentation and failed silently.
+
+  **It built, passed `go vet`, passed `staticcheck` and passed every test**, and
+  the only symptom was no audio reaching a Motorola repeater — which is
+  indistinguishable from the inference in
+  [ADR-0041](docs/adr/ADR-0041-ipsc-transmit-from-inference.md) being wrong. Had
+  it not been caught by the absence of a startup log line, the next hours would
+  have gone on debugging a protocol hypothesis while the code that implements it
+  was unreachable.
+
+  §8a names this shape — **what is declared and read by nothing** — and this is
+  the ninth time. Two guards now: the startup always logs one of two states, so
+  the absence of both is visible; and a test asserts that a sink set through
+  `SetIPSCSink` is actually reached.
+
+### Notes
+- **Every capture in hand was checked for the missing direction.** Seven files,
+  970 voice frames, all addressed to the master. No capture of a master sending
+  voice exists, which is now verified exhaustively rather than assumed.
+
 ### Added
 - **QSP sends voice to Motorola repeaters**
   ([ADR-0041](docs/adr/ADR-0041-ipsc-transmit-from-inference.md)). A Motorola
