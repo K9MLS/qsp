@@ -9,11 +9,13 @@
 // radio reproduces is the audio the originating radio encoded. See
 // docs/adr/ADR-0037.
 //
-// It does not yet produce the voice header and terminator bursts that open and
-// close a transmission on air. Those need a Link Control checksum that no
-// capture has yet pinned down; internal/dmrfec can build the block once the
-// checksum is known. Until then a receiving radio hears audio but learns who is
-// talking only from late entry.
+// It produces the voice header that opens a transmission and the terminator
+// that closes it. **Both are required rather than decorative.** Clause 5.1.2.2
+// of ETSI TS 102 361-1 says a voice transmission shall be preceded by a voice
+// LC header, so a stream of voice bursts with nothing in front of them is not a
+// valid transmission; and clause 5.1.2.3 makes a data-sync burst the thing that
+// ends one, without which a receiver waits out a timeout and the next
+// transmission is refused while the destination is still held.
 //
 // It does not route. Handing bursts to peers is the caller's business.
 package ipscbridge
@@ -70,6 +72,13 @@ type slotState struct {
 	// distinguishes "no transmission yet" from "a transmission whose stream
 	// ID happens to be zero".
 	seen bool
+	// sentHeader reports whether this transmission's voice LC header has been
+	// emitted. It is sent immediately before the first voice burst rather than
+	// on the first frame received, because ETSI TS 102 361-1 clause 5.1.2.2
+	// requires the header to *immediately precede* burst A — and the converter
+	// waits for a superframe boundary before emitting anything, so the first
+	// burst it produces is always an A.
+	sentHeader bool
 }
 
 // Converter turns one repeater's voice frames into Homebrew bursts.
@@ -93,25 +102,35 @@ func New(cfg Config) (*Converter, error) {
 	return &Converter{cfg: cfg}, nil
 }
 
-// Convert turns one IPSC voice message into a Homebrew data frame.
+// Convert turns one IPSC voice message into the Homebrew frames it produces.
 //
-// ok is false for messages that are not voice, and for voice frames arriving
-// before the first synchronisation frame of a superframe — at that point the
-// position in the superframe is unknown, and a burst built at the wrong
-// position carries embedded signalling a radio will reject. Waiting costs at
-// most six frames, 360 ms, at the start of a transmission joined late.
-func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, bool) {
+// It returns **zero, one, two or three frames**, because a burst of audio is
+// not always the whole of what a moment in a transmission requires:
+//
+//   - nothing, for a message that is not voice, or a voice frame arriving
+//     before the first synchronisation frame — at that point the position in
+//     the superframe is unknown, and a burst built at the wrong position
+//     carries embedded signalling a radio rejects. Waiting costs at most six
+//     frames, 360 ms, at the start of a transmission joined late.
+//   - a voice LC header followed by the burst, at the start of a transmission.
+//   - a burst on its own, in the middle of one.
+//   - a burst followed by a terminator, at the end.
+//
+// The header goes immediately before the first burst rather than on the first
+// frame received. Clause 5.1.2.2 requires it to immediately precede burst A,
+// and since this converter emits nothing until a superframe boundary, the first
+// burst it produces is always an A.
+func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data {
 	v, isVoice := m.AsVoice()
 	if !isVoice {
-		return hbp.Data{}, false
+		return nil
 	}
-	class, vocoder, fragment, ok := payloadOf(m)
-	if !ok {
-		return hbp.Data{}, false
-	}
+	// **A frame whose payload cannot be read may still be the end of the
+	// transmission**, and the last frame of one is exactly where an
+	// unreadable payload turns up. Reading the flags before the payload is
+	// what lets the terminator survive it.
+	class, vocoder, fragment, havePayload := payloadOf(m)
 
-	// The timeslot is resolved before anything is remembered, because which
-	// state this frame belongs to is decided by the slot and nothing else.
 	slot := c.Timeslot(m)
 	st := &c.slots[slotIndex(slot)]
 
@@ -123,6 +142,22 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 		st.sequence = 0
 		st.started = false
 		st.position = 0
+		st.sentHeader = false
+	}
+
+	if !havePayload {
+		if v.IsLastFrame() && st.sentHeader {
+			stream := hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF))
+			var out []hbp.Data
+			if term, err := c.dataFrame(st, v, repeater, slot, stream,
+				dmrfec.DataTypeTerminatorWithLC); err == nil {
+				out = append(out, term)
+			}
+			st.started = false
+			st.seen = false
+			return out
+		}
+		return nil
 	}
 
 	if class == ipsc.PayloadSync {
@@ -137,25 +172,56 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 			st.started = false
 		}
 	}
+	stream := hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF))
+	out := make([]hbp.Data, 0, 2)
+
+	// **A transmission that was opened must be closed, even if this frame's
+	// audio cannot be placed.** The last frame of a transmission is exactly
+	// the one most likely to fall outside a superframe boundary, and treating
+	// an unplaceable burst as a reason to skip the terminator leaves the
+	// destination held until a timeout — which refuses the next transmission.
+	// Losing 60 ms of audio is the smaller harm; losing the terminator costs
+	// the whole of the next over.
 	if !st.started {
-		return hbp.Data{}, false
+		if v.IsLastFrame() && st.sentHeader {
+			if term, err := c.dataFrame(st, v, repeater, slot, stream,
+				dmrfec.DataTypeTerminatorWithLC); err == nil {
+				out = append(out, term)
+			}
+			st.seen = false
+			return out
+		}
+		return nil
 	}
 
 	middle, err := dmrfec.MiddleForPosition(st.position, c.cfg.ColourCode, fragment)
-	if err != nil {
-		return hbp.Data{}, false
-	}
 	burst, ok := dmrfec.BurstFromIPSC(vocoder, middle)
-	if !ok {
-		return hbp.Data{}, false
+	if err != nil || !ok {
+		if v.IsLastFrame() && st.sentHeader {
+			if term, terr := c.dataFrame(st, v, repeater, slot, stream,
+				dmrfec.DataTypeTerminatorWithLC); terr == nil {
+				out = append(out, term)
+			}
+			st.started = false
+			st.seen = false
+		}
+		return out
+	}
+
+	if !st.sentHeader {
+		hdr, err := c.dataFrame(st, v, repeater, slot, stream, dmrfec.DataTypeVoiceLCHeader)
+		if err != nil {
+			return nil
+		}
+		st.sentHeader = true
+		out = append(out, hdr)
 	}
 
 	frameType := hbp.FrameTypeVoice
 	if st.position == 0 {
 		frameType = hbp.FrameTypeVoiceSync
 	}
-
-	out := hbp.Data{
+	voice := hbp.Data{
 		Sequence:   st.sequence,
 		SourceID:   v.SourceID,
 		TargetID:   v.Destination,
@@ -167,11 +233,56 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 		// superframe for voice frames, which is what a receiver uses to place
 		// the burst. It is the same count this converter already keeps.
 		DataType: uint8(st.position),
-		StreamID: hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF)),
+		StreamID: stream,
+	}
+	copy(voice.Payload[:], burst)
+	st.sequence++
+	out = append(out, voice)
+
+	// **The terminator goes after the audio, not instead of it.** The frame
+	// that carries the terminator flag still carries a vocoder payload, and
+	// dropping it would clip the last 60 ms of every transmission.
+	if v.IsLastFrame() {
+		term, err := c.dataFrame(st, v, repeater, slot, stream, dmrfec.DataTypeTerminatorWithLC)
+		if err == nil {
+			out = append(out, term)
+		}
+		// Whatever happens next on this slot is a new transmission.
+		st.started = false
+		st.seen = false
+	}
+	return out
+}
+
+// dataFrame builds a voice header or terminator for the transmission in
+// progress.
+func (c *Converter) dataFrame(st *slotState, v ipsc.Voice, repeater hbp.RepeaterID,
+	slot hbp.Timeslot, stream hbp.StreamID, dataType uint8) (hbp.Data, error) {
+
+	lc := dmrfec.LinkControlFor(v.Destination, v.SourceID)
+	burst, err := dmrfec.BuildDataBurst(c.cfg.ColourCode, dataType, lc)
+	if err != nil {
+		return hbp.Data{}, err
+	}
+	out := hbp.Data{
+		Sequence:   st.sequence,
+		SourceID:   v.SourceID,
+		TargetID:   v.Destination,
+		RepeaterID: repeater,
+		Timeslot:   slot,
+		CallType:   hbp.CallGroup,
+		// A data burst is announced by the data synchronisation frame type,
+		// and which data burst it is comes from the low nibble — the same
+		// four-bit data type the Slot Type inside the burst carries. Two
+		// encodings of one fact, which is the arrangement the Homebrew
+		// captures already show.
+		FrameType: hbp.FrameTypeSync,
+		DataType:  dataType,
+		StreamID:  stream,
 	}
 	copy(out.Payload[:], burst)
 	st.sequence++
-	return out, true
+	return out, nil
 }
 
 // Timeslot reports which DMR timeslot a message belongs to, under this

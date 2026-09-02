@@ -313,8 +313,11 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	// state, but delivery happens outside it: routing reaches into another
 	// listener and writes to another socket, and holding this listener's lock
 	// across that would make the two mutually blocking.
-	if burst, ok := l.record(msg, from, now); ok && l.cfg.Deliver != nil {
-		l.cfg.Deliver(hbp.RepeaterID(msg.SenderID), burst)
+	frames := l.record(msg, from, now)
+	if l.cfg.Deliver != nil {
+		for _, f := range frames {
+			l.cfg.Deliver(hbp.RepeaterID(msg.SenderID), f)
+		}
 	}
 
 	// Reply to the address the datagram came from, never to the port it was
@@ -328,12 +331,11 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	}
 }
 
-func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) (hbp.Data, bool) {
+func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []hbp.Data {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	var burst hbp.Data
-	var converted bool
+	var frames []hbp.Data
 
 	p, known := l.peers[msg.SenderID]
 	if !known {
@@ -357,10 +359,10 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) (h
 		p.Keepalives++
 	case ipsc.KindVoice:
 		p.VoiceFrames++
-		burst, converted = l.recordVoice(p, msg, now)
+		frames = l.recordVoice(p, msg, now)
 	}
 	l.publishLocked()
-	return burst, converted
+	return frames
 }
 
 // converterFor returns this peer's converter, creating it on first voice.
@@ -379,10 +381,10 @@ func (l *Listener) converterFor(id uint32) *ipscbridge.Converter {
 	return c
 }
 
-func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) (hbp.Data, bool) {
+func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.Data {
 	v, ok := msg.AsVoice()
 	if !ok {
-		return hbp.Data{}, false
+		return nil
 	}
 
 	conv := l.converterFor(p.RadioID)
@@ -416,7 +418,7 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) (hbp.Da
 	}
 
 	if l.cfg.Deliver == nil || conv == nil {
-		return hbp.Data{}, false
+		return nil
 	}
 	return conv.Convert(msg, hbp.RepeaterID(p.RadioID))
 }

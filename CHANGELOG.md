@@ -5,6 +5,43 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A bridged transmission now opens and closes.** `ipscbridge.Converter` emits
+  the voice LC header before the first burst and the terminator after the last.
+  ETSI TS 102 361-1 clause 5.1.2.2 says a voice transmission *shall* be preceded
+  by a voice LC header, so what QSP was emitting — burst A with nothing in front
+  of it — was not a valid transmission at all.
+
+  Against the real capture: **3 keyups, 3 headers, 54 voice bursts, 3
+  terminators.** The keyup count is read from the protocol's own first-frame
+  flag rather than written into the test, so a different fixture does not break
+  it.
+
+- **`Convert` returns a slice**, because a moment in a transmission is not
+  always one burst: nothing, a header and a burst, a burst alone, or a burst and
+  a terminator.
+
+### Fixed
+- **The terminator survives a frame whose payload cannot be read**, which is the
+  case that matters. Two earlier versions of this patch produced **zero**
+  terminators on real traffic: the frame carrying the last-frame flag has no
+  readable vocoder payload, and both attempts returned early before considering
+  it. The flags are now read before the payload.
+
+  A transmission that was opened is always closed. Losing 60 ms of audio at the
+  end of an over is the smaller harm; losing the terminator costs the whole of
+  the next one, because the destination stays reserved until a timeout and the
+  next transmission is refused — observed on air on 2026-09-02, where a second
+  key-up four seconds after the first produced no relayed frames at all.
+
+### Notes
+- **The capture holds three transmissions, not one.** Three frames carry the
+  first-frame flag, three the last, and there are three distinct stream IDs.
+  Two test assumptions written against "one transmission" were wrong, and the
+  code was right; the tests now count keyups from the traffic.
+- Deploying this is the first time a hotspot will have been offered a complete,
+  well-formed DMR transmission from a Motorola repeater.
+
+### Added
 - **The Link Control checksum, which was the last unknown in burst
   construction.** `internal/dmrfec` now builds a complete voice header or
   terminator from scratch: Reed-Solomon (12,9) over the nine Link Control

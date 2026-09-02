@@ -13,6 +13,18 @@ import (
 
 const capture = "../../testdata/ipsc/ipsc-probe-voice.pcap"
 
+// voiceOnly keeps the audio bursts and drops the header and terminator, for
+// tests that measure the vocoder path rather than the framing around it.
+func voiceOnly(frames []hbp.Data) []hbp.Data {
+	var out []hbp.Data
+	for _, f := range frames {
+		if f.FrameType != hbp.FrameTypeSync {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 func voiceMessages(tb testing.TB) []ipsc.Message {
 	tb.Helper()
 	raw, err := os.ReadFile(capture)
@@ -66,11 +78,12 @@ func TestRealMotorolaAudioBecomesValidHomebrewBursts(t *testing.T) {
 	}
 	var produced, skipped int
 	for _, m := range voiceMessages(t) {
-		out, ok := c.Convert(m, hbp.RepeaterID(3132910))
-		if !ok {
+		frames := voiceOnly(c.Convert(m, hbp.RepeaterID(3132910)))
+		if len(frames) == 0 {
 			skipped++
 			continue
 		}
+		out := frames[0]
 		produced++
 
 		// The audio must survive: take the burst apart again and compare with
@@ -117,10 +130,11 @@ func TestOneSyncBurstInSix(t *testing.T) {
 	c, _ := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
 	var total, sync int
 	for _, m := range voiceMessages(t) {
-		out, ok := c.Convert(m, hbp.RepeaterID(3132910))
-		if !ok {
+		frames := voiceOnly(c.Convert(m, hbp.RepeaterID(3132910)))
+		if len(frames) == 0 {
 			continue
 		}
+		out := frames[0]
 		total++
 		if middle, _ := dmrfec.Middle(out.Payload[:]); middle == dmrfec.VoiceSyncBS {
 			sync++
@@ -147,7 +161,7 @@ func TestNothingIsEmittedBeforeASuperframeBoundary(t *testing.T) {
 	// Start the converter partway through a superframe.
 	var firstOK int
 	for i, m := range msgs[2:] {
-		if _, ok := c.Convert(m, hbp.RepeaterID(3132910)); ok {
+		if len(c.Convert(m, hbp.RepeaterID(3132910))) > 0 {
 			firstOK = i
 			break
 		}
@@ -182,9 +196,7 @@ func burstsFrom(t *testing.T, msgs []ipsc.Message) []hbp.Data {
 	}
 	var out []hbp.Data
 	for _, m := range msgs {
-		if b, ok := c.Convert(m, hbp.RepeaterID(3132910)); ok {
-			out = append(out, b)
-		}
+		out = append(out, voiceOnly(c.Convert(m, hbp.RepeaterID(3132910)))...)
 	}
 	return out
 }
@@ -253,7 +265,7 @@ func TestSlotPolarityIsConfiguration(t *testing.T) {
 		}
 		out := map[hbp.Timeslot]int{}
 		for _, m := range msgs {
-			if b, ok := c.Convert(m, hbp.RepeaterID(3132910)); ok {
+			for _, b := range voiceOnly(c.Convert(m, hbp.RepeaterID(3132910))) {
 				out[b.Timeslot]++
 			}
 		}
@@ -273,5 +285,199 @@ func TestSlotPolarityIsConfiguration(t *testing.T) {
 func TestAnOutOfRangeColourCodeIsRefused(t *testing.T) {
 	if _, err := ipscbridge.New(ipscbridge.Config{ColourCode: 16}); err == nil {
 		t.Error("colour code 16 was accepted; DMR allows 0 to 15")
+	}
+}
+
+// TestATransmissionOpensWithAVoiceHeader is the requirement clause 5.1.2.2
+// makes mandatory.
+//
+// A voice transmission *shall* be preceded by a voice LC header. Burst A with
+// nothing in front of it is not a valid transmission, which is the best
+// explanation this project has for why a hotspot receiving well-formed audio
+// never un-muted.
+func TestATransmissionOpensWithAVoiceHeader(t *testing.T) {
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	var first []hbp.Data
+	for _, m := range voiceMessages(t) {
+		if out := c.Convert(m, hbp.RepeaterID(3132910)); len(out) > 0 {
+			first = out
+			break
+		}
+	}
+	if len(first) < 2 {
+		t.Fatalf("the first emission produced %d frames; a header and a burst are due", len(first))
+	}
+
+	hdr := first[0]
+	if hdr.FrameType != hbp.FrameTypeSync {
+		t.Errorf("the first frame is frame type %v, want the data sync type", hdr.FrameType)
+	}
+	if hdr.DataType != dmrfec.DataTypeVoiceLCHeader {
+		t.Errorf("the first frame has data type %#x, want a voice LC header", hdr.DataType)
+	}
+
+	// The header must be immediately followed by burst A, not by any other
+	// position in the superframe: the standard says "immediately preceded".
+	if first[1].FrameType != hbp.FrameTypeVoiceSync {
+		t.Errorf("the burst after the header is %v, want the superframe's burst A",
+			first[1].FrameType)
+	}
+
+	// And the header's Link Control must name the same call the audio does.
+	cc, dt, ok := dmrfec.SlotTypeOf(hdr.Payload[:])
+	if !ok || cc != 11 || dt != dmrfec.DataTypeVoiceLCHeader {
+		t.Fatalf("the header's slot type reads cc=%d dt=%#x", cc, dt)
+	}
+	payload, _, ok := dmrfec.DecodeBPTC(hdr.Payload[:])
+	if !ok {
+		t.Fatal("the header cannot be decoded")
+	}
+	lc, ok := dmrfec.CheckLinkControl(payload, dmrfec.DataTypeVoiceLCHeader)
+	if !ok {
+		t.Fatal("the header's Link Control checksum does not verify")
+	}
+	if got := uint32(lc[6])<<16 | uint32(lc[7])<<8 | uint32(lc[8]); got != hdr.SourceID {
+		t.Errorf("the Link Control names source %d, the frame says %d", got, hdr.SourceID)
+	}
+	if got := uint32(lc[3])<<16 | uint32(lc[4])<<8 | uint32(lc[5]); got != hdr.TargetID {
+		t.Errorf("the Link Control names destination %d, the frame says %d", got, hdr.TargetID)
+	}
+}
+
+// TestOneHeaderAndOneTerminatorPerTransmission keeps the framing where it
+// belongs.
+//
+// A header repeated mid-transmission is a burst of signalling in place of
+// audio, which is exactly the trade "audio is king" forbids. The capture holds
+// three transmissions — three frames carry the first-frame flag, three carry
+// the last — so three of each is the answer, and it is the count of *keyups*
+// rather than a constant.
+func TestOneHeaderAndOneTerminatorPerTransmission(t *testing.T) {
+	c, _ := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	var headers, terminators, voice int
+	for _, m := range voiceMessages(t) {
+		for _, f := range c.Convert(m, hbp.RepeaterID(3132910)) {
+			switch {
+			case f.FrameType != hbp.FrameTypeSync:
+				voice++
+			case f.DataType == dmrfec.DataTypeVoiceLCHeader:
+				headers++
+			case f.DataType == dmrfec.DataTypeTerminatorWithLC:
+				terminators++
+			}
+		}
+	}
+	// Count the transmissions in the capture from the protocol's own flags,
+	// rather than asserting a number that a different fixture would break.
+	keyups := 0
+	for _, m := range voiceMessages(t) {
+		if v, ok := m.AsVoice(); ok && v.IsFirstFrame() {
+			keyups++
+		}
+	}
+
+	t.Logf("%d keyups: %d headers, %d voice bursts, %d terminators",
+		keyups, headers, voice, terminators)
+	if headers != keyups {
+		t.Errorf("%d headers for %d transmissions; each opens exactly once", headers, keyups)
+	}
+	if terminators != keyups {
+		t.Errorf("%d terminators for %d transmissions; each closes exactly once",
+			terminators, keyups)
+	}
+	if voice == 0 {
+		t.Error("no audio was produced")
+	}
+}
+
+// TestATransmissionClosesWithATerminator checks the close of a transmission.
+//
+// Without a terminator a receiver waits out a timeout and QSP holds the
+// destination reserved, which refuses the next transmission: seen on air on
+// 2026-09-02, where a second key-up 4 seconds after the first produced no
+// relayed frames at all.
+//
+// **In this capture the terminator arrives on its own**, because the frame
+// carrying the last-frame flag has no readable vocoder payload — which is
+// precisely the case that made an earlier attempt emit no terminators at all.
+// The transmission's audio must therefore be checked to have come before it,
+// rather than assuming the two share one emission.
+func TestATransmissionClosesWithATerminator(t *testing.T) {
+	c, _ := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+
+	var all []hbp.Data
+	for _, m := range voiceMessages(t) {
+		all = append(all, c.Convert(m, hbp.RepeaterID(3132910))...)
+	}
+	if len(all) < 3 {
+		t.Fatalf("only %d frames produced", len(all))
+	}
+
+	term := all[len(all)-1]
+	if term.FrameType != hbp.FrameTypeSync || term.DataType != dmrfec.DataTypeTerminatorWithLC {
+		t.Fatalf("the last frame is type %v data %#x, want a terminator",
+			term.FrameType, term.DataType)
+	}
+	if before := all[len(all)-2]; before.FrameType == hbp.FrameTypeSync {
+		t.Errorf("the frame before the terminator is signalling, not audio; " +
+			"the last 60 ms of the transmission was dropped")
+	}
+
+	payload, _, ok := dmrfec.DecodeBPTC(term.Payload[:])
+	if !ok {
+		t.Fatal("the terminator cannot be decoded")
+	}
+	if _, ok := dmrfec.CheckLinkControl(payload, dmrfec.DataTypeTerminatorWithLC); !ok {
+		t.Error("the terminator's Link Control checksum does not verify")
+	}
+	if _, ok := dmrfec.CheckLinkControl(payload, dmrfec.DataTypeVoiceLCHeader); ok {
+		t.Error("the terminator also verifies as a header, so the two are indistinguishable")
+	}
+	if term.StreamID != all[len(all)-2].StreamID {
+		t.Error("the terminator carries a different stream from the audio it closes")
+	}
+}
+
+// TestASecondTransmissionGetsItsOwnHeader is what the dropped key-up needs.
+//
+// Two transmissions on one slot must each open and close, or the second is
+// audio with no beginning.
+func TestASecondTransmissionGetsItsOwnHeader(t *testing.T) {
+	c, _ := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	msgs := voiceMessages(t)
+
+	count := func(ms []ipsc.Message) (headers, terms int) {
+		for _, m := range ms {
+			for _, f := range c.Convert(m, hbp.RepeaterID(3132910)) {
+				if f.FrameType != hbp.FrameTypeSync {
+					continue
+				}
+				if f.DataType == dmrfec.DataTypeVoiceLCHeader {
+					headers++
+				} else if f.DataType == dmrfec.DataTypeTerminatorWithLC {
+					terms++
+				}
+			}
+		}
+		return
+	}
+
+	h1, t1 := count(msgs)
+	// The same traffic offered again is new transmissions as far as the
+	// converter is concerned, because the previous ones ended.
+	h2, t2 := count(msgs)
+
+	t.Logf("first pass %d headers %d terminators; second pass %d and %d", h1, t1, h2, t2)
+	if h1 == 0 || t1 == 0 {
+		t.Fatalf("the first pass produced %d headers and %d terminators", h1, t1)
+	}
+	if h2 != h1 || t2 != t1 {
+		t.Errorf("the second pass produced %d headers and %d terminators, want %d and %d; "+
+			"a converter that has closed a transmission must open the next one",
+			h2, t2, h1, t1)
 	}
 }
