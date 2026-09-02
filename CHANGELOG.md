@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **`testdata/ipsc/ipsc-two-peers.pcap`** — three repeaters registered to QSP
+  with two transmitting at once, and the richest IPSC capture in the project.
+
+- **Voice is relayed through the master, not meshed between peers.** Two peers
+  transmitted simultaneously and all 326 voice frames were addressed to the
+  master; none went peer to peer. This was the fork in the road: had IPSC meshed,
+  the format QSP must send would be the format it already receives, fully
+  decoded, and the reverse path would need no further discovery. It does not.
+
+- **A Motorola transmission is three headers, a superframe cycle, and a
+  terminator**: `54 54 54`, then `52 57 57 57 66 57` repeating, then `54` with
+  the last-frame bit. Six is a DMR superframe and the payload length varies with
+  position in it, so these are one voice frame carrying different embedded
+  signalling rather than four unrelated types. **The header is sent three
+  times.** Both repeater models produce the identical pattern.
+
+- **The capture reader accepts Linux cooked v2 as well as Ethernet.** A capture
+  taken with `tcpdump -i any`, which is what a server with several interfaces
+  needs, is link type 276; the reader refused anything but Ethernet and would
+  have rejected every capture taken on the production VM.
+
+### Notes
+- **What a master sends to a peer is still uncaptured.** QSP sent ten packets in
+  the whole capture, every one a keepalive reply. That direction is what stands
+  between two Motorola operators hearing each other, and it needs one capture
+  with a repeater in the master role — now confirmed necessary rather than
+  assumed.
+- The capture does not record **who keyed and when**, which it should have.
+
 ### Fixed
 - **The IPSC health status names the peer being refused, and can recover.**
   It reported a lifetime count of datagrams turned away by the allow list and

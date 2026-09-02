@@ -14,6 +14,7 @@ own probe and sent voice through it.**
 | [`ipsc-phase2-established.pcap`](ipsc-phase2-established.md) | Twenty-four minutes of a settled link doing nothing |
 | [`ipsc-slot-tg.pcap`](ipsc-slot-tg.md) | **Fifteen transmissions across two channels on different timeslots.** This is what found the slot bit |
 | [`ipsc-probe-voice.pcap`](ipsc-probe-voice.md) | **A repeater registered with QSP's probe and sent voice.** Three transmissions, 66 frames, and both registration states in one file |
+| [`ipsc-two-peers.pcap`](ipsc-two-peers.md) | **Three repeaters registered, two transmitting at once.** Voice is relayed through the master, not meshed; and a transmission is three headers, a 52/57/57/57/66/57 superframe cycle, and a terminator |
 
 Together they establish seven message types, an envelope of one type byte and a
 big-endian sender ID, a ten-second retry when unregistered and a fifteen-second

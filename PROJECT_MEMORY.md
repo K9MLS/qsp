@@ -1234,7 +1234,18 @@ Where an invariant matters, enforce it in the type.
 1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
    evidence; §8a is emphatic that this project's defects are found by using the
    running system.
-2. **Capture a master sending voice to a repeater.** This is the one thing
+2. **Capture a master sending voice to a repeater.** **Confirmed necessary, not
+   assumed:** `ipsc-two-peers.pcap` shows two peers transmitting at once with
+   every voice frame addressed to the master and none peer to peer, so IPSC
+   relays rather than meshes. A mesh would have meant the format QSP must send
+   is the format it already receives, and no discovery left.
+
+   What is already in hand from that capture: a transmission is three headers,
+   a `52 57 57 57 66 57` superframe cycle, and one terminator, identical across
+   two repeater models. What is missing is only whether a master's frames match
+   a peer's.
+
+   The original wording follows. This is the one thing
    blocking audio *into* IPSC, and it is now possible for the first time: two
    repeaters and a capture NIC are available. Put an XPR8300 or a a commercial DMR server in
    the master role with the other repeater as its peer, key the peer, and record

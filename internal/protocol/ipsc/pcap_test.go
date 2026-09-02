@@ -59,8 +59,16 @@ func readCaptureRaw(path string) (captureSummary, error) {
 	if magic := binary.LittleEndian.Uint32(raw[0:4]); magic != 0xa1b2c3d4 {
 		return sum, fmt.Errorf("fixture %s: unexpected pcap magic %#08x; expected a little-endian microsecond capture", path, magic)
 	}
-	if link := binary.LittleEndian.Uint32(raw[20:24]); link != 1 {
-		return sum, fmt.Errorf("fixture %s: link type %d, expected 1 (EN10MB)", path, link)
+	// **Two link types, because captures arrive two ways.** A capture taken on
+	// one interface is Ethernet; one taken with `tcpdump -i any`, which is what
+	// a server with several interfaces needs, is Linux cooked v2. Refusing the
+	// second would mean refusing every capture taken on the production VM.
+	link := binary.LittleEndian.Uint32(raw[20:24])
+	switch link {
+	case linkEthernet, linkCookedV2:
+	default:
+		return sum, fmt.Errorf("fixture %s: link type %d, expected %d (EN10MB) or %d (LINUX_SLL2)",
+			path, link, linkEthernet, linkCookedV2)
 	}
 
 	off := 24
@@ -75,7 +83,7 @@ func readCaptureRaw(path string) (captureSummary, error) {
 		rec := raw[off : off+incl]
 		off += incl
 
-		p, proto, ok := decodeEthernetIP(rec)
+		p, proto, ok := decodeIP(rec, link)
 		if !ok {
 			continue
 		}
@@ -94,6 +102,28 @@ func readCaptureRaw(path string) (captureSummary, error) {
 	return sum, nil
 }
 
+// Link types, as recorded in a pcap file header.
+const (
+	linkEthernet = 1
+	linkCookedV2 = 276
+)
+
+// decodeIP strips whichever link header the capture carries and hands the rest
+// to the IPv4 decoder.
+//
+// Linux cooked v2 puts the protocol in its first two bytes and is twenty bytes
+// long; Ethernet puts it at byte twelve and is fourteen. Both then hold an
+// ordinary IPv4 packet.
+func decodeIP(rec []byte, link uint32) (capturedPacket, byte, bool) {
+	if link == linkCookedV2 {
+		if len(rec) < 20 || binary.BigEndian.Uint16(rec[0:2]) != 0x0800 {
+			return capturedPacket{}, 0, false
+		}
+		return decodeIPv4(rec[20:])
+	}
+	return decodeEthernetIP(rec)
+}
+
 // decodeEthernetIP pulls an IPv4 packet out of an Ethernet frame, returning the
 // UDP ports and payload when the protocol is UDP. ARP and IPv6 are skipped.
 func decodeEthernetIP(rec []byte) (capturedPacket, byte, bool) {
@@ -105,7 +135,12 @@ func decodeEthernetIP(rec []byte) (capturedPacket, byte, bool) {
 	if binary.BigEndian.Uint16(rec[12:14]) != 0x0800 {
 		return p, 0, false
 	}
-	ip := rec[ethHeader:]
+	return decodeIPv4(rec[ethHeader:])
+}
+
+// decodeIPv4 is the part common to both link types.
+func decodeIPv4(ip []byte) (capturedPacket, byte, bool) {
+	var p capturedPacket
 	if len(ip) < 20 {
 		return p, 0, false
 	}
