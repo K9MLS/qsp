@@ -161,6 +161,114 @@ func TestNothingIsEmittedBeforeASuperframeBoundary(t *testing.T) {
 	}
 }
 
+// onOtherSlot returns a copy of a voice frame as it would look coming from the
+// other timeslot: the slot bit flipped, and a different stream ID, because two
+// simultaneous transmissions are two calls. Nothing else changes, so anything
+// this test measures is caused by the slot and by nothing else.
+func onOtherSlot(m ipsc.Message) ipsc.Message {
+	body := append([]byte(nil), m.Body...)
+	body[12] ^= ipsc.FlagSlot
+	// StreamID is frame bytes 15 and 16, so body bytes 10 and 11.
+	body[10] ^= 0xAA
+	body[11] ^= 0x55
+	return ipsc.Message{Kind: m.Kind, SenderID: m.SenderID, Body: body}
+}
+
+func burstsFrom(t *testing.T, msgs []ipsc.Message) []hbp.Data {
+	t.Helper()
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	var out []hbp.Data
+	for _, m := range msgs {
+		if b, ok := c.Convert(m, hbp.RepeaterID(3132910)); ok {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// TestBothTimeslotsAtOnce is the defect this converter was built with.
+//
+// A repeater carries two transmissions at once, one per timeslot, and their
+// frames arrive interleaved. A converter holding one set of counters lets the
+// two streams reset each other on every frame: measured against the real
+// capture, 66 frames on one slot produced 54 bursts, and the same 66 frames
+// interleaved with a second slot produced **18** rather than about 108.
+//
+// Every fixture in this repository is single-slot, so nothing else here would
+// notice. Break the slot separation in bridge.go and this test is the only one
+// that fails.
+func TestBothTimeslotsAtOnce(t *testing.T) {
+	real := voiceMessages(t)
+	baseline := burstsFrom(t, real)
+	if len(baseline) == 0 {
+		t.Fatal("no bursts from the capture on one slot")
+	}
+
+	mixed := make([]ipsc.Message, 0, len(real)*2)
+	for _, m := range real {
+		mixed = append(mixed, m, onOtherSlot(m))
+	}
+	got := burstsFrom(t, mixed)
+
+	t.Logf("one slot: %d frames, %d bursts; two slots: %d frames, %d bursts",
+		len(real), len(baseline), len(mixed), len(got))
+
+	// Neither slot may lose a burst it would have produced alone.
+	if len(got) < 2*len(baseline) {
+		t.Errorf("interleaving a second timeslot produced %d bursts, want %d; "+
+			"the two slots are sharing state", len(got), 2*len(baseline))
+	}
+
+	// And each slot must be labelled as its own.
+	var ts1, ts2 int
+	for _, b := range got {
+		switch b.Timeslot {
+		case hbp.Timeslot1:
+			ts1++
+		case hbp.Timeslot2:
+			ts2++
+		}
+	}
+	if ts1 == 0 || ts2 == 0 {
+		t.Errorf("bursts landed on TS1 %d, TS2 %d; both slots should carry audio", ts1, ts2)
+	}
+}
+
+// TestSlotPolarityIsConfiguration checks that the setting an operator has to
+// supply actually moves the traffic.
+//
+// Which value of the IPSC slot bit means timeslot two was never recorded at the
+// radio. The consequence of getting it wrong must therefore be a setting rather
+// than a rebuild, and that is only true if the flag reaches the output.
+func TestSlotPolarityIsConfiguration(t *testing.T) {
+	msgs := voiceMessages(t)
+
+	slots := func(t2 bool) map[hbp.Timeslot]int {
+		c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11, SlotBitIsTimeslot2: t2})
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		out := map[hbp.Timeslot]int{}
+		for _, m := range msgs {
+			if b, ok := c.Convert(m, hbp.RepeaterID(3132910)); ok {
+				out[b.Timeslot]++
+			}
+		}
+		return out
+	}
+
+	off, on := slots(false), slots(true)
+	if off[hbp.Timeslot1] != on[hbp.Timeslot2] || off[hbp.Timeslot2] != on[hbp.Timeslot1] {
+		t.Errorf("flipping SlotBitIsTimeslot2 did not swap the slots: %v against %v", off, on)
+	}
+	if off[hbp.Timeslot1] == 0 && off[hbp.Timeslot2] == 0 {
+		t.Fatal("no bursts produced, so the polarity was never exercised")
+	}
+}
+
 // TestAnOutOfRangeColourCodeIsRefused keeps configuration honest.
 func TestAnOutOfRangeColourCodeIsRefused(t *testing.T) {
 	if _, err := ipscbridge.New(ipscbridge.Config{ColourCode: 16}); err == nil {

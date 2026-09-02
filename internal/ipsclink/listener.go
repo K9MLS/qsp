@@ -13,12 +13,27 @@
 // only evidence that any of it is right, and it is one repeater on one
 // firmware.
 //
+// # What it does
+//
+// It carries audio one way: a Motorola repeater's voice is converted by
+// internal/ipscbridge and handed to Config.Deliver, which routes it to Homebrew
+// peers. Bridging IPSC to DMR means reconstructing a burst rather than copying
+// one (docs/adr/ADR-0036), and the vocoder parameters are copied untouched
+// through that reconstruction, so the audio a radio reproduces is the audio the
+// originating radio encoded.
+//
 // # What it does not do
 //
-// It does not route. Voice frames are counted, their calls are tracked so an
-// operator can see who transmitted, and the audio goes nowhere. Bridging IPSC
-// to DMR means reconstructing a burst rather than copying one
-// (docs/adr/ADR-0036), and QSP does not ship a bridge that might degrade audio.
+// **It never carries audio the other way.** Nothing has captured a master
+// sending voice to a Motorola repeater, so QSP does not know what such a frame
+// contains and will not guess at one. This is enforced by there being no path
+// rather than by a rule: a Homebrew frame is delivered by resolving a
+// destination in the DMR listener's peer table and writing to the DMR
+// listener's socket, and an IPSC repeater is in neither.
+//
+// It does not produce voice headers or terminators, which need a Link Control
+// checksum no capture has pinned down. A receiving radio hears the audio and
+// learns who is talking through late entry.
 //
 // It does not authenticate. The captures contain no authenticated registration
 // and no refusal of any kind, so QSP cannot yet turn a peer away in a way a
@@ -37,7 +52,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
 )
 
@@ -61,6 +78,19 @@ type Config struct {
 	// PeerTimeout is how long a registered peer may go without a keepalive
 	// before it is dropped. Zero uses DefaultPeerTimeout.
 	PeerTimeout time.Duration
+
+	// Deliver receives each burst converted from a repeater's audio, with the
+	// repeater's radio ID as its origin.
+	//
+	// Nil leaves the listener as it was before bridging existed: transmissions
+	// are recorded and the audio goes nowhere. That is the right behaviour for
+	// an instance with no Homebrew side to deliver to, and it is honest —
+	// nothing claims to have carried a frame it dropped.
+	Deliver func(from hbp.RepeaterID, frame hbp.Data)
+
+	// Bridge configures the conversion from Motorola audio to DMR bursts. It
+	// is used only when Deliver is set.
+	Bridge ipscbridge.Config
 }
 
 // DefaultPeerTimeout is three missed keepalives at the observed fifteen-second
@@ -103,6 +133,14 @@ type Call struct {
 	// ever moved this field, though the Link Control in the same packet
 	// agrees with it. See internal/protocol/ipsc.Voice.
 	Destination uint32
+	// Timeslot is the DMR timeslot the transmission arrived on, under the
+	// configured slot-bit polarity.
+	//
+	// **It is recorded so the polarity can be settled from the journal.**
+	// Which bit value means which slot was never written down at the radio;
+	// keying a known slot and reading this back is a differential, which is
+	// how everything else in this protocol was settled.
+	Timeslot hbp.Timeslot
 	// Started and Ended bound the transmission. Ended is zero while it runs.
 	Started, Ended time.Time
 	// Frames counts voice frames.
@@ -120,6 +158,12 @@ type Listener struct {
 
 	mu    sync.Mutex
 	peers map[uint32]*Peer
+	// bridges holds one converter per peer, created when that peer first
+	// sends voice. A converter carries superframe position and stream state,
+	// so it belongs to the repeater it is following; sharing one between two
+	// repeaters would be the same defect the converter's own slot separation
+	// exists to prevent, a level up.
+	bridges map[uint32]*ipscbridge.Converter
 
 	// snapshot holds an immutable peer list for readers on other goroutines,
 	// for the same reason internal/peers does it: the serve loop owns the map
@@ -159,11 +203,20 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	if cfg.PeerTimeout == 0 {
 		cfg.PeerTimeout = DefaultPeerTimeout
 	}
+	if cfg.Deliver != nil {
+		// Fail here rather than on the first transmission. A colour code
+		// rejected at the moment somebody keys up is a fault nobody is
+		// watching for, and the audio is already gone by then.
+		if _, err := ipscbridge.New(cfg.Bridge); err != nil {
+			return nil, err
+		}
+	}
 	l := &Listener{
 		cfg:     cfg,
 		log:     logging.Subsystem(log, "ipsc"),
 		allowed: make(map[uint32]bool, len(cfg.AllowedPeers)),
 		peers:   map[uint32]*Peer{},
+		bridges: map[uint32]*ipscbridge.Converter{},
 	}
 	for _, p := range cfg.AllowedPeers {
 		l.allowed[p] = true
@@ -256,7 +309,13 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 		return
 	}
 
-	l.record(msg, from, now)
+	// Conversion happens under the peer lock because the converter is peer
+	// state, but delivery happens outside it: routing reaches into another
+	// listener and writes to another socket, and holding this listener's lock
+	// across that would make the two mutually blocking.
+	if burst, ok := l.record(msg, from, now); ok && l.cfg.Deliver != nil {
+		l.cfg.Deliver(hbp.RepeaterID(msg.SenderID), burst)
+	}
 
 	// Reply to the address the datagram came from, never to the port it was
 	// addressed to. A Motorola peer sources from a different port than it
@@ -269,9 +328,12 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	}
 }
 
-func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) {
+func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) (hbp.Data, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+
+	var burst hbp.Data
+	var converted bool
 
 	p, known := l.peers[msg.SenderID]
 	if !known {
@@ -295,25 +357,56 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) {
 		p.Keepalives++
 	case ipsc.KindVoice:
 		p.VoiceFrames++
-		l.recordVoice(p, msg, now)
+		burst, converted = l.recordVoice(p, msg, now)
 	}
 	l.publishLocked()
+	return burst, converted
 }
 
-func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) {
+// converterFor returns this peer's converter, creating it on first voice.
+//
+// The caller holds l.mu. New cannot fail here: the same configuration was
+// accepted in New, and a colour code does not change under a running listener.
+func (l *Listener) converterFor(id uint32) *ipscbridge.Converter {
+	if c, ok := l.bridges[id]; ok {
+		return c
+	}
+	c, err := ipscbridge.New(l.cfg.Bridge)
+	if err != nil {
+		return nil
+	}
+	l.bridges[id] = c
+	return c
+}
+
+func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) (hbp.Data, bool) {
 	v, ok := msg.AsVoice()
 	if !ok {
-		return
+		return hbp.Data{}, false
 	}
+
+	conv := l.converterFor(p.RadioID)
+	slot := hbp.Timeslot1
+	if conv != nil {
+		slot = conv.Timeslot(msg)
+	}
+
 	if p.LastCall == nil || p.LastCall.StreamID != v.StreamID || !p.LastCall.Ended.IsZero() {
 		p.LastCall = &Call{
 			StreamID:    v.StreamID,
 			Source:      v.SourceID,
 			Destination: v.Destination,
+			Timeslot:    slot,
 			Started:     now,
 		}
+		// The slot bit is logged raw alongside the slot it was read as, so
+		// that a key-up on a known timeslot settles the polarity from the
+		// journal. Logging only the interpretation would make the log agree
+		// with the setting whether or not the setting is right.
+		bit, _ := msg.SlotBit()
 		l.log.Info("call started", "radio_id", p.RadioID, "source", v.SourceID,
-			"destination", v.Destination, "stream", fmt.Sprintf("%#04x", v.StreamID))
+			"destination", v.Destination, "timeslot", int(slot), "slot_bit", bit,
+			"stream", fmt.Sprintf("%#04x", v.StreamID))
 	}
 	p.LastCall.Frames++
 	if v.IsLastFrame() {
@@ -321,6 +414,11 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) {
 		l.log.Info("call ended", "radio_id", p.RadioID, "source", v.SourceID,
 			"frames", p.LastCall.Frames, "duration", now.Sub(p.LastCall.Started).Round(time.Millisecond))
 	}
+
+	if l.cfg.Deliver == nil || conv == nil {
+		return hbp.Data{}, false
+	}
+	return conv.Convert(msg, hbp.RepeaterID(p.RadioID))
 }
 
 // expire drops peers that stop keepaliving.
@@ -352,6 +450,11 @@ func (l *Listener) ExpireAt(now time.Time) int {
 			continue
 		}
 		delete(l.peers, id)
+		// The converter goes with the peer. A repeater that returns is a new
+		// transmission's worth of state, not a resumption of one that ended
+		// however long ago, and keeping them would grow without bound on an
+		// address that attracts strangers.
+		delete(l.bridges, id)
 		dropped++
 		l.log.Info("peer timed out", "radio_id", id, "silent_for",
 			now.Sub(p.LastHeard).Round(time.Second))

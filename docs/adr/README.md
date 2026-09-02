@@ -11,7 +11,7 @@ conclusion.
 | ADR | Decision | Status |
 |---|---|---|
 | [0001](ADR-0001-go.md) | Go for the core | Accepted |
-| [0002](ADR-0002-single-writer-routing-core.md) | Single-writer routing core | Accepted |
+| [0002](ADR-0002-single-writer-routing-core.md) | Single-writer routing core | Accepted — amended |
 | [0003](ADR-0003-event-bus.md) | Sequenced event bus with bounded replay | Accepted |
 | [0004](ADR-0004-no-external-dependencies.md) | No external dependencies in the core | Accepted |
 | [0005](ADR-0005-sqlite-driver.md) | SQL driver registered by the binary, not the storage package | Accepted |
@@ -47,3 +47,4 @@ conclusion.
 | [0035](ADR-0035-per-peer-passwords.md) | A member can be removed without changing everybody's password | Accepted |
 | [0036](ADR-0036-ipsc-voice-is-not-a-dmr-burst.md) | IPSC voice is not a DMR burst, and bridging is not a copy | Accepted |
 | [0037](ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md) | The DMR FEC is a wrapper, and QSP may add or remove it | Accepted |
+| [0038](ADR-0038-routing-core-is-shared.md) | The routing core is reached by more than one listener, so it locks | Accepted |

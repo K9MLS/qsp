@@ -4,6 +4,83 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **A Motorola repeater's two timeslots no longer destroy each other's audio.**
+  `ipscbridge.Converter` held one superframe position, one stream and one
+  sequence counter for a whole repeater, and a repeater carries two
+  transmissions at once. Interleaved, the two streams reset each other on every
+  frame.
+
+  Measured against the real capture: 66 frames on one slot produce 54 bursts;
+  the same 66 interleaved with a second slot produced **18** where 108 are due.
+  Two thirds of working audio disappears the moment somebody uses the other
+  slot. State is now per timeslot, inside the converter, so a caller cannot
+  forget to separate them.
+
+  Every fixture in the repository is single-slot, which is why nothing noticed.
+  The regression test builds the second slot by flipping one bit in real frames
+  and changing the stream ID — one known change, everything else held — and was
+  confirmed to fail against the code it exists to reject.
+
+- **`routing.Core` was reached by two goroutines and had no lock**
+  ([ADR-0038](docs/adr/ADR-0038-routing-core-is-shared.md), amending
+  [ADR-0002](docs/adr/ADR-0002-single-writer-routing-core.md)).
+
+  **This was already a defect on a path an operator can configure today, not one
+  this patch introduced.** `Core` documented itself as owned by the DMR socket's
+  goroutine, and `internal/peers/reload.go` exists to honour that. But an
+  upstream link calls `DeliverFromUpstream` from the link's own read goroutine,
+  so a frame from another network and a frame from a hotspot could enter `Route`
+  at the same instant, writing the same reservation map. It has never fired
+  because no upstream has met a real far end and no test ran a link and a peer
+  together under the detector.
+
+  Wiring a second listener made it reproducible in one run. The mutable state —
+  reservations, table, access lists — is now behind a mutex, so the invariant is
+  enforced by the type rather than asserted in a comment. ADR-0002's claim that
+  races became "structurally impossible rather than merely tested against"
+  described an intention and is corrected in place.
+
+### Added
+- **Motorola audio reaches the rest of the network.** `ipsclink` converts each
+  voice frame and hands the burst to `peers.Listener.DeliverFromIPSC`, which
+  routes it to Homebrew peers. A converter is kept per peer and dropped when
+  that peer times out.
+
+- **The one-way rule is a property of the code, not a promise in prose.**
+  Nothing has captured a master sending voice to an IPSC repeater, so QSP will
+  not invent one. Destinations resolve through the DMR listener's peer table and
+  are written to the DMR listener's socket; an IPSC repeater is in neither. The
+  test configures a bridge that *names the Motorola repeater explicitly* and
+  asserts nothing is delivered to it, and fails when that peer is forced into
+  the lookup.
+
+- **`ipsc.colour_code` and `ipsc.slot_bit_is_timeslot2`.** The colour code is
+  validated 0 to 15 and has no default: one is the commonest value in amateur
+  DMR, but defaulting to it is a claim about somebody else's network, and a
+  receiver rejects a burst whose colour code is not its own — which presents as
+  silence rather than as a misconfiguration.
+
+- **The journal now records the timeslot and the raw slot bit at call start.**
+  Which bit value means which slot was never written down at the radio. Logging
+  both the bit and the slot it was read as makes one key-up on a known timeslot
+  settle the polarity by differential, instead of by an operator's recollection.
+  Logging only the interpretation would agree with the setting whether or not
+  the setting is right.
+
+### Notes
+- **Parrot and unlink do not run on the IPSC path, deliberately.** Both answer a
+  member by sending audio back, and there is no path back to an IPSC peer.
+  Consuming the frame and delivering nothing would be worse than not running:
+  the transmission would vanish while the journal said it had been handled.
+  Triggers do run — opening a bridge needs no reverse path.
+- **`Voice.Destination` is still a reading rather than an observation.** Routing
+  now depends on it. Every capture to date reads 455, so nothing has moved
+  bytes 9 to 11; a key-up on any other talkgroup settles it, and the journal
+  line above is where the answer appears.
+- Voice headers and terminators are still not produced. They need a Link Control
+  checksum no capture has pinned down.
+
 ### Changed
 - **`PROJECT_MEMORY.md` §8e replaces §8d.** §8d was written earlier the same
   evening, before `internal/dmrfec`, `internal/ipscbridge`, BPTC, the timeslot

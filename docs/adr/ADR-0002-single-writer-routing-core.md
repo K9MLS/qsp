@@ -40,3 +40,26 @@ core is the only mutator.
 
 Measured throughput on a Raspberry Pi under realistic peer counts. If a single
 writer proves insufficient, sharding is the fallback and this ADR is superseded.
+
+## Amendment, 2026-09-02 — see [ADR-0038](ADR-0038-routing-core-is-shared.md)
+
+**The consequence claimed above — that data races on routing state become
+structurally impossible rather than merely tested against — was not true.** It
+described an intention. Nothing enforced it, and the first component to reach
+the core from a second goroutine did so without anything objecting: an upstream
+link calls `DeliverFromUpstream` from its own read goroutine, and has since links
+were built.
+
+`routing.Core` now takes a mutex over its mutable state, so the claim above is
+true by mechanism instead of by intent.
+
+**On "no lock another goroutine might hold":** that rule stands and is not
+violated. It forbids the core from blocking on somebody else's lock — a database,
+a socket, a file. The core's own mutex is held for a map lookup and a short loop
+over one bridge's endpoints, at a rate bounded by voice frames, and is released
+before anything is written anywhere. The rule exists so that one slow operation
+cannot stall all routing, and nothing here is slow.
+
+The single-writer model remains correct for sockets, peer tables and everything
+else owned by one listener. It stopped being achievable for the core itself the
+moment QSP served two protocols on two sockets, which is what it was built to do.

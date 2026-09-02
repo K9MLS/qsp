@@ -92,6 +92,27 @@ type IPSC struct {
 	// No capture contains a disconnect message, so silence is the only
 	// evidence a repeater has gone.
 	PeerTimeoutSeconds int `json:"peer_timeout_seconds"`
+
+	// ColourCode is written into the embedded signalling of every burst built
+	// from this repeater's audio.
+	//
+	// It is required when the listener is enabled and has no default. One is
+	// the commonest value in amateur DMR, but defaulting to it would be a
+	// claim about somebody else's network, and a receiver rejects a burst
+	// whose colour code is not its own — which looks like silence rather than
+	// like a misconfiguration.
+	ColourCode uint8 `json:"colour_code"`
+
+	// SlotBitIsTimeslot2 says which value of the IPSC slot bit means timeslot
+	// two.
+	//
+	// **The polarity was never recorded at the radio.** Fifteen transmissions
+	// from two channels split cleanly by one bit, so the bit is the timeslot
+	// beyond doubt; which value is which was not written down. Getting it
+	// wrong puts every transmission on the other slot, which is a setting to
+	// change rather than a rebuild — and the journal logs both the raw bit and
+	// the slot it was read as, so one key-up on a known slot settles it.
+	SlotBitIsTimeslot2 bool `json:"slot_bit_is_timeslot2"`
 }
 
 // DMR configures the Homebrew Protocol listener that peers connect to.
@@ -1051,6 +1072,10 @@ func (c Config) Validate() error {
 		if c.IPSC.PeerTimeoutSeconds < 0 {
 			v.add("ipsc.peer_timeout_seconds", "must not be negative",
 				"leave it at 0 for the default, or give a value above the fifteen-second keepalive cadence")
+		}
+		if c.IPSC.ColourCode > 15 {
+			v.add("ipsc.colour_code", fmt.Sprintf("%d is out of range", c.IPSC.ColourCode),
+				"DMR colour codes run from 0 to 15; use the one the repeater is programmed with")
 		}
 	}
 

@@ -2,6 +2,7 @@ package routing
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/k9mls/qsp/internal/access"
@@ -168,9 +169,23 @@ type sourceKey struct {
 
 // Core applies a routing table to live traffic.
 //
-// It is not safe for concurrent use and is owned by the goroutine that reads
-// the socket, consistent with ADR-0002. The routing decision itself stays pure;
-// this type adds only the state that decision cannot have — what is in flight.
+// The routing decision itself stays pure; this type adds only the state that
+// decision cannot have — what is in flight.
+//
+// # Why this is locked
+//
+// It was documented as owned by the goroutine that reads the socket, and that
+// was true of peer traffic. It was never true of everything: an upstream link
+// calls DeliverFromUpstream from the link's own read goroutine, so a frame from
+// another network and a frame from a hotspot have been able to enter Route
+// concurrently since links were built. The race never fired because no upstream
+// has met a real far end and no test ran a link and a peer together under the
+// detector. The IPSC listener made it reproducible in a second, which is how it
+// was found.
+//
+// So the invariant is enforced here rather than asserted in prose. The lock
+// covers what changes under traffic — the reservations, the table and the
+// access lists — and not the collaborators fixed at construction.
 type Core struct {
 	repeat bool
 
@@ -186,6 +201,10 @@ type Core struct {
 	// attached reports which talkgroups a peer wants. Nil means all of them.
 	attached Subscriptions
 	timeout  time.Duration
+
+	// mu guards access, table and busy. Every other field is set once in
+	// NewCore and only read.
+	mu sync.Mutex
 
 	// busy maps a destination endpoint to the transmission holding it.
 	//
@@ -248,7 +267,11 @@ func NewCore(opts CoreOptions) (*Core, error) {
 // change must not cut somebody off mid-sentence. New frames are routed against
 // the new table, so the change takes effect at the next transmission boundary
 // (clarification R4).
-func (c *Core) SetTable(t *Table) { c.table = t }
+func (c *Core) SetTable(t *Table) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.table = t
+}
 
 // SetAccess swaps in new talkgroup lists.
 //
@@ -262,15 +285,23 @@ func (c *Core) SetTable(t *Table) { c.table = t }
 // Existing reservations are left alone. A destination that stops being
 // permitted mid-transmission simply receives nothing further, and its
 // reservation expires on the ordinary timeout.
-func (c *Core) SetAccess(l access.Lists) { c.access = l }
+func (c *Core) SetAccess(l access.Lists) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.access = l
+}
 
 // Table returns the active routing table.
 //
-// Like every method on Core, it must be called only from the goroutine that
-// owns it. It is not an observation hook: reading it from an HTTP handler or a
-// test is a data race against SetTable. Use the owner's published snapshot
-// instead — see peers.Listener.EnabledBridges.
-func (c *Core) Table() *Table { return c.table }
+// It is safe to call from any goroutine, but it is still not an observation
+// hook: the value it returns is a snapshot that SetTable may replace a moment
+// later. For anything a console renders, use the owner's published snapshot —
+// see peers.Listener.EnabledBridges.
+func (c *Core) Table() *Table {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.table
+}
 
 // Route decides where one accepted frame should be delivered.
 //
@@ -315,6 +346,9 @@ func (c *Core) RouteFromUpstream(name string, frame hbp.Data, now time.Time) Res
 }
 
 func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	from := origin.Peer
 	fromUpstream := origin.Upstream != ""
 
@@ -682,6 +716,9 @@ func (c *Core) release(src sourceKey) {
 // destinations until the process restarted — the failure mode that welds a
 // talkgroup open.
 func (c *Core) Expire(now time.Time) []Endpoint {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	var freed []Endpoint
 	for key, held := range c.busy {
 		if now.Sub(held.lastSeen) > c.timeout {
@@ -697,10 +734,16 @@ func (c *Core) Expire(now time.Time) []Endpoint {
 }
 
 // BusyCount returns the number of destinations currently carrying traffic.
-func (c *Core) BusyCount() int { return len(c.busy) }
+func (c *Core) BusyCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.busy)
+}
 
 // Busy returns the destinations currently carrying traffic, ordered.
 func (c *Core) Busy() []Endpoint {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	out := make([]Endpoint, 0, len(c.busy))
 	for _, held := range c.busy {
 		out = append(out, held.endpoint)

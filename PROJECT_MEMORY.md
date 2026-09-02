@@ -602,9 +602,52 @@ access list is what puts somebody off the network now, and the panel says so.
   **1.22 → 1.23 → 1.24 → 1.27**, about twenty minutes. Do it first, before
   writing anything, because a documentation-only patch still has to pass the
   accuracy gate and the accuracy gate is a Go test.
-- **`modernc.org/sqlite` cannot be fetched in the container either.** Move
-  `cmd/qsp/driver_sqlite.go` aside and the tree builds with the standard library
-  alone, which is the point of ADR-0017. Move it back before generating a patch.
+- **The container reaps background processes between commands.** Nothing
+  survives a `nohup ... &`; a build started in the background is dead by the
+  next command, with no error and an empty process table. It is also a single
+  core, so "about twenty minutes" is optimistic.
+- **The bootstrap chain is 1.22 → 1.23 → 1.24.6 → 1.27**, and the patch release
+  matters: `go1.24.0` is refused with *"does not meet the minimum bootstrap
+  requirement of go1.24.6 or later"*. `make.bash` cannot finish inside one
+  command — it spends 3m39s on toolchain1, 2 and 3 before reaching the phase
+  that takes minutes, and re-running repeats all of it. But those phases write
+  `compile`, `link` and `go_bootstrap` into `$GOROOT/pkg/tool/linux_amd64` and
+  they survive, so run `make.bash` once and then finish the last phase directly:
+
+  ```sh
+  cd $GOROOT/src
+  $GOROOT/pkg/tool/linux_amd64/go_bootstrap install std
+  CGO_ENABLED=0 GOFLAGS="-trimpath -ldflags=-w -gcflags=cmd/...=-dwarf=false" \
+    $GOROOT/pkg/tool/linux_amd64/go_bootstrap install cmd
+  ```
+
+  That is the pair of calls Go's own dist bootstrap makes at the end of
+  `make.bash`, with its `toolenv()` spelled out.
+- **`modernc.org/sqlite` cannot be fetched in the container either — and moving
+  `cmd/qsp/driver_sqlite.go` aside disarms the documentation gate.** Four files
+  name that path, so removing it fails `TestDocumentedPathsExist` for a reason
+  that has nothing to do with documentation. That is why the failure count read
+  eight and why the count hid a real one: §7 requires a documentation-only patch
+  to pass the accuracy gate, and the gate could not pass. Supply the import from
+  a workspace above the repository instead, so the file stays where the
+  documents say it is:
+
+  ```sh
+  mkdir -p /home/claude/sqlitestub
+  printf 'module modernc.org/sqlite\n\ngo 1.27\n' > /home/claude/sqlitestub/go.mod
+  printf 'package sqlite\n' > /home/claude/sqlitestub/sqlite.go
+  printf 'go 1.27\n\nuse ./qsp\nuse ./sqlitestub\n' > /home/claude/go.work
+  export GOWORK=/home/claude/go.work
+  ```
+
+  `go.work` lives outside the tree because it is **not** in `.gitignore` and the
+  patch pathspec excludes only `go.mod` and `go.sum`. **The container baseline is
+  seven failures, all in `cmd/qsp`, all from no registered driver:**
+  `TestHealthReportsUnbuiltSubsystemsHonestly`, `TestPersistenceIsRealNow`,
+  `TestSchemaSurvivesARestart`, `TestTheConnectionDoesNotTakeSQLitesDefaults`,
+  `TestTheAuditTrailReachesTheDatabase`, `TestACompletedCallSurvivesARestart`,
+  `TestRetentionIsByAgeAndCanBeNothing`. **None of this applies to the Fedora
+  machine**, where the proxy works and a stub would shadow the real driver.
 - **Documentation accuracy is a CI gate, not a habit.** Stale prose is a bug and
   is treated as one. Where a claim can be derived from code instead of asserted
   in prose, derive it — `handleNoConsole` builds its endpoint list from
@@ -1124,6 +1167,78 @@ worth more than a citation.
   twice, once arriving and once relayed. Skipping *equal* neighbours collapses
   the two genuine continuation positions into one and yields a plausible
   sequence silently missing a burst. Take every second burst.
+
+---
+
+## 8f. Where the next session starts, as of 2026-09-02
+
+Read §0, then §6b and §6c, then this. It supersedes §8e's ordering; everything
+§8e settled remains settled.
+
+**A Motorola repeater is audible on the network.** The converter is wired to
+routing: `ipsclink` converts each voice frame and hands the burst to
+`peers.Listener.DeliverFromIPSC`. Item 1 of §8e is done.
+
+### Two defects, both found the same way
+
+Neither came from the test suite, and neither was visible by reading.
+
+**The converter had one set of counters for two timeslots.** A repeater carries
+two transmissions at once. Interleaved, they reset each other every frame: 66
+real frames produced 54 bursts on one slot and **18** across two, where 108 are
+due. Found by a differential — the same frames with one bit flipped — because
+asserting it from the code would have been another reading taken by eye.
+
+**`routing.Core` was reached by two goroutines and had no lock**
+([ADR-0038](docs/adr/ADR-0038-routing-core-is-shared.md)). **This shipped, on a
+path an operator can configure.** An upstream link calls `DeliverFromUpstream`
+from the link's own read goroutine while `Core` documented itself as owned by
+the DMR socket's. It never fired because no upstream has met a real far end. The
+race detector reported it on the first run of the first IPSC test, which is the
+third real defect it has caught and the reason it is a blocking gate.
+
+**The lesson worth keeping:** ADR-0002 claimed races were "structurally
+impossible rather than merely tested against". Nothing enforced it. **A comment
+claiming a concurrency invariant reads like a fact and is in truth a request.**
+Where an invariant matters, enforce it in the type.
+
+### Open, in order
+
+1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
+   evidence; §8a is emphatic that this project's defects are found by using the
+   running system.
+2. **The destination field, now load-bearing.** Routing depends on
+   `Voice.Destination`, which is still a reading: every capture reads 455, so
+   nothing has moved bytes 9 to 11. A key-up on any other talkgroup settles it,
+   and `call started` in the journal is where the answer appears.
+3. **The slot polarity, now answerable without the operator.** `call started`
+   logs the raw slot bit beside the slot it was read as. One key-up on a known
+   timeslot settles it; `ipsc.slot_bit_is_timeslot2` is the setting to flip.
+4. **The Link Control checksum**, for voice headers and terminators. A fitting
+   exercise against the 28 data bursts in `testdata/hbp/`. No equipment.
+5. **The console page.** The IPSC listener holds peers and calls and nothing
+   reads them, so a repeater shows in `/healthz` and the journal but not the
+   dashboard.
+6. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice to a repeater.
+7. **Motorola → Motorola.** Needs KD9EJA's repeater (315544) on `allowed_peers`,
+   and is worth deferring until one repeater is proved audible: two peers in
+   play means a fault has two possible sources.
+
+### Settled, do not reopen
+
+Everything in §8b through §8e, plus:
+
+- **Parrot and unlink do not run on the IPSC path.** Both answer a member by
+  sending audio back, and there is no path back. Consuming a frame and
+  delivering nothing is worse than not running: the transmission vanishes while
+  the journal says it was handled. Triggers do run.
+- **The one-way rule is structural.** Destinations resolve through the DMR
+  listener's peer table; an IPSC repeater is never in it. A bridge naming one
+  explicitly still delivers nothing, and a test asserts exactly that.
+- **The colour code has no default.** One is commonest, but defaulting is a
+  claim about somebody else's network, and a wrong colour code presents as
+  silence rather than as a misconfiguration.
 
 ---
 

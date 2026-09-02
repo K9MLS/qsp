@@ -527,6 +527,41 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 	l.deliver(0, l.cfg.Routing.RouteFromUpstream(link, frame, time.Now()))
 }
 
+// DeliverFromIPSC routes a burst converted from a Motorola repeater's audio.
+//
+// It exists for the same reason DeliverFromUpstream does: this listener owns
+// the socket peers are reachable on, and the IPSC listener has a socket of its
+// own that no Homebrew peer is behind.
+//
+// # Why this direction only
+//
+// **A frame never travels the other way, and that is a property of the code
+// rather than a promise.** Destinations are resolved through
+// routing.PeerLookup, which is this listener's Homebrew peer table, and every
+// delivery is written to this listener's socket. An IPSC repeater appears in
+// neither, so a bridge naming one as a destination resolves to nothing. Nothing
+// has ever captured a master sending voice to a Motorola repeater, so QSP
+// cannot know what such a frame should contain, and a bridge that guessed would
+// be exactly the fake behaviour §7 forbids.
+//
+// # Why parrot and unlink do not run here
+//
+// Both answer a member by sending audio back to them, and there is no path back
+// to an IPSC peer. Running them would consume the frame and deliver nothing,
+// which is worse than not running them: the transmission would vanish and the
+// journal would say it had been handled.
+//
+// Triggers do run. Opening an on-demand bridge needs no reverse path, and a
+// Motorola repeater keying up is as good a reason to open one as any other
+// peer.
+func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
+	if l.cfg.Routing == nil {
+		return
+	}
+	l.trigger(from, frame)
+	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+}
+
 func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 	for _, d := range res.Deliveries {
 		peer, ok := l.cfg.Master.Lookup(d.Peer)

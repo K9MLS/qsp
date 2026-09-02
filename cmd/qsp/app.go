@@ -21,6 +21,7 @@ import (
 	"github.com/k9mls/qsp/internal/database"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/ipsclink"
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
@@ -382,11 +383,31 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// repeater, an HBP network, both or neither, so neither enables the other.
 	ipscDisabledReason := "IPSC peering is off; set ipsc.enabled to serve Motorola repeaters"
 	if cfg.IPSC.Enabled {
+		// A Motorola repeater's audio reaches the rest of the network through
+		// the DMR listener, because that listener owns the socket Homebrew
+		// peers are reachable on. With no DMR listener there is nowhere to
+		// deliver to, and the IPSC listener records transmissions without
+		// carrying them rather than pretending otherwise.
+		var deliver func(hbp.RepeaterID, hbp.Data)
+		if a.dmr != nil {
+			deliver = a.dmr.DeliverFromIPSC
+			log.Info("IPSC audio is bridged to DMR peers",
+				slog.Int("colour_code", int(cfg.IPSC.ColourCode)),
+				slog.Bool("slot_bit_is_timeslot2", cfg.IPSC.SlotBitIsTimeslot2))
+		} else {
+			log.Warn("IPSC is enabled with no DMR listener, so transmissions are recorded but not carried",
+				slog.String("remedy", "enable dmr to bridge Motorola audio to hotspots"))
+		}
 		il, ierr := ipsclink.New(log, ipsclink.Config{
 			ListenAddress: cfg.IPSC.ListenAddress,
 			MasterID:      cfg.IPSC.MasterID,
 			AllowedPeers:  cfg.IPSC.AllowedPeers,
 			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
+			Deliver:       deliver,
+			Bridge: ipscbridge.Config{
+				ColourCode:         cfg.IPSC.ColourCode,
+				SlotBitIsTimeslot2: cfg.IPSC.SlotBitIsTimeslot2,
+			},
 		})
 		if ierr != nil {
 			return nil, ierr

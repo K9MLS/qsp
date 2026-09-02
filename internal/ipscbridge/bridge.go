@@ -41,13 +41,17 @@ type Config struct {
 	SlotBitIsTimeslot2 bool
 }
 
-// Converter turns one repeater's voice frames into Homebrew bursts.
+// slotState is everything a converter must remember about one timeslot.
 //
-// It is not safe for concurrent use: one Converter belongs to one peer, and a
-// peer sends one transmission at a time per timeslot.
-type Converter struct {
-	cfg Config
-
+// **It is per timeslot rather than per repeater, and that is the whole point.**
+// A repeater carries two independent transmissions at once, one on each slot,
+// and their frames arrive interleaved on the same socket. Held in one set of
+// fields, the two streams reset each other's counters on every frame: run the
+// 66 real frames of testdata/ipsc/ipsc-probe-voice.pcap twice, once per slot
+// and interleaved, and a single-state converter produces 18 bursts where it
+// produced 54 from one slot alone. Two thirds of the audio that worked
+// disappears the moment a second slot is used.
+type slotState struct {
 	// position counts bursts since the last synchronisation frame. A
 	// superframe is six bursts and the position decides the embedded
 	// signalling, so a converter that loses count produces bursts a radio
@@ -62,6 +66,22 @@ type Converter struct {
 	sequence uint8
 	// stream is the IPSC stream currently being converted.
 	stream uint16
+	// seen reports whether any frame has been converted on this slot, which
+	// distinguishes "no transmission yet" from "a transmission whose stream
+	// ID happens to be zero".
+	seen bool
+}
+
+// Converter turns one repeater's voice frames into Homebrew bursts.
+//
+// It is not safe for concurrent use: one Converter belongs to one peer. Both of
+// that peer's timeslots are handled, each with its own state, so a caller
+// cannot forget to separate them.
+type Converter struct {
+	cfg Config
+
+	// slots is indexed by timeslot, 0 for TS1 and 1 for TS2.
+	slots [2]slotState
 }
 
 // New constructs a Converter.
@@ -90,32 +110,38 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 		return hbp.Data{}, false
 	}
 
-	if v.StreamID != c.stream {
+	// The timeslot is resolved before anything is remembered, because which
+	// state this frame belongs to is decided by the slot and nothing else.
+	slot := c.Timeslot(m)
+	st := &c.slots[slotIndex(slot)]
+
+	if v.StreamID != st.stream || !st.seen {
 		// A new transmission. Counters start again rather than carrying a
 		// previous call's numbering into a new one.
-		c.stream = v.StreamID
-		c.sequence = 0
-		c.started = false
-		c.position = 0
+		st.stream = v.StreamID
+		st.seen = true
+		st.sequence = 0
+		st.started = false
+		st.position = 0
 	}
 
 	if class == ipsc.PayloadSync {
-		c.started = true
-		c.position = 0
-	} else if c.started {
-		c.position++
-		if c.position >= dmrfec.SuperframeBursts {
+		st.started = true
+		st.position = 0
+	} else if st.started {
+		st.position++
+		if st.position >= dmrfec.SuperframeBursts {
 			// A superframe that overruns means a frame was lost. Position is
 			// no longer trustworthy, so stop emitting until the next sync
 			// frame rather than guess.
-			c.started = false
+			st.started = false
 		}
 	}
-	if !c.started {
+	if !st.started {
 		return hbp.Data{}, false
 	}
 
-	middle, err := dmrfec.MiddleForPosition(c.position, c.cfg.ColourCode, fragment)
+	middle, err := dmrfec.MiddleForPosition(st.position, c.cfg.ColourCode, fragment)
 	if err != nil {
 		return hbp.Data{}, false
 	}
@@ -124,19 +150,13 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 		return hbp.Data{}, false
 	}
 
-	slotSet, _ := m.SlotBit()
-	slot := hbp.Timeslot1
-	if slotSet == c.cfg.SlotBitIsTimeslot2 {
-		slot = hbp.Timeslot2
-	}
-
 	frameType := hbp.FrameTypeVoice
-	if c.position == 0 {
+	if st.position == 0 {
 		frameType = hbp.FrameTypeVoiceSync
 	}
 
 	out := hbp.Data{
-		Sequence:   c.sequence,
+		Sequence:   st.sequence,
 		SourceID:   v.SourceID,
 		TargetID:   v.Destination,
 		RepeaterID: repeater,
@@ -146,12 +166,39 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Data, 
 		// The low nibble of the flags byte carries the position within the
 		// superframe for voice frames, which is what a receiver uses to place
 		// the burst. It is the same count this converter already keeps.
-		DataType: uint8(c.position),
+		DataType: uint8(st.position),
 		StreamID: hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF)),
 	}
 	copy(out.Payload[:], burst)
-	c.sequence++
+	st.sequence++
 	return out, true
+}
+
+// Timeslot reports which DMR timeslot a message belongs to, under this
+// converter's configured polarity.
+//
+// It is exported because a caller that keeps one converter per peer still needs
+// the slot for its own bookkeeping — a call tracker, a log line — and reading
+// the bit a second time in the caller would be two places to get the polarity
+// wrong. A message that carries no slot bit is not voice and never reaches
+// Convert; Timeslot1 is the harmless answer for it.
+func (c *Converter) Timeslot(m ipsc.Message) hbp.Timeslot {
+	set, ok := m.SlotBit()
+	if !ok {
+		return hbp.Timeslot1
+	}
+	if set == c.cfg.SlotBitIsTimeslot2 {
+		return hbp.Timeslot2
+	}
+	return hbp.Timeslot1
+}
+
+// slotIndex maps a timeslot to its place in the state array.
+func slotIndex(slot hbp.Timeslot) int {
+	if slot == hbp.Timeslot2 {
+		return 1
+	}
+	return 0
 }
 
 // payloadOf pulls the pieces a burst is built from out of a voice message.
