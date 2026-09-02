@@ -58,8 +58,8 @@ bridging.** Both are now implemented.
 
 | | |
 |---|---|
-| Version | 0.1.19 |
-| Tests | **863 test functions**, 4,202 results including subtests, all passing. Count them as `grep -rhoE '^func (Test|Fuzz|Example)[A-Za-z0-9_]*' --include=*_test.go . \| wc -l`, so the number means the same thing next time |
+| Version | 0.1.29 |
+| Tests | **888 test functions**, 4,202 results including subtests, all passing. Count them as `grep -rhoE '^func (Test|Fuzz|Example)[A-Za-z0-9_]*' --include=*_test.go . \| wc -l`, so the number means the same thing next time |
 | Race detector | clean |
 | Dependencies | **one direct** — `modernc.org/sqlite`, pure Go, no cgo (ADR-0017). QSP's own code is standard library only |
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
@@ -936,7 +936,10 @@ two new failures once hid inside a count that looked normal.
 
 ---
 
-## 8d. Where the next session starts, as of the evening of 2026-09-01
+## 8d. Where a session started on the evening of 2026-09-01
+
+**Superseded by §8e.** Kept for its *settled, do not reopen* list and because
+its "open, in order" shows the state before the audio path was built.
 
 Read §0, then §6b and §6c for the rules that break ties, then this.
 
@@ -1028,6 +1031,99 @@ taking the one that scored 99% where the others scored zero.
 
 Two captures differing in one known way beat ten differing in unknown ways. When
 a reading is plausible and cheap to test, test it.
+
+---
+
+## 8e. Where the next session starts, as of late on 2026-09-01
+
+Read §0, then §6b and §6c, then this.
+
+**IPSC went from an empty fixture directory to a Motorola repeater on the
+production server with a proved-lossless path to the rest of the network, in one
+day.** Nineteen patches, 0.1.11 to 0.1.29. Nothing was derived from another
+implementation: DMRlink and HBlink3 remain unread, and one that surfaced during
+research was deliberately not opened.
+
+### The audio path, which is finished as a matter of discovery
+
+`internal/dmrfec` converts between IPSC's 49-bit vocoder parameters and the
+72-bit protected frames a DMR burst carries, and builds every part of a burst:
+
+| Piece | Evidence |
+|---|---|
+| Vocoder FEC | 884 real bursts round-tripped bit-exact |
+| The 19-byte IPSC core | three 50-bit slots, spare bit trailing |
+| The 48-bit middle | 740 captured middles rebuilt from a position and a colour code |
+| EMB | one generator of 256 fits every captured value |
+| Superframe order | 73 of 74 superframes agree |
+| BPTC(196,96) | 252 of 252 rows valid, 28 bursts round-tripped bit-exact |
+
+`internal/ipscbridge` turns a Motorola voice frame into a Homebrew burst: 54
+produced from real traffic, one sync in six, every vocoder payload unchanged.
+
+**The single strongest piece of evidence in the project**: a Motorola XPR8300
+over IPSC and an MMDVM hotspot over Homebrew, captured on different days on
+different equipment, produce the identical 49-bit vocoder frame for silence —
+`0x1F003533F19C1`, 236 times in the Homebrew capture. That one observation
+confirms the packing, the FEC and the claim that both protocols carry the same
+audio.
+
+### Open, in order
+
+1. **Wire the converter to routing.** Hand bursts to peers so a Motorola
+   repeater is audible on a hotspot. **No discovery left, only wiring.**
+2. **Three small unknowns, each cheap.**
+   - Which slot bit value means timeslot 1. **One sentence from the operator**;
+     it was never written down at the radio. `SlotBitIsTimeslot2` is
+     configuration until then.
+   - The destination field. Every transmission ever captured reads 455, so
+     nothing has *moved* bytes 9–11. One key-up on any other talkgroup.
+   - The Link Control checksum, needed for voice headers and terminators.
+     A fitting exercise against the 28 data bursts already in `testdata/hbp/`;
+     no equipment.
+3. **The console page.** The listener holds peers and calls and nothing reads
+   them, so a repeater shows in `/healthz` and the journal but not the
+   dashboard.
+4. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+   captured a master sending voice. Build 1 first, then use it: send a burst
+   known to be well-formed and watch whether the repeater keys.
+5. **Motorola → Motorola**, which needs no conversion at all and may be the
+   simplest complete product. Needs KD9EJA's repeater on `allowed_peers`.
+
+### Settled, do not reopen
+
+Everything in §8b, §8c and §8d, plus:
+
+- **The FEC is a wrapper, not a codec** ([ADR-0037](docs/adr/ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md)).
+  Parameter bits are copied and never inspected; reading one needs a new ADR.
+- **`0xf1` is not a peer list.** Tested: no peer ID in either byte order, no
+  address, no port.
+- **Byte 5 of a voice frame is a call counter, not a timeslot.** The timeslot is
+  bit `0x20` of byte 17, and bit `0x40` marks the last frame.
+
+### The method, now proved seven times in two days
+
+**Every reading taken by eye was wrong. Every differential was right.**
+
+The trailer, the master ID, the "timeslot" that was a call counter, a 49-bit
+stride that is 50, the vocoder interleave, the EMB generator, the BPTC stride.
+Each settled either by changing exactly one thing and diffing, or by running
+candidate readings against thousands of real frames and taking the one that
+scores near a hundred where the others score zero.
+
+**A wrong hypothesis scores zero. That asymmetry is the evidence**, and it is
+worth more than a citation.
+
+### Two traps that cost real time
+
+- **A count of failures hides new ones.** The container always fails
+  `TestDocumentedPathsExist` for an unrelated reason, so a new failure kept the
+  total at eight and was invisible. §7 already said list them by name; the rule
+  was broken the same day it was written down. **Never count.**
+- **The obvious deduplication is wrong.** The Homebrew captures hold every burst
+  twice, once arriving and once relayed. Skipping *equal* neighbours collapses
+  the two genuine continuation positions into one and yields a plausible
+  sequence silently missing a burst. Take every second burst.
 
 ---
 

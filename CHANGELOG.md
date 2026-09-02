@@ -4,6 +4,29 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **`PROJECT_MEMORY.md` §8e replaces §8d.** §8d was written earlier the same
+  evening, before `internal/dmrfec`, `internal/ipscbridge`, BPTC, the timeslot
+  and the superframe order existed. That file is the first thing a new session
+  reads, and it was stale in exactly the way it had been that morning.
+
+  §8e records what the audio path now is, with the evidence for each piece
+  beside it, and what remains: wiring, and three small unknowns that are each a
+  sentence or a key-up away.
+
+- **The method is stated with its count.** Seven times in two days a reading
+  taken by eye was wrong and a differential was right — the trailer, the master
+  ID, the "timeslot" that was a call counter, a 49-bit stride that is 50, the
+  vocoder interleave, the EMB generator, the BPTC stride. **A wrong hypothesis
+  scores zero, and that asymmetry is the evidence.**
+
+- **Two traps are written down because both cost real time.** That a count of
+  failures hides new ones — the rule existed and was broken the same day it was
+  restated. And that the Homebrew captures hold every burst twice, so the
+  obvious deduplication silently drops a burst.
+
+- `NEW-SESSION.md` and `HANDOVER.md` brought current; numbering moves to 0184.
+
 ### Added
 - **`internal/ipscbridge`: Motorola audio becomes Homebrew bursts.** A voice
   frame from an IP Site Connect repeater goes in and a 33-byte DMR burst comes

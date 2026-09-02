@@ -13,9 +13,10 @@ KB9TYC's in Wisconsin, Wisconsin, and AD0MI's in Post Falls, Idaho. Voice, priva
 calls, text messages and parrot all work on air.
 
 **And a Motorola repeater.** As of 2026-09-01 an XPR8300 is registered to the
-production server over IP Site Connect and its transmissions are recorded. It is
-not yet routed to the rest of the network — see §8d, item 1, which needs no new
-capture and no equipment.
+production server over IP Site Connect and its transmissions are recorded. The
+conversion from Motorola audio to the bursts the rest of the network uses is
+built and proved lossless against real traffic; what remains is wiring it to
+routing. See §8e.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -24,7 +25,7 @@ Attached is a git bundle of the whole repository. Please start by reading
 - **§6a**, what two members on a real network taught us
 - **§6b**, what a second day taught us — it supersedes parts of §6a, especially
   about talkgroup rewriting
-- **§8d**, where this session should start, and what was settled and should not
+- **§8e**, where this session should start, and what was settled and should not
   be reopened
 - **§7**, working conventions — the section on working on my machines is all
   learned from things that went wrong
@@ -37,7 +38,7 @@ decision records.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0175**. Commits use my
+`git am` on my Fedora machine. Number them from **0184**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 Never commit `go.mod` or `go.sum` — stage with
