@@ -4,6 +4,25 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **A documentation-accuracy failure that hid inside a count.**
+  `testdata/hbp/EMB-CAPTURE-REQUEST.md` named a function in the
+  package-dot-identifier style, which the gate reads as a file path because it
+  looks exactly like one. Prose should say *the `EMBFor` function in
+  `internal/dmrfec`* instead — and note that this entry cannot quote the
+  offending form either, for the same reason.
+
+  It reached a patch because the pre-flight check counted failures instead of
+  listing them. The development container always fails `TestDocumentedPathsExist`
+  for an unrelated reason — the SQLite driver is moved aside to compile there —
+  so the total stayed at the documented eight and the new failure was invisible.
+
+  **§7 has said "list failures by name rather than counting them" since two new
+  ones hid inside a normal-looking count once before.** The rule was right, the
+  reasoning behind it was right, and it was not followed. A count is a summary,
+  and a summary of failures throws away the only part that matters.
+
+
 ### Added
 - **The EMB, as far as the captures establish it and no further.** The 48 bits
   in the middle of a voice burst are an 8-bit EMB, a 32-bit Link Control
@@ -23,7 +42,7 @@ All notable changes to QSP. Dates are UTC.
   about them can be honestly inferred.
 
   It is not a systematic cyclic code in any bit order tried, so it cannot be
-  recovered from a generator polynomial either. `EMBFor` serves colour code 11
+  recovered from a generator polynomial either. The lookup serves colour code 11
   and **refuses the rest, naming the capture that would extend it**. A wrong EMB
   produces a burst a radio silently drops: audio going nowhere with nothing in a
   log, which is a far worse outcome than an error.

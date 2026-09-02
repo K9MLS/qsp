@@ -24,7 +24,8 @@ So the four observed values differ only in their two LCSS bits, and only the
 contribution of those two bits can be derived. Nothing has ever moved the colour
 code bits, so nothing about them can be honestly inferred.
 
-`internal/dmrfec.EMBFor` therefore serves colour code 11 and refuses the rest.
+The `EMBFor` function in [`internal/dmrfec`](../../internal/dmrfec) therefore
+serves colour code 11 and refuses the rest.
 That refusal is deliberate: a wrong EMB produces a burst a radio **silently
 drops**. Audio that goes nowhere with nothing in a log is the worst failure
 available here, and much worse than an error naming the fix.
