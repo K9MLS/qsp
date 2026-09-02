@@ -49,3 +49,4 @@ conclusion.
 | [0037](ADR-0037-dmr-fec-is-a-wrapper-not-a-codec.md) | The DMR FEC is a wrapper, and QSP may add or remove it | Accepted |
 | [0038](ADR-0038-routing-core-is-shared.md) | The routing core is reached by more than one listener, so it locks | Accepted |
 | [0039](ADR-0039-the-peer-table-is-shared.md) | The peer table is shared too, and the fix belonged one layer down | Accepted |
+| [0040](ADR-0040-the-air-interface-is-specified.md) | The air interface is specified, and IPSC is not | Accepted |

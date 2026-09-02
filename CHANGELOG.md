@@ -4,6 +4,52 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **The Link Control checksum, which was the last unknown in burst
+  construction.** `internal/dmrfec` now builds a complete voice header or
+  terminator from scratch: Reed-Solomon (12,9) over the nine Link Control
+  octets, the Golay (20,8) Slot Type, and the base-station data synchronisation
+  pattern.
+
+  **28 of 28 real data bursts rebuilt bit-exact from their Link Control alone.**
+  Nothing has ever captured a master *sending* a voice header, so taking a real
+  one apart, keeping only its addresses, and reconstructing all 33 bytes is the
+  nearest substitute there is — and it exercises the Reed-Solomon parity, the
+  BPTC encoder, the Slot Type and the sync field independently.
+
+- **The data type masks are measured rather than read.** Computing the parity of
+  each captured burst and subtracting what it carries leaves `0x969696` on all
+  fourteen voice headers and `0x999999` on all fourteen terminators. A wrong
+  construction would leave 28 unrelated values. The masks are documented in the
+  standard and QSP does not take them from there: a measurement that agrees with
+  a published constant also proves the construction that produced it.
+
+- **[ADR-0040](docs/adr/ADR-0040-the-air-interface-is-specified.md): the air
+  interface is specified and IPSC is not.** ADR-0029's capture-only rule exists
+  because IP Site Connect has no published specification. The DMR side is ETSI
+  TS 102 361-1, a free download, and deriving by search what is already written
+  down is a longer route to the same answer with more chances to be wrong.
+
+  That was demonstrated at cost. An attempt to recover this checksum by
+  searching thirty thousand candidate constructions scored zero on every one —
+  and the field polynomial and generator roots were both in the search space the
+  whole time. The polynomial division applying them was wrong. **A wrong
+  hypothesis scores zero, and so does a right hypothesis evaluated by broken
+  arithmetic**, which is a limit of this project's method worth recording beside
+  the method.
+
+### Notes
+- **A voice header is mandatory, not a refinement.** TS 102 361-1 clause 5.1.2.2:
+  a voice transmission *shall* be preceded by a voice LC header. What the bridge
+  has been emitting — burst A with nothing before it — is not a valid voice
+  transmission, which is the best explanation yet for why no receiver un-mutes.
+  §8e assumed late entry would cover it; TS 102 361-2 says late entry works from
+  an embedded Link Control and recovers a talker's identity mid-stream rather
+  than starting a transmission.
+- **The pieces are built but not yet emitted.** Wiring the header and terminator
+  into `ipscbridge` is the next patch, and it is assembly rather than discovery:
+  every part is now constructible and proved against real traffic.
+
 ### Fixed
 - **`ipsc.colour_code` was validated but never required, and the whole failure
   presented as no audio.** The field was a `uint8` checked for the range 0 to
