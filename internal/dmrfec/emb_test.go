@@ -108,3 +108,137 @@ func TestOutOfRangeInputsAreRefused(t *testing.T) {
 		t.Error("LCSS 4 was accepted; it is two bits")
 	}
 }
+
+// TestTheSuperframeLCSSOrderMatchesTheCaptures reads the Homebrew traffic as
+// sequences rather than as a set, which is the only way the order shows up.
+//
+// Every LCSS appears twice in a row on the wire because the capture was taken
+// at a master and holds each burst twice: once arriving and once relayed.
+// Collapsing the repeats gives the order LCSSForPosition encodes.
+func TestTheSuperframeLCSSOrderMatchesTheCaptures(t *testing.T) {
+	var run []uint8
+	var complete, agreed int
+
+	flush := func() {
+		if len(run) < 5 {
+			run = nil
+			return
+		}
+		complete++
+		ok := true
+		for i, got := range run[:5] {
+			want, valid := dmrfec.LCSSForPosition(i + 1)
+			if !valid {
+				t.Fatalf("position %d has no LCSS", i+1)
+			}
+			if got != want {
+				ok = false
+			}
+		}
+		if ok {
+			agreed++
+		} else {
+			// Not a failure on its own. A superframe with a burst missing
+			// shifts every position after it, and a capture of real traffic
+			// over a real radio link has losses in it.
+			t.Logf("superframe %d does not match: %v", complete, run[:5])
+		}
+		run = nil
+	}
+
+	// Each burst appears twice, so take every second one. Skipping *equal*
+	// neighbours instead would collapse the two genuine continuation positions
+	// into one, which is a real trap: the wrong deduplication produces a
+	// plausible five-element sequence that is silently missing a burst.
+	var seen int
+	var inFrame bool
+	for _, b := range readBursts(t) {
+		if !b.isVoice() {
+			flush()
+			inFrame = false
+			continue
+		}
+		middle, _ := dmrfec.Middle(b.Burst)
+		if middle == dmrfec.VoiceSyncBS {
+			flush()
+			inFrame = true
+			seen = 0
+			continue
+		}
+		if !inFrame {
+			continue
+		}
+		if seen%2 == 1 {
+			seen++
+			continue
+		}
+		seen++
+		emb, _ := dmrfec.SplitMiddle(middle)
+		run = append(run, dmrfec.LCSSOf(emb))
+	}
+	flush()
+
+	if complete == 0 {
+		t.Fatal("no complete superframes found")
+	}
+	pct := agreed * 100 / complete
+	t.Logf("%d superframes, %d matching the encoded order (%d%%)", complete, agreed, pct)
+	if pct < 95 {
+		t.Errorf("only %d%% of superframes follow the order LCSSForPosition encodes; "+
+			"a wrong order would score near zero and a right one near a hundred, so this "+
+			"is a wrong order rather than a lossy capture", pct)
+	}
+}
+
+// TestMiddleForPositionRebuildsTheCapturedMiddles is the end-to-end check: a
+// position and a colour code must produce the 48 bits actually seen on air.
+func TestMiddleForPositionRebuildsTheCapturedMiddles(t *testing.T) {
+	sync, err := dmrfec.MiddleForPosition(0, 11, 0)
+	if err != nil {
+		t.Fatalf("position 0: %v", err)
+	}
+	if sync != dmrfec.VoiceSyncBS {
+		t.Errorf("position 0 gave %012x, want the voice sync pattern", sync)
+	}
+
+	var matched int
+	for _, b := range readBursts(t) {
+		if !b.isVoice() {
+			continue
+		}
+		middle, _ := dmrfec.Middle(b.Burst)
+		if middle == dmrfec.VoiceSyncBS {
+			continue
+		}
+		emb, fragment := dmrfec.SplitMiddle(middle)
+		cc, lcss := dmrfec.ColourCodeOf(emb), dmrfec.LCSSOf(emb)
+		for pos := 1; pos < dmrfec.SuperframeBursts; pos++ {
+			if want, ok := dmrfec.LCSSForPosition(pos); !ok || want != lcss {
+				continue
+			}
+			got, err := dmrfec.MiddleForPosition(pos, cc, fragment)
+			if err != nil {
+				t.Fatalf("position %d: %v", pos, err)
+			}
+			if got != middle {
+				t.Fatalf("position %d rebuilt %012x, the wire had %012x", pos, got, middle)
+			}
+			matched++
+			break
+		}
+	}
+	if matched == 0 {
+		t.Fatal("no captured middle was rebuilt")
+	}
+	t.Logf("%d captured middles rebuilt from a position and a colour code", matched)
+}
+
+// TestAPositionOutsideASuperframeIsRefused keeps the bounds honest.
+func TestAPositionOutsideASuperframeIsRefused(t *testing.T) {
+	for _, pos := range []int{-1, 6, 7, 100} {
+		if _, err := dmrfec.MiddleForPosition(pos, 11, 0); err == nil {
+			t.Errorf("burst position %d was accepted; a superframe holds %d",
+				pos, dmrfec.SuperframeBursts)
+		}
+	}
+}

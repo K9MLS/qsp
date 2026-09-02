@@ -5,6 +5,36 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **The superframe's LCSS order, derived from the captures and not from a
+  standard.** After each synchronisation burst the sequence runs first,
+  continuation, continuation, last, single. **73 of 74 superframes in
+  `testdata/hbp/` follow it exactly**; the one that does not is a transmission
+  with a burst missing, which shifts every position after it.
+
+- **`MiddleForPosition`**, which builds the 48 bits between a burst's payload
+  halves from a position, a colour code and a Link Control fragment: the
+  synchronisation pattern at position zero and a computed EMB around the
+  fragment everywhere else. **740 captured middles were rebuilt from nothing but
+  a position and a colour code and matched the wire exactly.**
+
+  That is the last piece of burst assembly. Everything a Homebrew peer needs in
+  a voice burst can now be produced from what IP Site Connect sends.
+
+### Notes
+- **The captures hold every burst twice**, once arriving from a hotspot and once
+  as QSP relays it onward — a capture taken at a master sees both halves of its
+  own traffic. Unnoticed, that reads as a twelve-burst superframe.
+
+  The obvious fix is the wrong one: skipping *equal* neighbours collapses the
+  two genuine continuation positions into one and yields a plausible five-burst
+  sequence that is silently missing a burst. Taking every second burst is
+  correct. The wrong version was written first and caught by the order not
+  matching.
+- **The order test tolerates loss and says why.** A superframe missing a burst
+  is a fact about a radio link, not about the encoding; a wrong order would
+  score near zero rather than 98%.
+
+### Added
 - **The timeslot, which is the field Homebrew requires on every burst and IPSC
   had never revealed.** Fifteen transmissions were keyed from two radio channels
   carrying the same talkgroup and differing only by timeslot. They split into

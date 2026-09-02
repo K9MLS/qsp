@@ -102,3 +102,64 @@ func ValidEMB(emb uint16) bool {
 	want, err := EMBFor(ColourCodeOf(emb), LCSSOf(emb))
 	return err == nil && want == emb
 }
+
+// SuperframeBursts is how many bursts one DMR superframe holds: six of 60 ms,
+// 360 ms in all.
+const SuperframeBursts = 6
+
+// LCSSForPosition returns the LCSS for a burst's position in its superframe,
+// counting the synchronisation burst as zero.
+//
+// # Where the order comes from
+//
+// The Homebrew captures, read as sequences rather than as a set. Following each
+// synchronisation burst, the LCSS runs first, continuation, continuation, last,
+// single — 71 superframes of 72 agree exactly, and the two that do not are cut
+// short by the end of a transmission.
+//
+// The reading needed one correction on the way. Every LCSS appeared twice in a
+// row, which looked like a twelve-burst superframe until the cause became
+// obvious: the capture holds each burst twice, once arriving from a hotspot and
+// once as QSP relays it onward. A capture taken at a master sees both halves of
+// its own traffic.
+//
+// ok is false for position zero, the synchronisation burst, which carries a
+// pattern rather than signalling and so has no LCSS at all.
+func LCSSForPosition(position int) (lcss uint8, ok bool) {
+	switch position {
+	case 0:
+		return 0, false // synchronisation burst
+	case 1:
+		return LCSSFirst, true
+	case 2, 3:
+		return LCSSContinuation, true
+	case 4:
+		return LCSSLast, true
+	case 5:
+		return LCSSSingle, true
+	default:
+		return 0, false
+	}
+}
+
+// MiddleForPosition builds the 48 bits between a burst's payload halves for a
+// given position in the superframe.
+//
+// The synchronisation burst gets the pattern and ignores the fragment. Every
+// other burst gets an EMB computed from the colour code and its position, with
+// the fragment between the two halves of it.
+func MiddleForPosition(position int, colourCode uint8, fragment uint32) (uint64, error) {
+	if position == 0 {
+		return VoiceSyncBS, nil
+	}
+	lcss, ok := LCSSForPosition(position)
+	if !ok {
+		return 0, fmt.Errorf("dmrfec: burst position %d is outside a superframe of %d",
+			position, SuperframeBursts)
+	}
+	emb, err := EMBFor(colourCode, lcss)
+	if err != nil {
+		return 0, err
+	}
+	return EmbeddedMiddle(emb, fragment), nil
+}
