@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/k9mls/qsp/internal/access"
@@ -144,8 +145,21 @@ func dropped(format string, args ...any) Outcome {
 // goroutine, consistent with the single-writer model in ADR-0002, and every
 // method that reads state returns copies so that observers never alias it.
 type Master struct {
-	cfg   MasterConfig
-	log   *slog.Logger
+	cfg MasterConfig
+	log *slog.Logger
+	// mu guards every piece of mutable state on this Master: the peer table,
+	// the attachments, the subscriber locations and the login throttle.
+	//
+	// **It is here because two listeners now deliver through this type.** The
+	// peer table was owned by the goroutine reading the DMR socket, which was
+	// true until an upstream link began calling DeliverFromUpstream from its
+	// own read goroutine — and Listener.deliver looks a peer up on every
+	// delivery. Adding an IPSC listener made a second such goroutine and the
+	// detector reported it immediately. Same finding as ADR-0038, one layer
+	// down: locking the routing state left the peer table underneath it
+	// unguarded. See ADR-0039.
+	mu sync.RWMutex
+
 	peers map[hbp.RepeaterID]*Peer
 	// subscribers maps a radio ID to where it was last heard. Learned from
 	// traffic, never configured; see subscribers.go.
@@ -215,6 +229,9 @@ func randomSalt() ([4]byte, error) {
 // against the sender's registration state before anything is acted on. Handle
 // never panics and never retains the slice.
 func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	msg, err := hbp.Parse(datagram)
 	if err != nil {
 		return dropped("unparseable datagram from %s: %v", from, err)
@@ -614,6 +631,9 @@ func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome
 // PeerTimeout; an incomplete handshake after LoginTimeout, which is shorter
 // because a half-open registration holds a slot without providing service.
 func (m *Master) Expire() []Event {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	now := m.cfg.Now().UTC()
 
 	// Forget sources whose lockouts and failure runs have both lapsed, so the
@@ -673,6 +693,9 @@ func (m *Master) Expire() []Event {
 //
 // The result is a copy: callers may hold it without observing later mutation.
 func (m *Master) Peers() []Peer {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	out := make([]Peer, 0, len(m.peers))
 	for _, p := range m.peers {
 		out = append(out, p.clone())
@@ -683,6 +706,9 @@ func (m *Master) Peers() []Peer {
 
 // Lookup returns one peer by ID.
 func (m *Master) Lookup(id hbp.RepeaterID) (Peer, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	p, ok := m.peers[id]
 	if !ok {
 		return Peer{}, false
@@ -691,10 +717,17 @@ func (m *Master) Lookup(id hbp.RepeaterID) (Peer, bool) {
 }
 
 // Count returns the number of registrations, including incomplete handshakes.
-func (m *Master) Count() int { return len(m.peers) }
+func (m *Master) Count() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.peers)
+}
 
 // ConfiguredCount returns the number of peers able to pass traffic.
 func (m *Master) ConfiguredCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	n := 0
 	for _, p := range m.peers {
 		if p.State.CanPassTraffic() {

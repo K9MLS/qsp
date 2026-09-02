@@ -89,6 +89,9 @@ func (m *Master) attach(peer hbp.RepeaterID, talkgroup uint32, slot hbp.Timeslot
 // With subscription off it reports true for everything, which is what makes an
 // instance that has not configured it behave exactly as it did before.
 func (m *Master) Attached(peer hbp.RepeaterID, talkgroup uint32, slot hbp.Timeslot) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	if !m.cfg.Subscription.Enabled {
 		return true
 	}
@@ -107,6 +110,9 @@ func (m *Master) Attached(peer hbp.RepeaterID, talkgroup uint32, slot hbp.Timesl
 // "Why can I not hear that talkgroup" is the most common question on any DMR
 // network, and this is the answer to it.
 func (m *Master) Attachments() []Attachment {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	out := make([]Attachment, 0, len(m.attachments))
 	for _, a := range m.attachments {
 		out = append(out, *a)
@@ -137,6 +143,9 @@ func (m *Master) Attachments() []Attachment {
 // talkgroup, finding it empty and moving on wants to leave now, and doing that
 // repeatedly is what exploring a network looks like.
 func (m *Master) DropAttachments(peer hbp.RepeaterID) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var n int
 	for k, a := range m.attachments {
 		if k.peer == peer && !a.Static {
@@ -151,7 +160,11 @@ func (m *Master) DropAttachments(peer hbp.RepeaterID) int {
 func (m *Master) SubscriptionEnabled() bool { return m.cfg.Subscription.Enabled }
 
 // AttachmentCount returns how many attachments are held.
-func (m *Master) AttachmentCount() int { return len(m.attachments) }
+func (m *Master) AttachmentCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.attachments)
+}
 
 // expireAttachments drops dynamic attachments that have gone quiet.
 //
@@ -197,6 +210,9 @@ func (m *Master) seedStaticAttachments() {
 // and dynamic ones are kept: a member who attached a talkgroup by transmitting
 // should not lose it because an administrator saved an unrelated change.
 func (m *Master) SetSubscription(cfg SubscriptionConfig) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultAttachmentTimeout
 	}

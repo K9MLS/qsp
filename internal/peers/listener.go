@@ -134,6 +134,14 @@ type Listener struct {
 	// times. Serve-goroutine only.
 	lastUnlink map[hbp.RepeaterID]hbp.StreamID
 
+	// collisionMu guards the record of which shared radio IDs have been
+	// reported. It is written from the IPSC listener's goroutine rather than
+	// this listener's, so it is locked rather than owned.
+	collisionMu sync.Mutex
+	// reportedCollisions notes IDs already warned about, so a repeater that
+	// shares an ID produces one line rather than one per transmission.
+	reportedCollisions map[hbp.RepeaterID]bool
+
 	dropMu      sync.Mutex
 	recentDrops []DropNote
 	frames      atomic.Uint64
@@ -524,6 +532,12 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
 	}
+	// A transmission from a link is a transmission, and last heard is a record
+	// of who has been on the network (ADR-0033). Omitting this made a talker on
+	// the far end of a bridge invisible to the console while their audio was
+	// being relayed — the frame was carried and the record said nobody had
+	// spoken.
+	l.observe(0, frame)
 	l.deliver(0, l.cfg.Routing.RouteFromUpstream(link, frame, time.Now()))
 }
 
@@ -558,8 +572,56 @@ func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
 	}
+	// Observed before it is routed, for the same reason peer traffic is: the
+	// console shows who is talking, and a Motorola repeater's operator is as
+	// entitled to appear there as anybody on a hotspot. Without this a
+	// transmission crossed the bridge and left no trace anywhere an operator
+	// looks — which is how it was noticed, by keying up and watching the
+	// dashboard stay empty.
+	l.warnIfIDShared(from)
+	l.observe(from, frame)
 	l.trigger(from, frame)
 	l.deliver(from, l.cfg.Routing.Route(from, frame, time.Now()))
+}
+
+// warnIfIDShared reports a radio ID belonging to both an IPSC repeater and a
+// registered Homebrew peer.
+//
+// **That peer will never hear the repeater, and nothing else says so.** Routing
+// does not send a call back to the peer that transmitted it, and it decides
+// that by comparing IDs — so a hotspot sharing its number with a Motorola
+// repeater is excluded from every one of that repeater's transmissions. Every
+// other member hears it. The one person most likely to be testing does not, and
+// the journal shows the frame being relayed, which reads as success.
+//
+// It cost an afternoon. The static form of this check already exists for
+// ipsc.master_id, where a repeater refuses to register with a master carrying
+// its own ID; this is the same failure between two peers, and it cannot be a
+// startup check because the Homebrew peer list is built as peers register.
+func (l *Listener) warnIfIDShared(from hbp.RepeaterID) {
+	if l.cfg.Master == nil {
+		return
+	}
+	if _, registered := l.cfg.Master.Lookup(from); !registered {
+		return
+	}
+
+	l.collisionMu.Lock()
+	defer l.collisionMu.Unlock()
+	if l.reportedCollisions[from] {
+		return
+	}
+	if l.reportedCollisions == nil {
+		l.reportedCollisions = make(map[hbp.RepeaterID]bool)
+	}
+	l.reportedCollisions[from] = true
+
+	l.log.Warn("an IPSC repeater and a registered peer share a radio ID, so that peer cannot hear the repeater",
+		logging.PeerID(uint32(from)),
+		slog.String("consequence", "a call is never sent back to the peer that transmitted it, "+
+			"and this repeater and that peer look like the same station"),
+		slog.String("remedy", "give the repeater a radio ID of its own, or the hotspot an ESSID suffix"),
+	)
 }
 
 func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {

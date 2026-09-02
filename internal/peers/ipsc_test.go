@@ -1,10 +1,14 @@
 package peers_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
@@ -155,4 +159,170 @@ func TestAudioIsNotCarriedWithoutRouting(t *testing.T) {
 		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
 		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
 	})
+}
+
+// TestMotorolaTrafficReachesTheCallTracker is the dashboard defect.
+//
+// A transmission crossed the bridge and left no trace anywhere an operator
+// looks: not in last heard, not on the console. The frame was carried and the
+// record said nobody had spoken — two statements individually true, together a
+// lie, which §8a names as the shape of almost every defect here.
+//
+// Found by keying up and watching the dashboard stay empty, not by any test.
+func TestMotorolaTrafficReachesTheCallTracker(t *testing.T) {
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(nil)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: readyFromMaster{m: master},
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	tracker := calls.NewTracker(calls.Options{})
+
+	l, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core, Calls: tracker,
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	l.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE03,
+	})
+
+	active := tracker.Active()
+	if len(active) == 0 {
+		t.Fatal("a Motorola transmission left no record; the console shows who is talking " +
+			"and this talker would be invisible while their audio was relayed")
+	}
+	if active[0].Target != 2 {
+		t.Errorf("the record says TG%d, want TG2", active[0].Target)
+	}
+	if active[0].Source != 3132910 {
+		t.Errorf("the record attributes the call to %d, want the transmitting radio", active[0].Source)
+	}
+}
+
+// TestASharedRadioIDIsReported is the afternoon this cost, written down.
+//
+// Routing never sends a call back to the peer that transmitted it, and decides
+// that by comparing IDs. So a hotspot sharing its radio ID with a Motorola
+// repeater is excluded from every one of that repeater's transmissions — while
+// every other member hears them, and the journal reports the frames relayed.
+// The one person most likely to be doing the testing is the one person who
+// cannot hear the result, and nothing anywhere said so.
+func TestASharedRadioIDIsReported(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(nil)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: readyFromMaster{m: master}})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	l, err := peers.NewListener(log, peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	// A hotspot registers with the same radio ID the IPSC repeater uses.
+	register(t, l.Address(), testID, "K9MLS")
+
+	frame := hbp.Data{
+		RepeaterID: testID, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE04,
+	}
+	l.DeliverFromIPSC(testID, frame)
+
+	if !strings.Contains(buf.String(), "share a radio ID") {
+		t.Fatalf("a shared radio ID went unreported; the log said:\n%s", buf.String())
+	}
+
+	// One line, not one per frame. A three-second transmission is about fifty.
+	before := strings.Count(buf.String(), "share a radio ID")
+	for i := 0; i < 20; i++ {
+		l.DeliverFromIPSC(testID, frame)
+	}
+	if after := strings.Count(buf.String(), "share a radio ID"); after != before {
+		t.Errorf("the warning repeated %d times over 21 frames; it should be said once", after)
+	}
+}
+
+// TestAnUnsharedRadioIDIsNotReported keeps the warning meaningful.
+func TestAnUnsharedRadioIDIsNotReported(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, _ := routing.NewTable(nil)
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: readyFromMaster{m: master}})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	l, err := peers.NewListener(log, peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	register(t, l.Address(), testID, "K9MLS")
+
+	// The repeater has an ID of its own, which is the configuration being
+	// recommended.
+	l.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE05,
+	})
+
+	if strings.Contains(buf.String(), "share a radio ID") {
+		t.Errorf("a distinct radio ID was reported as a collision:\n%s", buf.String())
+	}
 }

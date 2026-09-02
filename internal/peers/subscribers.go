@@ -80,6 +80,13 @@ func (m *Master) observe(subscriber uint32, peer hbp.RepeaterID, slot hbp.Timesl
 // pointer to a departed peer would route a private call to a socket nobody is
 // listening on, and the caller would hear nothing with no explanation.
 func (m *Master) Locate(subscriber uint32) (Location, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.locate(subscriber)
+}
+
+// locate is Locate without the lock, for callers that already hold it.
+func (m *Master) locate(subscriber uint32) (Location, bool) {
 	loc, ok := m.subscribers[subscriber]
 	if !ok {
 		return Location{}, false
@@ -100,6 +107,9 @@ func (m *Master) Locate(subscriber uint32) (Location, bool) {
 // rather than something to hide; Locate is the routing question and applies the
 // stricter test.
 func (m *Master) Locations() []Location {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
 	out := make([]Location, 0, len(m.subscribers))
 	for _, loc := range m.subscribers {
 		out = append(out, *loc)
@@ -109,7 +119,11 @@ func (m *Master) Locations() []Location {
 }
 
 // SubscriberCount returns how many radios are currently remembered.
-func (m *Master) SubscriberCount() int { return len(m.subscribers) }
+func (m *Master) SubscriberCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.subscribers)
+}
 
 // expireSubscribers forgets radios not heard within the timeout.
 //
@@ -136,7 +150,10 @@ func (m *Master) expireSubscribers(now time.Time) []Location {
 // dependency to a struct it does not need would make it harder to test with a
 // stub.
 func (m *Master) LocateFor(subscriber uint32) (hbp.RepeaterID, hbp.Timeslot, bool) {
-	loc, ok := m.Locate(subscriber)
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	loc, ok := m.locate(subscriber)
 	if !ok {
 		return 0, 0, false
 	}

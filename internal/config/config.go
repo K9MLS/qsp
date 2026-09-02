@@ -96,12 +96,19 @@ type IPSC struct {
 	// ColourCode is written into the embedded signalling of every burst built
 	// from this repeater's audio.
 	//
+	// **It is a pointer so that absent and zero are different things.** The
+	// first version of this field was a uint8 validated for range, and 0 is a
+	// legal DMR colour code — so a configuration that never mentioned it
+	// passed validation, started cleanly, and built every burst with colour
+	// code 0. A receiver rejects a burst whose colour code is not its own
+	// without saying anything, so the whole failure presented as silence. See
+	// the changelog for 0.1.32.
+	//
 	// It is required when the listener is enabled and has no default. One is
 	// the commonest value in amateur DMR, but defaulting to it would be a
-	// claim about somebody else's network, and a receiver rejects a burst
-	// whose colour code is not its own — which looks like silence rather than
-	// like a misconfiguration.
-	ColourCode uint8 `json:"colour_code"`
+	// claim about somebody else's network — and a wrong colour code is
+	// indistinguishable on air from a bridge that does not work.
+	ColourCode *uint8 `json:"colour_code"`
 
 	// SlotBitIsTimeslot2 says which value of the IPSC slot bit means timeslot
 	// two.
@@ -1073,8 +1080,13 @@ func (c Config) Validate() error {
 			v.add("ipsc.peer_timeout_seconds", "must not be negative",
 				"leave it at 0 for the default, or give a value above the fifteen-second keepalive cadence")
 		}
-		if c.IPSC.ColourCode > 15 {
-			v.add("ipsc.colour_code", fmt.Sprintf("%d is out of range", c.IPSC.ColourCode),
+		switch {
+		case c.IPSC.ColourCode == nil:
+			v.add("ipsc.colour_code", "must be set when the IPSC listener is enabled",
+				"use the colour code the repeater is programmed with; there is no default because "+
+					"a burst carrying the wrong one is rejected silently and presents as no audio")
+		case *c.IPSC.ColourCode > 15:
+			v.add("ipsc.colour_code", fmt.Sprintf("%d is out of range", *c.IPSC.ColourCode),
 				"DMR colour codes run from 0 to 15; use the one the repeater is programmed with")
 		}
 	}

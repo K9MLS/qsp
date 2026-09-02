@@ -661,6 +661,18 @@ access list is what puts somebody off the network now, and the panel says so.
   later one, which turned a single failure into three this week.
 - **Read the operator's `git log` before assuming a patch state.** "Already
   exists in index" means the patch landed, not that it half-landed.
+- **Ask the running binary which commit it is.** `qsp --version` prints a
+  pseudo-version naming the commit it was built from, and the same string is in
+  the `starting` log line. An afternoon went on diagnosing a bridge that was not
+  deployed: the service was `active`, the deploy commands were right, and the
+  binary was three commits old because the patch file had never reached the
+  machine. `systemctl is-active` says something started; only the version says
+  *what*. Check it after every deploy, before keying a radio.
+- **A field that is validated is not a field that was set.** `ipsc.colour_code`
+  was a `uint8` checked for range, and 0 is a legal colour code — so a
+  configuration that never mentioned it validated, started, and built every
+  burst wrong. Where absent and zero mean different things, the type has to be
+  able to say so.
 
 ### Working on somebody else's machines
 
@@ -1207,23 +1219,50 @@ Where an invariant matters, enforce it in the type.
 1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
    evidence; §8a is emphatic that this project's defects are found by using the
    running system.
-2. **The destination field, now load-bearing.** Routing depends on
-   `Voice.Destination`, which is still a reading: every capture reads 455, so
-   nothing has moved bytes 9 to 11. A key-up on any other talkgroup settles it,
-   and `call started` in the journal is where the answer appears.
-3. **The slot polarity, now answerable without the operator.** `call started`
-   logs the raw slot bit beside the slot it was read as. One key-up on a known
-   timeslot settles it; `ipsc.slot_bit_is_timeslot2` is the setting to flip.
-4. **The Link Control checksum**, for voice headers and terminators. A fitting
-   exercise against the 28 data bursts in `testdata/hbp/`. No equipment.
-5. **The console page.** The IPSC listener holds peers and calls and nothing
-   reads them, so a repeater shows in `/healthz` and the journal but not the
-   dashboard.
-6. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
+2. **The Link Control FEC, and it is probably why there is no audio.** Voice
+   headers and terminators need Reed-Solomon (12,9) over the nine Link Control
+   bytes — ETSI TS 102 361-1 Annex B.3.6, and the standard is a free download
+   from ETSI, so this needs no reading of another implementation.
+
+   **It is checkable without equipment.** Compute the parity over the Link
+   Control of each of the 28 real data bursts in `testdata/hbp/` and compare
+   with the parity they already carry. A wrong construction scores zero, which
+   is the asymmetry this project runs on, and 28 of 28 would settle it.
+
+   **Why it moved to the top.** TS 102 361-2 describes a receiver un-muting on
+   an embedded Link Control PDU in the voice superframe carrying a matching
+   address. §8e assumed late entry would cover a missing voice header; that
+   assumption is a reading, it has never been tested, and readings have gone
+   nought for nine. Bursts are reaching peers and no audio has been confirmed,
+   so this is the first thing to build rather than a refinement to add later.
+3. **The console page.** The IPSC listener holds peers and calls of its own
+   that nothing reads, so a repeater shows in `/healthz` and the journal but not
+   the dashboard. Traffic now reaches last heard; the peer list does not.
+4. **The Pi-Star login drops every six or seven minutes** and re-authenticates,
+   on the *local* path `192.168.1.155` to `192.168.1.247` that is supposed to
+   bypass NAT rebinding. Between the failure and the next login a delivery to
+   that peer goes nowhere. Unexplained, affects every member rather than IPSC,
+   and deliberately not mixed into an IPSC diagnosis.
+5. **Hotspots → Motorola, still blocked and must stay blocked.** Nothing has
    captured a master sending voice to a repeater.
-7. **Motorola → Motorola.** Needs KD9EJA's repeater (315544) on `allowed_peers`,
+6. **Motorola → Motorola.** Needs KD9EJA's repeater (315544) on `allowed_peers`,
    and is worth deferring until one repeater is proved audible: two peers in
    play means a fault has two possible sources.
+
+### Settled by observation on 2026-09-02
+
+- **The destination field is real.** One repeater, one source, three values:
+  455, then 2, then 11. `Voice.Destination` is an observation rather than a
+  reading, and bytes 9 to 11 are named.
+- **`slot_bit_is_timeslot2` is `true`.** With it set, a transmission the
+  operator keyed on TS2 is delivered on TS2, matching where the network already
+  carries that talkgroup. Settled from the journal, which logs the raw bit
+  beside the slot it was read as.
+- **The XPR8300 is on colour code 11**, confirmed at the radio rather than taken
+  from a fixture.
+- **Bursts are built and written to peers.** Whether they are *audible* is still
+  unknown: the only station that could listen shares a radio ID with the
+  repeater and is therefore excluded from every delivery.
 
 ### Settled, do not reopen
 

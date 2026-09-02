@@ -258,8 +258,15 @@ func (m *Master) noteFailure(id hbp.RepeaterID, from netip.AddrPort, reason Fail
 
 // LoginFailures reports what is currently being refused.
 func (m *Master) LoginFailures(now time.Time) []LoginFailure {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	return m.logins.recentFailures(now, m.claimedIDs)
 }
 
 // BlockedSources reports how many addresses are locked out.
-func (m *Master) BlockedSources(now time.Time) int { return m.logins.blocked(now) }
+func (m *Master) BlockedSources(now time.Time) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.logins.blocked(now)
+}

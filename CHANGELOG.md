@@ -5,6 +5,72 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **`ipsc.colour_code` was validated but never required, and the whole failure
+  presented as no audio.** The field was a `uint8` checked for the range 0 to
+  15. Zero is a legal DMR colour code, so a configuration that never mentioned
+  it validated, started cleanly, logged `IPSC audio is bridged to DMR peers`,
+  and built every burst with colour code 0. A receiver rejects a burst whose
+  colour code is not its own and says nothing about it.
+
+  0.1.31's changelog claimed this field was required. **It was not, and the
+  claim is the defect** — it read as a fact and was in truth an intention, the
+  same shape as ADR-0002's concurrency invariant a patch earlier. The field is
+  now a pointer, so absent and zero are different things, and an enabled
+  listener with no colour code refuses to start naming the field.
+
+- **Bridged traffic reached no call record.** `DeliverFromIPSC` and
+  `DeliverFromUpstream` both routed a frame without observing it, so a
+  transmission crossed the bridge and appeared in neither last heard nor the
+  console. The frame was carried and the record said nobody had spoken. Found
+  by keying up and watching the dashboard stay empty.
+
+- **`peers.Master` had no synchronisation at all, and `deliver` looks a peer up
+  on every delivery** ([ADR-0039](docs/adr/ADR-0039-the-peer-table-is-shared.md)).
+  The peer table, the attachments, the subscriber locations and the login
+  throttle were a set of plain maps owned by the DMR socket's goroutine — so an
+  upstream link delivering a frame from its own read goroutine has raced with
+  peer registration since links were built.
+
+  **0.1.31 locked `routing.Core` and stopped there**, which fixed the first
+  thing that seam touched and left everything beneath it exposed. One
+  `sync.RWMutex` now covers all of `Master`'s mutable state; one rather than
+  four because `Handle` mutates all of it in a single message, and separate
+  locks would need an ordering rule nothing enforces.
+
+### Added
+- **A radio ID shared between an IPSC repeater and a registered peer is
+  reported.** Routing never sends a call back to the peer that transmitted it,
+  and decides that by comparing IDs — so a hotspot whose repeater ID equals a
+  Motorola repeater's is excluded from every one of that repeater's
+  transmissions. Every other member hears them, and the journal shows the frames
+  relayed, so it reads as success.
+
+  This cost an afternoon: the operator testing the bridge was the one station
+  that structurally could not hear it. The static form of the check already
+  existed for `ipsc.master_id`; this is the same failure between two peers, and
+  it warns at the first frame rather than at startup because the peer list is
+  built as peers register. Once per ID, not once per frame.
+
+### Notes
+- **Late entry needs signalling, and QSP may not be sending it.** ETSI TS
+  102 361-2 describes a receiver un-muting on an embedded LC PDU in the voice
+  superframe carrying a matching address. So §8e's claim that a radio would
+  "hear the audio and learn who is talking only through late entry" assumes an
+  embedded LC that reaches it. Voice headers and terminators are the next patch,
+  and are now believed to be a cause rather than a refinement.
+- **Settled on air**: the destination field moved — 455, then 2, then 11 from
+  one repeater — so `Voice.Destination` is an observation rather than a reading.
+  `slot_bit_is_timeslot2` is `true`, settled from the journal against the
+  timeslot the network already carries. The XPR8300 is on colour code 11,
+  confirmed at the radio.
+- **Whether the bursts are audible is still unknown.** They are built and
+  written to peers; the only station in a position to listen shares a radio ID
+  with the repeater and is excluded from every delivery.
+- **The Pi-Star login drops every six or seven minutes** on the local path that
+  is supposed to bypass NAT rebinding, leaving a window where a delivery to that
+  peer goes nowhere. Recorded in §8f, deliberately not diagnosed alongside IPSC.
+
+### Fixed
 - **A Motorola repeater's two timeslots no longer destroy each other's audio.**
   `ipscbridge.Converter` held one superframe position, one stream and one
   sequence counter for a whole repeater, and a repeater carries two

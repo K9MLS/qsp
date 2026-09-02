@@ -388,11 +388,22 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		// peers are reachable on. With no DMR listener there is nowhere to
 		// deliver to, and the IPSC listener records transmissions without
 		// carrying them rather than pretending otherwise.
+		// Validation refuses an enabled listener with no colour code, so this
+		// is never nil in practice. It is still checked, because a nil
+		// dereference here would take the daemon down over a configuration
+		// mistake, and refusing to start with a reason is the behaviour §7
+		// asks for.
+		if cfg.IPSC.ColourCode == nil {
+			return nil, fmt.Errorf("ipsc.colour_code is not set; the IPSC listener cannot build " +
+				"bursts without the colour code the repeater is programmed with")
+		}
+		colourCode := *cfg.IPSC.ColourCode
+
 		var deliver func(hbp.RepeaterID, hbp.Data)
 		if a.dmr != nil {
 			deliver = a.dmr.DeliverFromIPSC
 			log.Info("IPSC audio is bridged to DMR peers",
-				slog.Int("colour_code", int(cfg.IPSC.ColourCode)),
+				slog.Int("colour_code", int(colourCode)),
 				slog.Bool("slot_bit_is_timeslot2", cfg.IPSC.SlotBitIsTimeslot2))
 		} else {
 			log.Warn("IPSC is enabled with no DMR listener, so transmissions are recorded but not carried",
@@ -405,7 +416,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
 			Deliver:       deliver,
 			Bridge: ipscbridge.Config{
-				ColourCode:         cfg.IPSC.ColourCode,
+				ColourCode:         colourCode,
 				SlotBitIsTimeslot2: cfg.IPSC.SlotBitIsTimeslot2,
 			},
 		})
