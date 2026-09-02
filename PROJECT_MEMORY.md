@@ -1234,7 +1234,29 @@ Where an invariant matters, enforce it in the type.
 1. **Confirm on air.** The XPR8300 keys, a hotspot hears it. Nothing else is
    evidence; §8a is emphatic that this project's defects are found by using the
    running system.
-2. **Confirm the transmit path on air, then capture a master to check it.**
+1a. **Fix the outbound frame shape — this is the first thing, and it needs no
+   equipment.** The transmit path built in 0192/0193 sends frames that do not
+   match what a repeater sends, measured against fixtures already held:
+
+   | | QSP sends | A repeater sends |
+   |---|---|---|
+   | Header / terminator | **33 bytes** | **54 bytes** |
+   | Voice frames | **66 bytes, all** | **52 57 57 57 66 57** cycling |
+
+   The header is built with no payload; a real one carries a full Link Control
+   block. The 14-byte trailer is appended to every frame rather than varying
+   with superframe position — the same 1:4:1 ratio the sync / fragment /
+   fragment-with-LC tests already measure. `body[20]` is a marker reading `0x67`
+   on headers and `0x07`/`0xe7`/`0x87` on the three voice shapes; QSP writes
+   zero.
+
+   **So ADR-0041 assumption 1 is being broken by QSP's own output before the
+   protocol question arises.** Frames do reach KD9EJA's repeater — 494 captured
+   leaving on 2026-09-02 — and are ignored. Both shapes are visible in
+   `ipsc-two-peers.pcap` from two models, so the fixtures can prove a fix before
+   anybody keys a radio.
+
+2. **Then confirm on air, and capture a master to check the rest.**
    0192 built the direction from inference under
    [ADR-0041](docs/adr/ADR-0041-ipsc-transmit-from-inference.md), at the
    operator's direction, because the capture could not be scheduled and two

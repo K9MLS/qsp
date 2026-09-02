@@ -12,11 +12,14 @@ software. The repository is `github.com/K9MLS/qsp`.
 KB9TYC's in Wisconsin, Wisconsin, and AD0MI's in Post Falls, Idaho. Voice, private
 calls, text messages and parrot all work on air.
 
-**And a Motorola repeater.** As of 2026-09-01 an XPR8300 is registered to the
-production server over IP Site Connect and its transmissions are recorded. The
-conversion from Motorola audio to the bursts the rest of the network uses is
-built and proved lossless against real traffic; what remains is wiring it to
-routing. See §8e.
+**And three Motorola repeaters, on two models.** Mine in Denton, KD9EJA's
+SLR5700, and KB9TYC's. **A hotspot user has heard a Motorola repeater across the
+bridge** — voice header, audio and terminator, a complete DMR transmission.
+
+The other direction, network to repeater, is built but **does not work yet**.
+See §8f and `HANDOVER.md`: the frames QSP sends do not match the shape a
+repeater sends, and that is measurable against fixtures already in the
+repository.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -25,7 +28,7 @@ Attached is a git bundle of the whole repository. Please start by reading
 - **§6a**, what two members on a real network taught us
 - **§6b**, what a second day taught us — it supersedes parts of §6a, especially
   about talkgroup rewriting
-- **§8e**, where this session should start, and what was settled and should not
+- **§8f**, where this session should start, and what was settled and should not
   be reopened
 - **§7**, working conventions — the section on working on my machines is all
   learned from things that went wrong
@@ -38,7 +41,7 @@ decision records.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0184**. Commits use my
+`git am` on my Fedora machine. Number them from **0194**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 Never commit `go.mod` or `go.sum` — stage with
@@ -53,15 +56,25 @@ curl -sL -o /tmp/sc.tgz https://github.com/dominikh/go-tools/releases/download/2
 tar -C /tmp -xzf /tmp/sc.tgz && cp /tmp/staticcheck/staticcheck /usr/local/bin/
 ```
 
-`cmd/qsp` has eight known failures in your container because
-no SQLite driver is registered there; move `cmd/qsp/driver_sqlite.go` aside to
-compile it, and move it back before generating a patch.
+`cmd/qsp` has **seven** known failures in your container, listed by name in §7,
+because no SQLite driver is registered there. **Do not move
+`cmd/qsp/driver_sqlite.go` aside** — four documents name that path and removing
+it fails the documentation gate, which is how the count came to read eight and
+hide a real failure. Use a workspace stub above the repository instead; §7 has
+the four lines.
+
+**Your container reaps background processes between commands**, so nothing
+survives a `nohup ... &`, and it is a single core.
 
 **Your container ships without Go, and no allowed domain carries a Go binary.**
 `go.dev/dl` and the module proxy are both blocked, `golang/go` on GitHub
 publishes source rather than binaries, and Ubuntu's newest package is 1.22. The
-bootstrap minimum is enforced at run time, so the chain is **1.22 → 1.23 → 1.24
-→ 1.27** from the source tags on `codeload.github.com`, about twenty minutes. Do
+bootstrap minimum is enforced at run time, so the chain is **1.22 → 1.23 → 1.24.6
+→ 1.27** from the source tags on `codeload.github.com`. The patch release
+matters: `go1.24.0` is refused as a bootstrap for 1.27. `make.bash` cannot
+finish inside one command, but its toolchain phases survive being killed — run
+it once, then finish with `go_bootstrap install std` and `install cmd`. §7 has
+the exact commands. Allow an hour. Do
 it first: a documentation-only patch still has to pass the accuracy gate, and
 the accuracy gate is a Go test.
 
@@ -83,7 +96,11 @@ supersedes part of §6a.
 
 ## How this project actually finds things out
 
-**Every byte read by eye on 2026-09-01 was wrong. Every differential was right.**
+**Every byte read by eye has been wrong; every differential has been right** —
+nine times now. **And a right hypothesis evaluated by broken arithmetic also
+scores zero**: thirty thousand candidate Reed-Solomon constructions were
+searched and all failed while the correct parameters sat inside the search
+space, because the division applying them was wrong.
 Change exactly one setting, capture again, and diff — or run candidate readings
 against thousands of real frames and take the one that scores 99% where the
 others score zero. Two captures differing in one known way beat ten differing in
@@ -107,6 +124,15 @@ system is actually doing before proposing a fix; almost every defect in this
 project was found that way and none by the test suite.
 
 Bigger patches rather than many small ones.
+
+**Check the running binary after every deploy.** `qsp --version` prints the
+commit it was built from, and `systemctl is-active` does not. An afternoon went
+on debugging a bridge that was never deployed.
+
+**Grep for the call site after wiring anything across two subsystems.** An
+exported method nobody calls compiles, passes vet, passes staticcheck and passes
+every test. This has happened nine times; §8a calls it "declared and read by
+nothing".
 
 **GitHub Actions minutes are finite, and CI no longer runs on push.** It runs
 when I ask for it (`gh workflow run CI`), weekly, and on a release tag — because
