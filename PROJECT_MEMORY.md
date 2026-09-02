@@ -1702,6 +1702,20 @@ Where an invariant matters, enforce it in the type.
   second apart all relayed, with no `call ended without a terminator` and no
   `released a destination held by an abandoned transmission`.
 
+### A health status must name its subject and be able to recover
+
+A count of refusals without the radio ID that caused them is not actionable, and
+a lifetime total never falls, so it reads degraded until a restart. Both were
+true of the IPSC check, and together they hid a member's repeater knocking every
+ten seconds for hours behind the number 2144.
+
+**The first diagnosis of that number was wrong.** It was read as internet
+scanning against a port opened to the world hours earlier, and the proposed fix
+was to stop degrading on refusals at all — which would have removed the only
+thing that surfaced it. Every datagram was from one address, one radio ID, at
+the documented unregistered-peer cadence. Look at what the system is reporting
+before deciding the report is noise.
+
 ### An operational limit worth knowing
 
 **A remote IPSC peer must be reprogrammed by hand whenever the master's WAN

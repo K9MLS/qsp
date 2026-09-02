@@ -173,6 +173,18 @@ type Listener struct {
 	// ignored counts datagrams from radio IDs not in AllowedPeers, so that a
 	// misconfigured repeater is visible rather than silently dropped.
 	ignored atomic.Uint64
+	// refused records the most recent radio ID turned away by the allow list,
+	// with when it happened.
+	//
+	// **A lifetime counter cannot answer the question an operator has.** On
+	// 2026-09-02 the health page reported 2144 datagrams from radio IDs not on
+	// the allow list and named none of them, and finding out which took a
+	// journal search. It was a repeater belonging to a member of the network,
+	// retrying every ten seconds for hours, and the only thing standing
+	// between the operator and that fact was a number with no subject.
+	refusedID atomic.Uint32
+	refusedAt atomic.Int64
+
 	// unparsed counts datagrams this build does not recognise. It is expected
 	// to be non-zero: eight message types are known and IPSC has more.
 	unparsed atomic.Uint64
@@ -277,6 +289,28 @@ func (l *Listener) Counters() (ignored, unparsed uint64) {
 	return l.ignored.Load(), l.unparsed.Load()
 }
 
+// RefusalWindow is how recently a peer must have been turned away for the
+// listener to still be reporting it.
+//
+// It is longer than the ten-second retry an unregistered peer uses, so a
+// repeater that is genuinely knocking stays reported between attempts, and
+// shorter than anything an operator would call history.
+const RefusalWindow = 60 * time.Second
+
+// LastRefused reports a radio ID turned away within RefusalWindow.
+//
+// **It reports a condition rather than a total**, which is the difference
+// between a status an operator acts on and one they learn to ignore. A peer
+// that was refused once at startup and never again is not a fault; a peer
+// refused ten seconds ago is a repeater asking to join.
+func (l *Listener) LastRefused(now time.Time) (id uint32, ok bool) {
+	at := l.refusedAt.Load()
+	if at == 0 || now.Sub(time.Unix(0, at)) > RefusalWindow {
+		return 0, false
+	}
+	return l.refusedID.Load(), true
+}
+
 func (l *Listener) serve(ctx context.Context) {
 	defer l.running.Store(false)
 	responder := ipsc.Responder{MasterID: l.cfg.MasterID}
@@ -304,6 +338,8 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	}
 	if len(l.allowed) > 0 && !l.allowed[msg.SenderID] {
 		l.ignored.Add(1)
+		l.refusedID.Store(msg.SenderID)
+		l.refusedAt.Store(now.UnixNano())
 		l.log.Warn("ignoring peer not on the allow list", "from", from.String(),
 			"sender_id", msg.SenderID, "type", fmt.Sprintf("%#02x", byte(msg.Kind)))
 		return

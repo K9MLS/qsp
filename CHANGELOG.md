@@ -4,6 +4,32 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **The IPSC health status names the peer being refused, and can recover.**
+  It reported a lifetime count of datagrams turned away by the allow list and
+  named none of them. A count without a subject is not actionable: on
+  2026-09-02 it read 2144, and the answer turned out to be a member's repeater —
+  KB9TYC's, radio ID 3155412 — retrying every ten seconds for hours to join the
+  network. Finding that out took a journal search.
+
+  A lifetime total also never falls, so a subsystem that once turned something
+  away read degraded until the process restarted, and **a status that cannot
+  recover is a status an operator stops reading.** The condition is now a peer
+  being refused *now* rather than ever: the listener records the most recent
+  refused radio ID with its time, and health degrades only inside a
+  sixty-second window — longer than the ten-second retry an unregistered peer
+  uses, so a repeater genuinely knocking stays reported between attempts.
+
+  The total is still shown, as information rather than as a verdict.
+
+### Notes
+- **The degraded status was right and the first diagnosis of it was wrong.** It
+  was read as internet background noise on a port that had just been opened to
+  the world, and the remedy proposed was to stop degrading on refusals at all.
+  Every one of the 1800 datagrams was from one address, one radio ID, at a
+  ten-second cadence. **The check had surfaced something real that nobody had
+  noticed**, which is what it is for; the defect was that it could not say what.
+
 ### Notes
 - **A hotspot user heard a Motorola repeater**: KB9TYC heard KD9EJA's SLR5700
   across the bridge on 2026-09-02. The first confirmation that this path

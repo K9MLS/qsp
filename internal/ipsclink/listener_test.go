@@ -233,3 +233,65 @@ func voiceBody(stream, flags, seq uint16) []byte {
 	b[27] = 0x40 // payload class
 	return b
 }
+
+// TestARefusalIsReportedWithItsRadioID is the defect 2026-09-02 exposed.
+//
+// The health page said 2144 datagrams came from radio IDs not on the allow
+// list and named none of them. The answer was a member's repeater — KB9TYC's,
+// radio ID 3155412 — retrying every ten seconds for hours, and finding that out
+// took a journal search. A count without a subject is not actionable.
+func TestARefusalIsReportedWithItsRadioID(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{AllowedPeers: []uint32{peerID}})
+
+	if _, ok := l.LastRefused(time.Now()); ok {
+		t.Fatal("a listener that has refused nothing reports a refusal")
+	}
+
+	// A repeater that is not on the list knocks, exactly as an unregistered
+	// peer does every ten seconds.
+	send(t, conn, ipsc.KindRegisterRequest, 3155412, make([]byte, 11))
+
+	deadline := time.Now().Add(2 * time.Second)
+	var id uint32
+	var ok bool
+	for time.Now().Before(deadline) {
+		if id, ok = l.LastRefused(time.Now()); ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !ok {
+		t.Fatal("a refused peer was not reported")
+	}
+	if id != 3155412 {
+		t.Errorf("the refusal names radio ID %d, want 3155412", id)
+	}
+}
+
+// TestARefusalStopsBeingReported keeps the status able to recover.
+//
+// A lifetime total never falls, so a subsystem that once turned something away
+// reads degraded until the process restarts — and a status that cannot recover
+// is a status an operator stops reading.
+func TestARefusalStopsBeingReported(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{AllowedPeers: []uint32{peerID}})
+
+	send(t, conn, ipsc.KindRegisterRequest, 3155412, make([]byte, 11))
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := l.LastRefused(time.Now()); ok {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if _, ok := l.LastRefused(time.Now()); !ok {
+		t.Fatal("the refusal was never recorded, so recovery cannot be tested")
+	}
+
+	// Well past the window, the same listener no longer reports it.
+	later := time.Now().Add(ipsclink.RefusalWindow + time.Second)
+	if _, ok := l.LastRefused(later); ok {
+		t.Error("a refusal from over a minute ago is still reported; " +
+			"the status cannot recover and will be ignored")
+	}
+}
