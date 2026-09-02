@@ -4,6 +4,33 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **The EMB is computed for every colour code, not looked up for one.** The
+  previous entry left the bridge able to serve colour code 11 and nothing else,
+  which would have been a useless thing to ship, and it was one step short of
+  the answer rather than a real limit.
+
+  The parity is a fifteen-bit codeword with an overall parity bit appended.
+  Under that model, searching all 256 degree-eight generators leaves **exactly
+  one** that reproduces every captured EMB: x^8 + x^5 + x^4 + x^3 + 1. One
+  survivor out of 256 against four independent nine-bit observations settles it.
+
+  `EMBFor` now serves all sixteen colour codes and all four LCSS values, with
+  `ValidEMB` for checking one off the wire. Tests confirm every combination is
+  distinct and self-consistent, that no single-bit corruption passes the parity
+  check, and — still — that the computed values match every non-sync voice burst
+  in `testdata/hbp/`.
+
+### Notes
+- **The evidence is asymmetric and the documentation says so.** Every burst this
+  project holds carries colour code 11, so the code was *fitted* on the LCSS
+  axis and *predicts* the colour code axis. The prediction is almost certainly
+  right and it is still a prediction; `EMB-CAPTURE-REQUEST.md` is now a
+  verification rather than a blocker.
+- Worth recording that the first version of this stopped at a lookup table and
+  called the limit honest. Honest it was, but it was also premature: the search
+  that resolved it took thirty seconds and had not been tried.
+
 ### Fixed
 - **A documentation-accuracy failure that hid inside a count.**
   `testdata/hbp/EMB-CAPTURE-REQUEST.md` named a function in the
