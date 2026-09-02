@@ -5,6 +5,37 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`internal/ipscbridge`: Motorola audio becomes Homebrew bursts.** A voice
+  frame from an IP Site Connect repeater goes in and a 33-byte DMR burst comes
+  out, with the forward error correction, synchronisation pattern and embedded
+  signalling that IPSC leaves out rebuilt around it.
+
+  Run over the real transmissions in `testdata/ipsc/ipsc-probe-voice.pcap` it
+  produces **54 bursts, one synchronisation burst in six**, and every burst
+  taken apart again yields **exactly the vocoder payload the repeater sent**.
+  That last check is the whole argument: the audio a radio would reproduce is
+  the audio the originating radio encoded.
+
+- **It refuses to guess at its place in the superframe.** A transmission joined
+  before a synchronisation frame has an unknown position, and a burst built at
+  the wrong position carries signalling a receiver rejects. The converter emits
+  nothing until it sees a boundary, which costs at most six frames — 360 ms —
+  and a superframe that overruns puts it back into waiting rather than letting
+  the count drift.
+
+### Notes
+- **The timeslot polarity is configuration, not a constant.** Which value of the
+  IPSC slot bit means timeslot two was never written down at the radio, so
+  `SlotBitIsTimeslot2` exists to let an operator say. Getting it wrong is then a
+  setting rather than a rebuild.
+- **Voice headers and terminators are not produced yet.** They need a Link
+  Control checksum no capture has pinned down; `internal/dmrfec` can build the
+  block the moment it is known. Until then a receiving radio hears the audio and
+  learns who is talking only through late entry.
+- The converter does not route. Handing bursts to peers is still to be wired,
+  and that is the last piece before a Motorola repeater is audible on a hotspot.
+
+### Added
 - **BPTC(196,96), which is the last piece of burst construction.** A DMR data
   burst — a voice header or a terminator — carries 96 bits inside a block
   product turbo code: 13 rows of Hamming(15,11,3) crossed with 15 columns of
