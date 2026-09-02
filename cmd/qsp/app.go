@@ -526,6 +526,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Links:               linkSource(a.upstreams, cfg),
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
+		IPSCPeers:           ipscPeerSource(a.ipsc),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
 		Config:              manager,
@@ -978,6 +979,93 @@ func displayAddr(a netip.AddrPort) string {
 	return a.String()
 }
 
+// ipscPeerSource returns a console view of the IPSC listener, or nil when that
+// listener is not running.
+//
+// **Nil rather than an empty adapter**, because the console distinguishes "no
+// Motorola repeaters are connected" from "this instance does not accept them",
+// and a source that always answers with an empty list collapses the two.
+func ipscPeerSource(l *ipsclink.Listener) server.PeerSource {
+	if l == nil {
+		return nil
+	}
+	return ipscPeerViews{listener: l}
+}
+
+// ipscPeerViews adapts the IPSC listener to the console's view.
+//
+// # What a Motorola repeater does not announce
+//
+// Callsign, location, height and talkgroups are all absent, and that is the
+// protocol rather than a gap in this adapter. An IPSC peer announces no
+// subscriptions — it receives everything and filters by its own codeplug — so
+// there is nothing QSP could put in an attachments list that would not be a
+// guess about somebody else's programming. Protocol is set on every view so the
+// console can say why the columns are empty.
+type ipscPeerViews struct{ listener *ipsclink.Listener }
+
+func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
+	snap := p.listener.Peers()
+	out := make([]server.PeerView, 0, len(snap))
+	for _, peer := range snap {
+		v := server.PeerView{
+			ID:       peer.RadioID,
+			Protocol: server.ProtocolIPSC,
+			Address:  peer.Address,
+			IdleFor:  now.Sub(peer.LastHeard).Truncate(time.Second).String(),
+			// A registered IPSC peer is passing traffic: there is no login
+			// sequence to be partway through. It registers or it retries.
+			State: "registered",
+			Ready: true,
+		}
+		if !peer.Registered.IsZero() {
+			v.ConnectedFor = now.Sub(peer.Registered).Truncate(time.Second).String()
+		}
+		// Learned from the repeater's own frames rather than announced, so a
+		// repeater that has never transmitted shows none. That is worth
+		// seeing: it is exactly the case where ADR-0042's mirroring is falling
+		// back to ipsc.colour_code.
+		if peer.ColourCodeKnown {
+			v.ColorCode = strconv.Itoa(int(peer.ColourCode))
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallView) {
+	for _, peer := range p.listener.Peers() {
+		c := peer.LastCall
+		if c == nil {
+			continue
+		}
+		v := server.CallView{
+			Source:   c.Source,
+			Target:   c.Destination,
+			Group:    true,
+			Timeslot: int(c.Timeslot),
+			Frames:   int(c.Frames),
+			Voice:    c.Frames > 0,
+		}
+		if c.Ended.IsZero() {
+			v.Duration = now.Sub(c.Started).Truncate(time.Second).String()
+			active = append(active, v)
+			continue
+		}
+		v.Duration = c.Ended.Sub(c.Started).Truncate(time.Second).String()
+		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
+		v.EndedAt = c.Ended.UTC()
+		recent = append(recent, v)
+	}
+	return active, recent
+}
+
+// Traffic is the DMR listener's alone; see handlePeers. Reporting the IPSC
+// listener's counters here would sum two sockets into a documented figure for
+// one, so this returns nothing and the counters stay in /healthz where they
+// already have names.
+func (p ipscPeerViews) Traffic() server.Traffic { return server.Traffic{} }
+
 // peerViews adapts the peer listener to the console's narrow view of it.
 //
 // The projection lives here rather than in either package so that
@@ -996,6 +1084,7 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 	for _, peer := range snap {
 		v := server.PeerView{
 			ID:       uint32(peer.ID),
+			Protocol: server.ProtocolHomebrew,
 			Callsign: peer.Callsign(),
 			Address:  displayAddr(peer.Addr),
 			State:    string(peer.State),
@@ -1035,6 +1124,7 @@ func (p peerViews) CallViews(now time.Time) (active, recent []server.CallView) {
 	for _, c := range snap.Recent {
 		v := p.callView(c, now, names)
 		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
+		v.EndedAt = c.Ended.UTC()
 		recent = append(recent, v)
 	}
 	return active, recent

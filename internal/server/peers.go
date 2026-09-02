@@ -1,9 +1,11 @@
 package server
 
 import (
-	"github.com/k9mls/qsp/internal/peers"
 	"net/http"
+	"sort"
 	"time"
+
+	"github.com/k9mls/qsp/internal/peers"
 )
 
 // AttachmentView is one talkgroup a peer is receiving.
@@ -28,6 +30,16 @@ type AttachmentView struct {
 type PeerView struct {
 	// ID is the peer's DMR repeater or radio ID.
 	ID uint32 `json:"id"`
+	// Protocol is which listener this peer belongs to.
+	//
+	// **A blank column means two different things without it.** A Homebrew
+	// peer announces a callsign, a location and its talkgroups; an IPSC
+	// repeater announces none of them, because IP Site Connect does not carry
+	// them. Merged into one list unlabelled, a repeater reads as a hotspot
+	// that failed to configure itself, and an operator would go looking for a
+	// fault that is not there. §7's rule against fake anything covers an empty
+	// field that means "not applicable" and looks like "not set".
+	Protocol string `json:"protocol"`
 	// Callsign is what the peer announced. Empty until it is configured.
 	Callsign string `json:"callsign"`
 	// Address is where its datagrams arrive from.
@@ -73,6 +85,15 @@ type PeerView struct {
 	PositionRefused string `json:"position_refused,omitempty"`
 }
 
+// The protocols a peer can arrive on, as PeerView.Protocol reports them.
+const (
+	// ProtocolHomebrew is a hotspot or repeater on the Homebrew/MMDVM
+	// protocol, which is what most members run.
+	ProtocolHomebrew = "homebrew"
+	// ProtocolIPSC is a Motorola repeater on IP Site Connect.
+	ProtocolIPSC = "ipsc"
+)
+
 // CallView is one transmission as the console sees it.
 type CallView struct {
 	// Source is the radio ID that keyed up. Unlike the peer ID this survives
@@ -99,6 +120,13 @@ type CallView struct {
 	Duration string `json:"duration"`
 	// Ago is how long since it ended. Empty while in progress.
 	Ago string `json:"ago,omitempty"`
+	// EndedAt is when it ended, in UTC. Zero while in progress.
+	//
+	// It exists because two listeners' recent calls have to be merged into one
+	// list that is genuinely most-recent-first, and Ago is a rendered string
+	// that cannot be sorted. The console may also use it to keep relative
+	// times fresh between polls.
+	EndedAt time.Time `json:"ended_at,omitempty"`
 	// Frames counts the frames received.
 	Frames int `json:"frames"`
 	// Voice reports whether any voice frame arrived. A text message is a few
@@ -254,16 +282,34 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	body.Enabled = true
 	body.Forwarding = s.Forwarding()
 	body.Map = s.MapSettings()
-	if views := s.opts.Peers.PeerViews(now); len(views) > 0 {
-		body.Peers = views
-	}
+	body.Peers = append(body.Peers, s.opts.Peers.PeerViews(now)...)
 	body.Traffic = s.opts.Peers.Traffic()
 	active, recent := s.opts.Peers.CallViews(now)
-	if len(active) > 0 {
-		body.Active = active
+	body.Active = append(body.Active, active...)
+	body.Recent = append(body.Recent, recent...)
+
+	// Motorola repeaters, when that listener is running. They are appended
+	// rather than replacing anything, and Traffic is deliberately left as the
+	// DMR listener's: it is a documented set of counters for one socket, and
+	// summing two sockets into it would change what an existing number means
+	// without saying so. The IPSC listener's counters are in /healthz.
+	if s.opts.IPSCPeers != nil {
+		body.Peers = append(body.Peers, s.opts.IPSCPeers.PeerViews(now)...)
+		a, r := s.opts.IPSCPeers.CallViews(now)
+		body.Active = append(body.Active, a...)
+		body.Recent = append(body.Recent, r...)
 	}
-	if len(recent) > 0 {
-		body.Recent = recent
-	}
+
+	// One list, ordered as each was ordered alone: peers by ID, recent calls
+	// most recent first. Appending one source after another would group by
+	// protocol instead, and a "recent calls" list that is really two lists
+	// end to end misleads about what happened when.
+	sort.SliceStable(body.Peers, func(i, j int) bool {
+		return body.Peers[i].ID < body.Peers[j].ID
+	})
+	sort.SliceStable(body.Recent, func(i, j int) bool {
+		return body.Recent[i].EndedAt.After(body.Recent[j].EndedAt)
+	})
+
 	writeJSON(w, s.log, http.StatusOK, body)
 }

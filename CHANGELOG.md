@@ -4,6 +4,57 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **Motorola repeaters appear in Connected peers.** The IPSC listener has held
+  peers and calls since it was written and nothing read them, so a repeater was
+  visible in `/healthz` and the journal and nowhere an operator looks. The data
+  was correct and merely unreachable, which is why nothing noticed — the
+  "declared and read by nothing" shape §8a names, for the tenth time.
+
+  **The two are labelled rather than merged silently.** A Homebrew peer
+  announces a callsign, a location and its talkgroups; an IPSC repeater
+  announces none of them, because IP Site Connect does not carry them. In one
+  unlabelled table a repeater reads as a hotspot that failed to configure
+  itself, and an operator would go looking for a fault that is not there. The
+  peer table gains a Link column, and the cells that cannot be filled say why:
+  *not sent*, *not heard yet*, *all, filtered at the repeater*.
+
+- **A repeater's colour code is shown**, learned from its own traffic under
+  ADR-0042. A repeater that has never transmitted reads *not heard yet*, which
+  is exactly the case where the mirroring is falling back to
+  `ipsc.colour_code` — the fastest way to see whether it is working.
+
+- **`CallView.EndedAt`**, so recent calls from two listeners can be merged into
+  one list that is genuinely most-recent-first. `Ago` is a rendered string and
+  cannot be sorted; without a real timestamp the list would be two lists end to
+  end, each internally correct and the pair misleading about what happened when.
+
+### Fixed
+- **A design token that resolves to nothing is now a test failure.** This patch
+  shipped one on the way: a pill styled `var(--color-text-muted)`, a token that
+  has never existed. An undefined custom property is not an error — the
+  declaration is dropped and the element inherits, so text renders in whatever
+  colour its parent had, which on a dark panel can be invisible. Nothing in the
+  build, the tests or the browser console says a word, and the comment above
+  `.muted` records the same failure reaching production once already.
+
+  Every class was already checked; a class styled with a token that does not
+  exist passed that check and still did nothing.
+
+### Notes
+- **Traffic counters are deliberately not merged.** They are a documented set
+  of figures for one socket, and summing two into them would change what an
+  existing number means without saying so. The IPSC listener's counters stay in
+  `/healthz`, where they already have names.
+- **`/api/peers` is unauthenticated and this adds radio IDs and addresses to
+  it.** An IPSC peer is already dialling a public port, so the exposure is not
+  new in kind, but it is now a larger surface and should be a decision rather
+  than a side effect. Named here so it is not discovered later.
+- Each new assertion was checked by breaking the code it exists to reject: a
+  merged list appended rather than sorted, a second source never read, recent
+  calls sorted oldest-first, and the undefined token above.
+
+
 ### Fixed
 - **`PROJECT_MEMORY.md` held six copies of section 8f, in five different
   versions, and two of 8d** — 1,174 stale lines in a 2,726-line file that calls

@@ -231,12 +231,13 @@
       var isNew = !firstPeerLoad && !knownPeerIds[p.id];
       rows +=
         '<tr class="' + (isNew ? "is-new" : "") + '">' +
-        '<td class="callsign">' + escapeText(p.callsign || "—") + "</td>" +
+        '<td class="callsign">' + peerCallsign(p) + "</td>" +
         '<td class="mono">' + escapeText(p.id) + "</td>" +
+        "<td>" + protocolPill(p) + "</td>" +
         "<td>" + statusPill(p) + "</td>" +
         '<td class="mono">' + escapeText(p.connected_for || "—") + "</td>" +
         '<td class="mono">' + escapeText(p.idle_for) + "</td>" +
-        '<td class="mono">' + escapeText(p.color_code || "—") + "</td>" +
+        '<td class="mono">' + peerColourCode(p) + "</td>" +
         '<td class="cell--wrap">' + peerAttachments(p) + "</td>" +
         '<td class="cell--wrap">' + peerPlace(p) + "</td>" +
         '<td class="mono">' + escapeText(p.address) + "</td>" +
@@ -245,9 +246,12 @@
 
     peersBody.innerHTML =
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Connected peers, scrollable"><table class="table">' +
-      "<caption>Peers currently registered with this master.</caption>" +
+      "<caption>Peers currently registered with this master. " +
+      "IP Site Connect repeaters announce no callsign, location or talkgroups; " +
+      "those columns read &ldquo;not sent&rdquo; rather than being empty.</caption>" +
       "<thead><tr>" +
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
+      "<th scope=\"col\">Link</th>" +
       "<th scope=\"col\">State</th><th scope=\"col\">Connected</th>" +
       "<th scope=\"col\">Idle</th><th scope=\"col\">CC</th>" +
       "<th scope=\"col\" class=\"cell--wrap\">Talkgroups</th>" +
@@ -257,6 +261,57 @@
 
     knownPeerIds = seen;
     firstPeerLoad = false;
+  }
+
+  /* isIPSC reports whether a peer arrived over IP Site Connect.
+   *
+   * Peers with no protocol field are Homebrew: an older server that predates
+   * the field cannot be serving Motorola repeaters, because the two shipped
+   * together. */
+  function isIPSC(p) {
+    return p.protocol === "ipsc";
+  }
+
+  /* protocolPill names which listener a peer belongs to.
+   *
+   * Without it the two are indistinguishable in one table, and a repeater with
+   * no callsign and no talkgroups reads as a misconfigured hotspot. */
+  function protocolPill(p) {
+    if (isIPSC(p)) {
+      return '<span class="pill pill--ipsc" title="Motorola IP Site Connect">IPSC</span>';
+    }
+    return '<span class="pill pill--homebrew" title="Homebrew / MMDVM">Homebrew</span>';
+  }
+
+  /* peerCallsign distinguishes a callsign nobody sent from one QSP does not
+   * know.
+   *
+   * IP Site Connect carries no callsign at all, so an em dash there would be a
+   * blank meaning "not applicable" wearing the costume of "not set". */
+  function peerCallsign(p) {
+    if (p.callsign) {
+      return escapeText(p.callsign);
+    }
+    if (isIPSC(p)) {
+      return '<span class="muted" title="IP Site Connect carries no callsign">not sent</span>';
+    }
+    return '<span class="muted">—</span>';
+  }
+
+  /* peerColourCode shows a repeater's colour code, learned from its own
+   * traffic.
+   *
+   * A repeater that has never transmitted has told QSP nothing to mirror and is
+   * being signed with the configured default, which is worth seeing rather than
+   * guessing at. */
+  function peerColourCode(p) {
+    if (p.color_code) {
+      return escapeText(p.color_code);
+    }
+    if (isIPSC(p)) {
+      return '<span class="muted" title="Learned when the repeater first transmits">not heard yet</span>';
+    }
+    return '<span class="muted">—</span>';
   }
 
   /* peerAttachments lists the talkgroups a peer is receiving.
@@ -273,6 +328,11 @@
   function peerAttachments(p) {
     var list = p.attachments || [];
     if (list.length === 0) {
+      if (isIPSC(p)) {
+        /* A repeater receives everything and filters by its own codeplug, so
+         * QSP has nothing to list and no way to learn it. */
+        return '<span class="muted" title="A repeater receives everything and filters by its codeplug">all, filtered at the repeater</span>';
+      }
       return '<span class="muted">—</span>';
     }
     var parts = [];

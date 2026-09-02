@@ -379,6 +379,48 @@ func TestSignInPageIsServed(t *testing.T) {
 // A class name is a string in one file and a selector in another, so nothing
 // connects them — no compiler, no linter, and the contrast test measures tokens
 // rather than whether a rule exists to use them.
+// TestEveryDesignTokenTheStylesUseIsDefined catches a var() that resolves to
+// nothing.
+//
+// **This was written after shipping one.** A pill was styled
+// `color: var(--color-text-muted)`, a token that has never existed; the real one
+// is `--color-foreground-subtle`. An undefined custom property is not an error —
+// the declaration is simply dropped and the element inherits, so the text
+// renders in whatever colour its parent had. On a dark panel that can be
+// invisible, and nothing in the build, the tests or the browser console says a
+// word. The comment above `.muted` in console.css records the same failure
+// reaching production once already.
+//
+// Every class is checked by TestEveryClassTheScriptsUseIsStyled; a class that is
+// styled with a token that does not exist passes that test and still does
+// nothing.
+func TestEveryDesignTokenTheStylesUseIsDefined(t *testing.T) {
+	sheets := []string{"static/console.css", "static/tokens.css", "static/join.css"}
+	styles := ""
+	for _, sheet := range sheets {
+		body, err := assets.ReadFile(sheet)
+		if err != nil {
+			t.Fatalf("reading %s: %v", sheet, err)
+		}
+		styles += string(body)
+	}
+
+	defined := make(map[string]bool)
+	for _, m := range regexp.MustCompile(`(--[a-zA-Z][\w-]*)\s*:`).FindAllStringSubmatch(styles, -1) {
+		defined[m[1]] = true
+	}
+
+	seen := make(map[string]bool)
+	for _, m := range regexp.MustCompile(`var\(\s*(--[a-zA-Z][\w-]*)`).FindAllStringSubmatch(styles, -1) {
+		name := m[1]
+		if defined[name] || seen[name] {
+			continue
+		}
+		seen[name] = true
+		t.Errorf("%s is used and never defined; the declaration will be dropped silently", name)
+	}
+}
+
 func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 	styles := ""
 	for _, sheet := range []string{"static/console.css", "static/tokens.css", "static/join.css"} {

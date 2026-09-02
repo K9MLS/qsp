@@ -64,6 +64,14 @@ type Options struct {
 	Peers PeerSource
 	// PeersDisabledReason explains a nil Peers, and is shown to the operator.
 	PeersDisabledReason string
+	// IPSCPeers supplies Motorola repeaters, which are a second listener on a
+	// second socket rather than more of the same peers.
+	//
+	// Nil means the IPSC listener is not enabled. It is deliberately a
+	// separate field rather than a slice of sources: the two listeners are
+	// enabled independently, and an operator running only one should not have
+	// to reason about an empty slot in a list.
+	IPSCPeers PeerSource
 	// Auth is the login flow. Nil means this instance has no administrator
 	// accounts, which is a working state rather than a fault: QSP exposed no
 	// endpoint that changes anything for its first several phases, and an

@@ -1516,6 +1516,20 @@ select.field__input {
   color: var(--color-failing);
 }
 
+/* Which listener a peer arrived on. Deliberately not colour-coded good or bad:
+   neither protocol is a problem, and reusing the health colours here would make
+   a working repeater look like a warning. Muted borders, readable label. */
+.pill--homebrew,
+.pill--ipsc {
+  border-color: var(--color-border);
+  color: var(--color-foreground-subtle);
+  letter-spacing: 0.04em;
+}
+
+.pill--ipsc {
+  border-style: dashed;
+}
+
 /* A field that takes a pasted invitation, which is one long line nobody reads
    in a 140px box. */
 .picker__input--wide {
