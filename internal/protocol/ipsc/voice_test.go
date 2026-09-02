@@ -337,3 +337,64 @@ func TestTheLastFragmentOfASuperframeIsZero(t *testing.T) {
 			zero, nonzero)
 	}
 }
+
+// TestTheSlotBitSeparatesTwoChannels is the differential that found the
+// timeslot, which is the field the Homebrew protocol requires and IP Site
+// Connect had never revealed.
+//
+// Fifteen transmissions were keyed from two radio channels carrying the same
+// talkgroup and differing only by timeslot. They split into exactly two groups
+// by one bit of byte 17, and nothing else in any header differed — the
+// destination reads 455 in all fifteen. A single-variable experiment with a
+// single-bit answer.
+func TestTheSlotBitSeparatesTwoChannels(t *testing.T) {
+	const slotCapture = "../../../testdata/ipsc/ipsc-slot-tg.pcap"
+	cap := readCapture(t, slotCapture)
+
+	type call struct {
+		slot bool
+		dest uint32
+	}
+	calls := map[uint16]call{}
+	for _, pkt := range cap.UDP {
+		msg, err := ipsc.Parse(pkt.Payload)
+		if err != nil {
+			t.Fatalf("packet %d: %v", pkt.Index, err)
+		}
+		v, isVoice := msg.AsVoice()
+		if !isVoice {
+			continue
+		}
+		set, ok := msg.SlotBit()
+		if !ok {
+			t.Fatalf("packet %d: a voice frame carried no slot bit", pkt.Index)
+		}
+		if prev, seen := calls[v.StreamID]; seen && prev.slot != set {
+			t.Errorf("stream %#04x changed timeslot mid-transmission", v.StreamID)
+		}
+		calls[v.StreamID] = call{slot: set, dest: v.Destination}
+	}
+
+	var onA, onB int
+	dests := map[uint32]bool{}
+	for _, c := range calls {
+		if c.slot {
+			onA++
+		} else {
+			onB++
+		}
+		dests[c.dest] = true
+	}
+	t.Logf("%d transmissions: %d with the slot bit set, %d without, %d distinct destinations",
+		len(calls), onA, onB, len(dests))
+
+	if onA == 0 || onB == 0 {
+		t.Errorf("%d set and %d clear; two channels on different timeslots should give both", onA, onB)
+	}
+	// Both channels carried the same talkgroup, so this capture holds no
+	// talkgroup differential and the destination field stays unproven.
+	if len(dests) != 1 {
+		t.Errorf("%d distinct destinations; this capture was taken on one talkgroup, so a second "+
+			"would mean the destination field is not where it is read from", len(dests))
+	}
+}

@@ -12,6 +12,7 @@ own probe and sent voice through it.**
 | [`ipsc-phase2-master-not-bound.pcap`](ipsc-phase2-master-not-bound.md) | A failure kept on purpose: a master serving 50001 while advertising 50000 |
 | [`ipsc-phase2-registration.pcap`](ipsc-phase2-registration.md) | **Two repeaters registering over the internet.** Six-packet exchange, seven message types, the reply to `0x90` |
 | [`ipsc-phase2-established.pcap`](ipsc-phase2-established.md) | Twenty-four minutes of a settled link doing nothing |
+| [`ipsc-slot-tg.pcap`](ipsc-slot-tg.md) | **Fifteen transmissions across two channels on different timeslots.** This is what found the slot bit |
 | [`ipsc-probe-voice.pcap`](ipsc-probe-voice.md) | **A repeater registered with QSP's probe and sent voice.** Three transmissions, 66 frames, and both registration states in one file |
 
 Together they establish seven message types, an envelope of one type byte and a

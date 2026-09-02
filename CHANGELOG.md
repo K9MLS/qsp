@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **The timeslot, which is the field Homebrew requires on every burst and IPSC
+  had never revealed.** Fifteen transmissions were keyed from two radio channels
+  carrying the same talkgroup and differing only by timeslot. They split into
+  exactly two groups by **bit 0x20 of byte 17**, and nothing else in any header
+  differs between them.
+
+  A single-variable experiment with a single-bit answer, and the fifth time in
+  two days that changing one thing has settled a question that reading bytes
+  could not.
+
+  It also completes a half-observation: byte 17 was noted as `0x20` on voice
+  frames and `0x60` on terminators, which looked like one value changing. There
+  are two independent bits — `0x20` is the timeslot and `0x40` marks the last
+  frame.
+
+- **`ipsc-slot-tg.pcap`** with provenance, taken against the **production**
+  listener rather than the probe, which could not bind because QSP already held
+  the port. The real listener served the repeater identically.
+
+### Notes
+- **`SlotBit` returns the raw bit, not a slot number.** Which value means slot 1
+  was not written down at the radio, and mapping it would be a claim rather than
+  an observation. One sentence from the operator closes it.
+- **The destination is still unproven.** Both channels carry talkgroup 455, so
+  this capture holds no talkgroup differential either. Bytes 9 to 11 have read
+  455 in every transmission ever captured, and a third channel on any other
+  talkgroup settles it in one key-up.
+- Several transmissions are four frames — 180 ms, barely a touch of the PTT,
+  consistent with keying while changing channel. They are kept: a transmission
+  that short is exactly the case a naive implementation mishandles, and the
+  listener bounded every one correctly.
+
 ### Changed
 - **The EMB is computed for every colour code, not looked up for one.** The
   previous entry left the bridge able to serve colour code 11 and nothing else,

@@ -226,3 +226,34 @@ func (m Message) SuperframePosition() (class byte, ok bool) {
 		return c, false
 	}
 }
+
+// Flags carried in byte 17 of a voice frame.
+//
+// Two independent bits share the byte, which is why an early note that it "is
+// always 0x20" was half a finding.
+const (
+	// FlagSlot distinguishes the two DMR timeslots.
+	//
+	// **Which value means slot 1 is not recorded**, because nobody wrote it
+	// down at the radio. Fifteen transmissions from two channels carrying the
+	// same talkgroup split cleanly into two groups by this bit and nothing
+	// else differed, so the bit is the slot beyond doubt; its polarity is one
+	// sentence from an operator away.
+	FlagSlot byte = 0x20
+	// FlagTerminator marks the last frame of a transmission. It appears
+	// alongside the 0x805e flags value in bytes 18 and 19.
+	FlagTerminator byte = 0x40
+)
+
+// SlotBit reports the timeslot bit of a voice frame, and whether the message is
+// one that carries it.
+//
+// It returns the raw bit rather than a slot number, deliberately: mapping it to
+// "1" or "2" would be a claim, and this package does not make claims it cannot
+// demonstrate.
+func (m Message) SlotBit() (set bool, ok bool) {
+	if m.Kind != KindVoice || len(m.Body) < 13 {
+		return false, false
+	}
+	return m.Body[12]&FlagSlot != 0, true
+}
