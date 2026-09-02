@@ -5,6 +5,34 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **The EMB, as far as the captures establish it and no further.** The 48 bits
+  in the middle of a voice burst are an 8-bit EMB, a 32-bit Link Control
+  fragment and another 8-bit EMB. IPSC omits the EMB because a Motorola repeater
+  rebuilds it from its own colour code; anything bridging toward Homebrew has to
+  supply one.
+
+  `EMBFor`, `EmbeddedMiddle`, `SplitMiddle` and the LCSS constants, with the
+  table checked against every non-sync voice burst in `testdata/hbp/` so a typo
+  in it cannot survive.
+
+### Notes
+- **The parity is provably linear** — `parity(a^b) == parity(a)^parity(b)` holds
+  exactly across every captured pair — **but every burst this project holds
+  carries colour code 11.** Only the two LCSS bits ever moved, so only their
+  contribution can be derived. The colour code bits never varied and nothing
+  about them can be honestly inferred.
+
+  It is not a systematic cyclic code in any bit order tried, so it cannot be
+  recovered from a generator polynomial either. `EMBFor` serves colour code 11
+  and **refuses the rest, naming the capture that would extend it**. A wrong EMB
+  produces a burst a radio silently drops: audio going nowhere with nothing in a
+  log, which is a far worse outcome than an error.
+
+- **`testdata/hbp/EMB-CAPTURE-REQUEST.md`** sets out the two-minute differential
+  that completes it: change the hotspot's colour code, key up, note which value
+  was set. Four linearly independent values span the field.
+
+### Added
 - **The two protocols line up burst for burst, and the last piece of the audio
   path is now visible.** A DMR burst puts 48 bits between its payload halves: an
   8-bit EMB, a 32-bit embedded Link Control fragment, another 8-bit EMB. The
