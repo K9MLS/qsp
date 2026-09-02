@@ -5,6 +5,42 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **`PROJECT_MEMORY.md` held six copies of section 8f, in five different
+  versions, and two of 8d** — 1,174 stale lines in a 2,726-line file that calls
+  itself the single source of truth.
+
+  **It caused real damage before it was found.** A session read the first copy,
+  took it as current, and drew two wrong conclusions: that the destination
+  field had never moved, and that the slot polarity might be a live defect.
+  Both were already correctly recorded in a copy further down the same file.
+
+  Collapsed by content hash, keeping the most complete version of each section;
+  every fact unique to a dropped copy was folded into the new §8g, and nothing
+  was removed by line number. §7's rule about finding a line by content rather
+  than by number applies to this file as much as to a config on somebody
+  else's machine.
+
+### Added
+- **§8g**, the current state: the frame shape defect, what it cost, and what
+  the on-air confirmation settled.
+- **§8h**, the design for putting IPSC repeaters on the dashboard, with the two
+  decisions inside it and the three things that must not be lost.
+
+### Notes
+- **Header bytes 52 and 53 do not matter to a receiving repeater.** They were
+  the fifth and weakest ADR-0041 assumption and the only one that could not be
+  settled by reasoning about the captures held. QSP writes zero, and a Motorola
+  repeater keyed anyway. Settled by observation.
+- **The slot polarity defect was latent, not live.**
+  `slot_bit_is_timeslot2` is `true` on the production instance, which is what
+  the encoder hardcoded, so it cost no audio. It would have bitten the first
+  operator who set it `false`.
+- **`go test -race` needs `CGO_ENABLED=1` in the development container**, where
+  the default is 0. Without it the command refuses rather than running, and a
+  gate that declines to run scrolls past like one that passed. Recorded in §7.
+
+
+### Fixed
 - **The outbound frame shape was wrong, and no test could see it**
   ([ADR-0042](docs/adr/ADR-0042-the-outbound-frame-shape-is-measured.md)). QSP
   sent 33-byte headers where a repeater sends 54, and 66 bytes for every voice

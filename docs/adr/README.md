@@ -50,5 +50,5 @@ conclusion.
 | [0038](ADR-0038-routing-core-is-shared.md) | The routing core is reached by more than one listener, so it locks | Accepted |
 | [0039](ADR-0039-the-peer-table-is-shared.md) | The peer table is shared too, and the fix belonged one layer down | Accepted |
 | [0040](ADR-0040-the-air-interface-is-specified.md) | The air interface is specified, and IPSC is not | Accepted |
-| [0041](ADR-0041-ipsc-transmit-from-inference.md) | Sending voice to a repeater is built from inference, not capture | Accepted — provisional |
+| [0041](ADR-0041-ipsc-transmit-from-inference.md) | Sending voice to a repeater is built from inference, not capture | Accepted — confirmed on air |
 | [0042](ADR-0042-the-outbound-frame-shape-is-measured.md) | The outbound frame shape is measured, and the colour code belongs to the repeater | Accepted |

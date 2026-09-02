@@ -1,74 +1,58 @@
-# Handover, 2026-09-02
+# Handover, 2026-09-02, evening
 
-Read `NEW-SESSION.md` for the standing brief and **§8f** of `PROJECT_MEMORY.md`
+Read `NEW-SESSION.md` for the standing brief and **§8g** of `PROJECT_MEMORY.md`
 for where to start.
 
 ## The headline
 
-**A Motorola repeater in Idaho was heard on a hotspot in Wisconsin.** Nine
-patches, 0.1.30 to 0.1.39. Three IPSC peers across two repeater models. DMRlink
-and HBlink3 remain unread.
+**A Pi-Star and a Motorola repeater held a conversation.** The bridge carries
+audio both ways, on air. Layer 1 of §0's table is complete for both protocols,
+and IPSC is no longer one-way.
 
 ## What changed
 
-- **The bridge works, Motorola to hotspot.** Voice header, audio, terminator —
-  a complete, well-formed DMR transmission, confirmed on air by KB9TYC hearing
-  KD9EJA.
-- **The Link Control checksum is solved.** Reed-Solomon (12,9) from ETSI
-  TS 102 361-1 Annex B.3.7, verified 28 of 28 against real bursts. The data type
-  masks were **measured, not read** — `0x969696` and `0x999999` fell out of the
-  arithmetic.
-- **The transmit path exists**, built from inference under ADR-0041 at the
-  operator's direction. **It does not work yet — see below.**
-- Two shipped concurrency defects fixed: `routing.Core` and `peers.Master` were
-  both reached by two goroutines with no lock (ADR-0038, ADR-0039).
+- **The outbound frame shape was wrong and is now measured**
+  ([ADR-0042](docs/adr/ADR-0042-the-outbound-frame-shape-is-measured.md)). QSP
+  sent 33-byte headers where a repeater sends 54, and 66 bytes for every voice
+  frame where a repeater cycles 52 57 57 57 66 57. Fixed and proved against
+  fixtures already held — 326 voice frames, 93 headers and terminators, two
+  repeater models, no equipment.
+- **A header reproduces bit-exact from its Link Control alone.** Bytes 38 to 49
+  are the twelve-octet block BPTC carries on the air, masked `0x969696` for a
+  header and `0x999999` for a terminator. Five captured frames from two models
+  on two talkgroups agree. The Reed-Solomon work under ADR-0040 supplied it
+  unchanged.
+- **A repeater is signed with its own colour code, not the network's**, learned
+  from the frames it sends. `ipsc-two-peers.pcap` has two repeaters keyed at
+  once on colour codes 1 and 4, so one number for the whole network is the one
+  choice that cannot be right.
+- **`PROJECT_MEMORY.md` held six copies of §8f in five versions.** Collapsed by
+  content hash; every unique fact folded into §8g. See §8g's closing note for
+  what the duplication actually cost.
 
 ## Do this first
 
-**Fix the outbound frame shape.** The transmit path sends frames that do not
-match what a repeater sends, and this is measurable against fixtures already in
-the repository — no equipment, no capture session.
+**Put IPSC repeaters on the dashboard.** §8h has the design and the two
+decisions inside it. The listener already holds every field the panel renders
+and nothing reads them — the ninth-and-tenth pattern in a different dress.
 
-| | QSP sends | A real repeater sends |
-|---|---|---|
-| Header / terminator | **33 bytes** | **54 bytes** |
-| Voice frames | **66 bytes, all of them** | **52, 57, 57, 57, 66, 57** cycling |
-
-The header is built with no payload at all; a real one carries a full Link
-Control block. And the 14-byte trailer is appended to every frame instead of
-varying by superframe position — the same 1:4:1 ratio the existing sync /
-fragment / fragment-with-LC tests already measure.
-
-`body[20]` is a marker: `0x67` on headers, `0x07`/`0xe7`/`0x87` on the three
-voice shapes. QSP writes zero.
-
-Both shapes are visible in `testdata/ipsc/ipsc-two-peers.pcap` from two repeater
-models. Build a frame, require the shape back, same standard as the BPTC and
-Slot Type work.
+Then **confirm the learned colour code on air**: KD9EJA's repeater may share
+`ipsc.colour_code`, in which case the mirroring is untested and the right
+answer arrived for the wrong reason.
 
 ## The method
 
 **Every reading taken by eye was wrong. Every differential was right** — now
-nine times. A wrong hypothesis scores zero.
-
-**And a right hypothesis evaluated by broken arithmetic also scores zero.**
-Thirty thousand candidate Reed-Solomon constructions were searched and all
-scored zero while the correct field polynomial and generator roots sat inside
-the search space; the division applying them was wrong. The score cannot tell
-the two apart. Where a standard gives both a generator matrix and a polynomial,
-use the matrix.
+ten times. The tenth was `body[20]`, recorded as a frame marker and in fact the
+low byte of the timestamp: a field invented out of a sampling window one
+superframe wide.
 
 ## Three traps
 
-**Never count failures.** The container baseline is seven, by name, listed in
-§7.
+**Never count failures.** The container baseline is seven, by name, in §7.
 
-**Ask the running binary which commit it is.** `qsp --version` prints the commit
-it was built from. An afternoon went on debugging a bridge that was not
-deployed: the service was active, the deploy commands were right, and the patch
-file had never reached the machine.
+**Ask the running binary which commit it is.** `qsp --version`.
 
-**Grep for the call site.** `SetIPSCSink` was written, exported, unit-tested and
-never called — an edit anchored on the wrong indentation and failed silently. It
-built, passed vet, staticcheck, the full suite and the race detector. §8a calls
-this "declared and read by nothing" and it has now happened nine times.
+**Read the newest section, and check there is only one of it.** A session read
+the first copy of §8f, treated it as current, and drew two conclusions that
+were already correctly recorded further down the same file.
