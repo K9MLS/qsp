@@ -29,13 +29,26 @@ import (
 // will reasonably read that as a QSP fault. Nothing in code can fix that; the
 // documentation and the console say so instead.
 //
-// The Motorola convention for an echo test is a **group call**, unlike
-// BrandMeister where it is a private call to 9990 or an MCC-based ID.
-// BrandMeister's reason is its own architecture — every talkgroup is
-// distributed worldwide, so a parrot talkgroup would carry test audio across
-// the whole network and only one operator could use it at a time. A club
-// network has no such fan-out, and QSP already replays to one peer and no
-// other, because a frame parrot handles never reaches the routing core.
+// # It is a group call because a private one is impossible, not preferred
+//
+// [ADR-0028](../../docs/adr/ADR-0028-parrot.md) settled this and the reason is
+// structural. A DMR voice header carries the call's addressing *inside* the
+// 33-byte burst, in the Link Control, under its own error correction, and a
+// radio believes the Link Control rather than the wrapper around it. An attempt
+// to answer a private call by swapping source and target in the wrapper put five
+// replays out at correct timing and the radio played none of them: the Link
+// Control still read "private call to 9990", so the frames arrived addressed to
+// a number that was not the radio's own and were muted.
+//
+// Rewriting it means decoding and re-encoding a burst — deinterleaving, error
+// correction, checksums — which is exactly what QSP does not do, and not doing
+// it is what lets parrot exist without a vocoder at all.
+//
+// So this path inherits the same answer as the Homebrew one, and the same
+// talkgroup: **one dmr.parrot.talkgroup serves both listeners.** On this
+// network it is 9990, because that is the number most radios already carry.
+// Programmed as a group contact it works unchanged; programmed as a private
+// contact, which is how BrandMeister users have it, it does not.
 
 // parrotHandles offers a frame to parrot, and reports whether parrot took it.
 //

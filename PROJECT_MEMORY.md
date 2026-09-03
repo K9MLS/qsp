@@ -1483,6 +1483,30 @@ suite and no assertion that its output resembled anything.
   still the thing that would confirm the envelope rather than infer it, and it
   is now a nice-to-have rather than a gate.
 
+### Settled long ago, and looked up rather than re-decided
+
+**Parrot is talkgroup 9990, group call, timeslot 2, in production since
+2026-08-31** and used by hotspot members. `dmr.parrot.talkgroup` is one setting
+and both listeners read it; IPSC does not get its own number.
+
+9990 was chosen because **most radios already have it programmed**. It must be
+a *group* contact, not a private one — [ADR-0028](docs/adr/ADR-0028-parrot.md)
+records why, and the reason is structural rather than conventional: a DMR voice
+header carries its addressing inside the burst, in the Link Control, under its
+own error correction, and a radio believes that rather than the wrapper. An
+attempt to answer a private call by swapping source and target in the wrapper
+sent five replays at correct timing that the radio muted. Rewriting the Link
+Control means decoding and re-encoding a burst, which is what QSP does not do
+and what lets parrot exist without a vocoder.
+
+**This was looked up on the internet in a later session and nearly changed.** A
+session researched BrandMeister's convention, recommended moving to 9998, and
+was corrected by the operator — the answer was in ADR-0028 and in the changelog
+entry for 2026-08-31 the whole time, and the reasoning in the repository was
+better than the reasoning found outside it. **Search the repository before
+searching the web.** A settled decision that has been on air for weeks does not
+need a second opinion from a forum.
+
 ### Carried forward from §8f, still true
 
 - **`slot_bit_is_timeslot2` is `true`**, settled from the journal, which logs

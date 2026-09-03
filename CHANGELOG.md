@@ -35,17 +35,19 @@ All notable changes to QSP. Dates are UTC.
   recordings and replayed one operator's audio into the other's radio with
   nothing logged. Two recorders degrade to two independent parrots.
 
-- **A group call, not a private call, and that is deliberate.** BrandMeister's
-  parrot is a private call to 9990 or an MCC-based ID because every BrandMeister
-  talkgroup is distributed worldwide, so a parrot talkgroup would carry test
-  audio across the entire network and only one operator could use it at a time.
-  A club network has no such fan-out, and QSP already replays to one peer and no
-  other because a frame parrot handles never reaches the routing core. The
-  Motorola convention for an echo test is a group call, which is what the
-  operators of these repeaters will already know. Private calls are also an open
-  unexplained defect here, and building a user-facing feature on a mechanism
-  that does not work end to end would make the two indistinguishable when it
-  failed.
+- **A group call, on the same talkgroup as the Homebrew side, and both were
+  already settled.** [ADR-0028](docs/adr/ADR-0028-parrot.md) established that
+  QSP cannot answer a private call: the addressing lives inside the burst, in
+  the Link Control, under its own error correction, and a radio believes that
+  rather than the wrapper. Swapping source and target in the wrapper put five
+  replays out at correct timing that the radio muted, because the Link Control
+  still read "private call to 9990". Rewriting it means decoding and re-encoding
+  a burst, which is what QSP does not do and what lets parrot exist without a
+  vocoder.
+
+  **There is one `dmr.parrot.talkgroup` and both listeners use it.** On this
+  network it is 9990, in production since 2026-08-31, chosen because most radios
+  already carry that number. Nothing about IPSC changes it.
 
 - **The talkgroup must be in the repeater's codeplug**, and QSP cannot check it.
   ADR-0043 states the limit: authority over delivery, none over transmission. A
