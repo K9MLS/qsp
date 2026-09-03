@@ -571,12 +571,22 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 // cannot know what such a frame should contain, and a bridge that guessed would
 // be exactly the fake behaviour §7 forbids.
 //
-// # Why parrot and unlink do not run here
+// # Parrot runs, and it runs in the IPSC listener rather than here
 //
-// Both answer a member by sending audio back to them, and there is no path back
-// to an IPSC peer. Running them would consume the frame and deliver nothing,
-// which is worse than not running them: the transmission would vanish and the
-// journal would say it had been handled.
+// This comment used to say parrot and unlink could not run because there was no
+// path back to an IPSC peer. **That stopped being true when patch 0195 fixed
+// the outbound frame shape** and a repeater keyed on QSP's audio; the comment
+// outlived the fact and was switching off a feature.
+//
+// Parrot now runs in internal/ipsclink, before a burst reaches this function,
+// with its own recorder. Both recorders key by radio ID and the two protocols
+// share the DMR ID space — this network had one ID registered on both listeners
+// at once — so a shared recorder would merge two operators' recordings and
+// replay one into the other's radio.
+//
+// Unlink still does not run. It drops a peer's talkgroup attachments and an
+// IPSC peer announces none: a repeater receives everything and filters by its
+// own codeplug, so there is nothing here for a member to unlink from.
 //
 // Triggers do run. Opening an on-demand bridge needs no reverse path, and a
 // Motorola repeater keying up is as good a reason to open one as any other
@@ -1011,7 +1021,7 @@ func (l *Listener) Stats() Stats {
 	// playback is created when the listener starts serving, so a Stats call
 	// before that must not dereference it.
 	if l.playback != nil {
-		played, frames, _, _ := l.playback.stats.snapshot()
+		played, frames, _, _ := l.playback.stats()
 		st.ParrotReplays = played
 		st.ParrotFrames = frames
 		st.ParrotActive = l.playback.Active()

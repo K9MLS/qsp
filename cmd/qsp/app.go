@@ -379,6 +379,39 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	registry := health.NewRegistry(health.Options{})
 	registry.MustRegister(database.HealthCheck{DB: a.db, UnavailableReason: dbUnavailableReason})
 	registry.MustRegister(processCheck{started: time.Now()})
+	// The IPSC listener's own parrot recorder, built from the same settings as
+	// the DMR listener's and deliberately not the same object.
+	//
+	// **Both key recordings by radio ID, and the two protocols share the DMR ID
+	// space.** This network had 3132910 registered on both listeners at once on
+	// 2026-09-02: a Pi-Star and an XPR8300. A shared recorder would have merged
+	// their recordings and replayed one operator's audio into the other's
+	// radio, with nothing logged to say so. Two recorders degrade to two
+	// independent parrots.
+	var ipscParrot *parrot.Recorder
+	if cfg.IPSC.Enabled && cfg.DMR.Parrot.Enabled {
+		slot := hbp.Timeslot1
+		if cfg.DMR.Parrot.Timeslot == 2 {
+			slot = hbp.Timeslot2
+		}
+		rec, perr := parrot.New(parrot.Config{
+			Talkgroup:   cfg.DMR.Parrot.Talkgroup,
+			Timeslot:    slot,
+			MaxDuration: cfg.DMR.Parrot.MaxDuration.AsDuration(),
+			Gap:         cfg.DMR.Parrot.Gap.AsDuration(),
+		})
+		if perr != nil {
+			return nil, perr
+		}
+		ipscParrot = rec
+		// The operator has to do something QSP cannot check for them.
+		log.Info("parrot enabled for Motorola repeaters; "+
+			"the talkgroup must be in each repeater's codeplug or the replay "+
+			"reaches the repeater and is not transmitted",
+			slog.Uint64("talkgroup", uint64(cfg.DMR.Parrot.Talkgroup)),
+			slog.String("timeslot", slot.String()),
+		)
+	}
 	// IPSC is its own listener on its own port. A club may run a Motorola
 	// repeater, an HBP network, both or neither, so neither enables the other.
 	ipscDisabledReason := "IPSC peering is off; set ipsc.enabled to serve Motorola repeaters"
@@ -415,6 +448,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			AllowedPeers:  cfg.IPSC.AllowedPeers,
 			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
 			Deliver:       deliver,
+			Parrot:        ipscParrot,
 			Bridge: ipscbridge.Config{
 				ColourCode:         colourCode,
 				SlotBitIsTimeslot2: cfg.IPSC.SlotBitIsTimeslot2,

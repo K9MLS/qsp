@@ -27,152 +27,75 @@ type playbackWriter interface {
 	WriteToUDPAddrPort(b []byte, addr netip.AddrPort) (int, error)
 }
 
-// playback replays recordings.
+// playback replays recordings to Homebrew peers.
+//
+// The timing lives in parrot.Player, which both protocols share; this is the
+// part that is specific to a hotspot — a UDP address, and a frame marshalled as
+// Homebrew. A Motorola repeater is replayed to by the IPSC listener through the
+// same player and a different sink.
 type playback struct {
-	log   *slog.Logger
+	player *parrot.Player
+
+	// mu guards addrs, the address to replay to for each peer. It is set when
+	// a replay starts, because the sink is handed a peer and the socket needs
+	// somewhere to write.
+	mu    sync.Mutex
+	addrs map[hbp.RepeaterID]netip.AddrPort
 	conn  playbackWriter
-	stats *playbackStats
-
-	// mu guards running, which is the set of peers currently being played
-	// back to.
-	mu      sync.Mutex
-	running map[hbp.RepeaterID]context.CancelFunc
-}
-
-// playbackStats counts what happened, for the health report.
-type playbackStats struct {
-	played  uint64
-	frames  uint64
-	stopped uint64
-	errs    uint64
-	mu      sync.Mutex
 }
 
 func newPlayback(log *slog.Logger, conn playbackWriter) *playback {
-	return &playback{
-		log:     log,
-		conn:    conn,
-		stats:   &playbackStats{},
-		running: make(map[hbp.RepeaterID]context.CancelFunc),
+	p := &playback{
+		addrs: make(map[hbp.RepeaterID]netip.AddrPort),
+		conn:  conn,
 	}
+	p.player = parrot.NewPlayer(log, p)
+	return p
 }
 
-// Start replays a recording to one peer.
-//
-// A playback already running for that peer is stopped first. A member who keys
-// up while hearing themselves has started over, and two audio streams on one
-// timeslot is what contention exists to prevent.
-func (p *playback) Start(ctx context.Context, rec parrot.Recording, to netip.AddrPort) {
-	p.Stop(rec.Peer)
-
-	inner, cancel := context.WithCancel(ctx)
+// Deliver marshals one frame and writes it to the peer's address.
+func (p *playback) Deliver(peer hbp.RepeaterID, frame hbp.Data) error {
 	p.mu.Lock()
-	p.running[rec.Peer] = cancel
+	to, ok := p.addrs[peer]
+	conn := p.conn
 	p.mu.Unlock()
+	if !ok || conn == nil {
+		// The socket is attached when the listener binds. A playback before
+		// that cannot happen through the ordinary path, and crashing on it
+		// would be a poor trade for an impossible case.
+		return errNoSocket
+	}
+	_, err := conn.WriteToUDPAddrPort(frame.Marshal(), to)
+	return err
+}
 
-	go p.play(inner, rec, to)
+// Start replays a recording to one peer at an address.
+func (p *playback) Start(ctx context.Context, rec parrot.Recording, to netip.AddrPort) {
+	p.mu.Lock()
+	p.addrs[rec.Peer] = to
+	p.mu.Unlock()
+	p.player.Start(ctx, rec)
 }
 
 // Stop ends a peer's playback, if one is running.
-func (p *playback) Stop(peer hbp.RepeaterID) {
-	p.mu.Lock()
-	cancel := p.running[peer]
-	delete(p.running, peer)
-	p.mu.Unlock()
-
-	if cancel != nil {
-		cancel()
-		p.stats.mu.Lock()
-		p.stats.stopped++
-		p.stats.mu.Unlock()
-	}
-}
+func (p *playback) Stop(peer hbp.RepeaterID) { p.player.Stop(peer) }
 
 // Active reports how many playbacks are running.
-func (p *playback) Active() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return len(p.running)
+func (p *playback) Active() int { return p.player.Active() }
+
+// stats returns the counters, for the health report.
+func (p *playback) stats() (played, frames, stopped, errs uint64) {
+	return p.player.Stats().Snapshot()
 }
 
-// play sends the frames, then forgets the peer.
-func (p *playback) play(ctx context.Context, rec parrot.Recording, to netip.AddrPort) {
-	defer func() {
-		p.mu.Lock()
-		delete(p.running, rec.Peer)
-		p.mu.Unlock()
-	}()
+// errNoSocket is returned when a frame is ready before the listener has bound.
+type noSocketError struct{}
 
-	// The gap before the replay begins. A replay that starts instantly is
-	// played at a radio that has not finished transmitting and is not
-	// listening yet, and the first second is lost.
-	wait := time.Until(rec.PlayAt)
-	if wait > 0 {
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(wait):
-		}
-	}
-
-	// A ticker rather than sleeping for the interval: sleeping adds the time
-	// spent marshalling and writing to every gap, so a long recording would
-	// drift slower and slower against the radio's expectations.
-	ticker := time.NewTicker(parrot.FrameInterval)
-	defer ticker.Stop()
-
-	var sent uint64
-	for _, frame := range rec.Frames {
-		select {
-		case <-ctx.Done():
-			p.log.Debug("playback stopped",
-				slog.Uint64("peer", uint64(rec.Peer)), slog.Uint64("frames_sent", sent))
-			return
-		case <-ticker.C:
-		}
-
-		// The peer's own ID, because the far end registered this link and a
-		// frame naming anything else is from a station it has never heard of.
-		out := frame
-		out.RepeaterID = rec.Peer
-
-		if p.conn == nil {
-			// The socket is attached when the listener binds. A playback
-			// before that cannot happen through the ordinary path, and
-			// crashing on it would be a poor trade for an impossible case.
-			return
-		}
-		if _, err := p.conn.WriteToUDPAddrPort(out.Marshal(), to); err != nil {
-			// One failed write does not end the playback: UDP to a hotspot on
-			// a domestic connection drops packets, and abandoning a recording
-			// over one of them would make parrot look broken when it is not.
-			p.stats.mu.Lock()
-			p.stats.errs++
-			p.stats.mu.Unlock()
-			continue
-		}
-		sent++
-	}
-
-	p.stats.mu.Lock()
-	p.stats.played++
-	p.stats.frames += sent
-	p.stats.mu.Unlock()
-
-	p.log.Info("parrot replayed",
-		slog.Uint64("peer", uint64(rec.Peer)),
-		slog.Uint64("frames", sent),
-		slog.String("duration", rec.Duration.Truncate(time.Millisecond).String()),
-		slog.Bool("truncated", rec.Truncated),
-	)
+func (noSocketError) Error() string {
+	return "peers: the playback socket is not attached yet"
 }
 
-// snapshot returns the counters.
-func (p *playbackStats) snapshot() (played, frames, stopped, errs uint64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.played, p.frames, p.stopped, p.errs
-}
+var errNoSocket = noSocketError{}
 
 // expireParrot completes recordings whose transmissions have stopped.
 //

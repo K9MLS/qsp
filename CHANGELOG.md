@@ -5,6 +5,67 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **Parrot runs for Motorola repeaters.** A repeater operator can key the parrot
+  talkgroup and hear themselves back, which every hotspot user has been able to
+  do since 0.1.12.
+
+  **The reason it did not was a comment that had stopped being true.**
+  `DeliverFromIPSC` said parrot could not run because "there is no path back to
+  an IPSC peer". That path was built in 0195 and a repeater keyed on it the same
+  evening; the comment outlived the fact and was switching off a feature. §7
+  names a stale comment as a defect, and this is what one costs.
+
+  It reuses the existing `parrot.Recorder` unchanged. The replay timing moved
+  into a new `parrot.Player` so that **the sixty-millisecond frame interval
+  exists in exactly one place** — a second copy of that loop is a second place
+  for a drift bug to live and be fixed in only one of them. `internal/peers`
+  keeps its own sink and all ten of its playback tests, unchanged.
+
+- **`ipsclink.Listener.SendVoiceTo`**, which sends to one repeater and no other.
+  It is a separate method rather than a flag on `SendVoice`, which deliberately
+  excludes the origin: a boolean that inverted which peers receive a
+  transmission would be one argument away from broadcasting somebody's echo test
+  to the whole network, and the two call sites would look identical.
+
+### Notes
+- **The IPSC listener has its own recorder, not the DMR listener's.** Both key
+  recordings by radio ID and the two protocols share the DMR ID space. This
+  network had 3132910 registered on both listeners at once on 2026-09-02 — a
+  Pi-Star and an XPR8300 — and a shared recorder would have merged their
+  recordings and replayed one operator's audio into the other's radio with
+  nothing logged. Two recorders degrade to two independent parrots.
+
+- **A group call, not a private call, and that is deliberate.** BrandMeister's
+  parrot is a private call to 9990 or an MCC-based ID because every BrandMeister
+  talkgroup is distributed worldwide, so a parrot talkgroup would carry test
+  audio across the entire network and only one operator could use it at a time.
+  A club network has no such fan-out, and QSP already replays to one peer and no
+  other because a frame parrot handles never reaches the routing core. The
+  Motorola convention for an echo test is a group call, which is what the
+  operators of these repeaters will already know. Private calls are also an open
+  unexplained defect here, and building a user-facing feature on a mechanism
+  that does not work end to end would make the two indistinguishable when it
+  failed.
+
+- **The talkgroup must be in the repeater's codeplug**, and QSP cannot check it.
+  ADR-0043 states the limit: authority over delivery, none over transmission. A
+  repeater receives everything and decides for itself what to put on the air, and
+  an IPSC peer announces no subscriptions. So IPSC parrot can be entirely correct
+  and produce silence. The startup log says so where an operator will see it.
+
+- **`dmr.parrot.timeslot` and `ipsc.slot_bit_is_timeslot2` interact**, and
+  nothing relates them. They are set in different sections, and a parrot on
+  timeslot 2 never claims frames from a repeater whose slot bit converts to
+  timeslot 1. A test found this by failing.
+
+- Each new assertion was checked by breaking the code it rejects: parrot not
+  consuming, parrot consuming everything, replaying to every peer, and one
+  shared recorder. **The first two were not caught by the first version of the
+  tests**, which exercised `parrot.Recorder` rather than the listener's wiring
+  of it — a test asserting the library rather than what a radio would hear.
+
+
+### Added
 - **`testdata/ipsc/ipsc-master-voice.pcap`: a Motorola master sending voice.**
   Every other IPSC fixture is a repeater talking to a master; this is the first
   byte this project has of a master talking to a repeater, captured with

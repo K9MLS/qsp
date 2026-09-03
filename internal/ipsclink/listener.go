@@ -54,6 +54,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
 )
@@ -78,6 +79,18 @@ type Config struct {
 	// PeerTimeout is how long a registered peer may go without a keepalive
 	// before it is dropped. Zero uses DefaultPeerTimeout.
 	PeerTimeout time.Duration
+
+	// Parrot records and replays on one talkgroup for Motorola repeaters.
+	// Optional; nil disables it.
+	//
+	// **It is a separate Recorder from the Homebrew listener's**, not the same
+	// one shared. Both key recordings by radio ID and the two protocols share
+	// the DMR ID space: this network had one ID registered on both listeners
+	// at once on 2026-09-02, a hotspot and a repeater. A shared recorder would
+	// have merged their recordings and replayed one member's audio to
+	// another's radio, silently. Two recorders degrade to two independent
+	// parrots instead.
+	Parrot *parrot.Recorder
 
 	// Deliver receives each burst converted from a repeater's audio, with the
 	// repeater's radio ID as its origin.
@@ -179,6 +192,14 @@ type Listener struct {
 	// belong to the repeater they are addressing.
 	encoders map[uint32]*ipscbridge.Encoder
 
+	// player replays parrot recordings to repeaters. Nil when parrot is off.
+	// It shares parrot.Player with the Homebrew listener so that the sixty
+	// millisecond frame timing exists in exactly one place.
+	player *parrot.Player
+	// ctx is the serving context, so a replay stops when the listener does
+	// rather than writing to a closed socket.
+	ctx context.Context
+
 	// snapshot holds an immutable peer list for readers on other goroutines,
 	// for the same reason internal/peers does it: the serve loop owns the map
 	// and an HTTP handler reaching into it would be a race.
@@ -266,6 +287,10 @@ func (l *Listener) Start(ctx context.Context) error {
 		return fmt.Errorf("ipsc: cannot listen on %s: %w", l.cfg.ListenAddress, err)
 	}
 	l.conn = conn
+	l.ctx = ctx
+	if l.cfg.Parrot != nil {
+		l.player = parrot.NewPlayer(l.log, ipscSink{l: l})
+	}
 	l.running.Store(true)
 	l.log.Info("listening", "address", conn.LocalAddr().String(), "master_id", l.cfg.MasterID,
 		"allowed_peers", len(l.allowed))
@@ -355,6 +380,67 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 	}
 }
 
+// SendVoiceTo relays a frame to exactly one repeater, and to nobody else.
+//
+// # Why this is separate from SendVoice rather than a flag on it
+//
+// SendVoice answers "who else should hear this" and deliberately excludes the
+// origin. This answers the opposite question, and parrot is why: a replay goes
+// back to the member who recorded it and to no one else on the network.
+//
+// A boolean that inverted which peers receive a transmission would be one
+// parameter away from broadcasting somebody's echo test to every repeater on
+// the network, and the two callers would look identical at the call site.
+func (l *Listener) SendVoiceTo(target uint32, frame hbp.Data) error {
+	if l.conn == nil {
+		return errNotServing
+	}
+
+	l.mu.Lock()
+	p, ok := l.peers[target]
+	if !ok || p.Address == "" {
+		l.mu.Unlock()
+		return errNoSuchPeer
+	}
+	enc, have := l.encoders[target]
+	if !have {
+		enc = ipscbridge.NewEncoder(l.cfg.MasterID, l.cfg.Bridge)
+		l.encoders[target] = enc
+	}
+	if p.ColourCodeKnown {
+		enc.SetColourCode(p.ColourCode)
+	}
+	msgs := enc.Encode(frame)
+	address := p.Address
+	l.mu.Unlock()
+
+	if len(msgs) == 0 {
+		return nil
+	}
+	addr, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		return err
+	}
+	for _, m := range msgs {
+		if _, err := l.conn.WriteToUDP(m.Marshal(), addr); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Errors SendVoiceTo returns. They are values rather than strings because
+// parrot counts failed deliveries and continues, and a replay to a peer that
+// unregistered mid-transmission is ordinary rather than alarming.
+var (
+	errNotServing = sendError("the IPSC listener is not serving")
+	errNoSuchPeer = sendError("no such registered IPSC peer")
+)
+
+type sendError string
+
+func (e sendError) Error() string { return string(e) }
+
 func (l *Listener) Peers() []Peer {
 	if p := l.snapshot.Load(); p != nil {
 		return *p
@@ -428,8 +514,14 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	// listener and writes to another socket, and holding this listener's lock
 	// across that would make the two mutually blocking.
 	frames := l.record(msg, from, now)
-	if l.cfg.Deliver != nil {
-		for _, f := range frames {
+	for _, f := range frames {
+		// Parrot first, and it consumes what it handles, exactly as on the
+		// Homebrew side. A recording answers the member who made it; routing
+		// it as well would put somebody's echo test on the network.
+		if l.parrotHandles(hbp.RepeaterID(msg.SenderID), f) {
+			continue
+		}
+		if l.cfg.Deliver != nil {
 			l.cfg.Deliver(hbp.RepeaterID(msg.SenderID), f)
 		}
 	}
@@ -560,6 +652,7 @@ func (l *Listener) expire(ctx context.Context) {
 			return
 		case now := <-tick.C:
 			l.ExpireAt(now)
+			l.expireParrot()
 		}
 	}
 }
