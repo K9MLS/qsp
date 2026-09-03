@@ -151,6 +151,16 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 			ipsc.FrameTerminator, dmrfec.DataTypeTerminatorWithLC)}
 	}
 
+	// A text message is DMR data, not audio, and needs re-wrapping rather than
+	// rebuilding. It carries no vocoder core, so it has to be recognised
+	// before the core is looked for. See ADR-0045.
+	if frame.FrameType == hbp.FrameTypeSync {
+		if m, ok := e.text(st, frame, slot); ok {
+			return []ipsc.Message{m}
+		}
+		return nil
+	}
+
 	core, _, ok := dmrfec.IPSCFromBurst(frame.Payload[:])
 	if !ok {
 		return nil
@@ -376,4 +386,62 @@ func (e *Encoder) position(src hbp.Data) (class byte, lcss uint8, fragment uint3
 	default:
 		return ipsc.PayloadFragment, l, frag, false
 	}
+}
+
+// text builds the IP Site Connect frame that carries one Homebrew data burst.
+//
+// # Why this is not the voice path
+//
+// A voice frame carries three vocoder frames with their forward error
+// correction stripped, and rebuilding one means regenerating that FEC and
+// placing the burst in a superframe. A data burst carries a 96-bit information
+// block and nothing else: this reads the block back out of the burst and writes
+// it where a repeater writes one.
+//
+// **The layout is the voice header's.** ADR-0045 measured it: the twelve-octet
+// block at byte 38, zero at 50, the DMR Slot Type at 51, and the two-byte tail
+// ADR-0042 could not derive, written as zero here as it is there.
+//
+// # What decides the message type
+//
+// `0x83` for a group text and `0x84` for a private one, which is the only
+// difference between them. Sending a private message as a group text would put
+// it on a talkgroup for everyone to read, so the call type is taken from the
+// frame rather than assumed.
+func (e *Encoder) text(st *encodeState, frame hbp.Data, slot int) (ipsc.Message, bool) {
+	payload, _, ok := dmrfec.DecodeBPTC(frame.Payload[:])
+	if !ok {
+		return ipsc.Message{}, false
+	}
+	block := dmrfec.BurstBytesFrom(payload)
+	if len(block) < dmrfec.LinkControlBlockBytes {
+		return ipsc.Message{}, false
+	}
+	block = block[:dmrfec.LinkControlBlockBytes]
+
+	kind := ipsc.KindTextGroup
+	if frame.CallType == hbp.CallPrivate {
+		kind = ipsc.KindTextPrivate
+	}
+
+	body := make([]byte, bodyTail+ipsc.HeaderTailLen)
+	e.preamble(st, frame, slot, flagsMiddle, body)
+
+	// Byte 12 of the datagram reads 0x01 on every captured data burst where a
+	// voice frame reads 0x02. The preamble writes the voice value because
+	// every other caller is voice, so it is corrected here rather than made a
+	// parameter nobody else would pass.
+	body[7] = 0x01
+
+	body[bodyMarker] = frame.DataType
+	b31 := ipsc.HeaderConstantBit
+	if e.slotBitSet(slot) {
+		b31 |= ipsc.HeaderSlotBit
+	}
+	body[bodyLength] = b31
+	copy(body[bodyConstants:], ipsc.HeaderConstants[:])
+	copy(body[bodyLC:], block)
+	body[bodySlotType] = e.colourCode<<4 | frame.DataType
+
+	return ipsc.Message{Kind: kind, SenderID: e.masterID, Body: body}, true
 }

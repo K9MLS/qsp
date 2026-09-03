@@ -5,6 +5,44 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A text from a hotspot reaches Motorola repeaters**, closing ADR-0045's
+  second direction. The encoder reads the information block back out of the
+  Homebrew burst and writes it where a repeater writes one, as `0x83` for a
+  group text and `0x84` for a private one.
+
+  **The whole bridge is asserted for one burst**: a real captured text is
+  converted to Homebrew and encoded back, and the frame that comes out must be
+  the frame that went in wherever this project understands the bytes — same
+  twelve octets, same DMR data type, same call type, same Slot Type, 54 bytes.
+
+### Fixed
+- **`IsTerminator` answered true for anything that was not voice**, and that
+  dropped every outbound text.
+
+  `FrameTypeSync` means "a data burst", and a voice LC header, a terminator and
+  a text message are all data bursts. The method tested the frame type alone.
+
+  **It was harmless until text arrived and then it was not.** A voice header
+  reaches the encoder before a transmission is open, so answering true for one
+  cost nothing — but a text reaches it at any time and was treated as a
+  terminator and discarded. The same reading would have cut an over short had a
+  hotspot ever sent a voice header mid-transmission, which is a latent defect on
+  the audio path that nothing had exercised.
+
+  It now requires data type 2, Terminator with Link Control, which is what a
+  terminator is.
+
+### Notes
+- **Byte 12 is the one byte the shared preamble writes wrongly for text.** Every
+  captured data burst reads `0x01` there where voice reads `0x02`. It is
+  corrected in the text builder rather than made a parameter that only one
+  caller would ever pass, and a test asserts it on the wire.
+- The outbound path no longer needs three headers, a superframe or a
+  terminator: **a text is one datagram**, and the test requires exactly one
+  message back from the encoder rather than at least one.
+
+
+### Added
 - **A text from a Motorola repeater reaches hotspots.** The inbound half of
   ADR-0045: the listener recognises `0x83` and `0x84`, the converter re-wraps
   the burst, and routing carries it like any other transmission.

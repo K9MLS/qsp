@@ -215,7 +215,32 @@ func parseData(b []byte) (Message, error) {
 // A stream begins and ends with one. Note that the header and the terminator
 // share this frame type, so position within the stream distinguishes them; this
 // method alone does not.
-func (m Data) IsTerminator() bool { return m.FrameType == FrameTypeSync }
+// IsTerminator reports whether this frame closes a transmission.
+//
+// # Why the data type is checked and not only the frame type
+//
+// FrameTypeSync means "a data burst", and a voice LC header, a terminator and a
+// text message are all data bursts. This used to test the frame type alone, so
+// it answered true for all three.
+//
+// **It was harmless until text arrived and then it was not.** A voice header
+// reaches the encoder before a transmission is open, so answering true for one
+// cost nothing; a text message reaches it at any time, and every text was
+// treated as a terminator and dropped. The same reading would have cut an over
+// short had a hotspot ever sent a header mid-transmission.
+//
+// Data type 2 is Terminator with Link Control, which is what a terminator is
+// and the only thing this should answer true for.
+func (m Data) IsTerminator() bool {
+	return m.FrameType == FrameTypeSync && m.DataType == DataTypeTerminator
+}
+
+// DataTypeTerminator is the DMR data type of a terminator with Link Control.
+//
+// It is declared here rather than taken from internal/dmrfec because this
+// package sits below that one: a protocol type should not need a codec package
+// to say what a field means.
+const DataTypeTerminator uint8 = 0x2
 
 func u24(b []byte) uint32 { return uint32(b[0])<<16 | uint32(b[1])<<8 | uint32(b[2]) }
 

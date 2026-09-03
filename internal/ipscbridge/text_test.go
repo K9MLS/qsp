@@ -217,3 +217,90 @@ func TestTextTakesTheConfiguredSlotPolarity(t *testing.T) {
 		})
 	}
 }
+
+// TestATextGoesOutAsItCameIn is the whole bridge for one text burst.
+//
+// A real burst from a repeater is converted to Homebrew and encoded back to IP
+// Site Connect, and **the frame that comes out must be the frame that went in**
+// wherever this project understands the bytes: the same twelve-octet block, the
+// same DMR data type, the same call type, the same Slot Type.
+//
+// This is the assertion the voice path earned in 0195 and did not have before
+// it — that the output resembles what a repeater sends, rather than merely
+// being produced.
+func TestATextGoesOutAsItCameIn(t *testing.T) {
+	const colourCode = 4
+	cfg := ipscbridge.Config{ColourCode: colourCode, SlotBitIsTimeslot2: true}
+	c, err := ipscbridge.New(cfg)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	e := ipscbridge.NewEncoder(31329, cfg)
+
+	var checked int
+	for _, m := range textMessages(t) {
+		in, ok := m.AsText()
+		if !ok || len(in.Block) != dmrfec.LinkControlBlockBytes {
+			continue
+		}
+		burst, ok := c.ConvertText(m, hbp.RepeaterID(999999))
+		if !ok {
+			t.Fatal("a twelve-octet block was refused by the converter")
+		}
+
+		msgs := e.Encode(burst)
+		if len(msgs) != 1 {
+			t.Fatalf("encoding a text produced %d messages, want exactly one; "+
+				"a data burst has no headers and no superframe", len(msgs))
+		}
+		out := msgs[0]
+
+		if out.Kind.IsText() != true {
+			t.Fatalf("a text encoded as kind %#02x", byte(out.Kind))
+		}
+		wantKind := ipsc.KindTextGroup
+		if in.Private {
+			wantKind = ipsc.KindTextPrivate
+		}
+		if out.Kind != wantKind {
+			t.Fatalf("a %s text encoded as kind %#02x",
+				map[bool]string{true: "private", false: "group"}[in.Private], byte(out.Kind))
+		}
+
+		back, ok := out.AsText()
+		if !ok {
+			t.Fatal("the frame this encoder built does not decode as a text")
+		}
+		if back.DataType != in.DataType {
+			t.Fatalf("data type went in %#x and came out %#x", in.DataType, back.DataType)
+		}
+		if back.ColourCode != colourCode {
+			t.Fatalf("colour code came out %d, want the encoder's %d",
+				back.ColourCode, colourCode)
+		}
+		for i := range in.Block {
+			if back.Block[i] != in.Block[i] {
+				t.Fatalf("octet %d went in %#02x and came out %#02x\n in:  % x\nout: % x",
+					i, in.Block[i], back.Block[i], in.Block, back.Block)
+			}
+		}
+
+		raw := out.Marshal()
+		if len(raw) != 54 {
+			t.Fatalf("a text frame is %d bytes; every captured one was 54", len(raw))
+		}
+		// Byte 12 separates data from voice, and it is the one byte the
+		// preamble writes wrongly for this caller.
+		if raw[12] != 0x01 {
+			t.Fatalf("byte 12 is %#02x; a data burst reads 0x01 where voice reads 0x02",
+				raw[12])
+		}
+		if raw[50] != 0 {
+			t.Fatalf("byte 50 is %#02x, want zero as in a voice header", raw[50])
+		}
+		checked++
+	}
+	if checked < 100 {
+		t.Fatalf("only %d bursts round-tripped through the bridge", checked)
+	}
+}

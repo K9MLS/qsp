@@ -1696,10 +1696,12 @@ has been in the code since the transmit path was written.
 
 ### Open, in order
 
-1. **Text messages.** The bytes are decoded and no code is written yet. Both
-   directions are wanted equally. There is no acknowledgement to hold, so this
-   is a parser and an encoder; the outbound shape is inferred as voice was, and a
-   capture of a master relaying a text would confirm it.
+1. **Text messages work in both directions and have never run on air.** Built
+   under ADR-0045 and asserted end to end against `ipsc-text.pcap`, including
+   the full bridge round trip. The outbound shape is inferred exactly as voice
+   was under ADR-0041; a capture of a real master relaying a text would confirm
+   it. Rate 3/4 bursts are refused rather than truncated, so a long text may
+   still arrive incomplete — that is the next thing to watch for on air.
 2. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
    addresses.** Settled as unauthenticated long ago, but 0197 enlarged what it
    exposes. That was named as a decision to make rather than a defect, and it
