@@ -5,6 +5,45 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`cmd/ipsc-peer`**, a bench instrument that registers to a real IP Site
+  Connect master and prints everything that master sends.
+
+  **Every capture in `testdata/ipsc` is the same half of the conversation**: a
+  repeater talking to a master. There is not one byte of a master talking to a
+  repeater. Everything QSP knows about being a master it inferred from watching
+  peers, which shows what a master must *answer* and never what a master
+  *initiates* — and a gap cannot be found by studying the thing that has it.
+
+  It replays one SLR5700's registration from `ipsc-phase2-registration.pcap`
+  with the sender ID substituted: `0x90` register, `0x96` keepalive, `0xf0`
+  once after the reply, `0x85` periodically. Most of those bytes have no known
+  meaning, so the program cannot be right by construction and the master is the
+  oracle — if it accepts the registration the bytes were good enough, and if it
+  does not, the failure says which of them matters.
+
+  **It is not a route back to peer support.** ADR-0043 settles that QSP is the
+  master and never a peer in production; this never ships in `cmd/qsp`, and an
+  operator putting a repeater into master role for an afternoon is not a club
+  running a second master.
+
+- **`ipsc.PeerBody` and `ipsc.PeerMessageFor`**, the mirror of `CapturedBody`,
+  carrying the same warning: a recording of one repeater's requests rather than
+  an implementation of IPSC.
+
+### Notes
+- **A peer and a master do not open with the same byte**, and a test now says
+  so. The first body byte is a property of the radio — `0x66` for the captured
+  SLR5700, `0x6a` for the XPR8300. A tool reaching for `CapturedBody` where it
+  meant `PeerBody` would announce itself with the master's value, and since
+  IPSC's only refusal vocabulary is silence, that failure presents as a master
+  that never answers with nothing to say why.
+- `-listen` and `-master` are deliberately separate flags. A Motorola repeater
+  has two port fields for the same reason, and conflating them produces ICMP
+  unreachables from a configuration that looks correct. In the capture the peer
+  sent to the master's 50000 and received on its own 50004.
+
+
+### Added
 - **[ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md): QSP is the master, and a
   club runs no second one.** Every Pi-Star and every Motorola repeater points at
   QSP. No Motorola master repeater alongside it, no a commercial DMR server, no second thing to

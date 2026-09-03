@@ -105,3 +105,52 @@ func SenderIDOf(b []byte) (uint32, bool) {
 	}
 	return binary.BigEndian.Uint32(b[1:5]), true
 }
+
+// peerBody holds the body of each message a **peer** was observed sending,
+// taken verbatim from testdata/ipsc/ipsc-phase2-registration.pcap.
+//
+// # The mirror of capturedBody, and it carries the same warning
+//
+// These came from one Motorola SLR5700 registering to an XPR8300 in master
+// role. As with the master's bodies, most of these bytes have no known meaning,
+// so a peer built from them is a recording of one repeater's requests with the
+// sender ID substituted rather than an implementation of IPSC.
+//
+// **The first body byte is device-specific and known to differ.** It is 0x66
+// here and 0x6a for the XPR8300, so it is a property of the radio rather than
+// of the protocol. A tool replaying these emits the SLR5700's value, which is
+// correct only in the sense that a real repeater once sent it.
+//
+// This exists so that a bench instrument can register to a real master and
+// write down what the master sends — the one thing every capture in this
+// repository cannot show, because all of them are the peer's half of the
+// conversation. Under ADR-0043 QSP is never a peer in production; nothing here
+// is wired into cmd/qsp, and it exists for the probe tools alone.
+var peerBody = map[Kind][]byte{
+	// 90 0004d098 | 66 00 00 80 4c 04 08 04 00
+	KindRegisterRequest: {0x66, 0x00, 0x00, 0x80, 0x4c, 0x04, 0x08, 0x04, 0x00},
+	// 96 0004d098 | 66 00 00 80 4c 04 06 04 00
+	KindKeepaliveRequest: {0x66, 0x00, 0x00, 0x80, 0x4c, 0x04, 0x06, 0x04, 0x00},
+	// f0 0004d098 | 00 00 00 00 — sent once, immediately after the reply
+	KindF0: {0x00, 0x00, 0x00, 0x00},
+	// 85 0004d098 | 00 00 00 01 01 02 — identical to the master's Kind85
+	Kind85: {0x00, 0x00, 0x00, 0x01, 0x01, 0x02},
+}
+
+// PeerBody returns the body a peer was observed sending for a kind.
+func PeerBody(k Kind) ([]byte, bool) {
+	b, ok := peerBody[k]
+	if !ok {
+		return nil, false
+	}
+	return append([]byte(nil), b...), true
+}
+
+// PeerMessageFor builds the message a peer sends for a kind, as that peer.
+func PeerMessageFor(k Kind, senderID uint32) (Message, bool) {
+	body, ok := PeerBody(k)
+	if !ok {
+		return Message{}, false
+	}
+	return Message{Kind: k, SenderID: senderID, Body: body}, true
+}
