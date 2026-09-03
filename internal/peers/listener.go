@@ -174,6 +174,11 @@ type Listener struct {
 	// pending holds a configuration change waiting to be applied, at most one.
 	// See reload.go.
 	pending atomic.Pointer[Reload]
+	// ipscRefused is the most recent transmission refused on the IPSC path,
+	// so the log names each one once rather than once per frame.
+	ipscRefusedMu sync.Mutex
+	ipscRefused   ipscRefusal
+
 	// playback replays parrot recordings. Nil when parrot is off.
 	playback *playback
 	// ctx bounds every playback goroutine, so shutdown stops them.
@@ -603,6 +608,21 @@ func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
 	// dashboard stay empty.
 	l.warnIfIDShared(from)
 	l.observe(from, frame)
+
+	// **The subscriber list bans a radio, not a repeater**, so it has to apply
+	// here as well as on the Homebrew data path. Without it a banned operator
+	// was refused on a hotspot and carried by a Motorola repeater, and which
+	// door they used decided the answer.
+	//
+	// Observed before it is checked, deliberately: an operator looking at the
+	// dashboard to find out who is transmitting is best served by seeing the
+	// station that is being refused, not by it vanishing. Refused after
+	// observing and before routing is the same order the Homebrew path uses.
+	if l.cfg.Master != nil && !l.cfg.Master.SubscriberAllowed(frame.SourceID) {
+		l.refuseIPSCSubscriber(from, frame)
+		return
+	}
+
 	l.trigger(from, frame)
 	res := l.cfg.Routing.Route(from, frame, time.Now())
 	l.deliver(from, res)
@@ -610,6 +630,36 @@ func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
 	// repeaters, which is what makes repeater-to-repeater work without a
 	// hotspot in between.
 	l.sendToIPSC(from, frame, res)
+}
+
+// refuseIPSCSubscriber logs a refused transmission once per stream.
+//
+// Constitution §18: nothing is dropped silently. One line per transmission
+// rather than one per frame, because a refused transmission is sixty frames a
+// second and a journal full of one radio is a journal nobody reads.
+func (l *Listener) refuseIPSCSubscriber(from hbp.RepeaterID, frame hbp.Data) {
+	key := ipscRefusal{peer: from, source: frame.SourceID, stream: frame.StreamID}
+	l.ipscRefusedMu.Lock()
+	seen := l.ipscRefused == key
+	l.ipscRefused = key
+	l.ipscRefusedMu.Unlock()
+	if seen {
+		return
+	}
+	l.log.Info("transmission refused: subscriber not permitted",
+		logging.PeerID(uint32(from)),
+		slog.Uint64("subscriber", uint64(frame.SourceID)),
+		slog.Uint64("talkgroup", uint64(frame.TargetID)),
+		slog.String("timeslot", frame.Timeslot.String()),
+		slog.String("protocol", "ipsc"),
+	)
+}
+
+// ipscRefusal identifies one refused transmission, so the log names it once.
+type ipscRefusal struct {
+	peer   hbp.RepeaterID
+	source uint32
+	stream hbp.StreamID
 }
 
 // warnIfIDShared reports a radio ID belonging to both an IPSC repeater and a

@@ -89,6 +89,11 @@ func (l *Listener) applyPending() {
 	}
 	if l.cfg.Master != nil {
 		l.cfg.Master.SetSubscription(r.Subscription)
+		// The registration and subscriber lists, which used to be read once
+		// when the master was built. Applied unconditionally for the same
+		// reason as routing's: an empty list permits everything, which is a
+		// setting rather than the absence of one.
+		l.cfg.Master.SetAccess(r.Access)
 	}
 
 	// The schedule is reset rather than merged, so that a bridge removed from

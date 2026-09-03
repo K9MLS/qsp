@@ -185,6 +185,14 @@ func NeedsRestart(before, after Config) []string {
 	// nothing happen.
 	add("dmr.parrot", before.DMR.Parrot != after.DMR.Parrot)
 
+	// **The access lists are not here, and that is now true rather than
+	// forgotten.** Talkgroup lists reach the routing core through SetAccess on
+	// reload, and the registration and subscriber lists reach the master
+	// through Master.SetAccess. Before the second of those existed, two of the
+	// four lists were saved from the console and did nothing until a restart,
+	// with nothing here to say so — an operator banning a radio got a
+	// successful save and a ban that was not in force.
+
 	// Links hold sockets and a handshake, so any change to them is a restart.
 	// Comparing the whole list rather than field by field is deliberate: a new
 	// upstream field added later would otherwise be silently applied live,

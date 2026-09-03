@@ -560,6 +560,34 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 //
 // Constitution §18 still holds: nothing is dropped silently. The first frame of
 // the stream says what happened and why, and the rest are counted.
+// SubscriberAllowed reports whether a radio may transmit on this network.
+//
+// It exists so the IPSC path can ask the same question the Homebrew data path
+// asks. **A subscriber list bans a radio, not a repeater**, and a ban that
+// applies on one protocol and not the other is not access control: the same
+// operator would be refused on a hotspot and carried by a Motorola repeater,
+// and which door they walked through would decide.
+func (m *Master) SubscriberAllowed(id uint32) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.cfg.Access.Subscriber.Allows(id)
+}
+
+// SetAccess replaces the registration and subscriber lists on a running master.
+//
+// **Without this, two of the four lists were saved and did nothing.** The
+// console edits all four and posts the whole configuration back; talkgroup
+// lists reached the routing core through SetAccess there, and these two were
+// read when the master was constructed and never again. An operator banning a
+// radio got a successful save, no restart warning, and a ban that was not in
+// force — the same failure recorded three lines into NeedsRestart for parrot,
+// found the same way.
+func (m *Master) SetAccess(l access.Lists) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg.Access = l
+}
+
 func (m *Master) refuseSubscriber(p *Peer, msg hbp.Data, now time.Time) Outcome {
 	current := refusedStreamID{source: msg.SourceID, stream: msg.StreamID, slot: msg.Timeslot}
 

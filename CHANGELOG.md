@@ -5,6 +5,53 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **A banned radio was banned on hotspots and carried by Motorola repeaters**
+  ([ADR-0044](docs/adr/ADR-0044-access-control-covers-ipsc.md)). The subscriber
+  list bans a *radio*, not a repeater, and it was checked only on the Homebrew
+  data path. The same operator got two answers on the same network depending on
+  which door they walked through — an access control system that could be walked
+  around by keying a different radio.
+
+  The check now runs in `DeliverFromIPSC`, using the same lists and the same
+  refusal wording. **There is no IPSC access configuration**: an IPSC repeater
+  announces less, not more, and everything the checks need is in every frame.
+  Registration was already covered by `ipsc.allowed_peers` and talkgroups by
+  routing ingress, including the repeater-to-repeater path.
+
+- **Two of the four access lists were saved from the console and did nothing.**
+  Talkgroup lists reached the routing core on reload; registration and
+  subscriber lists were read when the master was constructed and never again,
+  and `NeedsRestart` named neither. **An operator banning a radio got a
+  successful save, no restart warning, and a ban that was not in force** — the
+  same failure recorded three lines into `NeedsRestart` for parrot, found the
+  same way. `Master.SetAccess` applies them now.
+
+- **§0's table said access control was "missing — next".** Line 764 of the same
+  file said it was built, and the code agreed with line 764: all four lists
+  parsed, wired and carrying traffic. Several turns were spent planning work
+  that had been done, because §0 is what every session reads first and nobody
+  re-reads.
+
+### Changed
+- **ADR-0020 moves from Proposed to Accepted.** It described a design that was
+  built and has been carrying traffic for weeks; the status was stale rather
+  than the decision unsettled.
+
+### Notes
+- **A refused IPSC transmission is logged once, not per frame.** Sixty frames a
+  second of one radio is a journal nobody reads. Constitution §18 still holds:
+  the transmission is named, with subscriber, talkgroup and timeslot.
+- **The refusal happens after the console has observed it**, the same order the
+  Homebrew path uses. An operator asking who is transmitting is better served by
+  seeing the station being refused than by it vanishing.
+- **The first version of the listener test passed with the check removed.** It
+  sent a permitted transmission and then a banned one down one listener, and the
+  second was refused for contention rather than by the ban, so the silence it
+  asserted proved nothing. Each case now gets its own listener. That is the
+  third time in this session a first-draft test asserted the wrong thing.
+
+
+### Fixed
 - **A doc comment was a malformed compiler directive**, and it stopped the
   operator's gate chain before the tests ran.
 

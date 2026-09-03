@@ -29,7 +29,7 @@ conclusion.
 | [0017](ADR-0017-first-dependency.md) | Adopting modernc.org/sqlite, the first dependency | Accepted |
 | [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed |
 | [0019](ADR-0019-master-repeats.md) | A master repeats; bridging is a layer on top | Accepted |
-| [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Proposed |
+| [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Accepted |
 | [0021](ADR-0021-private-calls-and-data.md) | Private calls and data are in scope, and share one missing thing | Proposed |
 | [0022](ADR-0022-timeslot-contention.md) | Contention belongs to the timeslot, not the talkgroup | Proposed |
 | [0023](ADR-0023-talkgroup-subscription.md) | Peers attach talkgroups, and mostly attach them by talking | Proposed |
@@ -53,3 +53,4 @@ conclusion.
 | [0041](ADR-0041-ipsc-transmit-from-inference.md) | Sending voice to a repeater is built from inference, not capture | Accepted — confirmed on air |
 | [0042](ADR-0042-the-outbound-frame-shape-is-measured.md) | The outbound frame shape is measured, and the colour code belongs to the repeater | Accepted |
 | [0043](ADR-0043-qsp-is-the-master.md) | QSP is the master, and a club runs no second one | Accepted |
+| [0044](ADR-0044-access-control-covers-ipsc.md) | Access control covers IP Site Connect, with no new configuration | Accepted |

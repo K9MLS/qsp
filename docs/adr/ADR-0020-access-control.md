@@ -1,6 +1,6 @@
 # ADR-0020: Access control, and why it is checked in two places
 
-**Status:** Proposed
+**Status:** Accepted — built, and extended by [ADR-0044](ADR-0044-access-control-covers-ipsc.md)
 
 ## Context
 

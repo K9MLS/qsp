@@ -30,7 +30,7 @@ settle it rather than leaving it to taste. Both are stated in full in §6c.
 | Layer | What it is | State |
 |---|---|---|
 | **1. Repeat** | a group call reaches every other peer on that talkgroup | **built 2026-08-27** |
-| **2. Access control** | which talkgroups, repeaters, subscribers are permitted | **missing — next** |
+| **2. Access control** | which talkgroups, repeaters, subscribers are permitted | **built**: all four lists, both protocols (ADR-0020, ADR-0044) |
 | **3. Subscription** | which peers receive which talkgroups | partial: schedule and triggers; no per-peer attachment |
 | **4. Bridging** | connect this master to other systems | built, including OpenBridge |
 | **5. Outbound peer** | connect *out* to XLX, DMR+, IPSC2 | built, never met a real far end |
@@ -1637,12 +1637,10 @@ need a second opinion from a forum.
 
 1. **Parrot on IPSC has never run on air.** Needs the repeater back as a peer
    and 9990 in its codeplug as a group contact on timeslot 2.
-2. **Access control**, layer 2, and still the oldest missing thing in §0's
-   table. Two things made it more pressing rather than less: the network went
-   from three stations to six peers in a day, including three repeaters the
-   operator does not own, and 0197 put repeater radio IDs and addresses on an
-   unauthenticated `/api/peers`. Per-peer passwords and per-peer attachment
-   exist; a policy layer does not.
+2. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
+   addresses.** Settled as unauthenticated long ago, but 0197 enlarged what it
+   exposes. That was named as a decision to make rather than a defect, and it
+   is the last piece of the access story still open.
 3. **Private calls from Paul to Mike**: QSP delivers them and MMDVM never logs
    them arriving. Still unexplained, and it blocks a private parrot.
 4. **The echo and the repeated stream ID.** Still no captures. The duplicate
@@ -1651,6 +1649,23 @@ need a second opinion from a forum.
    is excluded from every delivery.
 5. **Subscription on air**, then **P25**, unchanged. P25 is weeks away at the
    earliest and the operator wants DMR and IPSC finished first.
+
+### The table in §0 was stale, and §0 is what every session reads first
+
+On 2026-09-03 a session spent several turns calling access control "the oldest
+missing thing" because §0's table said `missing — next`. **Line 764 of this same
+file said it was built, and the code agreed with line 764.** All four lists were
+parsed, wired, and carrying traffic.
+
+The table is corrected. The lesson is not "check the table" but **the section
+with the most authority is the one most worth doubting**, because everyone reads
+it and nobody re-reads it. Two of the day's worst turns came from trusting a
+summary: this one, and recommending a change to the parrot talkgroup that
+ADR-0028 had settled weeks earlier.
+
+**Search the code for the thing, not the file for a claim about it.** The
+diagnostic that works is §8a's — *what is declared and read by nothing* — run
+against the feature you are about to build, before building it.
 
 ### The list-by-name rule was broken again, in a new disguise
 
