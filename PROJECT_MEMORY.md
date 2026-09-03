@@ -1000,6 +1000,12 @@ two new failures once hid inside a count that looked normal.
 
 ## 8d. Where a session started on the evening of 2026-09-01
 
+> **SUPERSEDED — read [§8g](#8g-where-the-next-session-starts-as-of-2026-09-03) instead.** This section is kept for the reasoning in it, not for its
+> state. **Its open list is wrong**, and wrong in the direction that wastes a
+> session: it describes IPSC as having no voice and no listener, which was true
+> when it was written and has not been since. A stale section that sits above
+> the current one is read first by anybody going top-down.
+
 **Superseded by §8e.** Kept for its *settled, do not reopen* list and because
 its "open, in order" shows the state before the audio path was built.
 
@@ -1113,6 +1119,12 @@ a reading is plausible and cheap to test, test it.
 
 ## 8e. Where the next session starts, as of late on 2026-09-01
 
+> **SUPERSEDED — read [§8g](#8g-where-the-next-session-starts-as-of-2026-09-03) instead.** This section is kept for the reasoning in it, not for its
+> state. **Its open list is wrong**, and wrong in the direction that wastes a
+> session: it describes IPSC as having no voice and no listener, which was true
+> when it was written and has not been since. A stale section that sits above
+> the current one is read first by anybody going top-down.
+
 Read §0, then §6b and §6c, then this.
 
 **IPSC went from an empty fixture directory to a Motorola repeater on the
@@ -1205,6 +1217,12 @@ worth more than a citation.
 ---
 
 ## 8f. Where the next session starts, as of 2026-09-02
+
+> **SUPERSEDED — read [§8g](#8g-where-the-next-session-starts-as-of-2026-09-03) instead.** This section is kept for the reasoning in it, not for its
+> state. **Its open list is wrong**, and wrong in the direction that wastes a
+> session: it describes IPSC as having no voice and no listener, which was true
+> when it was written and has not been since. A stale section that sits above
+> the current one is read first by anybody going top-down.
 
 Read §0, then §6b and §6c, then this. It supersedes §8e's ordering; everything
 §8e settled remains settled.
@@ -1525,9 +1543,18 @@ relates them.** They live in different configuration sections, and a parrot on
 timeslot 2 never claims frames from a repeater whose slot bit converts to
 timeslot 1. A test found this by failing.
 
-**Not yet run on air.** Every significant defect in this project has been found
-by running the system, and the repeater's codeplug must carry the parrot
-talkgroup as a group contact on the right timeslot before it can work at all.
+**It works on air**, confirmed 2026-09-03 on the operator's XPR8300.
+
+That proves more than parrot. The replay went out through `SendVoiceTo`, a path
+nothing else uses — send to one repeater rather than to every repeater but the
+origin — and it was paced by `parrot.Player`, the timing loop extracted from
+`internal/peers` in 0201. Both were written, tested against fixtures, and never
+run until then. Frames built by the new encoder, arriving sixty milliseconds
+apart, and a radio unmuted them.
+
+**The talkgroup must be a group contact in the repeater's codeplug**, on the
+timeslot the frames convert to. QSP cannot check either, and a missing codeplug
+entry looks exactly like a QSP fault from the operator's chair.
 
 ### Settled on air, 2026-09-02 evening
 
@@ -1633,11 +1660,17 @@ need a second opinion from a forum.
 - **`VERSION` is read by something** (0203). It had been bumped in three
   consecutive patches while `qsp --version` reported a pseudo-version.
 
-### Open, in order
+### IPSC layer 1 is finished
 
-1. **Parrot on IPSC has never run on air.** Needs the repeater back as a peer
-   and 9990 in its codeplug as a group contact on timeslot 2.
-2. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
+Said without hedging, 2026-09-03. Audio both directions; the frame shape
+verified byte for byte against a real master; colour code mirroring proved on
+air with two different codes at once; access control on all three checks;
+repeaters manageable from the console without a restart; parrot working.
+
+What remains is listed below and none of it blocks the network.
+
+### Open, in order
+1. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
    addresses.** Settled as unauthenticated long ago, but 0197 enlarged what it
    exposes. That was named as a decision to make rather than a defect, and it
    is the last piece of the access story still open.

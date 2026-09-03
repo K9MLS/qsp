@@ -1516,6 +1516,15 @@ select.field__input {
   color: var(--color-failing);
 }
 
+/* A callsign QSP looked up rather than one a peer announced. Dotted underline
+   rather than a different colour: colour here would read as a status, and this
+   is a provenance note on an otherwise ordinary value. */
+.callsign--guessed {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  opacity: 0.85;
+}
+
 /* Which listener a peer arrived on. Deliberately not colour-coded good or bad:
    neither protocol is a problem, and reusing the health colours here would make
    a working repeater look like a warning. Muted borders, readable label. */

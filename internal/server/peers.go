@@ -30,6 +30,16 @@ type AttachmentView struct {
 type PeerView struct {
 	// ID is the peer's DMR repeater or radio ID.
 	ID uint32 `json:"id"`
+	// CallsignLookedUp says the callsign came from the RadioID registry rather
+	// than from the peer.
+	//
+	// **The two are not the same claim.** A Homebrew peer states its callsign
+	// at login and QSP repeats it; an IPSC repeater states nothing, so anything
+	// shown for one is QSP matching a radio ID against a public registry that
+	// can be stale, wrong, or describing the operator rather than the
+	// repeater. Presenting a guess in the same style as a statement is the
+	// shape of fake data §7 forbids, so the console marks it.
+	CallsignLookedUp bool `json:"callsign_looked_up,omitempty"`
 	// Protocol is which listener this peer belongs to.
 	//
 	// **A blank column means two different things without it.** A Homebrew

@@ -1,9 +1,16 @@
-# Handover, 2026-09-02, evening
+# Handover, 2026-09-03
 
 Read `NEW-SESSION.md` for the standing brief and **§8g** of `PROJECT_MEMORY.md`
 for where to start.
 
 ## The headline
+
+**IPSC layer 1 is finished.** Audio both directions, the frame shape verified
+byte for byte against a real Motorola master, colour code mirroring proved on
+air with two codes at once, access control on all three checks, repeaters
+manageable from the console, and parrot working on a repeater.
+
+## Previously
 
 **A Pi-Star and a Motorola repeater held a conversation.** The bridge carries
 audio both ways, on air. Layer 1 of §0's table is complete for both protocols,

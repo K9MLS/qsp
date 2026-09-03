@@ -5,6 +5,41 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A repeater's callsign is looked up and shown**, from the RadioID registry
+  QSP already caches for call views.
+
+  **A lookup is marked as one.** A Homebrew peer states its callsign at login
+  and QSP repeats it; an IPSC repeater states nothing, so anything shown for one
+  is QSP matching a radio ID against a public registry that can be stale, or
+  that describes the operator rather than the repeater. The console renders it
+  with a dotted underline and says so on hover, because presenting a guess in
+  the same style as a statement is the shape of fake data §7 forbids.
+
+  The registry is the *subscriber* database, so many repeater IDs are simply
+  not in it. Those still read "not sent", which remains the honest answer.
+
+### Notes
+- **Parrot works on a Motorola repeater**, confirmed on air 2026-09-03.
+
+  It proves more than parrot. The replay went out through `SendVoiceTo`, a path
+  nothing else uses, and was paced by `parrot.Player`, the timing loop extracted
+  from `internal/peers` in 0201. Both were written, tested against fixtures and
+  never run until then.
+
+- **§8d, §8e and §8f carry a superseded banner now.** §8f's open list still
+  described IPSC as having no voice and no listener — true when written, false
+  for weeks — and it sits *above* §8g, so anybody reading top-down met it first.
+  That is the same failure as §0's table saying access control was missing, and
+  it is the second time in one day a stale summary cost real work.
+
+- Breaking the change caught it in `internal/server` and **not** in the adapter
+  that fills the field: the server tests use fixtures, so they prove the flag
+  survives the handler and say nothing about whether anything sets it. A source
+  assertion in `cmd/qsp` covers that, the same blunt instrument used for the
+  member password an hour earlier.
+
+
+### Added
 - **Motorola repeaters can be added and removed from the access control page**,
   and the change takes effect on save rather than on restart.
 

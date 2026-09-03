@@ -212,3 +212,40 @@ func TestWithNoIPSCListenerTheTrafficPayloadIsUnchanged(t *testing.T) {
 		t.Errorf("frames accepted %d, want 12", got.FramesAccepted)
 	}
 }
+
+// TestALookedUpCallsignIsMarkedAsOne keeps a guess distinguishable from a
+// statement.
+//
+// A Homebrew peer states its callsign at login. An IPSC repeater states
+// nothing, so anything shown for one is QSP matching a radio ID against a
+// public registry — which can be stale, or can describe the operator rather
+// than the repeater. Rendering the two identically would be the shape of fake
+// data §7 forbids: a value that looks like it came from the station.
+func TestALookedUpCallsignIsMarkedAsOne(t *testing.T) {
+	srv := peersServer(t,
+		fixedPeers{peers: []PeerView{
+			{ID: 3155413, Protocol: ProtocolHomebrew, Callsign: "KB9TYC"},
+		}},
+		fixedPeers{peers: []PeerView{
+			{ID: 315544, Protocol: ProtocolIPSC, Callsign: "KD9EJA", CallsignLookedUp: true},
+			{ID: 999999, Protocol: ProtocolIPSC},
+		}},
+	)
+
+	byID := map[uint32]PeerView{}
+	for _, p := range peersBody(t, srv).Peers {
+		byID[p.ID] = p
+	}
+
+	if got := byID[3155413]; got.CallsignLookedUp {
+		t.Error("a Homebrew peer's announced callsign is marked as looked up")
+	}
+	if got := byID[315544]; !got.CallsignLookedUp {
+		t.Error("a repeater's registry callsign is not marked as looked up; " +
+			"the console would present a guess as a statement")
+	}
+	if got := byID[999999]; got.Callsign != "" || got.CallsignLookedUp {
+		t.Errorf("a repeater with no registry record shows %q; it should show "+
+			"nothing and let the console say why", got.Callsign)
+	}
+}

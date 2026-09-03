@@ -560,7 +560,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Links:               linkSource(a.upstreams, cfg),
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
-		IPSCPeers:           ipscPeerSource(a.ipsc),
+		IPSCPeers:           ipscPeerSource(a.ipsc, a.names),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
 		Config:              manager,
@@ -1019,11 +1019,11 @@ func displayAddr(a netip.AddrPort) string {
 // **Nil rather than an empty adapter**, because the console distinguishes "no
 // Motorola repeaters are connected" from "this instance does not accept them",
 // and a source that always answers with an empty list collapses the two.
-func ipscPeerSource(l *ipsclink.Listener) server.PeerSource {
+func ipscPeerSource(l *ipsclink.Listener, names *callsigns.Service) server.PeerSource {
 	if l == nil {
 		return nil
 	}
-	return ipscPeerViews{listener: l}
+	return ipscPeerViews{listener: l, names: names}
 }
 
 // ipscPeerViews adapts the IPSC listener to the console's view.
@@ -1036,7 +1036,10 @@ func ipscPeerSource(l *ipsclink.Listener) server.PeerSource {
 // there is nothing QSP could put in an attachments list that would not be a
 // guess about somebody else's programming. Protocol is set on every view so the
 // console can say why the columns are empty.
-type ipscPeerViews struct{ listener *ipsclink.Listener }
+type ipscPeerViews struct {
+	listener *ipsclink.Listener
+	names    *callsigns.Service
+}
 
 func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 	snap := p.listener.Peers()
@@ -1061,6 +1064,18 @@ func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 		// back to ipsc.colour_code.
 		if peer.ColourCodeKnown {
 			v.ColorCode = strconv.Itoa(int(peer.ColourCode))
+		}
+		// Looked up rather than announced, and marked as such. IP Site Connect
+		// carries no callsign, so the alternative to a registry lookup is a
+		// column of radio IDs an operator has to translate in their head.
+		//
+		// **The registry is the subscriber database.** Many repeater IDs are
+		// not in it and will simply come back unknown, which is why the console
+		// still has to say "not sent" rather than assume a blank means a
+		// failure.
+		if name := resolve(peer.RadioID, nil, p.names); name != "" {
+			v.Callsign = name
+			v.CallsignLookedUp = true
 		}
 		out = append(out, v)
 	}
