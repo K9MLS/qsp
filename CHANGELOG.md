@@ -4,6 +4,44 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **The Traffic panel told the operator something false.** Its voice frame count
+  came from the DMR listener alone, so a network whose only traffic was Motorola
+  repeaters showed zero — and the console's hint then fired, advising the
+  operator to check a hotspot that had nothing to do with anything.
+
+  **A confidently wrong hint is worse than no hint**, because an operator who
+  learns to disbelieve one warning stops reading all of them. The hint now also
+  requires the IPSC frame count to be zero, and no longer names hotspots
+  specifically.
+
+  The Motorola listener's figures appear beside the DMR listener's rather than
+  added into them: those are documented counters for one socket, and summing two
+  into them would change what an existing number means without saying so. The
+  two listeners also do not count the same things, and one total would imply
+  they do.
+
+- **`VERSION` is read by something now.** It was read by nothing at all: the
+  number was bumped in three consecutive patches while `qsp --version` reported
+  a pseudo-version from `debug.ReadBuildInfo`, and nobody noticed until an
+  operator ran the command and compared.
+
+  `cmd/qsp` already had a `version` variable for `-ldflags -X` that nothing ever
+  set, which is the same failure one level along — a mechanism that exists, is
+  documented, and is never invoked. A release built the way this project is
+  actually built would still have reported nothing.
+
+  `internal/buildinfo.Version` is a constant, compiled in unconditionally, with
+  **a test that reads the real VERSION file and fails when the two disagree**.
+  Two places holding a release number is only safe if something notices when
+  they drift. The linker flag still wins where it is set.
+
+- **`qsp --version` now reports both**, as `0.1.44 (v0.0.0-…-6db5cc98ec75)`. The
+  release number is what goes in a release note; the commit is how an operator
+  checks that the binary on a server is the one they just built, which §7
+  requires because `systemctl` reports that something started and not what.
+
+
 ### Added
 - **Parrot runs for Motorola repeaters.** A repeater operator can key the parrot
   talkgroup and hear themselves back, which every hotspot user has been able to

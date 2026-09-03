@@ -1094,11 +1094,25 @@ func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallVie
 	return active, recent
 }
 
-// Traffic is the DMR listener's alone; see handlePeers. Reporting the IPSC
-// listener's counters here would sum two sockets into a documented figure for
-// one, so this returns nothing and the counters stay in /healthz where they
-// already have names.
-func (p ipscPeerViews) Traffic() server.Traffic { return server.Traffic{} }
+// Traffic reports the Motorola listener's own figures in their own object.
+//
+// The DMR listener's counters are left alone: summing two sockets into a
+// documented figure for one would change what an existing number means without
+// saying so. What this fixes is the opposite problem — a network whose only
+// traffic was Motorola repeaters reported zero voice frames and advised the
+// operator to check a hotspot that had nothing to do with it.
+func (p ipscPeerViews) Traffic() server.Traffic {
+	var frames uint64
+	for _, peer := range p.listener.Peers() {
+		frames += peer.VoiceFrames
+	}
+	ignored, unparsed := p.listener.Counters()
+	return server.Traffic{IPSC: &server.IPSCTraffic{
+		VoiceFrames: frames,
+		Ignored:     ignored,
+		Unparsed:    unparsed,
+	}}
+}
 
 // peerViews adapts the peer listener to the console's narrow view of it.
 //

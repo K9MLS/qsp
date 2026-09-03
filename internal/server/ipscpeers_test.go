@@ -15,13 +15,14 @@ import (
 type fixedPeers struct {
 	peers          []PeerView
 	active, recent []CallView
+	traffic        Traffic
 }
 
 func (f fixedPeers) PeerViews(time.Time) []PeerView { return f.peers }
 func (f fixedPeers) CallViews(time.Time) (active, recent []CallView) {
 	return f.active, f.recent
 }
-func (f fixedPeers) Traffic() Traffic { return Traffic{} }
+func (f fixedPeers) Traffic() Traffic { return f.traffic }
 
 func peersServer(t *testing.T, dmr, ipsc PeerSource) *Server {
 	t.Helper()
@@ -160,5 +161,54 @@ func TestNoIPSCListenerIsNotAnEmptyOne(t *testing.T) {
 	}
 	if body.Peers[0].Protocol != ProtocolHomebrew {
 		t.Errorf("protocol is %q, want %q", body.Peers[0].Protocol, ProtocolHomebrew)
+	}
+}
+
+// TestTheMotorolaListenersFramesAreReportedSeparately covers a panel that was
+// telling the operator something false.
+//
+// The Traffic panel read its voice frame count from the DMR listener alone, so
+// a network whose only traffic was Motorola repeaters showed zero — and the
+// console's hint then advised checking a hotspot that had nothing to do with
+// it. A confidently wrong hint is worse than none: an operator who learns to
+// disbelieve one warning stops reading all of them.
+func TestTheMotorolaListenersFramesAreReportedSeparately(t *testing.T) {
+	srv := peersServer(t,
+		fixedPeers{traffic: Traffic{FramesAccepted: 0, DatagramsIn: 400}},
+		fixedPeers{traffic: Traffic{IPSC: &IPSCTraffic{VoiceFrames: 288, Ignored: 3}}},
+	)
+
+	got := peersBody(t, srv).Traffic
+	if got.IPSC == nil {
+		t.Fatal("the Motorola listener's figures are missing from the payload")
+	}
+	if got.IPSC.VoiceFrames != 288 {
+		t.Errorf("IPSC voice frames %d, want 288", got.IPSC.VoiceFrames)
+	}
+	if got.IPSC.Ignored != 3 {
+		t.Errorf("IPSC ignored %d, want 3", got.IPSC.Ignored)
+	}
+	// The DMR listener's own figures must be untouched: they are documented
+	// counters for one socket and summing two into them would change what an
+	// existing number means without saying so.
+	if got.FramesAccepted != 0 {
+		t.Errorf("the DMR frame count became %d; it should still be 0", got.FramesAccepted)
+	}
+	if got.DatagramsIn != 400 {
+		t.Errorf("the DMR datagram count became %d, want 400", got.DatagramsIn)
+	}
+}
+
+// TestWithNoIPSCListenerTheTrafficPayloadIsUnchanged keeps a Homebrew-only
+// instance exactly as it was, so the console draws nothing new for an operator
+// who runs no repeaters.
+func TestWithNoIPSCListenerTheTrafficPayloadIsUnchanged(t *testing.T) {
+	srv := peersServer(t, fixedPeers{traffic: Traffic{FramesAccepted: 12}}, nil)
+	got := peersBody(t, srv).Traffic
+	if got.IPSC != nil {
+		t.Error("an instance with no IPSC listener reported IPSC traffic")
+	}
+	if got.FramesAccepted != 12 {
+		t.Errorf("frames accepted %d, want 12", got.FramesAccepted)
 	}
 }

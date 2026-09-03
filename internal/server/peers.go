@@ -94,6 +94,26 @@ const (
 	ProtocolIPSC = "ipsc"
 )
 
+// IPSCTraffic is what the Motorola listener can report.
+//
+// It is deliberately shorter than Traffic. The IPSC listener counts what it has
+// had a reason to count, and inventing zeroes for figures it does not keep
+// would be a panel reporting numbers nobody measured.
+type IPSCTraffic struct {
+	// VoiceFrames is voice frames received from registered repeaters, summed
+	// across peers.
+	//
+	// **This is why the type exists.** Before it, a network whose only traffic
+	// was Motorola repeaters showed "0 voice frames" and a note advising the
+	// operator to check a hotspot that was not involved.
+	VoiceFrames uint64 `json:"voice_frames"`
+	// Ignored is datagrams from radio IDs not on the allow list.
+	Ignored uint64 `json:"ignored"`
+	// Unparsed is datagrams this build does not recognise. It is expected to
+	// be non-zero: eight message types are known and IPSC has more.
+	Unparsed uint64 `json:"unparsed"`
+}
+
 // CallView is one transmission as the console sees it.
 type CallView struct {
 	// Source is the radio ID that keyed up. Unlike the peer ID this survives
@@ -175,6 +195,15 @@ type Traffic struct {
 	// raising the level needs a restart — which resets the counter. An operator
 	// could not see why a number was what it was without destroying the number.
 	RecentDrops []peers.DropNote `json:"recent_drops,omitempty"`
+	// IPSC carries the Motorola listener's figures, when that listener is
+	// running. Nil when it is not.
+	//
+	// **A separate object rather than added into the counters above**, because
+	// those are documented figures for one socket and summing two into them
+	// would change what an existing number means without saying so. It is also
+	// the honest shape: the two listeners do not count the same things, and a
+	// single total would imply they do.
+	IPSC *IPSCTraffic `json:"ipsc,omitempty"`
 	// FramesAccepted is voice frames accepted from registered peers.
 	FramesAccepted uint64 `json:"frames_accepted"`
 	// FramesForwarded is frames relayed to another peer.
@@ -294,6 +323,9 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	// summing two sockets into it would change what an existing number means
 	// without saying so. The IPSC listener's counters are in /healthz.
 	if s.opts.IPSCPeers != nil {
+		// The Motorola listener's own figures, kept beside the DMR listener's
+		// rather than folded into them.
+		body.Traffic.IPSC = s.opts.IPSCPeers.Traffic().IPSC
 		body.Peers = append(body.Peers, s.opts.IPSCPeers.PeerViews(now)...)
 		a, r := s.opts.IPSCPeers.CallViews(now)
 		body.Active = append(body.Active, a...)

@@ -15,6 +15,8 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+
+	"github.com/k9mls/qsp/internal/buildinfo"
 	"syscall"
 
 	"github.com/k9mls/qsp/internal/config"
@@ -169,14 +171,22 @@ func loadConfig(path string) (config.Config, error) {
 	return cfg, nil
 }
 
-// buildVersion reports the version, preferring the linker-injected value and
-// falling back to module build information.
+// buildVersion reports the release number and the commit it was built from.
+//
+// **Both, because they answer different questions.** The release number is what
+// an operator puts in a release note or tells a member; the commit is how they
+// check that the binary running on a server is the one they just built, which
+// §7 requires because systemctl reports that something started and not what.
+//
+// A linker-injected value still wins, so a release pipeline can override the
+// constant. Everything else comes from the ordinary build.
 func buildVersion() string {
-	if version != "" {
-		return version
+	release := version
+	if release == "" {
+		release = buildinfo.Version
 	}
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return info.Main.Version
+		return release + " (" + info.Main.Version + ")"
 	}
-	return "development build"
+	return release + " (development build)"
 }

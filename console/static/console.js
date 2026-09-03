@@ -544,8 +544,10 @@
     }
 
     var t = payload.traffic || {};
+    var ipsc = t.ipsc || null;
     var inCount = t.datagrams_in || 0;
     var frames = t.frames_accepted || 0;
+    var ipscFrames = ipsc ? ipsc.voice_frames || 0 : 0;
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
@@ -561,9 +563,18 @@
        * then only the count; the reasons are below. */
       metric(t.answered || 0, "answered", "metric--muted") +
       metric(t.ignored || 0, "ignored", (t.ignored || 0) > 0 ? "metric--warn" : "metric--muted") +
-      metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
+      metric(frames, ipsc ? "voice frames (homebrew)" : "voice frames",
+        frames === 0 ? "metric--muted" : "") +
       metric(t.frames_forwarded || 0, "forwarded", (t.frames_forwarded || 0) === 0 ? "metric--muted" : "") +
       metric(t.collisions || 0, "collisions", (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
+      /* The Motorola listener's own figures, beside the DMR listener's rather
+       * than added into them. The two count different things and one total
+       * would imply they do not. */
+      (ipsc
+        ? metric(ipscFrames, "voice frames (ipsc)", ipscFrames === 0 ? "metric--muted" : "") +
+          metric(ipsc.ignored || 0, "ipsc ignored",
+            (ipsc.ignored || 0) > 0 ? "metric--warn" : "metric--muted")
+        : "") +
       "</div>";
 
     /* The case that cost an evening: a peer connected and sending keepalives,
@@ -582,12 +593,17 @@
      * is a few minutes of keepalives rather than one, which keeps it out of the
      * window after a restart while still appearing early enough to help
      * somebody setting a hotspot up for the first time. */
-    if (peers > 0 && inCount > 30 && frames === 0) {
+    /* **The IPSC frames have to count here too.** Before they did, a network
+     * whose only traffic was Motorola repeaters showed this note while working
+     * perfectly, and it named a hotspot that had nothing to do with anything.
+     * A hint that is confidently wrong is worse than no hint: an operator who
+     * learns to disbelieve one warning stops reading all of them. */
+    if (peers > 0 && inCount > 30 && frames === 0 && ipscFrames === 0) {
       trafficBody.innerHTML +=
         '<p class="inline-note inline-note--neutral">No voice frames yet, only keepalives. ' +
         "If nobody has transmitted, that is exactly what this should look like. " +
-        "If somebody has, their hotspot is probably not routing a talkgroup to " +
-        "this network \u2014 check the sending side.</p>";
+        "If somebody has, the sending side is probably not routing a talkgroup " +
+        "to this network \u2014 check there.</p>";
     }
   }
 
