@@ -82,7 +82,11 @@ var observedLen = map[Kind]int{
 	// Voice frames were seen at 52, 54, 57 and 66 bytes across one superframe,
 	// so this kind has no single observed length and the zero here means only
 	// "recognised". Its header is fixed; its payload is not.
-	KindVoice:            0,
+	KindVoice: 0,
+	// Text bursts were seen at 34, 54 and 60 bytes, so like voice they have no
+	// single length and the zero means only "recognised".
+	KindTextGroup:        0,
+	KindTextPrivate:      0,
 	KindRegisterRequest:  14,
 	KindRegisterReply:    16,
 	KindKeepaliveRequest: 14,

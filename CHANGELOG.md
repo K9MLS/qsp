@@ -5,6 +5,43 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`ipsc.KindTextGroup` and `ipsc.KindTextPrivate`, and `Message.AsText`** —
+  the first half of text over IP Site Connect. Decoding only; nothing is routed
+  yet.
+
+  A text burst is laid out exactly as a **voice header**: twelve-octet block at
+  byte 38, zero at 50, DMR Slot Type at 51, and the two-byte tail ADR-0042 could
+  not derive. Byte 50 was zero in all 150 captured 54-byte frames and byte 51
+  equalled `(colourCode << 4) | dataType` in all 150, so there was nothing new
+  to design.
+
+  **QSP does not decode the message.** A Rate 3/4 payload is an IPv4 UDP
+  datagram whose source address is `0x0c` followed by the sender's 24-bit radio
+  ID — Motorola's radio-IP scheme carrying its Text Messaging Service. ADR-0037
+  settled the principle for audio and it holds here: a bridge carries the
+  payload and rebuilds the wrapper. Reassembling TMS would be inventing a
+  requirement.
+
+  The 34-byte frame seen once at the end of a transmission is **refused rather
+  than guessed at**. Its marker is `0x13`, which is not a DMR data type, and
+  nothing in this project knows what it is.
+
+### Notes
+- **A first-draft test read the payload offsets off a single burst.** It checked
+  that the destination inside the block matched the envelope on *every* burst,
+  having taken the offsets from one CSBK and assumed they held everywhere. A
+  Data Header lays its twelve octets out differently and the test failed on the
+  first one it met. Caught by the test rather than on air, which is the first
+  time today that has happened rather than the reverse.
+
+- **Then the same class of thing again, in the tests themselves.** Moving
+  `TextBlockAt` by one byte broke nothing: every assertion checked the block's
+  *length* and its surroundings, and a block read one byte early is still twelve
+  bytes long — simply the wrong twelve. A CSBK burst carries the destination and
+  source inside the block, so those now pin the offset by content.
+
+
+### Added
 - **[ADR-0045](docs/adr/ADR-0045-ipsc-text-messages.md) and
   `testdata/ipsc/ipsc-text.pcap`**: text over IP Site Connect, decoded from a
   capture. No code is written for it yet; this records what the bytes are.
