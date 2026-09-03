@@ -1669,6 +1669,30 @@ in `/dev/null`, `wc -l`, `-c`, or `| tail -1` is the same defect wearing
 different clothes. The only safe form is the one that diffs the sorted names
 against the recorded baseline and prints the difference.
 
+### staticcheck is the gate that cannot be run in the container, and it matters
+
+The development container has no `staticcheck` and cannot get one: the module
+proxy is outside its allowlist. Patches 0195 through 0204 were all delivered
+with that gate unverified.
+
+On 2026-09-03 it caught a real one. A doc comment reading
+`// go:embed cannot reach outside its own directory` is a **malformed compiler
+directive** to staticcheck (SA9009): a real directive has no space after the
+slashes, so a sentence that begins with `go:` at the start of a comment line
+looks like a typo for one. `gofmt` and `go vet` both pass it.
+
+**The damage was not the lint.** The operator's gate chain is
+`gofmt && go vet && staticcheck && go test && go test -race`, so a staticcheck
+failure stops the chain and **the test suite never runs at all**. The build and
+scp on the following lines are not part of the chain and ran anyway, putting an
+untested binary on the server.
+
+Two rules follow. **Never begin a comment line with a word that a compiler
+directive could start with** — `go:`, `line:`, `export:`, `extern:` — and if the
+prose needs one, put it mid-sentence or in backticks. And **a patch delivered
+from the container has one unverified gate**, so the failure mode to expect is a
+chain that stops before the tests rather than a test that fails.
+
 ### The method, now proved ten times
 
 **Every reading taken by eye was wrong. Every differential was right.**

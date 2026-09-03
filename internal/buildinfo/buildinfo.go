@@ -24,10 +24,11 @@ package buildinfo
 // is set, so a release pipeline can override it, but the ordinary build is
 // correct without anybody remembering a flag.
 //
-// # Why go:embed is not used
+// # Why the file is not embedded
 //
-// go:embed cannot reach outside its own directory, and VERSION lives at the
-// repository root where a human editing a release number will look for it.
+// An embed directive cannot reach outside its own directory, and VERSION lives
+// at the repository root where a human editing a release number will look for
+// it.
 // Copying the file here would create two files to keep in step and no way to
 // notice when they drift. A constant plus a test that reads the real file is
 // the same guarantee with one file.

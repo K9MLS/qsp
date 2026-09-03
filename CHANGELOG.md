@@ -5,6 +5,27 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **A doc comment was a malformed compiler directive**, and it stopped the
+  operator's gate chain before the tests ran.
+
+  `// go:embed cannot reach outside its own directory` reads to staticcheck as a
+  typo for a real directive (SA9009), because a directive has no space after the
+  slashes. `gofmt` and `go vet` both pass it, and the development container has
+  no staticcheck and cannot get one — the module proxy is outside its allowlist.
+
+  **The lint was the smaller half.** The gate chain is
+  `gofmt && go vet && staticcheck && go test && go test -race`, so a staticcheck
+  failure means **the suite never runs**, and the build and scp on the following
+  lines are not part of the chain and run anyway. Patches 0203 and 0204 were
+  both applied without their tests ever executing, and a binary reached the
+  server that way.
+
+  §8g records the two rules: never begin a comment line with a word a directive
+  could start with, and expect an unverified staticcheck to fail as a chain that
+  stops early rather than as a test that fails.
+
+
+### Fixed
 - **A changelog entry named a symbol the documentation gate read as a path**, so
   0203 as delivered failed `TestDocumentedPathsExist`. Reworded.
 
