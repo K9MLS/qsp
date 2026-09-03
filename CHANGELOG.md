@@ -5,6 +5,59 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **`testdata/ipsc/ipsc-master-voice.pcap`: a Motorola master sending voice.**
+  Every other IPSC fixture is a repeater talking to a master; this is the first
+  byte this project has of a master talking to a repeater, captured with
+  `cmd/ipsc-peer` against an XPR8300 in master role.
+
+  **It confirms the shape ADR-0042 derived from peer captures alone.** Headers
+  and terminators 54 bytes, voice 52/57/66, byte 31 equal to `len - 32` across
+  276 voice frames with no violations, and the order `HHH (AfffLf)* T` in all
+  three transmissions without exception.
+
+  **22 of the 24 bytes from byte 30 onward are what QSP already builds**,
+  including the Reed-Solomon parity `90 b2 a0` — computed from the Link Control
+  rather than copied, and appearing in no earlier capture. Only bytes 52 and 53
+  differ, which are the two ADR-0042 recorded as underivable and writes as zero.
+
+- **A byte-for-byte differential test against that master**, plus a test that
+  reads the header count out of the fixture rather than asserting a constant, so
+  three headers is what the radio does rather than a number chosen when only
+  peer captures existed.
+
+### Notes
+- **Bytes 52 and 53 are characterised, not decoded.** Byte 52 is constant within
+  a session and varies between them: `0x3b` throughout this capture, `0x3c` and
+  `0x1e` for the two hosts in `ipsc-two-peers.pcap`. Two sessions of the same
+  colour code give different values, so it is not a function of the colour code
+  — a correction to an earlier reading that aggregated across captures and
+  concluded it varied within one. Byte 53 changes frame to frame, 35 to 65 here,
+  and no sum, XOR, two's-complement or CRC-16 over any range tried reproduces
+  it.
+
+  One stable byte and one wandering byte, per device and per session, unrelated
+  to the frame's contents, is the shape of a measurement rather than of derived
+  data. **That is a reading of the numbers and not a decoding**, and nothing
+  depends on it: a repeater accepted QSP's zeros on air and keyed.
+
+- **A master with no peers registered sends nothing at all.** Four minutes of
+  capture on a live link produced not one datagram from it. It binds its port
+  and waits, so there is no announcement behaviour QSP is missing.
+
+- **IPSC has a second refusal vocabulary after all.** §7 records that ICMP
+  unreachable is ignored and silence is the only way it says no. A master whose
+  port is not bound answers with ICMP port-unreachable, ten times in this
+  session, once per registration attempt. The peer ignores it and retries, which
+  is why registration succeeded the moment the port was corrected — but the ICMP
+  was there, and a `tcpdump` filter containing `udp` hides it.
+
+- The master's `0x91` and `0x97` bodies came back **byte-for-byte identical** to
+  those committed in `responder.go` from a capture weeks earlier, and `0xf1`
+  identical but for 19 bytes in the middle that differ between sessions,
+  confirming that field is entropy.
+
+
+### Added
 - **`cmd/ipsc-peer`**, a bench instrument that registers to a real IP Site
   Connect master and prints everything that master sends.
 
