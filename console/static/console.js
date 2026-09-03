@@ -556,37 +556,35 @@
     var t = payload.traffic || {};
     var ipsc = t.ipsc || null;
     var inCount = t.datagrams_in || 0;
-    var frames = t.frames_accepted || 0;
-    var ipscFrames = ipsc ? ipsc.voice_frames || 0 : 0;
+
+    /* **One network, one question.** The panel carried ten figures and an
+     * operator glancing at it asks four things: is anything reaching me, is
+     * audio moving, is something being turned away, and why was a transmission
+     * refused. Datagrams out and answered both shadow datagrams in; forwarded
+     * is a permanent zero without a bridge; and a text burst count is not a
+     * message count, so 22 answers nothing anybody asked.
+     *
+     * The two listeners are summed here rather than in the payload. The API
+     * keeps them apart, so nothing is lost for debugging and /healthz still
+     * reports each socket; only the glance is simplified. Which protocol a
+     * peer arrived on is in the table below, where it belongs. */
+    var frames = (t.frames_accepted || 0) + (ipsc ? ipsc.voice_frames || 0 : 0);
+    var ignored = (t.ignored || 0) + (ipsc ? ipsc.ignored || 0 : 0);
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
     trafficBody.innerHTML =
       '<div class="metrics">' +
       metric(inCount, "datagrams in") +
-      metric(t.datagrams_out || 0, "datagrams out") +
-      /* **Two numbers, because they mean different things.** A refusal QSP
-       * answered is the protocol working — a keepalive from a peer that has not
-       * registered is answered so it logs in again — and counting it beside a
-       * stray port scan produced one permanently amber number that looked like
-       * a fault and was not. Only traffic nobody asked for gets amber, and even
-       * then only the count; the reasons are below. */
-      metric(t.answered || 0, "answered", "metric--muted") +
-      metric(t.ignored || 0, "ignored", (t.ignored || 0) > 0 ? "metric--warn" : "metric--muted") +
-      metric(frames, ipsc ? "voice frames (homebrew)" : "voice frames",
-        frames === 0 ? "metric--muted" : "") +
-      metric(t.frames_forwarded || 0, "forwarded", (t.frames_forwarded || 0) === 0 ? "metric--muted" : "") +
-      metric(t.collisions || 0, "collisions", (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
-      /* The Motorola listener's own figures, beside the DMR listener's rather
-       * than added into them. The two count different things and one total
-       * would imply they do not. */
-      (ipsc
-        ? metric(ipscFrames, "voice frames (ipsc)", ipscFrames === 0 ? "metric--muted" : "") +
-          metric(ipsc.text_bursts || 0, "text bursts (ipsc)",
-            (ipsc.text_bursts || 0) === 0 ? "metric--muted" : "") +
-          metric(ipsc.ignored || 0, "ipsc ignored",
-            (ipsc.ignored || 0) > 0 ? "metric--warn" : "metric--muted")
-        : "") +
+      metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
+      metric(t.collisions || 0, "collisions",
+        (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
+      /* **Only traffic nobody asked for gets amber.** A refusal QSP answered is
+       * the protocol working — a keepalive from a peer that has not registered
+       * is answered so it logs in again — and counting that beside a stray port
+       * scan produced one permanently amber number that looked like a fault and
+       * was not. The reasons are below. */
+      metric(ignored, "ignored", ignored > 0 ? "metric--warn" : "metric--muted") +
       "</div>";
 
     /* The case that cost an evening: a peer connected and sending keepalives,
@@ -605,12 +603,13 @@
      * is a few minutes of keepalives rather than one, which keeps it out of the
      * window after a restart while still appearing early enough to help
      * somebody setting a hotspot up for the first time. */
-    /* **The IPSC frames have to count here too.** Before they did, a network
-     * whose only traffic was Motorola repeaters showed this note while working
-     * perfectly, and it named a hotspot that had nothing to do with anything.
-     * A hint that is confidently wrong is worse than no hint: an operator who
-     * learns to disbelieve one warning stops reading all of them. */
-    if (peers > 0 && inCount > 30 && frames === 0 && ipscFrames === 0) {
+    /* **frames counts both listeners**, which is what makes this hint safe to
+     * show. Before it did, a network whose only traffic was Motorola repeaters
+     * saw this note while working perfectly, and it named a hotspot that had
+     * nothing to do with anything. A hint that is confidently wrong is worse
+     * than no hint: an operator who learns to disbelieve one warning stops
+     * reading all of them. */
+    if (peers > 0 && inCount > 30 && frames === 0) {
       trafficBody.innerHTML +=
         '<p class="inline-note inline-note--neutral">No voice frames yet, only keepalives. ' +
         "If nobody has transmitted, that is exactly what this should look like. " +

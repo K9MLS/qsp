@@ -4,6 +4,51 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **The Traffic panel is four metrics, not ten**: datagrams in, voice frames,
+  collisions, ignored.
+
+  An operator glancing at it asks four things — is anything reaching me, is
+  audio moving, why was a transmission refused, is something being turned away.
+  The other six answered none of them:
+
+  - **Datagrams out** and **answered** both shadow datagrams in. Three columns
+    for one fact.
+  - **Forwarded** is a permanent zero without a bridge configured.
+  - **Text bursts** is not a message count. One text is seventeen to
+    twenty-odd bursts, so the number answers nothing anybody asked. If text
+    ever deserves a figure it is *messages*, and Last-heard is its home.
+  - The **two voice frame columns and two ignored columns** were the same
+    question asked twice. Which protocol a peer arrived on is in the table
+    below, where the Link column already says so.
+
+  **The two listeners are summed in the console, not in the payload.** The API
+  keeps every counter apart, `/healthz` still reports each socket, and nothing
+  is lost for debugging — only the glance is simplified.
+
+  This reverses a position taken earlier the same day, and the reason it
+  reverses cleanly is that the earlier objection was to folding IPSC into a
+  field named `frames_accepted` on the Homebrew listener. Renaming the column to
+  plain "voice frames" makes the name true, and the objection dissolves.
+
+### Fixed
+- **A test required the panel to draw `answered`**, which was the wrong thing to
+  assert. It exists because a single `dropped` counter showed a permanent amber
+  2 — QSP working, indistinguishable from a fault — and splitting it into
+  answered and ignored was the fix.
+
+  **The split is what protects the operator, not whether both halves are
+  drawn.** The assertion now requires that `ignored` is the counter shown and
+  that `dropped`, which is both together, is not.
+
+### Notes
+- Breaking the merge was not caught by anything, so a test now requires the
+  console to read `ipsc.voice_frames` and `ipsc.ignored`. Dropping the IPSC term
+  is one line and would silently restore the panel's old lie: zero voice frames
+  on a network carrying only Motorola audio, with a hint blaming a hotspot that
+  was not involved.
+
+
 ### Added
 - **A text from a hotspot reaches Motorola repeaters**, closing ADR-0045's
   second direction. The encoder reads the information block back out of the

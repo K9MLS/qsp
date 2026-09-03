@@ -1548,6 +1548,47 @@ func TestTheCallRecordIsReadable(t *testing.T) {
 	}
 }
 
+// TestTheTrafficPanelCountsBothListeners guards a lie the panel told once.
+//
+// Its voice frame count came from the DMR listener alone, so a network whose
+// only traffic was Motorola repeaters showed zero — and the hint beneath then
+// fired and advised checking a hotspot that was not involved.
+//
+// The two listeners are summed in the console rather than in the payload, so
+// the API keeps them apart and only the glance is simplified. **That makes the
+// merge one line, and one line is easy to lose.** Dropping the IPSC term would
+// restore the lie with nothing else failing.
+func TestTheTrafficPanelCountsBothListeners(t *testing.T) {
+	script, err := assets.ReadFile("static/console.js")
+	if err != nil {
+		t.Fatalf("reading console.js: %v", err)
+	}
+	src := string(script)
+
+	for _, want := range []struct{ expr, why string }{
+		{"ipsc.voice_frames", "a network carrying only Motorola audio would " +
+			"show zero voice frames and be told to check a hotspot"},
+		{"ipsc.ignored", "traffic turned away on the IPSC socket would not be " +
+			"counted anywhere an operator looks"},
+	} {
+		if !strings.Contains(src, want.expr) {
+			t.Errorf("console.js does not read %s: %s", want.expr, want.why)
+		}
+	}
+
+	// The panel is four metrics. These are the ones removed for shadowing
+	// another number or for answering no question an operator asks; a burst
+	// count is not a message count, and one text is twenty-odd bursts.
+	for _, gone := range []string{
+		"t.datagrams_out", "t.answered", "t.frames_forwarded", "text_bursts",
+	} {
+		if strings.Contains(src, gone) {
+			t.Errorf("console.js draws %s again; the panel was cut to four "+
+				"metrics because ten could not be read at a glance", gone)
+		}
+	}
+}
+
 // TestTheDroppedCounterExplainsItself.
 //
 // **An operator could not see why a number was what it was without destroying
@@ -1567,12 +1608,25 @@ func TestTheDroppedCounterExplainsItself(t *testing.T) {
 	}
 	src := string(script)
 
-	// Two counters, because a refusal QSP answered and a stray scan are not the
-	// same event.
-	for _, want := range []string{"t.answered", "t.ignored"} {
-		if !strings.Contains(src, want) {
-			t.Errorf("console.js does not use %s", want)
-		}
+	// **The split is what matters, not that both halves are drawn.** The panel
+	// used to show `answered` beside `ignored`; it now shows only `ignored`,
+	// because `answered` shadows `datagrams out` which shadows `datagrams in`,
+	// and three columns for one fact is what made the panel unreadable.
+	//
+	// What must not come back is a single counter that mixes the two. A
+	// keepalive from a peer that has not registered is answered so it logs in
+	// again — that is the protocol working — and counting it beside a stray
+	// port scan is what produced the permanently amber 2. So `ignored` must
+	// still be the counter drawn, and `dropped`, which is both together, must
+	// not be.
+	if !strings.Contains(src, "t.ignored") {
+		t.Error("console.js does not use t.ignored; a counter that mixes " +
+			"refusals QSP answered with traffic nobody asked for paints the " +
+			"protocol working as a fault")
+	}
+	if strings.Contains(src, "t.dropped") {
+		t.Error("console.js is drawing t.dropped, which is answered and ignored " +
+			"together; that is the number that read a permanent amber 2")
 	}
 
 	// Only traffic nobody asked for may wear amber.
