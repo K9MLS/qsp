@@ -1677,10 +1677,17 @@ carried as real DMR data bursts — CSBK, Data Header, Rate 1/2, Rate 3/4 — in
 the same envelope as voice, constants block and all. Byte 30 is the DMR data
 type and agrees with the low nibble of byte 51 in 153 of 162 frames.
 
-**The open question is an acknowledgement.** Captured transmissions repeat byte
-for byte, one of them four times, at four to five second intervals. Something is
-waiting for a reply QSP never sends, and if that reading holds, a parser alone
-would look correct in the journal while every radio reported failure.
+**There is no acknowledgement to send, and the reading that said there was got
+it wrong twice.** The repeats are the operator pressing send, not a radio
+retrying — four to five seconds is how fast a person works a keypad. And the
+radio reported success while QSP dropped every burst, so the recipient received
+nothing: the acknowledgement came from the repeater on RF, one hop away, and the
+master is not part of it.
+
+**A repeating pattern in a capture looks identical whether a machine or a person
+made it.** Two questions to the operator settled in seconds what no amount of
+reading timestamps could, and they should have come before the record was
+written rather than after.
 
 **Outbound text fails silently today.** A text handed to `SendVoice` reaches
 `Encode`, which looks for a vocoder core, finds none, and returns nil — no
@@ -1689,9 +1696,10 @@ has been in the code since the transmit path was written.
 
 ### Open, in order
 
-1. **Text messages.** The bytes are decoded and no code is written yet. Settle
-   the acknowledgement first: ask the operator whether the radio reported the
-   texts delivered or failed, and capture a real master relaying one.
+1. **Text messages.** The bytes are decoded and no code is written yet. Both
+   directions are wanted equally. There is no acknowledgement to hold, so this
+   is a parser and an encoder; the outbound shape is inferred as voice was, and a
+   capture of a master relaying a text would confirm it.
 2. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
    addresses.** Settled as unauthenticated long ago, but 0197 enlarged what it
    exposes. That was named as a decision to make rather than a defect, and it

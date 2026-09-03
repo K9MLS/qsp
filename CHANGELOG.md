@@ -28,13 +28,22 @@ All notable changes to QSP. Dates are UTC.
   added as item 1.
 
 ### Notes
-- **Something is waiting for an acknowledgement.** The captured transmissions
-  repeat byte for byte apart from sequence and timestamp — one private text four
-  times, at four to five second intervals — because QSP parses neither type and
-  answers nothing. If that reading is right, receiving text is not only
-  decoding: **a parser built without a reply would look correct in the journal
-  while every radio reported failure.** It is the one unchecked assumption in
-  ADR-0045 and it is wrong in the expensive direction.
+- **The acknowledgement theory was wrong, and the operator disproved it in two
+  sentences.** ADR-0045 originally read the four-to-five second repeats as a
+  radio retrying against a reply QSP never sent. **The repeats were the operator
+  pressing send**, and the radio reported success — while QSP dropped all 119
+  bursts, so the recipient received nothing. The acknowledgement came from the
+  repeater on RF, one hop from the radio, and a master is not part of it.
+
+  So this is a parser and an encoder, with no protocol conversation to hold.
+  ADR-0045 is amended in place rather than superseded, because its decision did
+  not change — only a consequence marked unchecked, which is now checked and
+  false.
+
+  **A repeating pattern in a capture looks identical whether a machine or a
+  person produced it**, and two questions settled in seconds what no amount of
+  reading timestamps could. They should have been asked before the record was
+  written.
 
 - **Outbound text fails silently today, and has since the transmit path was
   written.** A text reaches `SendVoice`, `Encode` looks for a vocoder core,

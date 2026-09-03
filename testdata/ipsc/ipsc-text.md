@@ -48,14 +48,18 @@ voice.
 - **Byte 52 reads `0x3b`** in 150 of 162 frames, the same value as
   `ipsc-master-voice.pcap` from the same repeater.
 
-## The retries, which are the reason to keep this capture
+## The repeats are a person, not a retry timer
 
-Transmission groups repeat byte for byte apart from sequence and timestamp: the
-group text twice, one private text four times, another twice, at four to five
-second intervals.
+Transmission groups repeat apart from sequence and timestamp: the group text
+twice, one private text four times, another twice, at four to five second
+intervals.
 
-**Something is waiting for an acknowledgement that never arrives.** QSP parses
-neither type and answers nothing. Whether a master owes a reply — and what it
-looks like — is the open question in
-[ADR-0045](../../docs/adr/ADR-0045-ipsc-text-messages.md), and this fixture is
-the evidence for it.
+**That is the operator pressing send**, confirmed by asking him. It was first
+read as a radio retrying against an acknowledgement QSP never sent, which was
+wrong twice over: the radio reported success, and QSP dropped every burst so the
+recipient received nothing. The acknowledgement came from the repeater on RF, one
+hop from the radio, and a master is not part of it.
+
+Kept as a caution. **A repeating pattern in a capture looks the same whether a
+machine or a person produced it**, and two questions to the operator settled in
+seconds what no amount of reading timestamps could.

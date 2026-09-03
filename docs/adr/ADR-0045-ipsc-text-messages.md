@@ -1,6 +1,6 @@
 # ADR-0045: Text over IP Site Connect is DMR data in the voice envelope
 
-**Status:** Accepted — one assumption unchecked, named below
+**Status:** Accepted — the one open assumption was checked and disproved; see the amendment
 **Date:** 2026-09-03
 
 ## Context
@@ -101,24 +101,32 @@ path would duplicate five things to avoid duplicating one.
 
 ## Consequences
 
-**Accepted, and unchecked: a master may owe an acknowledgement.**
+**A master owes no acknowledgement.** *(Amended 2026-09-03, hours after this
+record was written.)*
 
-The captured transmissions repeat byte for byte apart from sequence and
-timestamp — the group text twice, one private text **four times**, another twice,
-at four to five second intervals. The obvious reading is that something is
-waiting for an acknowledgement that never comes, because QSP parses neither type
-and so answers nothing.
+This section originally read that something was waiting for an acknowledgement
+QSP never sent, because the captured transmissions repeat at four to five second
+intervals and QSP answers nothing. **Both halves of that reading were wrong**,
+and the operator disproved them in two sentences.
 
-**If that reading is right, receiving text is not only decoding — QSP must
-reply**, or every text will present as a failure to the sending radio even when
-it was delivered. The 34-byte `0x84` frame with marker `0x13`, which carries no
-payload and ends a group, is the candidate for what a reply looks like.
+The repeats were **the operator pressing send four times**, not a radio retrying.
+The four-to-five second spacing was how fast a person works a keypad, and it was
+read as a protocol timer.
 
-This is the one thing in this record that could be wrong, and it is wrong in the
-expensive direction: a parser built without it would appear to work in the
-journal while every operator's radio reported failure. **It is settled by one
-question to the operator — did the radio report the texts as delivered or
-failed — and by a capture of a real master relaying a text.**
+And **the sending radio reported success** — while QSP dropped all 119 bursts, so
+the intended recipient cannot have received anything. The acknowledgement
+therefore came from the repeater, on RF, one hop from the radio. **The master is
+not part of it.**
+
+So receiving text is decoding, and sending it is encoding. There is no protocol
+conversation to hold, and nothing in the outbound path has to wait for a reply.
+
+**The lesson is about the evidence, not the protocol.** A repeating pattern in a
+capture looks exactly like a retry timer whether it is a machine or a person, and
+this project's whole method is that a reading taken by eye is wrong. Two
+questions to the operator were cheaper than any amount of staring at timestamps,
+and they should have been asked before this section was written rather than
+after.
 
 **Accepted: the outbound shape is inferred, as voice was.** No capture of a
 master sending text exists. ADR-0041 built the voice transmit path the same way
