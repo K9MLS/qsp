@@ -5,6 +5,23 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **A changelog entry named a symbol the documentation gate read as a path**, so
+  0203 as delivered failed `TestDocumentedPathsExist`. Reworded.
+
+  **It reached a patch because the check before committing counted the failures
+  into `/dev/null`** rather than listing them. §7 says never count failures, and
+  this obeyed the letter while defeating the purpose — a pipeline ending in
+  `-c`, `wc -l` or `>/dev/null` is the same defect in different clothes. §8g
+  records the rule as "read the names", and the only safe form as the one that
+  diffs sorted names against the baseline.
+
+### Added
+- **§8g now covers the whole of 2026-09-03**: the master voice capture and what
+  it confirmed, parrot on the IPSC path, the two things learned at the bench,
+  and a refreshed open list with four items closed.
+
+
+### Fixed
 - **The Traffic panel told the operator something false.** Its voice frame count
   came from the DMR listener alone, so a network whose only traffic was Motorola
   repeaters showed zero — and the console's hint then fired, advising the
@@ -31,7 +48,7 @@ All notable changes to QSP. Dates are UTC.
   documented, and is never invoked. A release built the way this project is
   actually built would still have reported nothing.
 
-  `internal/buildinfo.Version` is a constant, compiled in unconditionally, with
+  The `Version` constant in `internal/buildinfo` is compiled in unconditionally, with
   **a test that reads the real VERSION file and fails when the two disagree**.
   Two places holding a release number is only safe if something notices when
   they drift. The linker flag still wins where it is set.

@@ -1441,7 +1441,7 @@ Beyond the layers:
 
 ---
 
-## 8g. Where the next session starts, as of the evening of 2026-09-02
+## 8g. Where the next session starts, as of 2026-09-03
 
 Read §0, then §6b and §6c, then this. It supersedes §8f entirely; everything
 §8f settled remains settled except where named below.
@@ -1467,6 +1467,67 @@ All of it was measurable against fixtures already in the repository — 326 voic
 frames and 93 headers and terminators, two repeater models, no equipment and no
 capture session. The transmit path had existed for two patches with a green
 suite and no assertion that its output resembled anything.
+
+### A master sending voice was captured, and QSP matches it
+
+`testdata/ipsc/ipsc-master-voice.pcap` is the first capture in this project of a
+master talking to a repeater. Every other IPSC fixture is the other direction.
+It was taken with `cmd/ipsc-peer` against the XPR8300 in master role on
+2026-09-03, three transmissions on TG 2 TS2.
+
+**It confirms the shape ADR-0042 derived from peer captures alone**: 54-byte
+headers and terminators, voice frames of 52, 57 or 66, byte 31 equal to
+`len - 32` across 276 voice frames with no violations, and the order
+`HHH (AfffLf)* T` in all three transmissions.
+
+**22 of the 24 bytes from byte 30 onward are what QSP already builds**, including
+the Reed-Solomon parity `90 b2 a0` — computed from the Link Control rather than
+copied, and present in no earlier capture. Only bytes 52 and 53 differ, and QSP
+writes zeros there deliberately.
+
+Byte 52 is constant within a session and varies between them; byte 53 changes
+frame to frame. No checksum over any range reproduces either. One stable byte and
+one wandering byte, per device and per session, unrelated to the frame's
+contents, is the shape of a measurement rather than derived data. **That is a
+reading of the numbers, not a decoding.**
+
+### Two things learned at the bench that are easy to lose
+
+- **A master with no peers registered sends nothing at all.** Four minutes of
+  capture on a live link produced not one datagram from it. There is no
+  announcement behaviour QSP is missing.
+- **IPSC has a second refusal vocabulary.** §7 says ICMP unreachable is ignored
+  and silence is the only way it says no. A master whose port is not bound
+  answers with **ICMP port-unreachable**, one per registration attempt. The peer
+  ignores it and retries, which is correct — but the ICMP is there, and a
+  `tcpdump` filter containing the word `udp` hides it. **An hour went into
+  theorising about protocol bytes while the answer was in the packets the filter
+  had dropped.** Three separate times this session a filter hid the answer.
+
+### Parrot runs for Motorola repeaters
+
+It did not, and the reason recorded in `DeliverFromIPSC` was that there was no
+path back to an IPSC peer. **That path was built in 0195 and a repeater keyed on
+it the same evening.** The comment outlived the fact and was switching off a
+feature — which is what §7 means by a stale comment being a defect.
+
+The recorder is reused unchanged. The replay timing moved into `parrot.Player`
+so the sixty-millisecond interval exists in one place; `internal/peers` keeps its
+own sink and all ten of its playback tests.
+
+**The IPSC listener has its own `parrot.Recorder`**, not the DMR listener's. Both
+key by radio ID and the protocols share the DMR ID space — this network had
+3132910 registered on both listeners at once — so a shared recorder would merge
+two operators' recordings and replay one into the other's radio, silently.
+
+**`dmr.parrot.timeslot` and `ipsc.slot_bit_is_timeslot2` interact and nothing
+relates them.** They live in different configuration sections, and a parrot on
+timeslot 2 never claims frames from a repeater whose slot bit converts to
+timeslot 1. A test found this by failing.
+
+**Not yet run on air.** Every significant defect in this project has been found
+by running the system, and the repeater's codeplug must carry the parrot
+talkgroup as a group contact on the right timeslot before it can work at all.
 
 ### Settled on air, 2026-09-02 evening
 
@@ -1558,20 +1619,55 @@ need a second opinion from a forum.
   transmission. A repeater receives everything and filters by its own codeplug,
   which QSP cannot learn and must not guess at.
 
+### Closed since §8f was written
+
+- **Motorola repeaters appear on the dashboard** (0197), labelled by protocol,
+  with the cells IPSC cannot fill saying why rather than showing a dash.
+- **The learned colour code is confirmed on air.** The operator's XPR8300 is on
+  colour code 11 and KD9EJA's is not, and both worked at once. A single global
+  `ipsc.colour_code` could not have served both, so ADR-0042's mirroring is
+  proved rather than coincidental.
+- **The Traffic panel no longer lies** (0203). Its voice frame count came from
+  the DMR listener alone, so a network carrying only Motorola audio showed zero
+  and the hint beneath advised checking a hotspot that was not involved.
+- **`VERSION` is read by something** (0203). It had been bumped in three
+  consecutive patches while `qsp --version` reported a pseudo-version.
+
 ### Open, in order
 
-1. **The console page.** The IPSC listener holds peers and calls and nothing
-   reads them, so a repeater is visible in `/healthz` and the journal but not
-   on the dashboard. `server.PeerSource` is one interface with three methods
-   and `app.go` passes exactly one implementation. See §8h for the shape of it.
-2. **Confirm the learned colour code on air.** KD9EJA's repeater may simply
-   share `ipsc.colour_code`, in which case the mirroring is untested and the
-   right answer arrived for the wrong reason. The journal line is
-   `learned a peer's colour code`. A third repeater on a different colour code
-   is the real test.
-3. **Access control**, which is layer 2 and still the oldest missing thing in
-   §0's table.
-4. **Subscription on air**, then **P25**, unchanged.
+1. **Parrot on IPSC has never run on air.** Needs the repeater back as a peer
+   and 9990 in its codeplug as a group contact on timeslot 2.
+2. **Access control**, layer 2, and still the oldest missing thing in §0's
+   table. Two things made it more pressing rather than less: the network went
+   from three stations to six peers in a day, including three repeaters the
+   operator does not own, and 0197 put repeater radio IDs and addresses on an
+   unauthenticated `/api/peers`. Per-peer passwords and per-peer attachment
+   exist; a policy layer does not.
+3. **Private calls from Paul to Mike**: QSP delivers them and MMDVM never logs
+   them arriving. Still unexplained, and it blocks a private parrot.
+4. **The echo and the repeated stream ID.** Still no captures. The duplicate
+   radio ID found on the dashboard is the best candidate yet for the echo:
+   `SendVoice` skips the origin, so two peers sharing an ID means one of them
+   is excluded from every delivery.
+5. **Subscription on air**, then **P25**, unchanged. P25 is weeks away at the
+   earliest and the operator wants DMR and IPSC finished first.
+
+### The list-by-name rule was broken again, in a new disguise
+
+§7 says list CI failures by name and never count them. On 2026-09-03 a session
+obeyed the letter and defeated the purpose: it ran
+
+    go test ./... 2>&1 | grep -cE '^--- FAIL' >/dev/null
+
+before committing, which counts the failures **and discards the count**. A
+documentation-accuracy failure it had just introduced went into a delivered
+patch. The next command in the same session, comparing failures by name against
+the baseline, caught it immediately.
+
+**The rule is not "do not count", it is "read the names".** A pipeline that ends
+in `/dev/null`, `wc -l`, `-c`, or `| tail -1` is the same defect wearing
+different clothes. The only safe form is the one that diffs the sorted names
+against the recorded baseline and prints the difference.
 
 ### The method, now proved ten times
 
