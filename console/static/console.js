@@ -582,6 +582,8 @@
        * would imply they do not. */
       (ipsc
         ? metric(ipscFrames, "voice frames (ipsc)", ipscFrames === 0 ? "metric--muted" : "") +
+          metric(ipsc.text_bursts || 0, "text bursts (ipsc)",
+            (ipsc.text_bursts || 0) === 0 ? "metric--muted" : "") +
           metric(ipsc.ignored || 0, "ipsc ignored",
             (ipsc.ignored || 0) > 0 ? "metric--warn" : "metric--muted")
         : "") +

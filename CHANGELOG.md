@@ -5,6 +5,48 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **A text from a Motorola repeater reaches hotspots.** The inbound half of
+  ADR-0045: the listener recognises `0x83` and `0x84`, the converter re-wraps
+  the burst, and routing carries it like any other transmission.
+
+  **Voice has to be rebuilt; text has to be re-wrapped**, and that is why this
+  is short. IPSC strips the forward error correction from vocoder frames, so
+  converting audio means regenerating FEC, computing an EMB and placing the
+  burst in a superframe — none of it possible without state across frames. A
+  text block is already the 96 bits a data burst carries. It needs BPTC coding,
+  a Slot Type and a sync pattern, all from the burst in hand, and **no
+  superframe state at all** — data bursts have no superframe, and inventing one
+  would be state that lies.
+
+- **`dmrfec.BuildDataBurstFromBlock`**, which assembles a burst from an
+  information block that is already formed. `BuildDataBurst` computes
+  Reed-Solomon parity over a Link Control on the way, and running a text block
+  through it would compute parity over bytes that are not a Link Control and
+  overwrite two of them with the result.
+
+- **A text burst count**, per peer and on the Traffic panel, separate from
+  voice frames. One figure covering both would answer neither question, and
+  "voice frames" that included texts would be a number whose name is a lie.
+
+### Notes
+- **A private text stays private across the bridge**, and there is a test for it
+  because the failure mode is the worst available: it works, it is silent, and
+  everyone on the talkgroup sees the message.
+
+- **A Rate 3/4 burst is refused rather than truncated.** Those carry twenty-two
+  octets where a data burst holds twelve. Placing the first twelve would deliver
+  a text with a hole in it, which a radio would display as text — **half a
+  message delivered is worse than none, because it looks like it worked.**
+
+- **The round-trip is asserted, not the shape.** The test decodes the burst the
+  converter built and requires the same twelve octets back. "A burst was
+  produced" is the assertion that passes while the bytes are wrong.
+
+- The slot polarity rule existed in two places for about a minute. Both copies
+  read the same, which is exactly how they stay right until one is changed.
+
+
+### Added
 - **`ipsc.KindTextGroup` and `ipsc.KindTextPrivate`, and `Message.AsText`** —
   the first half of text over IP Site Connect. Decoding only; nothing is routed
   yet.

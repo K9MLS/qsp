@@ -298,10 +298,7 @@ func (c *Converter) Timeslot(m ipsc.Message) hbp.Timeslot {
 	if !ok {
 		return hbp.Timeslot1
 	}
-	if set == c.cfg.SlotBitIsTimeslot2 {
-		return hbp.Timeslot2
-	}
-	return hbp.Timeslot1
+	return c.timeslotFor(set)
 }
 
 // slotIndex maps a timeslot to its place in the state array.

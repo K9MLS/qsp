@@ -279,6 +279,34 @@ func BuildDataBurst(colourCode, dataType uint8, lc []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	return dataBurstFromPayload(colourCode, dataType, payload)
+}
+
+// BuildDataBurstFromBlock builds a data burst from a 96-bit information block
+// that is already assembled.
+//
+// # Why this exists beside BuildDataBurst
+//
+// BuildDataBurst takes a Link Control and computes its Reed-Solomon parity and
+// mask on the way. A text message burst arrives from IP Site Connect with its
+// twelve octets **already formed** — a CSBK, a data header, or a block of
+// user data — and QSP does not know what is inside them, by design: ADR-0037
+// settles that a bridge carries a payload and rebuilds the wrapper around it.
+//
+// Passing those twelve octets through LinkControlPayload would compute parity
+// over bytes that are not a Link Control and overwrite two of them with it.
+// This is the same assembly with that step left out.
+func BuildDataBurstFromBlock(colourCode, dataType uint8, block []byte) ([]byte, error) {
+	if len(block) != LinkControlBlockBytes {
+		return nil, fmt.Errorf("dmrfec: an information block is %d octets, want %d",
+			len(block), LinkControlBlockBytes)
+	}
+	return dataBurstFromPayload(colourCode, dataType, BurstBitsFrom(block))
+}
+
+// dataBurstFromPayload lays 196 coded bits, the Slot Type and the sync pattern
+// into one 33-byte burst.
+func dataBurstFromPayload(colourCode, dataType uint8, payload []byte) ([]byte, error) {
 	coded, err := EncodeBPTC(payload)
 	if err != nil {
 		return nil, err

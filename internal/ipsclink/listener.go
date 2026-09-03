@@ -133,6 +133,11 @@ type Peer struct {
 	VoiceFrames uint64
 	// LastCall describes the most recent transmission, if there was one.
 	LastCall *Call
+	// TextBursts counts text message bursts converted from this repeater. It
+	// is separate from VoiceFrames because a text and an over are different
+	// things to an operator, and one figure covering both would answer
+	// neither question.
+	TextBursts uint64
 	// ColourCode is the DMR colour code this repeater uses, learned from the
 	// frames it sends. ColourCodeKnown says whether it has been learned.
 	//
@@ -601,6 +606,15 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []
 	case ipsc.KindVoice:
 		p.VoiceFrames++
 		frames = l.recordVoice(p, msg, now)
+	case ipsc.KindTextGroup, ipsc.KindTextPrivate:
+		// A text is DMR data already and needs re-wrapping rather than
+		// rebuilding, so it needs none of the superframe state voice does.
+		// See ADR-0045.
+		p.LastHeard = now
+		if f, ok := l.converterFor(p.RadioID).ConvertText(msg, hbp.RepeaterID(msg.SenderID)); ok {
+			p.TextBursts++
+			frames = []hbp.Data{f}
+		}
 	}
 	l.publishLocked()
 	return frames
