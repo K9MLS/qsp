@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/config"
+	"github.com/k9mls/qsp/internal/ipsclink"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/routing"
 )
@@ -124,8 +125,20 @@ func (m *configManager) Version(ctx context.Context, number int64) (config.Versi
 
 // applyToListener builds the runtime pieces a configuration implies and queues
 // them for the listener's own goroutine.
-func applyToListener(listener *peers.Listener) func(config.Config, string, string) error {
+//
+// **The IPSC listener is applied here too**, directly rather than through the
+// Reload queue. peers.Reload exists because routing.Core is single-writer and
+// owned by the socket goroutine; the IPSC allow list is behind an atomic
+// pointer and has no such owner, so routing it through another listener's queue
+// would add a hop and a dependency to buy nothing.
+func applyToListener(listener *peers.Listener, ipsc *ipsclink.Listener) func(config.Config, string, string) error {
 	return func(cfg config.Config, author, summary string) error {
+		// Applied before the rest: a repeater removed from the list should
+		// stop being answered as promptly as the save reports success, and
+		// nothing below can fail in a way that should leave it answered.
+		if ipsc != nil {
+			ipsc.SetAllowedPeers(cfg.IPSC.AllowedPeers)
+		}
 		sched, err := buildSchedule(cfg)
 		if err != nil {
 			return err

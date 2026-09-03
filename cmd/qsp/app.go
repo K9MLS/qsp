@@ -742,7 +742,7 @@ func (a *app) run(ctx context.Context) error {
 		// The author travels with the change, so the line the listener logs
 		// names the administrator rather than "console" — the version row
 		// could attribute a live change and the log could not.
-		a.configManager.apply = applyToListener(a.dmr)
+		a.configManager.apply = applyToListener(a.dmr, a.ipsc)
 	}
 
 	// Resolving names is background work by design: nothing waits on it, and a

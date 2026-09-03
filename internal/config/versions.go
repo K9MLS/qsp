@@ -193,6 +193,20 @@ func NeedsRestart(before, after Config) []string {
 	// with nothing here to say so — an operator banning a radio got a
 	// successful save and a ban that was not in force.
 
+	// **IPSC settings that a running listener cannot adopt.** The socket, the
+	// master's own radio ID and the conversion settings are all read when the
+	// listener is built. `ipsc.allowed_peers` is deliberately absent: it is
+	// applied live by applyToListener, which is the whole point of an operator
+	// being able to add a repeater from the console.
+	add("ipsc.enabled", before.IPSC.Enabled != after.IPSC.Enabled)
+	add("ipsc.listen_address", before.IPSC.ListenAddress != after.IPSC.ListenAddress)
+	add("ipsc.master_id", before.IPSC.MasterID != after.IPSC.MasterID)
+	add("ipsc.peer_timeout_seconds",
+		before.IPSC.PeerTimeoutSeconds != after.IPSC.PeerTimeoutSeconds)
+	add("ipsc.colour_code", !sameColourCode(before.IPSC.ColourCode, after.IPSC.ColourCode))
+	add("ipsc.slot_bit_is_timeslot2",
+		before.IPSC.SlotBitIsTimeslot2 != after.IPSC.SlotBitIsTimeslot2)
+
 	// Links hold sockets and a handshake, so any change to them is a restart.
 	// Comparing the whole list rather than field by field is deliberate: a new
 	// upstream field added later would otherwise be silently applied live,
@@ -222,4 +236,16 @@ func sameUpstreams(a, b []Upstream) bool {
 func marshalUpstream(u Upstream) (string, error) {
 	b, err := json.Marshal(u)
 	return string(b), err
+}
+
+// sameColourCode compares two optional colour codes.
+//
+// It is a pointer because 0 is a legal colour code and "not set" had to be
+// distinguishable from it — the distinction that made an unset colour code
+// refuse to start rather than silently build every burst wrong.
+func sameColourCode(a, b *uint8) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }

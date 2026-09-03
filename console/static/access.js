@@ -218,10 +218,84 @@
     }
   }
 
+  /* renderIPSC draws the Motorola repeater list.
+   *
+   * **It is not one of LISTS and cannot be**, because the shape and the meaning
+   * both differ. `ipsc.allowed_peers` is a plain array of radio IDs with no
+   * mode, and an empty one *admits everybody* — the opposite of an empty
+   * "allow only" list above. Rendering it with the same control would put two
+   * different meanings behind one word, which is what the descriptions on this
+   * page exist to prevent. */
+  function renderIPSC(cfg) {
+    var panel = document.getElementById("ipsc-panel");
+    var el = document.getElementById("acl-ipsc");
+    if (!panel || !el) {
+      return;
+    }
+    var ipsc = cfg.ipsc || {};
+    if (!ipsc.enabled) {
+      /* Hidden rather than shown empty: an operator running no repeaters
+       * should not have to wonder whether a blank list is refusing something. */
+      panel.hidden = true;
+      return;
+    }
+    panel.hidden = false;
+
+    var ids = ipsc.allowed_peers || [];
+    el.innerHTML =
+      '<h3 class="acl__title">Allowed repeaters</h3>' +
+      '<p class="acl__state" id="acl-ipsc-state">' + describeIPSC(ids) + "</p>" +
+      '<label class="field__label" for="acl-ipsc-ids">One radio ID per line</label>' +
+      '<textarea class="field__input acl__ids" id="acl-ipsc-ids" rows="4" ' +
+        'spellcheck="false">' + escapeText(ids.join("\n")) + "</textarea>" +
+      '<p class="acl__hint">Takes effect on save. A repeater removed here stops ' +
+        "being answered without a restart.</p>";
+
+    var box = document.getElementById("acl-ipsc-ids");
+    if (box) {
+      box.addEventListener("input", function () {
+        var state = document.getElementById("acl-ipsc-state");
+        if (state) {
+          state.textContent = describeIPSC(readIPSC());
+        }
+      });
+    }
+  }
+
+  /* describeIPSC says in words what the list does, including the case that
+   * catches people: empty admits everybody. */
+  function describeIPSC(ids) {
+    if (ids.length === 0) {
+      return "Every repeater that knows the address is admitted. " +
+        "On an address the internet can reach, name the repeaters instead.";
+    }
+    return "Only the " + ids.length + " repeater" + (ids.length === 1 ? "" : "s") +
+      " listed below are answered. Everything else is ignored and counted.";
+  }
+
+  /* readIPSC returns the radio IDs currently typed, ignoring blanks and
+   * anything that is not a number — the same tolerance the lists above give a
+   * half-finished line. */
+  function readIPSC() {
+    var box = document.getElementById("acl-ipsc-ids");
+    if (!box) {
+      return [];
+    }
+    var out = [];
+    box.value.split("\n").forEach(function (line) {
+      var t = line.trim();
+      if (t !== "" && /^[0-9]+$/.test(t)) {
+        out.push(parseInt(t, 10));
+      }
+    });
+    return out;
+  }
+
   function render(cfg) {
     LISTS.forEach(function (spec) {
       renderList(spec, at(cfg, spec.path));
     });
+    renderIPSC(cfg);
     refreshDescriptions();
 
     /* The lists are drawn here, after hints.js has already run, so their hint
@@ -275,6 +349,9 @@
     LISTS.forEach(function (spec) {
       setAt(next, spec.path, readList(spec));
     });
+    if (next.ipsc && next.ipsc.enabled) {
+      next.ipsc.allowed_peers = readIPSC();
+    }
 
     saveButton.disabled = true;
     fetch("/api/config", {

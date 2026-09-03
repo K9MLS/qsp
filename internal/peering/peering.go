@@ -127,6 +127,67 @@ func NewPassphrase() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
+// memberAlphabet omits characters that are misread when a password is typed
+// from a screen or dictated: 0 and O, 1 and l and I, and the vowels that let a
+// generated string spell something unfortunate.
+const memberAlphabet = "23456789bcdfghjkmnpqrstvwxz"
+
+// MemberPasswordLength is how many characters NewMemberPassword produces.
+//
+// Ten characters of this alphabet is a little over 47 bits, which is far beyond
+// reach for the offline attack that matters here and short enough to type on a
+// phone without a mistake.
+const MemberPasswordLength = 10
+
+// NewMemberPassword returns a password for one member's hotspot.
+//
+// # Why this is not NewPassphrase
+//
+// NewPassphrase produces 32 random bytes as 43 characters of base64, which is
+// right for a link passphrase pasted between two servers and wrong for a person.
+// The same function served both, so a screen aimed at a club member handed them
+// a mixed-case 43-character string to type into a Pi-Star, probably on a phone.
+//
+// # Why not something memorable, as other networks use
+//
+// Homebrew authentication is a challenge-response: the master sends a nonce and
+// the peer returns a hash of it with the password, so the password never crosses
+// the wire. **That also means anyone who captures one login can try candidates
+// offline as fast as they can hash.** A postcode is five digits and falls in
+// well under a second; QSP's port faces the internet and has already logged
+// thousands of datagrams from radio IDs it does not know.
+//
+// Ten characters from an unambiguous alphabet is the trade: unguessable, and
+// short enough to read aloud and type once.
+func NewMemberPassword() (string, error) {
+	out := make([]byte, MemberPasswordLength)
+	buf := make([]byte, MemberPasswordLength)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("peering: generating a member password: %w", err)
+	}
+	// Rejection-free selection would bias the alphabet; the alphabet's length
+	// does not divide 256 evenly, so bytes above the largest whole multiple are
+	// redrawn rather than folded.
+	limit := byte(256 - (256 % len(memberAlphabet)))
+	for i := 0; i < len(out); {
+		if len(buf) == 0 {
+			buf = make([]byte, MemberPasswordLength)
+			if _, err := rand.Read(buf); err != nil {
+				return "", fmt.Errorf("peering: generating a member password: %w", err)
+			}
+		}
+		b := buf[0]
+		buf = buf[1:]
+		if b >= limit {
+			continue
+		}
+		out[i] = memberAlphabet[int(b)%len(memberAlphabet)]
+		i++
+	}
+	// Grouped, because that is how people transcribe without losing their place.
+	return string(out[0:4]) + "-" + string(out[4:7]) + "-" + string(out[7:10]), nil
+}
+
 // FingerprintOf returns a short identifier for a passphrase.
 //
 // A plain hash is sufficient here and would not be for a chosen secret: these

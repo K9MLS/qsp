@@ -44,7 +44,7 @@ func (s *Server) handleIssueCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	password, err := peering.NewPassphrase()
+	password, err := peering.NewMemberPassword()
 	if err != nil {
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot generate a password"})

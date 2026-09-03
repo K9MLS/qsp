@@ -172,9 +172,17 @@ type Call struct {
 
 // Listener serves IPSC peers on a UDP socket.
 type Listener struct {
-	cfg     Config
-	log     *slog.Logger
-	allowed map[uint32]bool
+	cfg Config
+	log *slog.Logger
+	// allowed is the set of radio IDs answered, held behind an atomic pointer
+	// so an operator can add or remove a repeater without a restart.
+	//
+	// **A map read on the serve goroutine and written by a config save is a
+	// race**, and one the detector would only sometimes catch because the two
+	// are genuinely concurrent. Replacing the whole map rather than mutating
+	// it keeps the read side free of locks on the hot path, which is the same
+	// trade snapshot makes for the peer list.
+	allowed atomic.Pointer[map[uint32]bool]
 
 	conn    *net.UDPConn
 	running atomic.Bool
@@ -261,16 +269,43 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	l := &Listener{
 		cfg:      cfg,
 		log:      logging.Subsystem(log, "ipsc"),
-		allowed:  make(map[uint32]bool, len(cfg.AllowedPeers)),
 		peers:    map[uint32]*Peer{},
 		bridges:  map[uint32]*ipscbridge.Converter{},
 		encoders: map[uint32]*ipscbridge.Encoder{},
 	}
-	for _, p := range cfg.AllowedPeers {
-		l.allowed[p] = true
-	}
+	l.SetAllowedPeers(cfg.AllowedPeers)
 	l.publish()
 	return l, nil
+}
+
+// SetAllowedPeers replaces the set of radio IDs this master answers.
+//
+// # Why this is live rather than a restart
+//
+// `ipsc.allowed_peers` was read once when the listener was built. The console
+// saves the whole configuration, so an operator could add a repeater, get a
+// successful save, no restart warning, and a repeater that went on being
+// ignored — the same defect found the same day in the master's registration and
+// subscriber lists, and recorded before that in NeedsRestart for parrot.
+//
+// **An empty list still answers everybody.** That is a setting rather than the
+// absence of one, so clearing the list must be savable and must take effect;
+// refusing to apply an empty one would make "let every repeater in" impossible
+// to express.
+func (l *Listener) SetAllowedPeers(ids []uint32) {
+	built := make(map[uint32]bool, len(ids))
+	for _, id := range ids {
+		built[id] = true
+	}
+	l.allowed.Store(&built)
+}
+
+// allowedSet returns the current allow list, never nil.
+func (l *Listener) allowedSet() map[uint32]bool {
+	if p := l.allowed.Load(); p != nil {
+		return *p
+	}
+	return nil
 }
 
 // Start binds the socket and serves in the background.
@@ -293,7 +328,7 @@ func (l *Listener) Start(ctx context.Context) error {
 	}
 	l.running.Store(true)
 	l.log.Info("listening", "address", conn.LocalAddr().String(), "master_id", l.cfg.MasterID,
-		"allowed_peers", len(l.allowed))
+		"allowed_peers", len(l.allowedSet()))
 
 	go func() {
 		<-ctx.Done()
@@ -500,7 +535,7 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 			"bytes", len(raw), "error", err)
 		return
 	}
-	if len(l.allowed) > 0 && !l.allowed[msg.SenderID] {
+	if allowed := l.allowedSet(); len(allowed) > 0 && !allowed[msg.SenderID] {
 		l.ignored.Add(1)
 		l.refusedID.Store(msg.SenderID)
 		l.refusedAt.Store(now.UnixNano())

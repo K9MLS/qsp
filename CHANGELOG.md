@@ -4,6 +4,60 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **Motorola repeaters can be added and removed from the access control page**,
+  and the change takes effect on save rather than on restart.
+
+  `ipsc.allowed_peers` was read once when the listener was built. The console
+  saves the whole configuration, so an operator could add a repeater, see the
+  save succeed, get no restart warning, and watch the repeater go on being
+  ignored. **That was live rather than latent**: `handleSaveConfig` already
+  wrote the IPSC block to disk. It is the third instance of this shape found in
+  one day, after the master's access lists and parrot before them.
+
+  The allow list now sits behind an atomic pointer, replaced whole rather than
+  mutated, because a map read on the serve goroutine and written by a config
+  save is a race the detector would only sometimes catch.
+
+  The page's IPSC section is deliberately not one of the four lists. The shape
+  differs — a plain array of radio IDs with no mode — and so does the meaning:
+  **an empty IPSC list admits everybody**, the opposite of an empty "allow only"
+  list above. One control for two meanings is what the descriptions on that page
+  exist to prevent. The panel is hidden entirely when IPSC is off.
+
+- **`ipsc.enabled`, `listen_address`, `master_id`, `peer_timeout_seconds`,
+  `colour_code` and `slot_bit_is_timeslot2` are named by `NeedsRestart`.** They
+  are read when the listener is built and no running listener can adopt them.
+  `allowed_peers` is deliberately absent, because it is now applied live.
+
+### Changed
+- **A member's password is ten characters, not forty-three.** The screen that
+  issues one is aimed at a club member setting up a hotspot, probably typing on
+  a phone; it was handing them 32 random bytes as mixed-case base64, because one
+  function served both that and a link passphrase pasted between two servers.
+
+  `peering.NewMemberPassword` draws ten characters from an alphabet with no
+  `0`/`O` or `1`/`l`/`I`, grouped as `cg9w-b7d-frh`. That is a little over 47
+  bits.
+
+  **Not something memorable, and the reason is the protocol.** Homebrew
+  authentication is a challenge-response, so the password never crosses the
+  wire — which also means anyone who captures one login can try candidates
+  offline as fast as they can hash. A postcode is five digits and falls in well
+  under a second, and this port faces the internet with thousands of datagrams
+  already logged from radio IDs it does not know. `NewPassphrase` is unchanged
+  for links, and a test keeps the two apart.
+
+### Notes
+- **Existing passwords are unaffected.** They are PBKDF2 hashes in a file and
+  nothing about them depends on how the plaintext was generated.
+- Breaking each change checked the tests. **Two of the three were caught; the
+  password swap was not**, because the test asserted what the generator can do
+  rather than what the handler calls — the same wiring-versus-library gap that
+  produced two bad tests earlier in the day. A source-level assertion now covers
+  it, which is blunt and is the right instrument for "which function is called".
+
+
 ### Fixed
 - **A banned radio was banned on hotspots and carried by Motorola repeaters**
   ([ADR-0044](docs/adr/ADR-0044-access-control-covers-ipsc.md)). The subscriber
