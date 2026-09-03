@@ -1669,8 +1669,30 @@ repeaters manageable from the console without a restart; parrot working.
 
 What remains is listed below and none of it blocks the network.
 
+### Text messages are decoded, and no code is written for them yet
+
+[ADR-0045](docs/adr/ADR-0045-ipsc-text-messages.md), from
+`testdata/ipsc/ipsc-text.pcap`. **`0x83` is a group text, `0x84` a private one**,
+carried as real DMR data bursts — CSBK, Data Header, Rate 1/2, Rate 3/4 — inside
+the same envelope as voice, constants block and all. Byte 30 is the DMR data
+type and agrees with the low nibble of byte 51 in 153 of 162 frames.
+
+**The open question is an acknowledgement.** Captured transmissions repeat byte
+for byte, one of them four times, at four to five second intervals. Something is
+waiting for a reply QSP never sends, and if that reading holds, a parser alone
+would look correct in the journal while every radio reported failure.
+
+**Outbound text fails silently today.** A text handed to `SendVoice` reaches
+`Encode`, which looks for a vocoder core, finds none, and returns nil — no
+frames, no error, no log line. That is the failure §7 exists to prevent and it
+has been in the code since the transmit path was written.
+
 ### Open, in order
-1. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
+
+1. **Text messages.** The bytes are decoded and no code is written yet. Settle
+   the acknowledgement first: ask the operator whether the radio reported the
+   texts delivered or failed, and capture a real master relaying one.
+2. **`/api/peers` is unauthenticated and now carries repeater radio IDs and
    addresses.** Settled as unauthenticated long ago, but 0197 enlarged what it
    exposes. That was named as a decision to make rather than a defect, and it
    is the last piece of the access story still open.

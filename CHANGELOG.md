@@ -5,6 +5,44 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **[ADR-0045](docs/adr/ADR-0045-ipsc-text-messages.md) and
+  `testdata/ipsc/ipsc-text.pcap`**: text over IP Site Connect, decoded from a
+  capture. No code is written for it yet; this records what the bytes are.
+
+  **`0x83` is a group text and `0x84` a private one**, confirmed by the
+  destination in both the envelope and the payload. Text is carried as real DMR
+  data bursts — CSBK, Data Header, Rate 1/2 and Rate 3/4 — inside the same
+  envelope as voice, including the `00 0a 80 0a 00 60` constants. Byte 12 reads
+  `01` where voice reads `02`, byte 41 counts blocks remaining, and **byte 30
+  equals the low nibble of byte 51 in 153 of 162 frames** — two independent
+  encodings of the DMR data type agreeing, the same pattern that validated the
+  voice frame shape.
+
+  Byte 52 reads `0x3b` in 150 of 162, matching `ipsc-master-voice.pcap` from the
+  same repeater. A third session finding it constant per device strengthens
+  ADR-0042's reading that it is a measurement.
+
+### Fixed
+- **§8g's open list ran 1, 3, 4, 5.** Item 2 went missing in 0197 when parrot
+  closed and the list was renumbered by hand. Corrected, with the text work
+  added as item 1.
+
+### Notes
+- **Something is waiting for an acknowledgement.** The captured transmissions
+  repeat byte for byte apart from sequence and timestamp — one private text four
+  times, at four to five second intervals — because QSP parses neither type and
+  answers nothing. If that reading is right, receiving text is not only
+  decoding: **a parser built without a reply would look correct in the journal
+  while every radio reported failure.** It is the one unchecked assumption in
+  ADR-0045 and it is wrong in the expensive direction.
+
+- **Outbound text fails silently today, and has since the transmit path was
+  written.** A text reaches `SendVoice`, `Encode` looks for a vocoder core,
+  finds none, and returns nil. No frames, no error, no log line — the
+  transmission evaporates. Whatever else changes, that must become visible.
+
+
+### Added
 - **A repeater's callsign is looked up and shown**, from the RadioID registry
   QSP already caches for call views.
 
