@@ -5,6 +5,46 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Added
+- **[ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md): QSP is the master, and a
+  club runs no second one.** Every Pi-Star and every Motorola repeater points at
+  QSP. No Motorola master repeater alongside it, no a commercial DMR server, no second thing to
+  configure and keep alive.
+
+  **QSP is never an IPSC peer in production**, which removes half a protocol
+  from the project's obligations permanently: registration as a client, the
+  ten-second retry, keepalive as a peer, and the behaviour of a peer whose
+  master vanishes are all absent, and their absence is now a decision rather
+  than a gap.
+
+  The reasoning is that QSP is the only component that can see the whole
+  network. A Motorola master sees IPSC peers; a Homebrew master sees hotspots.
+  Routing, last-heard, subscription, access control and the call record are all
+  whole-network facts, and every one is partial in a deployment where something
+  else holds the centre.
+
+  **It is replace, not augment**, and that cost is accepted on purpose: a club
+  whose existing IPSC master they cannot reconfigure cannot adopt QSP
+  incrementally.
+
+  The record also states the limit of "QSP controls all audio": it has authority
+  over *delivery*, not over *transmission*. A repeater receives everything and
+  filters by its own codeplug, which QSP cannot learn and must not guess at.
+
+### Notes
+- **`VERSION` is deliberately not bumped for this patch.** The file is read by
+  nothing: `qsp --version` comes from `debug.ReadBuildInfo()` and reports a
+  pseudo-version carrying the commit hash. It was bumped three times in 0195,
+  0196 and 0197 before anyone checked, which is the same
+  declared-and-read-by-nothing shape §8a exists to catch — produced while
+  quoting the rule that catches it.
+
+  It wants a decision rather than a fourth bump: either stamp it into the build
+  with `-ldflags -X` so `qsp --version` reports it, or delete it and let the
+  commit hash be the only version there is. Bumping it again first would be
+  choosing neither.
+
+
+### Added
 - **Motorola repeaters appear in Connected peers.** The IPSC listener has held
   peers and calls since it was written and nothing read them, so a repeater was
   visible in `/healthz` and the journal and nowhere an operator looks. The data

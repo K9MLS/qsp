@@ -52,3 +52,4 @@ conclusion.
 | [0040](ADR-0040-the-air-interface-is-specified.md) | The air interface is specified, and IPSC is not | Accepted |
 | [0041](ADR-0041-ipsc-transmit-from-inference.md) | Sending voice to a repeater is built from inference, not capture | Accepted — confirmed on air |
 | [0042](ADR-0042-the-outbound-frame-shape-is-measured.md) | The outbound frame shape is measured, and the colour code belongs to the repeater | Accepted |
+| [0043](ADR-0043-qsp-is-the-master.md) | QSP is the master, and a club runs no second one | Accepted |

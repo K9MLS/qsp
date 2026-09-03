@@ -1515,6 +1515,25 @@ suite and no assertion that its output resembled anything.
   and 4 at once — which `ipsc-two-peers.pcap` shows is a real case — cannot be
   served by one number.
 
+### Settled by decision, 2026-09-02
+
+- **QSP is the master and a club runs no second one**
+  ([ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md)). Every Pi-Star and every
+  Motorola repeater points at QSP; no Motorola master repeater alongside, no
+  a commercial DMR server. **QSP is never an IPSC peer in production**, which removes half the
+  protocol from the project's obligations permanently.
+
+  It is replace, not augment: a club whose existing IPSC master they cannot
+  reconfigure cannot adopt QSP incrementally. Accepted deliberately.
+
+  A bench instrument may play a peer in order to observe a real master. That is
+  a diagnostic in the same category as `cmd/ipsc-probe`, never ships in
+  `cmd/qsp`, and is not a route back to peer support.
+
+  **The limit worth remembering:** QSP has authority over delivery, not over
+  transmission. A repeater receives everything and filters by its own codeplug,
+  which QSP cannot learn and must not guess at.
+
 ### Open, in order
 
 1. **The console page.** The IPSC listener holds peers and calls and nothing
