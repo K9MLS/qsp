@@ -174,6 +174,11 @@ type Listener struct {
 	// pending holds a configuration change waiting to be applied, at most one.
 	// See reload.go.
 	pending atomic.Pointer[Reload]
+	// routingDrops remembers when each destination and reason was last
+	// explained, so that a refusal is logged once per transmission.
+	routingDropMu sync.Mutex
+	routingDrops  map[string]time.Time
+
 	// ipscRefused is the most recent transmission refused on the IPSC path,
 	// so the log names each one once rather than once per frame.
 	ipscRefusedMu sync.Mutex
@@ -723,6 +728,58 @@ func (l *Listener) sendToIPSC(origin hbp.RepeaterID, frame hbp.Data, res routing
 	l.cfg.IPSC(uint32(origin), frame)
 }
 
+// routingDropWindow is how long one refusal stands for the ones after it.
+//
+// Long enough to cover a transmission — an over runs seconds and a text about
+// one — and short enough that the next attempt is reported rather than
+// swallowed, because an operator who keys up again wants to know it is still
+// refused.
+const routingDropWindow = 10 * time.Second
+
+// maxRoutingDrops bounds how many distinct refusals are remembered at once.
+//
+// Sixty-four is far more than a working network produces — a refusal names one
+// destination and one reason — and small enough that the memory is never worth
+// attacking.
+const maxRoutingDrops = 64
+
+// noteRoutingDrop reports whether this refusal should be logged, so that a
+// destination and reason are explained once per transmission rather than once
+// per frame.
+func (l *Listener) noteRoutingDrop(d routing.Drop) bool {
+	key := d.To.String() + "|" + d.Reason
+	now := time.Now()
+
+	l.routingDropMu.Lock()
+	defer l.routingDropMu.Unlock()
+	if l.routingDrops == nil {
+		l.routingDrops = make(map[string]time.Time)
+	}
+	if at, seen := l.routingDrops[key]; seen && now.Sub(at) < routingDropWindow {
+		return false
+	}
+	// **Bounded, because the key names a destination.** A peer transmitting to
+	// endless talkgroups would otherwise add an entry per talkgroup for as
+	// long as it kept going.
+	//
+	// Expired entries go first. If that is not enough the map is emptied
+	// rather than trimmed: the cost is that the next refusal of each kind is
+	// logged again, which is a duplicate line, and the alternative is memory a
+	// peer controls.
+	if len(l.routingDrops) >= maxRoutingDrops {
+		for k, at := range l.routingDrops {
+			if now.Sub(at) >= routingDropWindow {
+				delete(l.routingDrops, k)
+			}
+		}
+		if len(l.routingDrops) >= maxRoutingDrops {
+			clear(l.routingDrops)
+		}
+	}
+	l.routingDrops[key] = now
+	return true
+}
+
 func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 	for _, d := range res.Deliveries {
 		peer, ok := l.cfg.Master.Lookup(d.Peer)
@@ -768,10 +825,23 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 
 	for _, drop := range res.Drops {
 		l.collided.Add(1)
-		l.log.Debug("frame not forwarded",
-			slog.String("to", drop.To.String()),
-			slog.String("reason", drop.Reason),
-		)
+		// **Debug is where a reason goes to be unreachable.** Production runs
+		// at info, raising the level needs a restart, and by then the
+		// transmission is over — so a refused destination was countable and
+		// never explainable. That is the same trap the `dropped` counter fell
+		// into, in a different place, and it cost an evening: an operator
+		// keying up on a talkgroup a peer was not attached to saw silence, and
+		// the sentence explaining it was being written to a level nobody reads.
+		//
+		// Info, and once per destination and reason rather than per frame: a
+		// refused over is fifty frames a second and a refused text is twenty
+		// bursts, and a line for each is a line nobody reads either.
+		if l.noteRoutingDrop(drop) {
+			l.log.Info("frame not forwarded",
+				slog.String("to", drop.To.String()),
+				slog.String("reason", drop.Reason),
+			)
+		}
 	}
 
 	for _, started := range res.StartedStreams {

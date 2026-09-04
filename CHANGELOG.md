@@ -5,6 +5,35 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **A destination refused by routing said why at debug, and production runs at
+  info.** So a refusal was counted and never explainable: raising the level
+  needs a restart, and by then the transmission is over.
+
+  That is the same trap the `dropped` counter fell into, in a different place,
+  and it cost an evening. An operator keyed up on a talkgroup a peer was not
+  attached to, saw silence, and grepped the journal for `not attached` — which
+  was being written, to a level nobody reads.
+
+  Refusals are logged at **info** now, and **once per destination and reason
+  every ten seconds** rather than once per frame, because a refused over is
+  fifty frames a second and a refused text is twenty bursts. A line for each is
+  a line nobody reads either.
+
+  The memory is bounded at sixty-four distinct refusals: the key names a
+  destination, so a peer transmitting to endless talkgroups could otherwise
+  grow it without limit. Expired entries go first and the map is emptied if
+  that is not enough — the cost is a duplicate line, and the alternative is
+  memory a peer controls. **The first version of the bound did not work**, and
+  the test written for it said so.
+
+### Notes
+- Both halves of this were written together and either could be undone alone: a
+  refusal deduplicated but at debug is invisible, and one at info without
+  deduplication floods. A source-level assertion covers the level, because the
+  behaviour that matters is which function is called.
+
+
+### Fixed
 - **One whole timeslot of audio never crossed the bridge**, from the day the
   IPSC listener was written until 2026-09-04.
 
