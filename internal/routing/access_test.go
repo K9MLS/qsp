@@ -372,7 +372,7 @@ func TestTheSlotIsReleasedByATerminator(t *testing.T) {
 	core := noBridges(t, a, b, c)
 
 	core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
-	core.Route(a, groupCall(0x6666, 9, hbp.Timeslot2, hbp.FrameTypeSync), t0)
+	core.Route(a, groupTerminator(0x6666, 9, hbp.Timeslot2), t0)
 
 	if core.BusyCount() != 0 {
 		t.Fatalf("a terminator left %d reservations behind", core.BusyCount())

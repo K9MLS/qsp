@@ -196,9 +196,19 @@ func (t *Tracker) Update(peer hbp.RepeaterID, frame hbp.Data, now time.Time) (st
 		call.Voice = true
 	}
 
-	// A sync frame both opens and closes a transmission. The opening one is the
-	// first frame of the stream, so only a later one ends it.
-	if frame.FrameType == hbp.FrameTypeSync && call.Frames > 1 {
+	// **Only a terminator ends a transmission.** This tested the frame type
+	// alone, which was complete while a data burst could only be a voice
+	// header or a terminator.
+	//
+	// Since ADR-0045 a text message is a run of data bursts sharing one stream
+	// ID, and every second one ended the call and opened another: **one text
+	// produced ten entries**, which is the defect that pushed voice out of a
+	// fifty-entry history and was fixed once already for the Homebrew shape.
+	//
+	// Homebrew text is unaffected either way. Its bursts each carry their own
+	// stream ID and are one frame, so `Frames > 1` was never true for them and
+	// this line never fired; they finish on expiry and are merged there.
+	if frame.IsTerminator() && call.Frames > 1 {
 		ended = t.finish(key, call, now, EndTerminated)
 	}
 

@@ -117,7 +117,7 @@ func TestTrafficIsRelayedBetweenTwoRealPeers(t *testing.T) {
 	sender.send(hbp.Data{
 		RepeaterID: testID, SourceID: 3132910, TargetID: 3148,
 		Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
-		FrameType: hbp.FrameTypeSync, StreamID: 0xFEEDFACE,
+		FrameType: hbp.FrameTypeSync, DataType: 0x2, StreamID: 0xFEEDFACE,
 		Trailing: []byte{0x11, 0x22},
 	})
 
@@ -192,7 +192,7 @@ func TestUnbridgedTrafficIsRepeatedToOtherPeers(t *testing.T) {
 	// A talkgroup no bridge covers.
 	sender.send(hbp.Data{
 		RepeaterID: testID, SourceID: 3132910, TargetID: 31673,
-		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync,
+		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync, DataType: 0x2,
 		StreamID: 0x1234, Trailing: []byte{0, 0},
 	})
 
@@ -231,7 +231,7 @@ func TestForwardingDisabledRelaysNothing(t *testing.T) {
 
 	sender.send(hbp.Data{
 		RepeaterID: testID, SourceID: 3132910, TargetID: 3148,
-		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync,
+		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync, DataType: 0x2,
 		StreamID: 0x999, Trailing: []byte{0, 0},
 	})
 
@@ -349,7 +349,7 @@ func TestScheduleGatesForwarding(t *testing.T) {
 	send := func(stream hbp.StreamID) {
 		sender.send(hbp.Data{
 			RepeaterID: testID, SourceID: 3132910, TargetID: 3148,
-			Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync,
+			Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync, DataType: 0x2,
 			StreamID: stream, Trailing: []byte{0, 0},
 		})
 	}
@@ -465,7 +465,7 @@ func TestPTTOpensTheBridgeAndCarriesTheOpeningFrame(t *testing.T) {
 	// One keyup. The opening frame must arrive at the far end.
 	sender.send(hbp.Data{
 		RepeaterID: testID, SourceID: 3132910, TargetID: 3148,
-		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync,
+		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync, DataType: 0x2,
 		StreamID: 0x71771, Sequence: 0, Trailing: []byte{0, 0},
 	})
 
@@ -505,7 +505,7 @@ func TestPTTOpensTheBridgeAndCarriesTheOpeningFrame(t *testing.T) {
 	before := l.Stats().Forwarded
 	sender.send(hbp.Data{
 		RepeaterID: testID, SourceID: 3132910, TargetID: 31673,
-		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync,
+		Timeslot: hbp.Timeslot1, FrameType: hbp.FrameTypeSync, DataType: 0x2,
 		StreamID: 0x9999, Trailing: []byte{0, 0},
 	})
 	receiver.silence(400 * time.Millisecond)

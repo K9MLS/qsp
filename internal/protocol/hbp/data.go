@@ -53,10 +53,17 @@ func (c CallType) String() string {
 
 // FrameType classifies a burst within a transmission.
 //
-// Values are as observed. FrameTypeSync appears exactly twice per stream, at
-// its start and end — the voice header and the voice terminator. That invariant
-// holds for all fourteen stream traversals in the voice fixture and is the
-// primary structural check on a decoder.
+// Values are as observed. **In a voice stream** FrameTypeSync appears exactly
+// twice, at its start and end — the voice header and the voice terminator —
+// which holds for all fourteen stream traversals in the voice fixture and is
+// the primary structural check on a decoder.
+//
+// **It is not true of a stream generally, and reading it as such cost two
+// defects.** A text message is a run of data sync frames sharing one stream ID,
+// so code that treated the second one as the end of a transmission ended the
+// call ten times per message and released contention mid-message. Both tested
+// the frame type alone; both now require the data type that says which kind of
+// data burst it is.
 type FrameType uint8
 
 // Frame types.

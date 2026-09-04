@@ -217,8 +217,11 @@ func TestTerminatorReleasesDestinationsImmediately(t *testing.T) {
 		t.Fatal("nothing was reserved during a transmission")
 	}
 
-	// The terminator.
-	c.Route(peerA, voiceFrame(0x3333, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0.Add(120*time.Millisecond))
+	// The terminator, which is a data sync frame carrying data type 2. A data
+	// sync frame alone is a voice LC header and releases nothing.
+	term := voiceFrame(0x3333, 3148, hbp.Timeslot1, hbp.FrameTypeSync)
+	term.DataType = hbp.DataTypeTerminator
+	c.Route(peerA, term, t0.Add(120*time.Millisecond))
 	if c.BusyCount() != 0 {
 		t.Fatalf("%d destinations still reserved after the terminator: %v", c.BusyCount(), c.Busy())
 	}
@@ -386,7 +389,7 @@ func TestATextMessageIsNotThirtyCompetingTransmissions(t *testing.T) {
 			SourceID: 3155413, TargetID: 2, RepeaterID: peerA,
 			Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
 			// Each burst its own stream, as a radio sends them.
-			FrameType: hbp.FrameTypeSync, StreamID: hbp.StreamID(1000 + i),
+			FrameType: hbp.FrameTypeSync, DataType: 0x2, StreamID: hbp.StreamID(1000 + i),
 		}
 		res := c.Route(peerA, burst, now)
 		delivered += len(res.Deliveries)

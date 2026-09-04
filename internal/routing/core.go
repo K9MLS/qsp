@@ -610,10 +610,16 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 		}
 	}
 
-	if frame.FrameType == hbp.FrameTypeSync && !opening {
+	if frame.IsTerminator() && !opening {
 		// A terminator releases every destination this transmission held, so
 		// the next person can key up immediately rather than waiting out the
 		// timeout.
+		//
+		// **A text message is not a terminator**, and this tested the frame
+		// type alone. Since ADR-0045 every burst of a text after the first
+		// released the reservation mid-message, so somebody else could key up
+		// and interleave with a transmission still in progress — which is the
+		// exact thing contention exists to prevent.
 		c.release(src)
 	}
 

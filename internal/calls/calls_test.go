@@ -14,7 +14,7 @@ var base = time.Date(2026, 8, 23, 20, 0, 0, 0, time.UTC)
 
 // frame builds a voice frame of the given type.
 func frame(stream hbp.StreamID, ft hbp.FrameType) hbp.Data {
-	return hbp.Data{
+	d := hbp.Data{
 		RepeaterID: peerID,
 		SourceID:   uint32(peerID),
 		TargetID:   3100,
@@ -23,6 +23,28 @@ func frame(stream hbp.StreamID, ft hbp.FrameType) hbp.Data {
 		FrameType:  ft,
 		StreamID:   stream,
 	}
+	// **A data sync frame is not a terminator on its own.** These fixtures
+	// built the opening and closing frames identically, which the captures do
+	// not: hbp-voice-live.pcap holds ten data sync frames of data type 1, the
+	// voice LC header that opens a transmission, and ten of type 2, the
+	// terminator with Link Control that closes one.
+	//
+	// The distinction did not matter while a data burst could only be one of
+	// those two. It matters now that a text message is a run of them, so a
+	// helper that made every data burst a terminator would let a defect
+	// through and call it a pass.
+	if ft == hbp.FrameTypeSync {
+		d.DataType = hbp.DataTypeVoiceLCHeader
+	}
+	return d
+}
+
+// terminator is the frame that closes a transmission, as distinct from the
+// voice LC header that opens one.
+func terminator(stream hbp.StreamID) hbp.Data {
+	d := frame(stream, hbp.FrameTypeSync)
+	d.DataType = hbp.DataTypeTerminator
+	return d
 }
 
 // TestNormalTransmission covers the shape every fixture stream has: a sync
@@ -50,7 +72,7 @@ func TestNormalTransmission(t *testing.T) {
 	}
 
 	now = now.Add(60 * time.Millisecond)
-	_, ended = tr.Update(peerID, frame(0xAAAA, hbp.FrameTypeSync), now)
+	_, ended = tr.Update(peerID, terminator(0xAAAA), now)
 	if ended == nil {
 		t.Fatal("the terminator did not end the call")
 	}
@@ -122,7 +144,7 @@ func TestSingleFrameTransmissionStartsAndEnds(t *testing.T) {
 	}
 
 	// A second sync frame closes it.
-	_, ended = tr.Update(peerID, frame(0xCCCC, hbp.FrameTypeSync), base.Add(60*time.Millisecond))
+	_, ended = tr.Update(peerID, terminator(0xCCCC), base.Add(60*time.Millisecond))
 	if ended == nil {
 		t.Fatal("the second sync frame did not end the call")
 	}
@@ -151,8 +173,11 @@ func TestConcurrentTimeslots(t *testing.T) {
 		t.Fatalf("active = %d, want 2 simultaneous calls", tr.ActiveCount())
 	}
 
-	// Ending one leaves the other running.
-	tr.Update(peerID, ts1, base.Add(60*time.Millisecond))
+	// Ending one leaves the other running. A terminator ends it; the opening
+	// frame was a voice LC header and repeating that would not.
+	ts1End := ts1
+	ts1End.DataType = hbp.DataTypeTerminator
+	tr.Update(peerID, ts1End, base.Add(60*time.Millisecond))
 	if tr.ActiveCount() != 1 {
 		t.Errorf("active = %d after ending one timeslot, want 1", tr.ActiveCount())
 	}
@@ -184,7 +209,7 @@ func TestHistoryIsBoundedAndOrdered(t *testing.T) {
 		stream := hbp.StreamID(0x1000 + i)
 		at := base.Add(time.Duration(i) * time.Second)
 		tr.Update(peerID, frame(stream, hbp.FrameTypeSync), at)
-		tr.Update(peerID, frame(stream, hbp.FrameTypeSync), at.Add(100*time.Millisecond))
+		tr.Update(peerID, terminator(stream), at.Add(100*time.Millisecond))
 	}
 
 	h := tr.History()
@@ -310,7 +335,7 @@ func TestADataBurstIsNotVoice(t *testing.T) {
 
 	burst := hbp.Data{
 		SourceID: 3155413, TargetID: 3132910, Timeslot: hbp.Timeslot2,
-		CallType: hbp.CallPrivate, FrameType: hbp.FrameTypeSync, StreamID: 0x1111,
+		CallType: hbp.CallPrivate, FrameType: hbp.FrameTypeSync, DataType: 0x2, StreamID: 0x1111,
 	}
 	started, _ := tr.Update(3155413, burst, now)
 	if started == nil {
@@ -327,7 +352,7 @@ func TestAVoiceTransmissionIsVoice(t *testing.T) {
 
 	header := hbp.Data{
 		SourceID: 3132910, TargetID: 2, Timeslot: hbp.Timeslot2,
-		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeSync, StreamID: 0x2222,
+		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeSync, DataType: 0x2, StreamID: 0x2222,
 	}
 	tr.Update(3132910, header, now)
 

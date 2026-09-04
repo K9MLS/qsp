@@ -5,6 +5,45 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **One text message produced ten entries in the call history**, measured, which
+  is how voice gets pushed out of a fifty-entry list.
+
+  A call ended on any data sync frame after the first. That was complete while a
+  data burst could only be a voice LC header or a terminator, and it survived
+  the Homebrew text shape *by accident*: those bursts each carry their own
+  stream ID and are one frame each, so the frame count never passed one and the
+  line never fired.
+
+  **An IPSC text is a run of bursts sharing one stream ID.** Every second one
+  ended the call and opened another. This is the same damage that was fixed once
+  already for the other shape, arriving through a door nobody had closed.
+
+- **Every text burst after the first released the contention reservation.** So
+  another station could key up and interleave with a message still in progress,
+  which is the exact thing contention exists to prevent, and it would present as
+  two people talking over each other with nothing in the journal to explain it.
+
+  Both sites tested the frame type alone; both now require the data type that
+  says which kind of data burst it is.
+
+- **The `FrameType` doc asserted an invariant that is not one.** It said
+  FrameTypeSync appears exactly twice per stream. That is true of a *voice*
+  stream and false of a text, and reading it as general is what produced both
+  defects above.
+
+### Changed
+- **Test fixtures now distinguish a voice header from a terminator.** They built
+  both as a bare `FrameTypeSync`, so a helper made every data burst a
+  terminator and would have let these defects through as passes.
+
+  `hbp-voice-live.pcap` settles which is which: ten data sync frames of data
+  type 1, the voice LC header that opens a transmission, and ten of type 2, the
+  terminator that closes one. The captures were checked before the tests were
+  changed, because the alternative was deciding the code was wrong on the
+  evidence of a fixture that predated the distinction.
+
+
+### Fixed
 - **Parrot swallowed text messages, and one case lost them silently.** Found by
   a bug hunt, created by the text work earlier the same day.
 

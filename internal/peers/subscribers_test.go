@@ -26,8 +26,8 @@ func voiceOn(source uint32, tg uint32, slot hbp.Timeslot, stream hbp.StreamID) h
 		RepeaterID: testID,
 		Timeslot:   slot,
 		CallType:   hbp.CallGroup,
-		FrameType:  hbp.FrameTypeSync,
-		StreamID:   stream,
+		FrameType:  hbp.FrameTypeSync, DataType: 0x2,
+		StreamID: stream,
 	}
 }
 

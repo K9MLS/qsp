@@ -15,10 +15,28 @@ import (
 // was no configuration that expressed it.
 
 func groupCall(stream hbp.StreamID, tg uint32, slot hbp.Timeslot, ft hbp.FrameType) hbp.Data {
-	return hbp.Data{
+	d := hbp.Data{
 		SourceID: 3132910, TargetID: tg, Timeslot: slot,
 		CallType: hbp.CallGroup, FrameType: ft, StreamID: stream,
 	}
+	// **A data sync frame is not a terminator on its own**, and these fixtures
+	// treated it as one. hbp-voice-live.pcap holds ten data sync frames of
+	// data type 1 — the voice LC header that opens a transmission — and ten of
+	// type 2, the terminator that closes one. The distinction did not matter
+	// while those were the only two data bursts; a text message is a run of
+	// them.
+	if ft == hbp.FrameTypeSync {
+		d.DataType = hbp.DataTypeVoiceLCHeader
+	}
+	return d
+}
+
+// groupTerminator closes a transmission, as distinct from the voice LC header
+// that opens one.
+func groupTerminator(stream hbp.StreamID, tg uint32, slot hbp.Timeslot) hbp.Data {
+	d := groupCall(stream, tg, slot, hbp.FrameTypeSync)
+	d.DataType = hbp.DataTypeTerminator
+	return d
 }
 
 // noBridges is a master with nothing configured — the ordinary starting point
