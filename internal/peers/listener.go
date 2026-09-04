@@ -911,6 +911,24 @@ func (l *Listener) expireCalls() {
 	}
 	lost := l.cfg.Calls.Expire(time.Now())
 	for _, c := range lost {
+		// **Data has no terminator and is not meant to**, so warning about one
+		// is a false alarm. The console already reserves "no terminator" for
+		// voice and labels data for what it is; the journal did not, and a
+		// single text message produced fifteen WARN lines about a missing
+		// terminator that was never coming.
+		//
+		// A warning an operator learns to ignore stops working for the case it
+		// was written for: a lossy link, or a peer vanishing mid-over.
+		if !c.Voice {
+			l.log.Debug("data transmission ended",
+				logging.PeerID(c.Source),
+				logging.Talkgroup(c.Target),
+				logging.StreamID(uint32(c.Key.Stream)),
+				slog.Int("frames", c.Frames),
+			)
+			l.publishCall(events.TypeCallEnded, c)
+			continue
+		}
 		// Worth an operator's attention: many of these mean a lossy link or a
 		// peer that keeps vanishing mid-transmission.
 		l.log.Warn("call ended without a terminator",

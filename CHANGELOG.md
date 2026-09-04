@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **A transmission could end before it started, and the console showed
+  `-470ms`.** Found on a live dashboard, not by a test.
+
+  `Expire` sorted by peer and stream ID — chosen so logs and tests were
+  reproducible — which is not chronological. The merge then assigned the
+  finished call's end time to the entry it merged into, so a call whose last
+  frame arrived *earlier* but expired *later* dragged that end time backwards.
+  MMDVM's stream IDs are effectively random, so the ordering was too.
+
+  Expiry is now oldest first, with peer and stream still breaking ties so the
+  order stays reproducible. A merged entry also refuses to move its end time
+  backwards — **that guard is belt-and-braces and the ordering is the fix**;
+  removing the guard alone breaks nothing.
+
+- **A text message produced fifteen `WARN call ended without a terminator`
+  lines.** Data has no terminator and is not meant to, which the console already
+  knew: it reserves "no terminator" for voice and labels data for what it is.
+  The journal did not, so one text filled it with warnings about something that
+  was never coming.
+
+  A warning an operator learns to ignore stops working for the case it was
+  written for — a lossy link, or a peer vanishing mid-over. Data now ends at
+  debug, with the same fields, and the call-ended event is still published.
+
+### Notes
+- One text message still produces seventeen `call started` lines at info, one
+  per burst, because each Homebrew burst carries its own stream ID and is its
+  own transmission to the tracker. The history merges them into one entry; the
+  log does not. Left alone as an observation rather than fixed, because
+  suppressing them would hide the only per-burst record there is.
+
+
 ### Changed
 - **Three derivations that had been written out repeatedly now have one copy
   each.** No defect was found in any of them — every copy agreed — which is

@@ -233,8 +233,22 @@ func (t *Tracker) Expire(now time.Time) []Call {
 			lost = append(lost, key)
 		}
 	}
-	// Deterministic order so logs and tests are reproducible.
+	// **Oldest first, and the order is not cosmetic.** This sorted by peer and
+	// stream ID for reproducibility, which is not chronological: a call whose
+	// last frame arrived earlier could be finished after one whose last frame
+	// arrived later.
+	//
+	// Merging then assigns `prev.Ended = finished.Ended`, so the end time went
+	// backwards, and a merged entry could end before it started. **The console
+	// showed a duration of -470ms on a live network**, which is the shape of
+	// bug that is invisible until a number is rendered.
+	//
+	// Peer and stream still break ties, so the order stays reproducible.
 	sort.Slice(lost, func(i, j int) bool {
+		ti, tj := t.lastFrameTime(t.active[lost[i]], now), t.lastFrameTime(t.active[lost[j]], now)
+		if !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
 		if lost[i].Peer != lost[j].Peer {
 			return lost[i].Peer < lost[j].Peer
 		}
@@ -282,7 +296,14 @@ func (t *Tracker) finish(key Key, call *Call, at time.Time, reason EndReason) *C
 	// gone.
 	if prev := t.mergeableData(finished); prev != nil {
 		prev.Frames += finished.Frames
-		prev.Ended = finished.Ended
+		// **A transmission cannot end before it started.** Expire orders by
+		// last frame so this should not arise, but the invariant is stated
+		// here rather than assumed: a merged entry is the only place two end
+		// times meet, and the cost of the assumption was a negative duration
+		// on an operator's dashboard.
+		if finished.Ended.After(prev.Ended) {
+			prev.Ended = finished.Ended
+		}
 		prev.EndReason = finished.EndReason
 		merged := *prev
 		return &merged
