@@ -5,6 +5,43 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **One whole timeslot of audio never crossed the bridge**, from the day the
+  IPSC listener was written until 2026-09-04.
+
+  **The frame marker at byte 30 carries the timeslot in its high bit.** A voice
+  frame on the slot whose bit is set reads `0x8a`; one on the other slot reads
+  `0x0a`. `FrameVoice` was recorded as `0x8a` — from captures that were all on
+  one timeslot — so `Payload` refused every frame on the other, and the
+  converter emitted nothing at all for it. 102 such frames sit in
+  `ipsc-slot-tg.pcap`, which was captured for the slot bit and had them the
+  whole time.
+
+  **It hid because this network runs on TG 2 timeslot 2.** It was found by an
+  operator keying up on talkgroup 11, timeslot 1, and reading the journal: the
+  IPSC listener logged `call started` and the DMR side logged nothing, because
+  `AsVoice` reads the flags and `Payload` reads the marker.
+
+  The bit agrees with the slot bit in byte 17 on **all 528 captured voice
+  frames**, across four captures and two repeater models, and is never set on a
+  header or a terminator — which is why signalling was unaffected and the fault
+  presented as a talkgroup problem rather than a timeslot one.
+
+  `FrameKindOf` strips it. The encoder sets it, so a frame QSP builds names the
+  slot the same way a repeater's does.
+
+### Notes
+- **This was not a text defect and the text investigation did not find it.**
+  Three bug hunts, a fixture that contained the evidence, and a test suite that
+  passed — the thing that found it was an operator keying up on an untried
+  timeslot. Every significant defect in this project has been found by running
+  the system, and this is the clearest example yet.
+
+- The talkgroup access lists are all `mode: deny` with empty `ids`, which
+  permits everything. Talkgroup 11 was never being refused; nothing was reaching
+  the DMR side to refuse.
+
+
+### Fixed
 - **A text crossing the bridge was numbered wrongly.** Every stream a real
   MMDVM hotspot sends starts its sequence at 0 and counts up — three streams
   checked in `hbp-voice-live.pcap`. The voice path does the same, resetting when

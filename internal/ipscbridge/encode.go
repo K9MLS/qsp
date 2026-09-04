@@ -335,7 +335,14 @@ func (e *Encoder) voice(st *encodeState, src hbp.Data, slot int, core []byte) ip
 	body := make([]byte, bodyCore+len(core)+trailer)
 	e.preamble(st, src, slot, flagsMiddle, body)
 
-	body[bodyMarker] = ipsc.FrameVoice
+	// The marker carries the timeslot in its high bit, the same fact byte 17
+	// holds. A frame built without it is a frame on the wrong slot, and the
+	// receiver reads the marker.
+	marker := ipsc.FrameVoice
+	if e.slotBitSet(slot) {
+		marker |= ipsc.FrameSlotBit
+	}
+	body[bodyMarker] = marker
 	body[bodyLength] = byte(len(body) - 27)
 	body[bodyClass] = class
 	copy(body[bodyCore:], core)

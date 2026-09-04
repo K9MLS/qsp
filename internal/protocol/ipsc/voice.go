@@ -101,7 +101,41 @@ const (
 	// FrameHeader opens a transmission. Three were sent before any audio.
 	FrameHeader byte = 0x01
 	// FrameVoice carries vocoder data.
-	FrameVoice byte = 0x8a
+	//
+	// **The high bit is the timeslot, not part of the marker.** A voice frame
+	// on the slot whose bit is set reads 0x8a and one on the other slot reads
+	// 0x0a; use FrameKindOf rather than comparing the byte.
+	FrameVoice byte = 0x0a
+	// FrameSlotBit is the bit of the frame marker that carries the timeslot.
+	//
+	// # How this was found
+	//
+	// The marker was recorded as 0x8a, from captures that were all on one
+	// timeslot, and every voice frame on the other slot was refused: 102 of
+	// them in ipsc-slot-tg.pcap alone. **A whole timeslot of audio never
+	// crossed the bridge**, from the day the listener was written until
+	// 2026-09-04, and it went unnoticed because this network carries its
+	// traffic on TG 2 timeslot 2.
+	//
+	// It was found by an operator keying up on talkgroup 11, timeslot 1, and
+	// reading the journal: the IPSC listener logged "call started" and the DMR
+	// side logged nothing, because AsVoice reads the flags and Payload reads
+	// the marker.
+	//
+	// **The bit agrees with the slot bit in byte 17 on all 528 captured voice
+	// frames**, across four captures and two repeater models, and is never set
+	// on a header or a terminator — which is why those two were unaffected and
+	// the fault looked like a talkgroup problem.
+	FrameSlotBit byte = 0x80
+)
+
+// FrameKindOf returns the frame marker with the timeslot bit removed.
+//
+// Compare against FrameHeader, FrameVoice or FrameTerminator; comparing the raw
+// byte works on one timeslot and silently fails on the other.
+func FrameKindOf(marker byte) byte { return marker &^ FrameSlotBit }
+
+const (
 	// FrameTerminator closes a transmission.
 	FrameTerminator byte = 0x02
 )
@@ -134,7 +168,7 @@ func (m Message) Payload() (payloadClass byte, vocoder, trailer []byte, ok bool)
 		return 0, nil, nil, false
 	}
 	b := m.Body
-	if b[25] != FrameVoice {
+	if FrameKindOf(b[25]) != FrameVoice {
 		return 0, nil, nil, false
 	}
 	length := int(b[26])
@@ -248,7 +282,7 @@ func (m Message) ColourCode() (uint8, bool) {
 	}
 	b := m.Body
 	switch {
-	case len(b) >= 47 && (b[25] == FrameHeader || b[25] == FrameTerminator):
+	case len(b) >= 47 && (FrameKindOf(b[25]) == FrameHeader || FrameKindOf(b[25]) == FrameTerminator):
 		return b[46] >> 4, true
 	default:
 		_, _, trailer, ok := m.Payload()
