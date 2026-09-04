@@ -88,15 +88,6 @@ func (r Responder) Reply(in Message) []Message {
 	return out
 }
 
-// MessageFor builds a message of a kind the master was observed sending.
-func MessageFor(k Kind, senderID uint32) (Message, bool) {
-	body, ok := CapturedBody(k)
-	if !ok {
-		return Message{}, false
-	}
-	return Message{Kind: k, SenderID: senderID, Body: body}, true
-}
-
 // SenderIDOf reads the sender ID out of a raw datagram without parsing it,
 // for logging a message this package refuses to accept.
 func SenderIDOf(b []byte) (uint32, bool) {
@@ -138,6 +129,11 @@ var peerBody = map[Kind][]byte{
 }
 
 // PeerBody returns the body a peer was observed sending for a kind.
+//
+// A MessageFor mirroring this one existed for the master's bodies and was
+// called by nothing: cmd/ipsc-probe uses Responder instead. It was removed
+// rather than kept for symmetry, because an unused function that looks like a
+// used one is the shape §8a keeps finding.
 func PeerBody(k Kind) ([]byte, bool) {
 	b, ok := peerBody[k]
 	if !ok {

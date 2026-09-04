@@ -1117,15 +1117,13 @@ func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallVie
 // traffic was Motorola repeaters reported zero voice frames and advised the
 // operator to check a hotspot that had nothing to do with it.
 func (p ipscPeerViews) Traffic() server.Traffic {
-	var frames, texts uint64
+	var frames uint64
 	for _, peer := range p.listener.Peers() {
 		frames += peer.VoiceFrames
-		texts += peer.TextBursts
 	}
 	ignored, unparsed := p.listener.Counters()
 	return server.Traffic{IPSC: &server.IPSCTraffic{
 		VoiceFrames: frames,
-		TextBursts:  texts,
 		Ignored:     ignored,
 		Unparsed:    unparsed,
 	}}

@@ -117,13 +117,6 @@ type IPSCTraffic struct {
 	// was Motorola repeaters showed "0 voice frames" and a note advising the
 	// operator to check a hotspot that was not involved.
 	VoiceFrames uint64 `json:"voice_frames"`
-	// TextBursts is text message bursts received from registered repeaters.
-	//
-	// Separate from VoiceFrames because a text and an over are different
-	// things to an operator: one figure covering both would answer neither
-	// question, and "voice frames" that included texts would be a number whose
-	// name is a lie.
-	TextBursts uint64 `json:"text_bursts"`
 	// Ignored is datagrams from radio IDs not on the allow list.
 	Ignored uint64 `json:"ignored"`
 	// Unparsed is datagrams this build does not recognise. It is expected to

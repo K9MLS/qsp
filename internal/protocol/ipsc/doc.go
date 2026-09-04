@@ -12,16 +12,24 @@
 //
 // # What has been observed
 //
-// Seven message types between two repeaters that registered to each other over
-// the internet, plus one repeater talking into silence.
+// Ten message types, from four captures. Seven came from two repeaters that
+// registered to each other over the internet, plus one repeater talking into
+// silence; 0x80 carries voice; 0x83 and 0x84 carry text messages.
+//
+// **The seven below are the registration capture and not the whole package.**
+// This section said "seven message types" for as long as the package knew
+// seven, and went on saying it after voice and then text were added, which
+// reads as a claim about the package rather than about one capture.
 //
 // A K9MLS XPR8300 on firmware R02.30.20 acted as master; a second repeater,
 // remote and behind fourteen hops, acted as peer. Registration is a six-packet
 // exchange rather than a request and an acknowledgement, and the link then
 // settled into keepalives for twenty minutes.
 //
-// Four types have an understood purpose: 0x90 and 0x91 register, 0x96 and 0x97
-// keep alive. Three do not: 0x85, 0xf0 and 0xf1. They are named for their bytes
+// Of those seven, four have an understood purpose: 0x90 and 0x91 register, 0x96
+// and 0x97 keep alive. Three do not: 0x85, 0xf0 and 0xf1. Of the three added
+// since, 0x80 is voice (ADR-0041, ADR-0042) and 0x83 and 0x84 are group and
+// private text (ADR-0045). They are named for their bytes
 // rather than given descriptive names, because a descriptive name is a claim.
 //
 // # The one structure everything agrees on

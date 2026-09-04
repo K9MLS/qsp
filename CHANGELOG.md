@@ -4,6 +4,53 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+- **Parrot swallowed text messages, and one case lost them silently.** Found by
+  a bug hunt, created by the text work earlier the same day.
+
+  `Handles` tested the talkgroup, the call type and the timeslot, which was
+  complete while IP Site Connect carried only voice. Since ADR-0045 a text
+  arrives as a data burst, and one addressed to the parrot number matched every
+  condition.
+
+  A text to the parrot talkgroup was merely odd — recorded and played back.
+  **A private text to the parrot radio ID was lost.** A private call to that
+  number matches on either timeslot, so any private text to it was consumed,
+  never routed and never delivered, while the sender's radio reported success:
+  the repeater acknowledges on RF one hop away and a master is not part of that.
+  Silent, plausible, and invisible to the operator.
+
+  `hbp.Data.IsUserData` now distinguishes a message from audio and from the
+  signalling that wraps it. **The first attempt rejected all data bursts and was
+  wrong**, because a voice LC header and a terminator are data bursts too and
+  belong to the transmission they open and close — rejecting them would have
+  sent the beginning and end of an echo test to the whole network. The IPSC
+  parrot test caught that within a minute.
+
+- **`ipsc.MessageFor` was declared and called by nothing.** `cmd/ipsc-probe`
+  uses `Responder` instead. `PeerMessageFor` was written directly beneath it as
+  its mirror without anybody noticing the original was dead, so the pattern
+  produced a second copy of itself before it was found.
+
+- **The `ipsc` package doc said "seven message types".** It said that for as
+  long as the package knew seven and went on saying it after voice and then text
+  were added, so it read as a claim about the package while describing one
+  capture. Ten now, with the provenance of each named.
+
+### Removed
+- **The text burst counter**, entirely. 0214 took it off the Traffic panel
+  because a burst is not a message; what remained was a field populated on every
+  text, summed in `app.go`, exposed in the API and read by nothing. Keeping it
+  with a comment explaining why would have been the same pattern wearing a
+  rationale.
+
+### Notes
+- `git checkout` on a file with uncommitted work reverted an entire fix rather
+  than the deliberate break it was meant to undo, and the suite then reported no
+  failures at all because nothing compiled. **A test run that reports nothing is
+  not a test run that passed.** Breaks are undone with a file copy taken first.
+
+
 ### Changed
 - **The Traffic panel is four metrics, not ten**: datagrams in, voice frames,
   collisions, ignored.

@@ -215,6 +215,36 @@ func parseData(b []byte) (Message, error) {
 // A stream begins and ends with one. Note that the header and the terminator
 // share this frame type, so position within the stream distinguishes them; this
 // method alone does not.
+// IsUserData reports whether this frame carries data rather than audio or the
+// signalling that wraps it.
+//
+// # Why this is not simply "not voice"
+//
+// FrameTypeSync means a data burst, and three different things arrive as one: a
+// voice LC header, a terminator, and the blocks of a text message. **The first
+// two belong to a voice transmission** — they open and close it — so treating
+// every data burst as data would separate an over from its own beginning and
+// end. A first attempt at this did exactly that, and the IPSC parrot test
+// caught it.
+//
+// The DMR data types say which is which. 1 is a voice LC header and 2 a
+// terminator with Link Control; CSBK, data headers and the rate-coded blocks
+// are a message.
+//
+// **It exists because "is this on the parrot talkgroup" is not the same
+// question as "is this something parrot can answer".** Parrot tested the
+// talkgroup, the call type and the timeslot, which was complete while IP Site
+// Connect carried only voice, and swallowed text messages once it did not.
+func (m Data) IsUserData() bool {
+	if m.FrameType != FrameTypeSync {
+		return false
+	}
+	return m.DataType != DataTypeVoiceLCHeader && m.DataType != DataTypeTerminator
+}
+
+// DataTypeVoiceLCHeader is the DMR data type that opens a voice transmission.
+const DataTypeVoiceLCHeader uint8 = 0x1
+
 // IsTerminator reports whether this frame closes a transmission.
 //
 // # Why the data type is checked and not only the frame type

@@ -108,15 +108,10 @@ func TestATextFromARepeaterReachesRouting(t *testing.T) {
 		}
 	}
 
-	// The peer's own counter must move, or the console reports nothing while
-	// texts flow.
-	peers := l.Peers()
-	if len(peers) != 1 {
+	// Nothing must still be counting these as unparsed, which is how they were
+	// discarded before ADR-0045.
+	if peers := l.Peers(); len(peers) != 1 {
 		t.Fatalf("%d peers registered, want 1", len(peers))
-	}
-	if peers[0].TextBursts < 4 {
-		t.Errorf("the peer counted %d text bursts, want at least 4",
-			peers[0].TextBursts)
 	}
 	if ignored, unparsed := l.Counters(); unparsed != 0 {
 		t.Errorf("%d datagrams were still counted as unparsed (ignored %d); "+

@@ -150,6 +150,25 @@ func (r *Recorder) Handles(frame hbp.Data) bool {
 	if frame.TargetID != r.cfg.Talkgroup {
 		return false
 	}
+	// **Parrot answers audio, and a text message is not audio.**
+	//
+	// This tested only the talkgroup, the call type and the timeslot, which
+	// was complete while IP Site Connect carried nothing but voice. Since
+	// ADR-0045 a text arrives as a data burst, and one addressed to the parrot
+	// number matched every condition here.
+	//
+	// The group case was merely odd: a text to the parrot talkgroup recorded
+	// and played back. **The private case lost messages.** A private call to
+	// the parrot number matches on either timeslot, so any private text to
+	// that radio ID was consumed, never routed, and never delivered — and the
+	// sender's radio still reported success, because the repeater
+	// acknowledges on RF one hop away and a master is not part of that.
+	//
+	// Silent, plausible, and invisible to the operator, which is the failure
+	// class this project keeps finding.
+	if frame.IsUserData() {
+		return false
+	}
 	// **A private call to the parrot number counts, on either timeslot.**
 	// That is how most networks do parrot and how most operators program it,
 	// because it lets somebody test without the whole club hearing them. A
