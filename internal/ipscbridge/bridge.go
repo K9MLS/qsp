@@ -66,6 +66,15 @@ type slotState struct {
 	started bool
 	// sequence is the Homebrew frame counter, which is per transmission.
 	sequence uint8
+
+	// textStream, textSeen and textSequence number a text message's bursts.
+	//
+	// **Kept apart from the voice counters** because a text and an over are
+	// separate transmissions that can interleave on one timeslot: a text
+	// arriving mid-over must not renumber the audio, and vice versa.
+	textStream   hbp.StreamID
+	textSeen     bool
+	textSequence uint8
 	// stream is the IPSC stream currently being converted.
 	stream uint16
 	// seen reports whether any frame has been converted on this slot, which

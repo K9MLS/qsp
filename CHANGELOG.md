@@ -5,6 +5,41 @@ All notable changes to QSP. Dates are UTC.
 ## [Unreleased]
 
 ### Fixed
+- **A text crossing the bridge was numbered wrongly.** Every stream a real
+  MMDVM hotspot sends starts its sequence at 0 and counts up — three streams
+  checked in `hbp-voice-live.pcap`. The voice path does the same, resetting when
+  the stream ID changes.
+
+  **Text used the raw IPSC sequence**, a free-running counter shared by every
+  transmission on the link. A capture of a text crossing the bridge showed one
+  stream starting at 69 and the next at 67.
+
+  Whether MMDVM refuses on that is **unproven** and this is not claimed as the
+  cause of anything. It is wrong on its own terms, and it was the one place text
+  differed from the voice path that works.
+
+  The counters are kept apart from the voice ones, because a text and an over
+  are separate transmissions that can interleave on one timeslot.
+
+### Notes
+- **A text from a Motorola repeater reaches hotspots and is not displayed**, and
+  this patch does not explain it. What the capture rules out: routing refused
+  nothing, 46 of 46 bursts were converted and delivered, the DMRD header is
+  correct in every field, the frame and data types match the input exactly, the
+  burst is assembled by the same function voice headers use, and **no Rate 3/4
+  bursts were present at all** — so the deliberate refusal of those is not
+  involved. Length is not involved either: QSP sends 53 bytes for text and for
+  the voice that works.
+
+- **Routing refusals are logged at debug, and production runs at info.** So a
+  destination refused by routing is countable and not explainable — the same
+  trap the `dropped` counter fell into, in a different place. Datagram refusals
+  already have `noteDrop` and twenty retained reasons; routing refusals have
+  nothing equivalent. Recorded rather than fixed here, because the fix is its
+  own patch and this one had to stay testable.
+
+
+### Fixed
 - **A transmission could end before it started, and the console showed
   `-470ms`.** Found on a live dashboard, not by a test.
 

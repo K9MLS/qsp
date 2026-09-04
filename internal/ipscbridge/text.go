@@ -61,6 +61,26 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 		return hbp.Data{}, false
 	}
 
+	// **A Homebrew stream is numbered from zero**, and this used the raw IPSC
+	// sequence, which is a free-running counter shared by every transmission
+	// on the link. A capture of a text crossing the bridge showed one stream
+	// starting at 69 and the next at 67, where a hotspot's own streams all
+	// start at 0 and count up.
+	//
+	// The voice path has always done this — `st.sequence` resets when the
+	// stream ID changes — and text was written without it. Whether MMDVM
+	// refuses on it is unproven; it is wrong on its own terms either way, and
+	// it is the one place text differed from the voice path that works.
+	st := &c.slots[slotIndex(c.timeslotFor(t.SlotSet))]
+	stream := streamFor(t.StreamID, t.Source)
+	if st.textStream != stream || !st.textSeen {
+		st.textStream = stream
+		st.textSeen = true
+		st.textSequence = 0
+	} else {
+		st.textSequence++
+	}
+
 	// The colour code written into the burst is the converter's, not the one
 	// the text arrived with. **That is the same choice voice conversion
 	// makes**: the burst is going to a hotspot on this network, and the
@@ -71,7 +91,7 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 	}
 
 	out := hbp.Data{
-		Sequence:   uint8(t.Sequence),
+		Sequence:   st.textSequence,
 		SourceID:   t.Source,
 		TargetID:   t.Destination,
 		RepeaterID: repeater,
@@ -82,7 +102,7 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 		// signalling uses, and the arrangement the Homebrew captures show.
 		FrameType: hbp.FrameTypeSync,
 		DataType:  t.DataType,
-		StreamID:  streamFor(t.StreamID, t.Source),
+		StreamID:  stream,
 	}
 	copy(out.Payload[:], burst)
 	return out, true

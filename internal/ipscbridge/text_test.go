@@ -304,3 +304,56 @@ func TestATextGoesOutAsItCameIn(t *testing.T) {
 		t.Fatalf("only %d bursts round-tripped through the bridge", checked)
 	}
 }
+
+// TestATextStreamIsNumberedFromZero matches what a hotspot does with its own
+// transmissions.
+//
+// Every stream a real MMDVM hotspot sends starts its sequence at 0 and counts
+// up — checked across three streams in hbp-voice-live.pcap. The voice path has
+// always done the same, resetting when the stream ID changes.
+//
+// **Text did not.** It used the raw IPSC sequence, a free-running counter
+// shared by every transmission on the link, and a capture of KD9EJA's text
+// crossing the bridge showed one stream starting at 69 and the next at 67.
+// Whether MMDVM refuses on that is unproven; it is wrong on its own terms
+// either way, and it was the one place text differed from the voice path that
+// works.
+func TestATextStreamIsNumberedFromZero(t *testing.T) {
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 4, SlotBitIsTimeslot2: true})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	seqByStream := map[hbp.StreamID][]uint8{}
+	order := []hbp.StreamID{}
+	for _, m := range textMessages(t) {
+		out, ok := c.ConvertText(m, hbp.RepeaterID(999999))
+		if !ok {
+			continue
+		}
+		if _, seen := seqByStream[out.StreamID]; !seen {
+			order = append(order, out.StreamID)
+		}
+		seqByStream[out.StreamID] = append(seqByStream[out.StreamID], out.Sequence)
+	}
+	if len(order) < 2 {
+		t.Fatalf("the fixture yielded %d streams, want at least 2 so that a "+
+			"second one can be checked for starting over", len(order))
+	}
+
+	for _, stream := range order {
+		seqs := seqByStream[stream]
+		if seqs[0] != 0 {
+			t.Errorf("stream %#08x starts at %d; a hotspot's own streams all "+
+				"start at 0", uint32(stream), seqs[0])
+		}
+		for i := 1; i < len(seqs); i++ {
+			if seqs[i] != seqs[i-1]+1 {
+				t.Errorf("stream %#08x jumped from %d to %d; the sequence "+
+					"counts the bursts of one transmission",
+					uint32(stream), seqs[i-1], seqs[i])
+				break
+			}
+		}
+	}
+}
