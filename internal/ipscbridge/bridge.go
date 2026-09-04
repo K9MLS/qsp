@@ -147,7 +147,7 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 
 	if !havePayload {
 		if v.IsLastFrame() && st.sentHeader {
-			stream := hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF))
+			stream := streamFor(v.StreamID, v.SourceID)
 			var out []hbp.Data
 			if term, err := c.dataFrame(st, v, repeater, slot, stream,
 				dmrfec.DataTypeTerminatorWithLC); err == nil {
@@ -172,7 +172,7 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 			st.started = false
 		}
 	}
-	stream := hbp.StreamID(uint32(v.StreamID)<<16 | uint32(v.SourceID&0xFFFF))
+	stream := streamFor(v.StreamID, v.SourceID)
 	out := make([]hbp.Data, 0, 2)
 
 	// **A transmission that was opened must be closed, even if this frame's
@@ -299,6 +299,22 @@ func (c *Converter) Timeslot(m ipsc.Message) hbp.Timeslot {
 		return hbp.Timeslot1
 	}
 	return c.timeslotFor(set)
+}
+
+// streamFor derives the Homebrew stream ID for one IP Site Connect
+// transmission.
+//
+// A Homebrew stream ID is 32 bits and an IPSC one is 16, so the sender's radio
+// ID fills the rest: two repeaters transmitting at the same moment with the
+// same 16-bit stream ID would otherwise be one transmission to the routing
+// core, and their audio would interleave.
+//
+// **It exists because the expression was written inline three times**, once for
+// voice signalling, once for voice frames and once for text. Three copies of a
+// derivation is three places for one of them to drift, and a stream ID that
+// disagrees with itself mid-transmission splits an over in two.
+func streamFor(stream uint16, source uint32) hbp.StreamID {
+	return hbp.StreamID(uint32(stream)<<16 | source&0xFFFF)
 }
 
 // slotIndex maps a timeslot to its place in the state array.

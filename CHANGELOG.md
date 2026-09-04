@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+- **Three derivations that had been written out repeatedly now have one copy
+  each.** No defect was found in any of them — every copy agreed — which is
+  precisely why they were worth collapsing: the slot polarity rule had two
+  copies that agreed right up until one was changed.
+
+  - **`dmrfec.SlotTypeInfo`** packs a colour code and a DMR data type into the
+    octet that carries them. It was written inline twice in the IPSC encoder
+    while `SlotType` computed the same nibbles a third time for the air
+    interface. On the air the field is twenty bits, eight of these plus Golay
+    parity; over IP Site Connect it is the eight alone. **Both now pack them
+    the same way by construction**, which is what ADR-0045's finding — that
+    byte 51 agrees with the frame's own data type in 153 of 162 captured frames
+    — depends on.
+  - **`ipscbridge.streamFor`** derives a 32-bit Homebrew stream ID from a
+    16-bit IPSC one and the sender's radio ID. Three copies: voice signalling,
+    voice frames, and text. A stream ID that disagreed with itself
+    mid-transmission would split an over in two.
+
+  A test checks the packing across all 256 colour code and data type
+  combinations, and against three octets a real XPR8300 sent: `0x41` on a voice
+  header, `0x42` on a terminator, `0x43` on a text burst.
+
+### Notes
+- The console already renders a text correctly: a non-voice call gets a "data"
+  tag and the "no terminator" warning is reserved for voice, so a text ending by
+  timeout does not read as a fault. Checked rather than assumed, and nothing
+  needed changing.
+
+
 ### Fixed
 - **One text message produced ten entries in the call history**, measured, which
   is how voice gets pushed out of a fifty-entry list.

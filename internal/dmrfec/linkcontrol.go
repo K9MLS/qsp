@@ -227,6 +227,26 @@ var golay208Rows = [8]uint16{
 	0b100011101011,
 }
 
+// SlotTypeInfo packs a colour code and a DMR data type into the octet that
+// carries them together: the colour code in the high nibble, the data type in
+// the low.
+//
+// # Why this is separate from SlotType
+//
+// On the air the field is twenty bits — these eight and twelve of Golay parity,
+// which SlotType builds. **IP Site Connect carries only these eight**, at byte
+// 51 of a voice header, a terminator and a text burst, with no parity at all.
+//
+// It exists because that packing was written inline in two places in the IPSC
+// encoder while SlotType computed the same nibbles a third time. A field that is
+// two shifts is a field whose nibbles can be swapped without anything looking
+// wrong, and ADR-0045's finding that byte 51 agrees with the frame's own data
+// type in 153 of 162 captured frames only means something while one expression
+// produces both.
+func SlotTypeInfo(colourCode, dataType uint8) uint8 {
+	return colourCode<<4 | dataType&0x0f
+}
+
 // SlotType builds the twenty-bit Slot Type field for a data burst.
 func SlotType(colourCode, dataType uint8) (uint32, error) {
 	if colourCode > 15 {
@@ -236,7 +256,7 @@ func SlotType(colourCode, dataType uint8) (uint32, error) {
 	if dataType > 15 {
 		return 0, fmt.Errorf("dmrfec: data type %#x does not fit in four bits", dataType)
 	}
-	info := uint16(colourCode)<<4 | uint16(dataType)
+	info := uint16(SlotTypeInfo(colourCode, dataType))
 	var parity uint16
 	for i := 0; i < 8; i++ {
 		if info&(0x80>>i) != 0 {

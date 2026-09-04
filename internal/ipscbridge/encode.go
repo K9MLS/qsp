@@ -287,7 +287,7 @@ func (e *Encoder) signalling(st *encodeState, src hbp.Data, slot int, flags uint
 		copy(body[bodyLC:], block)
 	}
 
-	body[bodySlotType] = e.colourCode<<4 | dataType
+	body[bodySlotType] = dmrfec.SlotTypeInfo(e.colourCode, dataType)
 
 	// The two bytes at bodyTail stay zero. They are not derivable from any
 	// capture held and a master has no measurement to report there; the
@@ -441,7 +441,7 @@ func (e *Encoder) text(st *encodeState, frame hbp.Data, slot int) (ipsc.Message,
 	body[bodyLength] = b31
 	copy(body[bodyConstants:], ipsc.HeaderConstants[:])
 	copy(body[bodyLC:], block)
-	body[bodySlotType] = e.colourCode<<4 | frame.DataType
+	body[bodySlotType] = dmrfec.SlotTypeInfo(e.colourCode, frame.DataType)
 
 	return ipsc.Message{Kind: kind, SenderID: e.masterID, Body: body}, true
 }

@@ -82,7 +82,7 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 		// signalling uses, and the arrangement the Homebrew captures show.
 		FrameType: hbp.FrameTypeSync,
 		DataType:  t.DataType,
-		StreamID:  hbp.StreamID(uint32(t.StreamID)<<16 | uint32(t.Source&0xFFFF)),
+		StreamID:  streamFor(t.StreamID, t.Source),
 	}
 	copy(out.Payload[:], burst)
 	return out, true
