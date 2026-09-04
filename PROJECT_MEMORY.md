@@ -1461,6 +1461,11 @@ Beyond the layers:
 
 ## 8g. Where the next session starts, as of 2026-09-03
 
+> **SUPERSEDED — read [§8i](#8i-where-the-next-session-starts-as-of-2026-09-04)
+> instead.** Kept for the reasoning. **Its open list is wrong**: it says text
+> messages work, and repeater-to-hotspot text does not.
+
+
 Read §0, then §6b and §6c, then this. It supersedes §8f entirely; everything
 §8f settled remains settled except where named below.
 
@@ -1803,6 +1808,9 @@ was deleted by line number.
 
 ## 8h. IPSC repeaters on the dashboard, and what it would take
 
+> **BUILT in 0197.** Kept for the reasoning about labelling and about what an
+> IPSC peer cannot announce, which still governs. The work itself is done.
+
 Asked by the operator on 2026-09-02: can IPSC peers appear in Connected Peers?
 
 **Yes, and it is wiring rather than discovery.** The listener already holds
@@ -1859,7 +1867,141 @@ callsign and no talkgroups invites the reading that it is misconfigured, and
 
 ---
 
+## 8i. Where the next session starts, as of 2026-09-04
+
+Read §0, then §6b and §6c, then this. It supersedes §8g; everything §8g settled
+remains settled except where named.
+
+**Everything on this list was found by running the system.** Not by a test, not
+by a bug hunt, and in two cases not by reading the code at all.
+
+### The defect that mattered: one timeslot never worked
+
+**Byte 30 of an IPSC voice frame carries the timeslot in its high bit.** A voice
+frame on the slot whose bit is set reads `0x8a`; one on the other slot reads
+`0x0a`. `FrameVoice` was recorded as `0x8a`, from captures that were all on one
+timeslot, so `Payload` refused every frame on the other and the converter
+produced nothing for it.
+
+**One whole timeslot of audio never crossed the bridge**, from the day the IPSC
+listener was written until 2026-09-04. It hid because this network carries its
+traffic on TG 2 timeslot 2.
+
+The bit agrees with the slot bit in byte 17 on **all 528 captured voice frames**,
+across four captures and two repeater models, and is never set on a header or a
+terminator — which is why signalling worked and the fault presented as a
+talkgroup problem rather than a timeslot one.
+
+**102 of the refused frames were sitting in `ipsc-slot-tg.pcap`** — a fixture
+captured *for the slot bit* — the whole time. Three bug hunts and a green suite
+walked past them.
+
+### How it was found, which is the transferable part
+
+The operator keyed up on talkgroup 11, timeslot 1, and read the journal:
+
+```
+subsystem:"ipsc"     destination:11 timeslot:1 slot_bit:false   ← logged
+subsystem:"network"                                             ← absent
+```
+
+**The gap between those two lines was the entire diagnosis.** `AsVoice` reads the
+flags and succeeds; `Payload` reads the marker and refuses. So the IPSC listener
+logged a call and the DMR side never saw one.
+
+Nothing else found it. Not the test suite, not three rounds of code reading, not
+four captures. **Log the same fact at two layers and the gap between them is a
+diagnostic** — that is why the raw slot bit is logged beside the slot it was read
+as, and it earned its place.
+
+### And then the second half was a codeplug
+
+With the defect fixed, TG 11 still did not reach the operator. The Last-heard
+panel showed why in four rows:
+
+    KD9EJA  3155373  TG 11  TS1
+    KD9EJA  3155373  TG 11  TS1
+    K9MLS  3132910  TG 11  TS2   ← the operator
+
+**A talkgroup on a different timeslot is a different destination.** His radio was
+programmed for TS2 and everyone else was on TS1. Reprogrammed, it worked
+immediately.
+
+**When two stations cannot hear each other, read Last-heard before anything
+else** and check they are on the same slot. Four rows answered what an evening of
+captures had not, because a talkgroup appearing on two timeslots is invisible in
+a log and unmissable in a table.
+
+### Text messages: built, half-proved
+
+[ADR-0045](docs/adr/ADR-0045-ipsc-text-messages.md). `0x83` is a group text and
+`0x84` a private one, carried as DMR data bursts — CSBK, data header, Rate 1/2,
+Rate 3/4 — inside the same envelope as voice.
+
+- **Hotspot → repeater works on air.**
+- **Repeater → hotspot does not, and QSP is not the reason.** Verified from a
+  capture: routing refused nothing, 46 of 46 bursts were converted and
+  delivered, every DMRD field is correct, the bursts are valid BPTC with the
+  right colour code and slot type, and sequences run 0–22. **The remaining hops
+  are MMDVMHost and the radio**, and the Pi-Star's own log at
+  `/var/log/pi-star/MMDVM-*.log` is the place to look.
+
+**A real possibility nobody has ruled out:** Motorola's text is TMS carried as an
+IPv4 UDP datagram, whose source address is `0x0c` followed by the sender's
+24-bit radio ID. Whether a non-Motorola radio displays that at all is unknown,
+and if it does not, no change to QSP fixes it.
+
+**Rate 3/4 bursts are refused rather than truncated**, deliberately: they carry
+22 octets where a burst holds 12, and half a message delivered looks like it
+worked. None appeared in the captured texts, so this has never yet mattered.
+
+### Open, in order
+
+1. **Confirm text on air both ways**, or establish that Motorola TMS cannot
+   reach an MMDVM radio. The Pi-Star's MMDVM log settles it.
+2. **`/api/peers` is unauthenticated** and carries repeater radio IDs and
+   addresses since 0197. A decision to make, not a defect.
+3. **Private calls from Paul**: delivered by QSP, never logged arriving by
+   MMDVM. Still unexplained, and it blocks a private parrot.
+4. **The echo and the repeated stream ID.** The duplicate radio ID that was the
+   best candidate is fixed, so this may already be gone; watch for it.
+5. **The vocoder**, which is a decision and not work in progress. BLUEPRINT §7
+   settles the shape — QSP ships no codec and orchestrates the operator's
+   hardware. The operator is buying a **DVSI USB-3003-P25**: the standard
+   AMBE-3000 in a ThumbDV or DVstick 30 does **not** do P25 full rate, only the
+   P25 variants do, and that would have been discovered months later.
+6. **Subscription on air**, then **P25**.
+
+### What changed on the console
+
+Four metrics on Traffic — datagrams in, voice frames, collisions, ignored —
+summed across both listeners in the console rather than the payload, so the API
+keeps every counter apart. Motorola repeaters appear in Connected peers with a
+Link column and a looked-up callsign marked as a lookup. **A routing refusal is
+logged at info now, once per destination and reason**, because it was at debug
+and production runs at info: the reason was counted and never explainable, which
+is what cost the evening.
+
+---
+
 ## 8a. How this project finds its defects
+
+> **2026-09-04, four for four.** Every defect found that day came from running
+> the system: a whole timeslot of audio that never crossed the bridge, a
+> negative duration on the dashboard, fifteen false warnings per text, and a
+> talkgroup on the wrong timeslot in a codeplug. Three bug hunts and a green
+> suite found none of them.
+>
+> **Two diagnostics did the work, and neither is a test.**
+>
+> *Log the same fact at two layers and read the gap.* The IPSC listener logs a
+> call started and so does the DMR side. When the first appeared and the second
+> did not, that was the whole diagnosis of the timeslot defect.
+>
+> *Read Last-heard before anything else when two stations cannot hear each
+> other.* A talkgroup appearing on two different timeslots from two stations is
+> invisible in a log and unmissable in a four-row table.
+
 
 Worth stating plainly, because it has been true every week and is the single
 most useful thing to know before proposing work.

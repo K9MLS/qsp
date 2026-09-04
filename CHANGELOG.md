@@ -4,6 +4,31 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+- **§8i**, where the next session starts. §8g is superseded and says so: its
+  open list claims text messages work, and repeater-to-hotspot text does not.
+  §8h is marked as built.
+
+- **§8a records the two diagnostics that found everything on 2026-09-04**, none
+  of which was a test.
+
+  *Log the same fact at two layers and read the gap.* The IPSC listener logs a
+  call started and so does the DMR side; when the first appeared and the second
+  did not, that was the whole diagnosis of the timeslot defect.
+
+  *Read Last-heard first when two stations cannot hear each other.* A talkgroup
+  appearing on two different timeslots from two stations is invisible in a log
+  and unmissable in a four-row table — which is how the second half of the same
+  fault, a codeplug on the wrong slot, was found in seconds after an evening of
+  captures had not found it.
+
+### Notes
+- **TG 11 on timeslot 1 works on air, both directions**, and it needed both
+  halves: 0220 so the frames crossed at all, and a codeplug correction so they
+  arrived where the other station was listening. The programming error was
+  hiding behind a real defect.
+
+
 ### Fixed
 - **A destination refused by routing said why at debug, and production runs at
   info.** So a refusal was counted and never explainable: raising the level
