@@ -1,7 +1,9 @@
 package console
 
 import (
+	"io/fs"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -41,5 +43,52 @@ func TestASectionHeadingIsNotTheColourOfALink(t *testing.T) {
 			t.Errorf("%s and .nav__heading are both %s, so a heading reads as one more link",
 				link, got)
 		}
+	}
+}
+
+// TestAdministrationShipsHidden is the safe default for a sidebar that a
+// signed-out visitor sees.
+//
+// nav.js reveals the administration group once /api/session confirms a
+// session. **If the markup shipped visible, every page load would flash seven
+// administration links at a visitor before the fetch returned**, and a fetch
+// that never returned would leave them there. Nothing behind them leaks, so
+// this is about what a sidebar is for rather than about secrecy — but a
+// default that is wrong until JavaScript corrects it is still a default that
+// is wrong.
+//
+// The nav is copied into seven pages. A rule that holds in one copy and not
+// the other six is the reason this counts them.
+func TestAdministrationShipsHidden(t *testing.T) {
+	pages, err := fs.Glob(assets, "static/*.html")
+	if err != nil {
+		t.Fatalf("reading the console's pages: %v", err)
+	}
+
+	var withNav int
+	for _, page := range pages {
+		raw, err := assets.ReadFile(page)
+		if err != nil {
+			t.Fatalf("%s: %v", page, err)
+		}
+		html := string(raw)
+		if !strings.Contains(html, `id="nav-admin-group"`) {
+			continue
+		}
+		withNav++
+
+		for _, want := range []string{
+			`<ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin" hidden>`,
+			`<p class="nav__heading" id="nav-admin" hidden>Administration</p>`,
+		} {
+			if !strings.Contains(html, want) {
+				t.Errorf("%s: the administration group or its heading does not ship hidden", page)
+				break
+			}
+		}
+	}
+	if withNav < 7 {
+		t.Errorf("only %d pages carry the sidebar; there were seven, so this test "+
+			"is no longer reading them all", withNav)
 	}
 }

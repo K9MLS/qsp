@@ -6,23 +6,32 @@
  * overview page alone. Copies drift: the overview's copy grew a sign-out
  * button and the other four did not, which is not a decision anybody made.
  *
- * **The nav offered four administration pages to a signed-out visitor.**
- * Nothing behind them leaks — every admin page keeps its form hidden until
- * /api/config answers, and /api/config is behind requireSession — so a visitor
- * gets the page furniture and a sign-in notice. That is safe and it is also a
- * dead end presented as a destination: four links that can only ever say no.
- * The group says what it needs now, rather than the page saying it four clicks
- * later.
+ * **The administration group is not shown to a signed-out visitor at all.**
+ * It used to be listed with a note underneath saying to sign in, on the
+ * grounds that hiding a page makes the console lie about what exists. An
+ * operator reading the sidebar disagreed, and he is right: seven links that
+ * can only ever say no are seven pieces of furniture in the way of the four
+ * that work. Nothing behind them leaked either way — every admin page keeps
+ * its form hidden until /api/config answers, and /api/config is behind
+ * requireSession — so this is about what a sidebar is for, not about secrecy.
  *
- * The links stay live. Disabling them would be a lie of a different kind: they
- * work, they are simply useless without a session, and a disabled control that
- * would in fact respond is worse than an honest one that explains itself.
+ * **The markup ships hidden and this file reveals it**, rather than shipping
+ * visible and hiding it once /api/session answers. Revealing on a confirmed
+ * session means the default state is the one a visitor should see, there is no
+ * flash of administration links on every page load, and a fetch that never
+ * returns leaves a signed-out console rather than a signed-in-looking one. The
+ * cost is that a signed-in operator sees the group appear a moment after the
+ * page, which is the smaller of the two wrong states.
+ *
+ * One line stays where the group was, because a console with no visible way to
+ * administer anything reads as a console that cannot.
  */
 (function () {
   "use strict";
 
   var authState = document.getElementById("auth-state");
   var adminGroup = document.getElementById("nav-admin-group");
+  var adminHeading = document.getElementById("nav-admin");
 
   /* Exposed so a page can redraw the chrome after it changes the session —
    * signing out is the only case, and it happens inside this file, but a page
@@ -75,19 +84,28 @@
     }
     var note = document.getElementById("nav-admin-note");
     if (signedIn) {
+      adminGroup.hidden = false;
+      if (adminHeading) {
+        adminHeading.hidden = false;
+      }
       if (note) {
         note.parentNode.removeChild(note);
       }
       return;
     }
+
+    adminGroup.hidden = true;
+    if (adminHeading) {
+      adminHeading.hidden = true;
+    }
     if (note) {
       return;
     }
-    note = document.createElement("li");
+    note = document.createElement("p");
     note.className = "nav__note";
     note.id = "nav-admin-note";
-    note.textContent = "Sign in to change these.";
-    adminGroup.appendChild(note);
+    note.textContent = "Sign in to administer this network.";
+    adminGroup.parentNode.insertBefore(note, adminGroup);
   }
 
   function escapeText(value) {

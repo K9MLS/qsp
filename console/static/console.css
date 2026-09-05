@@ -162,12 +162,14 @@ body {
   border-top: none;
 }
 
-/* Added by nav.js when nobody is signed in. The links above it still work and
-   still lead somewhere — to a page that will ask for a sign-in — so this says
-   what they will say, one click earlier. */
+/* Added by nav.js when nobody is signed in, in place of the administration
+   group rather than underneath it. A console with no visible way to administer
+   anything reads as a console that cannot, so one line stands where seven
+   links did. */
 .nav__note {
-  margin: var(--space-2) 0 0;
-  padding: 0 var(--space-3);
+  margin: var(--space-5) 0 0;
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-4) var(--space-3) 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-xs);
   line-height: var(--leading-normal);
