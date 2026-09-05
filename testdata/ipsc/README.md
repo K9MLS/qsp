@@ -1,8 +1,16 @@
 # IPSC fixtures
 
-**Seven captures and eight message types. On 2026-09-01 two Motorola repeaters
-registered to each other over the internet, and then one registered with QSP's
-own probe and sent voice through it.**
+**Twelve captures.** They were taken one variable at a time between 2026-09-01
+and 2026-09-05, and each one named something: the sender ID, the slot bit, the
+voice frame shape, the text bursts, and the private call. Every message type
+`internal/protocol/ipsc` names came from one of them, and that package is the
+authority on which those are — counting them here is how this heading went
+stale.
+
+**This count and this table have been wrong before.** Two captures sat in the
+directory unlisted, under a heading saying seven, because a summary line is what
+every reader reads and nobody re-reads. If the table and `ls` disagree, believe
+`ls`.
 
 | File | What it is |
 |---|---|
@@ -15,12 +23,16 @@ own probe and sent voice through it.**
 | [`ipsc-slot-tg.pcap`](ipsc-slot-tg.md) | **Fifteen transmissions across two channels on different timeslots.** This is what found the slot bit |
 | [`ipsc-probe-voice.pcap`](ipsc-probe-voice.md) | **A repeater registered with QSP's probe and sent voice.** Three transmissions, 66 frames, and both registration states in one file |
 | [`ipsc-two-peers.pcap`](ipsc-two-peers.md) | **Three repeaters registered, two transmitting at once.** Voice is relayed through the master, not meshed; and a transmission is three headers, a 52/57/57/57/66/57 superframe cycle, and a terminator |
+| [`ipsc-master-voice.pcap`](ipsc-master-voice.md) | **A real master sending voice**, against which the inferred transmit path was checked |
+| [`ipsc-text.pcap`](ipsc-text.md) | **One group text and several private ones.** 163 data bursts, and what named `0x83` and `0x84` |
+| [`ipsc-private-voice.pcap`](ipsc-private-voice.md) | **Two private calls in opposite directions, with group calls either side.** This is what named `0x81` |
 
 Together they establish seven message types, an envelope of one type byte and a
 big-endian sender ID, a ten-second retry when unregistered and a fifteen-second
 keepalive when registered, an asymmetric source port, and that ICMP unreachable
-is ignored. They establish nothing about voice, private calls, text or
-disconnect, and thirty-nine of `0xf1`'s forty-four bytes remain unexplained.
+is ignored. Voice, text and the private call each came later and from
+their own capture; they establish nothing about a clean disconnect, and
+thirty-nine of `0xf1`'s forty-four bytes remain unexplained.
 
 `internal/protocol/ipsc` implements exactly that and refuses every other leading
 byte with `ErrNotCaptured`.
