@@ -207,8 +207,19 @@ type Call struct {
 	// transmission by up to the sweep interval, and the duration is the one
 	// thing this record exists to report.
 	LastFrame time.Time
-	// Frames counts voice frames.
+	// Frames counts voice frames received from the repeater.
 	Frames uint64
+	// Converted counts the DMR bursts the converter produced from them, and
+	// Delivered the subset handed to the DMR side.
+	//
+	// **Three counts of one transmission, at three layers.** The console
+	// reported an IPSC transmission of 45 frames while the DMR side recorded
+	// 22 for the same stream in the same second, and neither number said
+	// where the other 23 went. Conversion is one for one — measured against
+	// ipsc-private-voice.pcap, five transmissions, two repeater models — so
+	// the loss is somewhere these counters can now name instead of somewhere
+	// a reader has to guess.
+	Converted, Delivered uint64
 	// Lost reports that the transmission ended without a terminator.
 	Lost bool
 }
@@ -243,10 +254,12 @@ func (l *Listener) endCall(p *Peer, at time.Time, reason endReason) {
 	switch reason {
 	case endTerminated:
 		l.log.Info("call ended", "radio_id", p.RadioID, "source", c.Source,
-			"frames", c.Frames, "duration", duration)
+			"frames", c.Frames, "converted", c.Converted,
+			"delivered", c.Delivered, "duration", duration)
 	case endSilent:
 		l.log.Warn("call ended without a terminator", "radio_id", p.RadioID,
-			"source", c.Source, "frames", c.Frames, "duration", duration)
+			"source", c.Source, "frames", c.Frames, "converted", c.Converted,
+			"delivered", c.Delivered, "duration", duration)
 	case endTooLong:
 		l.log.Warn("call exceeded the longest transmission QSP will report",
 			"radio_id", p.RadioID, "source", c.Source, "frames", c.Frames,
@@ -666,7 +679,8 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	// state, but delivery happens outside it: routing reaches into another
 	// listener and writes to another socket, and holding this listener's lock
 	// across that would make the two mutually blocking.
-	frames := l.record(msg, from, now)
+	frames, ended := l.record(msg, from, now)
+	var delivered int
 	for _, f := range frames {
 		// Parrot first, and it consumes what it handles, exactly as on the
 		// Homebrew side. A recording answers the member who made it; routing
@@ -676,7 +690,11 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 		}
 		if l.cfg.Deliver != nil {
 			l.cfg.Deliver(hbp.RepeaterID(msg.SenderID), f)
+			delivered++
 		}
+	}
+	if msg.Kind.IsVoice() {
+		l.noteDelivery(msg.SenderID, delivered, ended, now)
 	}
 
 	// Reply to the address the datagram came from, never to the port it was
@@ -690,11 +708,15 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	}
 }
 
-func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []hbp.Data {
+// record tracks one datagram and returns the DMR frames it produced, together
+// with whether it ended a transmission. The caller delivers the frames and then
+// calls noteDelivery, which is where a finished call is closed.
+func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) ([]hbp.Data, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	var frames []hbp.Data
+	var ended bool
 
 	p, known := l.peers[msg.SenderID]
 	if !known {
@@ -718,7 +740,7 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []
 		p.Keepalives++
 	case ipsc.KindVoice, ipsc.KindVoicePrivate:
 		p.VoiceFrames++
-		frames = l.recordVoice(p, msg, now)
+		frames, ended = l.recordVoice(p, msg, now)
 	case ipsc.KindTextGroup, ipsc.KindTextPrivate:
 		// A text is DMR data already and needs re-wrapping rather than
 		// rebuilding, so it needs none of the superframe state voice does.
@@ -729,7 +751,7 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []
 		}
 	}
 	l.publishLocked()
-	return frames
+	return frames, ended
 }
 
 // converterFor returns this peer's converter, creating it on first voice.
@@ -748,10 +770,12 @@ func (l *Listener) converterFor(id uint32) *ipscbridge.Converter {
 	return c
 }
 
-func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.Data {
+// recordVoice tracks one voice frame and converts it. It reports whether the
+// frame ended the transmission, which the caller acts on after delivery.
+func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) ([]hbp.Data, bool) {
 	v, ok := msg.AsVoice()
 	if !ok {
-		return nil
+		return nil, false
 	}
 
 	if cc, ok := msg.ColourCode(); ok && (!p.ColourCodeKnown || p.ColourCode != cc) {
@@ -798,14 +822,36 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 	}
 	p.LastCall.Frames++
 	p.LastCall.LastFrame = now
-	if v.IsLastFrame() {
-		l.endCall(p, now, endTerminated)
-	}
 
 	if l.cfg.Deliver == nil || conv == nil {
-		return nil
+		return nil, v.IsLastFrame()
 	}
-	return conv.Convert(msg, hbp.RepeaterID(p.RadioID))
+	out := conv.Convert(msg, hbp.RepeaterID(p.RadioID))
+	p.LastCall.Converted += uint64(len(out))
+	// **The end is reported rather than logged here.** Delivery happens after
+	// this returns and outside the lock, so a line written now would say a
+	// transmission delivered fewer frames than it did, every time, by exactly
+	// the last datagram's worth. A warning that cries wolf on every call is
+	// worse than no warning at all.
+	return out, v.IsLastFrame()
+}
+
+// noteDelivery records what reached the DMR side and closes a finished call.
+//
+// It runs after delivery, which is why the end of a transmission is logged from
+// here: this is the first moment all three counts are known.
+func (l *Listener) noteDelivery(sender uint32, delivered int, ended bool, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	p := l.peers[sender]
+	if p == nil || p.LastCall == nil {
+		return
+	}
+	p.LastCall.Delivered += uint64(delivered)
+	if ended {
+		l.endCall(p, now, endTerminated)
+	}
+	l.publishLocked()
 }
 
 // expire is the sweep: it drops peers that stop keepaliving, closes

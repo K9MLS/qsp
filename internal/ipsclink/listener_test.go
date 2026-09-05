@@ -3,12 +3,17 @@ package ipsclink_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"log/slog"
 	"net"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/k9mls/qsp/internal/ipscbridge"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
 
 	"github.com/k9mls/qsp/internal/ipsclink"
 	"github.com/k9mls/qsp/internal/logging"
@@ -477,5 +482,118 @@ func TestASupersededTransmissionIsEndedRatherThanOverwritten(t *testing.T) {
 	waitForJournal(t, journal, "call ended without a terminator")
 	if c := l.Peers()[0].LastCall; c.StreamID != 0x4471 {
 		t.Errorf("the current transmission is stream %#04x, want 0x4471", c.StreamID)
+	}
+}
+
+// voiceBodies returns the bodies of a real transmission's frames, ready to
+// re-send at a listener as if the repeater had.
+func voiceBodies(tb testing.TB, path string, stream uint16) [][]byte {
+	tb.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		tb.Fatalf("%v", err)
+	}
+	var out [][]byte
+	for off := 24; off+16 <= len(raw); {
+		incl := int(binary.LittleEndian.Uint32(raw[off+8 : off+12]))
+		off += 16
+		if off+incl > len(raw) {
+			break
+		}
+		rec := raw[off : off+incl]
+		off += incl
+		if len(rec) < 40 || binary.BigEndian.Uint16(rec[0:2]) != 0x0800 {
+			continue
+		}
+		ip := rec[20:]
+		if len(ip) < 20 || ip[9] != 17 {
+			continue
+		}
+		udp := ip[(ip[0]&0x0f)*4:]
+		if len(udp) < 8 {
+			continue
+		}
+		pl := udp[8:int(binary.BigEndian.Uint16(udp[4:6]))]
+		msg, err := ipsc.Parse(pl)
+		if err != nil || !msg.Kind.IsVoice() {
+			continue
+		}
+		v, ok := msg.AsVoice()
+		if !ok || v.StreamID != stream {
+			continue
+		}
+		out = append(out, append([]byte(nil), msg.Body...))
+	}
+	if len(out) == 0 {
+		tb.Fatalf("the fixture holds no transmission with stream %#04x", stream)
+	}
+	return out
+}
+
+// TestATransmissionIsCountedAtEveryLayerItCrosses is the diagnostic a real gap
+// went unexplained for want of.
+//
+// The console reported an IPSC transmission of 45 frames while the DMR side
+// recorded 22 for the same stream in the same second, and **neither number said
+// where the other 23 went**. Conversion is one for one — measured against
+// ipsc-private-voice.pcap across five transmissions and two repeater models —
+// so a repeat of that gap is now localised by reading one line instead of by
+// theorising.
+func TestATransmissionIsCountedAtEveryLayerItCrosses(t *testing.T) {
+	const privateVoice = "../../testdata/ipsc/ipsc-private-voice.pcap"
+
+	var mu sync.Mutex
+	var delivered int
+	l, conn := start(t, ipsclink.Config{
+		Bridge: ipscbridge.Config{ColourCode: 11, SlotBitIsTimeslot2: true},
+		Deliver: func(_ hbp.RepeaterID, _ hbp.Data) {
+			mu.Lock()
+			delivered++
+			mu.Unlock()
+		},
+	})
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+
+	bodies := voiceBodies(t, privateVoice, 0x310d)
+	for _, body := range bodies {
+		send(t, conn, ipsc.KindVoice, peerID, body)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		peers := l.Peers()
+		if len(peers) == 1 && peers[0].LastCall != nil &&
+			peers[0].LastCall.Frames == uint64(len(bodies)) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the listener did not count all %d frames", len(bodies))
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	c := l.Peers()[0].LastCall
+	if c.Converted == 0 {
+		t.Fatal("a transmission that crossed the bridge converted nothing")
+	}
+	// **Delivery is what the counter is for.** It is incremented outside the
+	// peer lock, after the frames have gone, which is the whole reason the end
+	// of a transmission is logged from noteDelivery rather than from the frame
+	// that carried the terminator.
+	if c.Delivered != c.Converted {
+		t.Errorf("converted %d frames and delivered %d", c.Converted, c.Delivered)
+	}
+	mu.Lock()
+	got := delivered
+	mu.Unlock()
+	if uint64(got) != c.Delivered {
+		t.Errorf("the DMR side received %d frames and the counter says %d", got, c.Delivered)
+	}
+	// Conversion is one for one on audio: this fixture's transmission is 88
+	// frames, of which 4 are headers and terminators, and it comes out as 84
+	// bursts with a header and a terminator of QSP's own.
+	if c.Converted != 86 {
+		t.Errorf("%d frames converted from %d received, want 86", c.Converted, len(bodies))
 	}
 }
