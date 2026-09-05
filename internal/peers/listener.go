@@ -954,8 +954,21 @@ func (l *Listener) expireRoutes() {
 		return
 	}
 	for _, freed := range l.cfg.Routing.Expire(time.Now()) {
+		// **Only audio can be abandoned.** A voice transmission that stops
+		// without a terminator has gone wrong and an operator wants to know.
+		// A run of data bursts always ends this way — data has no terminator
+		// and is not meant to — and warning about it wrote four lines per text
+		// message, which is how a warning stops being read at all. The call
+		// tracker learned this when a single text produced fifteen of them;
+		// this reaper is the same lesson one layer over.
+		if !freed.Voice {
+			l.log.Debug("released a destination held by a finished data burst",
+				slog.String("endpoint", freed.Endpoint.String()),
+			)
+			continue
+		}
 		l.log.Warn("released a destination held by an abandoned transmission",
-			slog.String("endpoint", freed.String()),
+			slog.String("endpoint", freed.Endpoint.String()),
 		)
 	}
 }

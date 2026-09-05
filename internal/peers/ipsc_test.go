@@ -472,3 +472,85 @@ func TestARunOfDataBurstsIsOneLineInTheJournal(t *testing.T) {
 		t.Errorf("a voice transmission after a data run wrote %d call-started lines, want 1", got)
 	}
 }
+
+// TestAFinishedDataRunDoesNotWarn is the other half of the same lesson.
+//
+// A text message reserves its destinations like anything else and then ends
+// without a terminator, because data has no terminator and is not meant to. The
+// routing reaper warned about each one: two text messages wrote eight
+// "released a destination held by an abandoned transmission" lines on a live
+// network on 2026-09-05.
+//
+// **That warning is also how a peer that lost power mid-over is noticed**, and
+// one an operator has learned to scroll past does not do that job.
+func TestAFinishedDataRunDoesNotWarn(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name: "motorola-to-hotspots", Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: motorola, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			{Peer: testID, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: alwaysReady{},
+		Timeout: 50 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	l, err := peers.NewListener(log, peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+		Calls: calls.NewTracker(calls.Options{}),
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	l.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeSync, StreamID: 0x7001,
+	})
+	// **The reservation is what makes this test mean anything.** Without a
+	// destination held there is nothing to release, nothing to warn about, and
+	// a test that passes whether or not the fix is present.
+	if core.BusyCount() == 0 {
+		t.Fatal("the data burst reserved nothing; this test would prove nothing")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for core.BusyCount() > 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if core.BusyCount() > 0 {
+		t.Fatal("the reaper never ran; this test proves nothing")
+	}
+	if strings.Contains(buf.String(), "abandoned transmission") {
+		t.Errorf("a finished data burst was reported as an abandoned transmission:\n%s", buf.String())
+	}
+}
+
+// alwaysReady stands in for a peer table in which every destination can take
+// traffic, so a test about the reaper is not really a test about registration.
+type alwaysReady struct{}
+
+func (alwaysReady) Ready(hbp.RepeaterID) bool    { return true }
+func (alwaysReady) ReadyPeers() []hbp.RepeaterID { return []hbp.RepeaterID{motorola, testID} }

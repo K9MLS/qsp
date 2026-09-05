@@ -2,6 +2,7 @@ package routing
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -126,6 +127,16 @@ type reservation struct {
 	source   sourceKey
 	lastSeen time.Time
 	bridge   string
+	// voice records that a voice transmission took this reservation.
+	//
+	// **Only voice can be abandoned.** A voice transmission that stops
+	// without a terminator has gone wrong — a lossy link, a peer that lost
+	// power — and freeing its destinations is worth telling an operator
+	// about. A run of data bursts always ends this way, because data has no
+	// terminator and is not meant to, so the same warning about one is a
+	// false alarm. Four of them per text message is how a warning stops being
+	// read at all.
+	voice bool
 	// endpoint is the destination in full, including the talkgroup that the
 	// contention key deliberately leaves out. Kept so that a drop can name what
 	// is already on the slot, and so Busy stays useful to an operator.
@@ -459,10 +470,15 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	originKey := contend(origin)
 	if opening {
 		if held, occupied := c.busy[originKey]; !occupied || now.Sub(held.lastSeen) > c.timeout {
-			c.busy[originKey] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: origin}
+			c.busy[originKey] = &reservation{source: src, lastSeen: now, bridge: bridge,
+				endpoint: origin, voice: contendsForSlot(frame)}
 		}
 	} else if held, ok := c.busy[originKey]; ok && held.source == src {
 		held.lastSeen = now
+		// A transmission that began as data and then carried audio is a voice
+		// transmission: whatever opened the reservation, what can be
+		// abandoned is the audio.
+		held.voice = held.voice || contendsForSlot(frame)
 	}
 
 	var res Result
@@ -579,10 +595,12 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 				// The previous transmission went silent without a terminator.
 				fallthrough
 			case !occupied:
-				c.busy[destKey] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: dest}
+				c.busy[destKey] = &reservation{source: src, lastSeen: now, bridge: bridge,
+					endpoint: dest, voice: contendsForSlot(frame)}
 				res.StartedStreams = append(res.StartedStreams, dest)
 			default:
 				held.lastSeen = now
+				held.voice = held.voice || contendsForSlot(frame)
 			}
 
 			out := frame
@@ -662,9 +680,11 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 		}
 		fallthrough
 	case !occupied:
-		c.busy[key] = &reservation{source: src, lastSeen: now, bridge: bridge, endpoint: target}
+		c.busy[key] = &reservation{source: src, lastSeen: now, bridge: bridge,
+			endpoint: target, voice: contendsForSlot(frame)}
 	default:
 		held.lastSeen = now
+		held.voice = held.voice || contendsForSlot(frame)
 	}
 
 	out := frame
@@ -721,22 +741,35 @@ func (c *Core) release(src sourceKey) {
 // Without this, a peer that loses power mid-transmission would hold its
 // destinations until the process restarted — the failure mode that welds a
 // talkgroup open.
-func (c *Core) Expire(now time.Time) []Endpoint {
+func (c *Core) Expire(now time.Time) []Freed {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var freed []Endpoint
+	var freed []Freed
 	for key, held := range c.busy {
 		if now.Sub(held.lastSeen) > c.timeout {
 			// The stored endpoint, not the key: the key omits the talkgroup
 			// for a peer, and an operator told a nameless slot was freed
 			// learns nothing.
-			freed = append(freed, held.endpoint)
+			freed = append(freed, Freed{Endpoint: held.endpoint, Voice: held.voice})
 			delete(c.busy, key)
 		}
 	}
-	sortEndpoints(freed)
+	sort.Slice(freed, func(i, j int) bool {
+		return endpointBefore(freed[i].Endpoint, freed[j].Endpoint)
+	})
 	return freed
+}
+
+// Freed is a destination the expiry released, and what was holding it.
+//
+// **The call type travels with it because the caller has to say something
+// different about each.** Audio that stops without a terminator is worth an
+// operator's attention; a run of data bursts ending that way is how data always
+// ends.
+type Freed struct {
+	Endpoint Endpoint
+	Voice    bool
 }
 
 // BusyCount returns the number of destinations currently carrying traffic.

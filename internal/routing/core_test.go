@@ -462,3 +462,60 @@ func TestADataBurstDoesNotStealASlotFromVoice(t *testing.T) {
 		}
 	}
 }
+
+// TestAFreedDestinationSaysWhatWasHoldingIt is what makes the warning about an
+// abandoned transmission worth reading.
+//
+// A voice transmission that stops without a terminator has gone wrong — a lossy
+// link, or a peer that lost power — and freeing its destinations is worth an
+// operator's attention. **A run of data bursts always ends this way**, because
+// data has no terminator and is not meant to, so the same warning about one is
+// a false alarm. Two text messages wrote eight of them on a live network, which
+// is how a warning stops being read at all.
+func TestAFreedDestinationSaysWhatWasHoldingIt(t *testing.T) {
+	c, err := routing.NewCore(routing.CoreOptions{
+		Table: simpleBridge(t), Peers: peersReady(peerA, peerB), Timeout: time.Second,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	// A data burst: one frame, its own stream ID, no terminator ever.
+	c.Route(peerA, voiceFrame(0x6001, 3148, hbp.Timeslot1, hbp.FrameTypeSync), t0)
+	for _, f := range c.Expire(t0.Add(1100 * time.Millisecond)) {
+		if f.Voice {
+			t.Errorf("%s was freed from a data burst and is reported as voice", f.Endpoint)
+		}
+	}
+
+	// Audio on the same destinations.
+	at := t0.Add(2 * time.Second)
+	c.Route(peerA, voiceFrame(0x6002, 3148, hbp.Timeslot1, hbp.FrameTypeVoice), at)
+	freed := c.Expire(at.Add(1100 * time.Millisecond))
+	if len(freed) == 0 {
+		t.Fatal("audio that stopped without a terminator freed nothing")
+	}
+	for _, f := range freed {
+		if !f.Voice {
+			t.Errorf("%s was freed from a voice transmission and is not reported as voice", f.Endpoint)
+		}
+	}
+
+	// **A transmission that opens with a header and then carries audio is
+	// voice.** A voice header is a data frame type and takes the reservation
+	// one frame before the audio arrives, so the call type has to be able to
+	// be corrected upwards or every real transmission would be reported as
+	// data.
+	at = at.Add(4 * time.Second)
+	c.Route(peerA, voiceFrame(0x6003, 3148, hbp.Timeslot1, hbp.FrameTypeSync), at)
+	c.Route(peerA, voiceFrame(0x6003, 3148, hbp.Timeslot1, hbp.FrameTypeVoice), at.Add(60*time.Millisecond))
+	freed = c.Expire(at.Add(1200 * time.Millisecond))
+	if len(freed) == 0 {
+		t.Fatal("a transmission that opened with a header freed nothing")
+	}
+	for _, f := range freed {
+		if !f.Voice {
+			t.Errorf("%s opened with a header and carried audio, and is reported as data", f.Endpoint)
+		}
+	}
+}

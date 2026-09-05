@@ -333,13 +333,18 @@ func (t *Table) EnabledCount() int {
 }
 
 func sortEndpoints(e []Endpoint) {
-	sort.Slice(e, func(i, j int) bool {
-		if e[i].Peer != e[j].Peer {
-			return e[i].Peer < e[j].Peer
-		}
-		if e[i].Talkgroup != e[j].Talkgroup {
-			return e[i].Talkgroup < e[j].Talkgroup
-		}
-		return e[i].Timeslot < e[j].Timeslot
-	})
+	sort.Slice(e, func(i, j int) bool { return endpointBefore(e[i], e[j]) })
+}
+
+// endpointBefore is the ordering sortEndpoints applies, as a comparison, so a
+// list of something carrying an endpoint can be put in the same order rather
+// than in one that looks like it.
+func endpointBefore(a, b Endpoint) bool {
+	if a.Peer != b.Peer {
+		return a.Peer < b.Peer
+	}
+	if a.Talkgroup != b.Talkgroup {
+		return a.Talkgroup < b.Talkgroup
+	}
+	return a.Timeslot < b.Timeslot
 }
