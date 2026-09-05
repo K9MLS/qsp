@@ -10,6 +10,37 @@ import "encoding/binary"
 // testdata/ipsc/ipsc-probe-voice.pcap.
 const KindVoice Kind = 0x80
 
+// KindVoicePrivate is a voice frame of a private call — one radio to one radio
+// rather than to a talkgroup.
+//
+// **It is KindVoice with a radio ID where the talkgroup goes.** Nothing else
+// about the frame changes: testdata/ipsc/ipsc-private-voice.pcap holds two
+// private calls in opposite directions with group calls either side, and
+// diffing a private header against a group header from the same repeater
+// fourteen seconds apart, the envelope differs at the leading byte, the call
+// counter, the three destination bytes, the stream ID, and six bytes that vary
+// frame to frame within one transmission anyway. The same diff on a second
+// repeater model differs at exactly the same offsets.
+//
+// The call type is encoded twice and the two agree. Byte 38 of a header or
+// terminator is the DMR Full Link Control opcode: 0x00 Grp_V_Ch_Usr against
+// 0x03 UU_V_Ch_Usr, matching the leading byte on all 32 header and terminator
+// frames in that capture.
+//
+// **QSP refused this byte from the day the listener was written until
+// 2026-09-05**, so no private call from a Motorola repeater ever crossed the
+// bridge. It hid the same way the timeslot did: this network's traffic is group
+// calls on TG 2.
+const KindVoicePrivate Kind = 0x81
+
+// IsVoice reports whether a kind carries voice, of either call type.
+//
+// **Compare with this rather than with KindVoice.** Every reader of a voice
+// frame — the header, the payload, the colour code, the slot bit — has to
+// accept both, and a comparison against the group constant alone is how one
+// call type gets silently refused while the other works.
+func (k Kind) IsVoice() bool { return k == KindVoice || k == KindVoicePrivate }
+
 // Voice is the header of a KindVoice message.
 //
 // # What is demonstrated and what is not
@@ -20,12 +51,11 @@ const KindVoice Kind = 0x80
 // counted 1, 2, 3, 4 across four key-ups — including across a restart of the
 // probe, so the repeater is counting rather than the session.
 //
-// **Destination is the exception and is not demonstrated.** It read 455 in all
-// four transmissions because all four went to the same place, so its position
-// is a reading rather than an observation: nothing has moved it. It is exposed
-// because a routing server cannot avoid needing it, and named honestly so that
-// nobody mistakes it for a settled field. A capture of two different talkgroups
-// settles it in two minutes.
+// **Destination was the exception and is no longer.** It was a reading rather
+// than an observation for as long as every captured transmission went to the
+// same place. ipsc-private-voice.pcap moved it three ways in two minutes — TG 2,
+// TG 101, and two different radio IDs — and the Link Control in the same frames
+// agrees with it every time.
 type Voice struct {
 	// CallCounter is byte 5: a per-transmission counter kept by the repeater.
 	// It is not a timeslot, whatever its position suggests.
@@ -39,8 +69,18 @@ type Voice struct {
 	// repeater's own ID.
 	SourceID uint32
 
-	// Destination is bytes 9 to 11, read as a 24-bit ID. **Unverified.**
+	// Destination is bytes 9 to 11, read as a 24-bit ID. A talkgroup when
+	// Private is false and a radio when it is true.
 	Destination uint32
+
+	// Private reports whether this is a call to one radio rather than to a
+	// talkgroup, from the leading byte.
+	//
+	// **It has to travel with the destination.** A private destination
+	// delivered as a group call puts one member's conversation on a talkgroup
+	// for everybody, which is the same mistake the text path is written to
+	// avoid.
+	Private bool
 
 	// StreamID is bytes 15 and 16: constant for every frame of one
 	// transmission and different for each, so it identifies a call.
@@ -78,7 +118,7 @@ func (v Voice) IsLastFrame() bool { return v.Flags == 0x805e }
 // Motorola without transcoding, and it is not answered by a capture of one
 // repeater talking to a program that never replies to voice.
 func (m Message) AsVoice() (Voice, bool) {
-	if m.Kind != KindVoice || len(m.Body) < VoiceHeaderLen-HeaderLen {
+	if !m.Kind.IsVoice() || len(m.Body) < VoiceHeaderLen-HeaderLen {
 		return Voice{}, false
 	}
 	b := m.Body
@@ -86,6 +126,7 @@ func (m Message) AsVoice() (Voice, bool) {
 		CallCounter: b[0],
 		SourceID:    uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3]),
 		Destination: uint32(b[4])<<16 | uint32(b[5])<<8 | uint32(b[6]),
+		Private:     m.Kind == KindVoicePrivate,
 		StreamID:    binary.BigEndian.Uint16(b[10:12]),
 		Flags:       binary.BigEndian.Uint16(b[13:15]),
 		Sequence:    binary.BigEndian.Uint16(b[15:17]),
@@ -164,7 +205,7 @@ const VocoderLen = 19
 // The three trailer lengths cycle with the DMR superframe. The 14-byte one
 // carries Link Control; see LinkControl.
 func (m Message) Payload() (payloadClass byte, vocoder, trailer []byte, ok bool) {
-	if m.Kind != KindVoice || len(m.Body) < 21+2+VocoderLen {
+	if !m.Kind.IsVoice() || len(m.Body) < 21+2+VocoderLen {
 		return 0, nil, nil, false
 	}
 	b := m.Body
@@ -277,7 +318,7 @@ var HeaderConstants = [6]byte{0x00, 0x0a, 0x80, 0x0a, 0x00, 0x60}
 // repeater signs the frame with a colour code, and the only value that can be
 // right for every repeater is the one that repeater itself uses.
 func (m Message) ColourCode() (uint8, bool) {
-	if m.Kind != KindVoice {
+	if !m.Kind.IsVoice() {
 		return 0, false
 	}
 	b := m.Body
@@ -378,7 +419,7 @@ const (
 // "1" or "2" would be a claim, and this package does not make claims it cannot
 // demonstrate.
 func (m Message) SlotBit() (set bool, ok bool) {
-	if m.Kind != KindVoice || len(m.Body) < 13 {
+	if !m.Kind.IsVoice() || len(m.Body) < 13 {
 		return false, false
 	}
 	return m.Body[12]&FlagSlot != 0, true

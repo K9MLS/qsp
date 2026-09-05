@@ -55,3 +55,4 @@ conclusion.
 | [0043](ADR-0043-qsp-is-the-master.md) | QSP is the master, and a club runs no second one | Accepted |
 | [0044](ADR-0044-access-control-covers-ipsc.md) | Access control covers IP Site Connect, with no new configuration | Accepted |
 | [0045](ADR-0045-ipsc-text-messages.md) | Text over IP Site Connect is DMR data in the voice envelope | Accepted — amended |
+| [0046](ADR-0046-ipsc-private-calls.md) | A private call over IP Site Connect is `0x81` | Accepted |

@@ -1089,9 +1089,12 @@ func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallVie
 			continue
 		}
 		v := server.CallView{
-			Source:   c.Source,
-			Target:   c.Destination,
-			Group:    true,
+			Source: c.Source,
+			Target: c.Destination,
+			// **Not always true, since 0x81.** Every IPSC call was reported
+			// as a group call for as long as the listener refused the
+			// private ones outright.
+			Group:    !c.Private,
 			Timeslot: int(c.Timeslot),
 			Frames:   int(c.Frames),
 			Voice:    c.Frames > 0,

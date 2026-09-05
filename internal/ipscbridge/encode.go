@@ -281,8 +281,9 @@ func (e *Encoder) signalling(st *encodeState, src hbp.Data, slot int, flags uint
 	// The Link Control a repeater needs in order to know who is talking to
 	// whom before any audio arrives. Building it can only fail on a malformed
 	// data type, and both data types used here are the ones dmrfec supports.
+	private := src.CallType == hbp.CallPrivate
 	block, err := dmrfec.LinkControlBlock(
-		dmrfec.LinkControlFor(src.TargetID, src.SourceID), dataType)
+		dmrfec.LinkControlFor(src.TargetID, src.SourceID, private), dataType)
 	if err == nil {
 		copy(body[bodyLC:], block)
 	}
@@ -294,7 +295,7 @@ func (e *Encoder) signalling(st *encodeState, src hbp.Data, slot int, flags uint
 	// length above reserves them so the datagram is the 54 bytes a repeater
 	// sends.
 
-	return ipsc.Message{Kind: ipsc.KindVoice, SenderID: e.masterID, Body: body}
+	return ipsc.Message{Kind: voiceKindFor(src), SenderID: e.masterID, Body: body}
 }
 
 // A header body runs from the preamble to the end of the unresolved tail, and
@@ -354,13 +355,33 @@ func (e *Encoder) voice(st *encodeState, src hbp.Data, slot int, core []byte) ip
 			// The assembled Link Control, so a radio joining mid-transmission
 			// learns who is talking without waiting to reassemble four
 			// fragments. Motorola sends it once per superframe.
-			copy(tr[4:], dmrfec.LinkControlFor(src.TargetID, src.SourceID))
+			copy(tr[4:], dmrfec.LinkControlFor(src.TargetID, src.SourceID,
+				src.CallType == hbp.CallPrivate))
 		}
 		// The last byte is the EMB's payload: colour code and LCSS.
 		tr[len(tr)-1] = e.colourCode<<4 | lcss<<1
 	}
 
-	return ipsc.Message{Kind: ipsc.KindVoice, SenderID: e.masterID, Body: body}
+	return ipsc.Message{Kind: voiceKindFor(src), SenderID: e.masterID, Body: body}
+}
+
+// voiceKindFor picks the leading byte for a transmission QSP is sending.
+//
+// **This half is inferred, and the fixture says so.** ipsc-private-voice.pcap
+// holds private calls from a repeater to a master and none the other way, so
+// what a master sends for one is reasoned from what it sends for a group call
+// and from the fact that the two differ in the leading byte, the destination
+// and the FLCO. ADR-0041 built the whole outbound voice path that way and it
+// matched a real master on 22 of 24 bytes when one was finally captured, which
+// is a precedent rather than a proof.
+//
+// The alternative is worse than an inference: sending a private call as 0x80
+// would put a conversation between two members onto a talkgroup.
+func voiceKindFor(src hbp.Data) ipsc.Kind {
+	if src.CallType == hbp.CallPrivate {
+		return ipsc.KindVoicePrivate
+	}
+	return ipsc.KindVoice
 }
 
 // position reads a burst's place in its superframe out of the burst.

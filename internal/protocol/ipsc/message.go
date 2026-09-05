@@ -83,6 +83,9 @@ var observedLen = map[Kind]int{
 	// so this kind has no single observed length and the zero here means only
 	// "recognised". Its header is fixed; its payload is not.
 	KindVoice: 0,
+	// A private call is the same frame shapes as a group one — 52, 54, 57
+	// and 66 bytes across a superframe — so it too has no single length.
+	KindVoicePrivate: 0,
 	// Text bursts were seen at 34, 54 and 60 bytes, so like voice they have no
 	// single length and the zero means only "recognised".
 	KindTextGroup:        0,

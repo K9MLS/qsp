@@ -27,6 +27,9 @@ const (
 	// voice crossing IPSC. cmd/ipsc-probe as master, an XPR8300 as peer.
 	probeVoice = "../../../testdata/ipsc/ipsc-probe-voice.pcap"
 
+	// Two private calls in opposite directions with group calls either side,
+	// which is what named 0x81.
+
 	// K9MLS's XPR8300, firmware R02.30.20. Master in phase 2.
 	masterID = 3132910
 	// The remote repeater, reached over the internet. Peer in phase 2.
@@ -36,7 +39,8 @@ const (
 )
 
 func allFixtures() []string {
-	return []string{phase1A, phase1B, rehearsal, notBound, registration, established, probeVoice}
+	return []string{phase1A, phase1B, rehearsal, notBound, registration, established,
+		probeVoice, privateVoice}
 }
 
 // TestEveryCapturedMessageRoundTrips is the property that keeps the parser

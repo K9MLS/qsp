@@ -185,10 +185,11 @@ type Call struct {
 	StreamID uint16
 	// Source is the transmitting radio's 24-bit ID.
 	Source uint32
-	// Destination is the 24-bit destination. **Unverified**: no capture has
-	// ever moved this field, though the Link Control in the same packet
-	// agrees with it. See internal/protocol/ipsc.Voice.
+	// Destination is the 24-bit destination: a talkgroup, or a radio when
+	// Private is set.
 	Destination uint32
+	// Private reports a call to one radio rather than to a talkgroup.
+	Private bool
 	// Timeslot is the DMR timeslot the transmission arrived on, under the
 	// configured slot-bit polarity.
 	//
@@ -715,7 +716,7 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) []
 		p.Keepalives = 0
 	case ipsc.KindKeepaliveRequest:
 		p.Keepalives++
-	case ipsc.KindVoice:
+	case ipsc.KindVoice, ipsc.KindVoicePrivate:
 		p.VoiceFrames++
 		frames = l.recordVoice(p, msg, now)
 	case ipsc.KindTextGroup, ipsc.KindTextPrivate:
@@ -780,6 +781,7 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 			StreamID:    v.StreamID,
 			Source:      v.SourceID,
 			Destination: v.Destination,
+			Private:     v.Private,
 			Timeslot:    slot,
 			Started:     now,
 			LastFrame:   now,
@@ -790,7 +792,8 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 		// with the setting whether or not the setting is right.
 		bit, _ := msg.SlotBit()
 		l.log.Info("call started", "radio_id", p.RadioID, "source", v.SourceID,
-			"destination", v.Destination, "timeslot", int(slot), "slot_bit", bit,
+			"destination", v.Destination, "private", v.Private,
+			"timeslot", int(slot), "slot_bit", bit,
 			"stream", fmt.Sprintf("%#04x", v.StreamID))
 	}
 	p.LastCall.Frames++

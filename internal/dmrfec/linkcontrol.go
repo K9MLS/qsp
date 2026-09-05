@@ -350,15 +350,37 @@ func dataBurstFromPayload(colourCode, dataType uint8, payload []byte) ([]byte, e
 	return BurstBytesFrom(b), nil
 }
 
-// LinkControlFor builds a group-call Link Control for a transmission.
+// Full Link Control opcodes, from ETSI TS 102 361-2 and confirmed on air.
 //
-// FLCO 0 is Grp_V_Ch_Usr, the group voice channel user, which is what every
-// captured burst carries and the only call type this bridge produces. The
-// feature set ID and service options are zero: QSP adds no manufacturer
+// **Both were captured.** testdata/ipsc/ipsc-private-voice.pcap carries group
+// and private transmissions from two repeater models, and byte 38 of every
+// header and terminator reads 0x00 on the group ones and 0x03 on the private
+// ones, agreeing with the IPSC leading byte in all 32 frames.
+const (
+	// FLCOGroupVoice is Grp_V_Ch_Usr, a call to a talkgroup.
+	FLCOGroupVoice byte = 0x00
+	// FLCOPrivateVoice is UU_V_Ch_Usr, a call to one radio.
+	FLCOPrivateVoice byte = 0x03
+)
+
+// LinkControlFor builds a Link Control for a transmission.
+//
+// **The call type is a parameter and not a default.** It was fixed at
+// Grp_V_Ch_Usr for as long as this bridge produced only group calls, and a
+// private call carrying a group Link Control would tell every receiving radio
+// that a conversation between two members is a talkgroup they may join. Making
+// the caller say which it is means a new call path cannot inherit the wrong
+// answer by saying nothing.
+//
+// The feature set ID and service options are zero: QSP adds no manufacturer
 // features and requests none.
-func LinkControlFor(destination, source uint32) []byte {
+func LinkControlFor(destination, source uint32, private bool) []byte {
+	flco := FLCOGroupVoice
+	if private {
+		flco = FLCOPrivateVoice
+	}
 	return []byte{
-		0x00, // FLCO: group voice channel user
+		flco,
 		0x00, // FID: standard
 		0x00, // service options
 		byte(destination >> 16), byte(destination >> 8), byte(destination),

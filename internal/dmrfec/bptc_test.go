@@ -262,7 +262,7 @@ func TestARebuiltDataBurstIsIdentical(t *testing.T) {
 
 // TestLinkControlForRoundTrips checks the addresses survive into a burst.
 func TestLinkControlForRoundTrips(t *testing.T) {
-	lc := dmrfec.LinkControlFor(2, 3132910)
+	lc := dmrfec.LinkControlFor(2, 3132910, false)
 	burst, err := dmrfec.BuildDataBurst(11, dmrfec.DataTypeVoiceLCHeader, lc)
 	if err != nil {
 		t.Fatalf("%v", err)

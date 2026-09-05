@@ -236,8 +236,11 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 		TargetID:   v.Destination,
 		RepeaterID: repeater,
 		Timeslot:   slot,
-		CallType:   hbp.CallGroup,
-		FrameType:  frameType,
+		// **The call type comes from the frame.** It was fixed at group for
+		// as long as the listener refused 0x81 outright, so a private call
+		// could not reach here to be mislabelled. It can now.
+		CallType:  callTypeOf(v),
+		FrameType: frameType,
 		// The low nibble of the flags byte carries the position within the
 		// superframe for voice frames, which is what a receiver uses to place
 		// the burst. It is the same count this converter already keeps.
@@ -268,7 +271,7 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 func (c *Converter) dataFrame(st *slotState, v ipsc.Voice, repeater hbp.RepeaterID,
 	slot hbp.Timeslot, stream hbp.StreamID, dataType uint8) (hbp.Data, error) {
 
-	lc := dmrfec.LinkControlFor(v.Destination, v.SourceID)
+	lc := dmrfec.LinkControlFor(v.Destination, v.SourceID, v.Private)
 	burst, err := dmrfec.BuildDataBurst(c.cfg.ColourCode, dataType, lc)
 	if err != nil {
 		return hbp.Data{}, err
@@ -279,7 +282,7 @@ func (c *Converter) dataFrame(st *slotState, v ipsc.Voice, repeater hbp.Repeater
 		TargetID:   v.Destination,
 		RepeaterID: repeater,
 		Timeslot:   slot,
-		CallType:   hbp.CallGroup,
+		CallType:   callTypeOf(v),
 		// A data burst is announced by the data synchronisation frame type,
 		// and which data burst it is comes from the low nibble — the same
 		// four-bit data type the Slot Type inside the burst carries. Two
@@ -292,6 +295,17 @@ func (c *Converter) dataFrame(st *slotState, v ipsc.Voice, repeater hbp.Repeater
 	copy(out.Payload[:], burst)
 	st.sequence++
 	return out, nil
+}
+
+// callTypeOf maps a voice frame's call type onto the Homebrew one.
+//
+// It exists so that the header, the terminator and the audio between them
+// cannot disagree: three constructions of hbp.Data, one answer.
+func callTypeOf(v ipsc.Voice) hbp.CallType {
+	if v.Private {
+		return hbp.CallPrivate
+	}
+	return hbp.CallGroup
 }
 
 // Timeslot reports which DMR timeslot a message belongs to, under this

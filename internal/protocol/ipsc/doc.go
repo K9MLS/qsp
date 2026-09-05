@@ -35,8 +35,9 @@
 // # The one structure everything agrees on
 //
 // Byte 0 is the type and bytes 1 to 4 are the sender's own radio ID, big-endian.
-// That holds across seven types, two directions, two repeater models and two
-// firmware versions, and it is the only structure this package encodes.
+// That holds across every type captured, in both directions, on two repeater
+// models and two firmware versions, and it is the only structure this package
+// encodes.
 //
 // It is the sender rather than the subject: a registration request carries the
 // peer's ID and its reply carries the master's. One repeater talking into
@@ -45,11 +46,15 @@
 //
 // # What has not been observed
 //
-// Voice, private calls, text, and a clean disconnect. Nine of the sixteen bytes
-// of 0x91 and thirty-nine of the forty-four of 0xf1 have no known meaning, and
-// sixteen of the latter look like entropy rather than structure. A peer list is
-// the obvious guess for 0xf1 and remains a guess: the capture contains one
-// peer, so nothing distinguishes a list from a fixed record.
+// A clean disconnect, and a master sending anything but a group call. Voice,
+// text and the private call each arrived later and from their own capture, and
+// this paragraph named all three as unobserved for as long as they were.
+//
+// Nine of the sixteen bytes of 0x91 and thirty-nine of the forty-four of 0xf1
+// have no known meaning, and sixteen of the latter look like entropy rather
+// than structure. A peer list is the obvious guess for 0xf1 and remains a
+// guess: the capture contains one peer, so nothing distinguishes a list from a
+// fixed record.
 //
 // # Four behaviours worth knowing before implementing a master
 //
