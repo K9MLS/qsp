@@ -4,7 +4,8 @@
 Last regenerated: 2026-08-25, at 0.1.4, after the Phase 1 gate closed and the
 repository went to GitHub. **Duplicate sections collapsed 2026-09-02** — the
 file had grown six copies of §8f in five versions, and a session read the wrong
-one. Newest session notes are at the end of the §8 series; read §8g first.
+one. Newest session notes are at the end of the §8 series; **read §8j first**,
+then §8a.
 
 ---
 
@@ -109,7 +110,13 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
   disconnect, rejection, timeout, NAT-rebind policy.
 - **UDP listener** — one goroutine owns the socket and all live state.
 - **Call observation** — frames reassembled into transmissions; a stream that
-  loses its terminator is closed and flagged.
+  loses its terminator is closed and flagged, **on both listeners since
+  0.1.62**. The Motorola side had no timeout at all until then and reported one
+  transmission as running for seven hours; see §8j.
+- **IP Site Connect** — voice both directions, group and private (ADR-0046),
+  text (ADR-0045), parrot, access control (ADR-0044). A transmission is counted
+  at three layers — received, converted, delivered — and the counts are in the
+  end-of-call line.
 - **Routing** — bridges with talkgroup and timeslot translation, contention
   handling, never echoes to source.
 - **Scheduler** — recurring windows, DST-correct, level-triggered.
@@ -145,6 +152,8 @@ distinguished explicitly or documentation checks acquire false exemptions.
 | Repeater-ID rewrite on relay unverified | Two peers with forwarding on. **Not** closed by the 2026-08-25 capture — one peer, forwarding off, nothing relayed |
 | `description`/`slots` field split unverified | A single-timeslot hotspot |
 | No manual override for Net Control | Deliberately deferred |
+| Last-heard is built from two sources with no dedup | A decision about which owns it. `DeliverFromIPSC` observes into the shared tracker *and* the IPSC listener contributes its own call views, so a Motorola over should appear twice. See §8j |
+| A text over IPSC produces no call record | The text branch never reaches `recordVoice`, so it has none of the per-layer counters |
 
 | No ACL check for `password_file` on Windows | POSIX hosts refuse a file readable beyond its owner; Windows cannot — `os.Stat` reports no ACL. Secure it with an ACL there |
 | No authentication on any endpoint | Designed, unbuilt. `/api/peers` discloses callsigns, radio IDs and source addresses. Bind to `127.0.0.1`; reach the console over a tunnel |
@@ -1981,6 +1990,180 @@ Link column and a looked-up callsign marked as a lookup. **A routing refusal is
 logged at info now, once per destination and reason**, because it was at debug
 and production runs at info: the reason was counted and never explainable, which
 is what cost the evening.
+
+---
+
+## 8j. Where the next session starts, as of 2026-09-05
+
+Read §0, then §6b and §6c, then this. It supersedes §8i; everything §8i settled
+remains settled except where named. **§8a is the section that matters most** and
+this day did nothing but confirm it again.
+
+### The whole day, in one sentence
+
+**A message type QSP had never accepted, and a call record that never ended.**
+Both were found by reading a journal and a dashboard on a running system, and
+neither could have been found any other way, because the code was doing exactly
+what it was written to do in both cases.
+
+### `0x81` is a private voice call, and it had never worked
+
+[ADR-0046](docs/adr/ADR-0046-ipsc-private-calls.md).
+`testdata/ipsc/ipsc-private-voice.pcap`.
+
+QSP had refused the leading byte `0x81` since the IPSC listener was written. It
+arrived from both repeaters, in runs as long as somebody holds a key down, and
+every datagram was counted as unparsed and thrown away. **No private call from a
+Motorola repeater had ever crossed the bridge.** It hid the way the timeslot
+defect hid: this network's traffic is group calls on TG 2, and a member who
+tries a private call and hears nothing assumes the other station is not there.
+
+**It is `0x80` with a radio ID where the talkgroup goes.** Diffing a private
+header against a group header from the same repeater fourteen seconds apart, the
+envelope differs at thirteen of its first thirty-eight bytes: the leading byte,
+the call counter, the three destination bytes, the stream ID, and six bytes that
+vary frame to frame within one transmission anyway. **The same diff on the other
+repeater model differs at exactly the same offsets.**
+
+Two encodings of the call type agree. Byte 38 of a header or terminator is the
+DMR Full Link Control opcode — `0x00` Grp_V_Ch_Usr against `0x03` UU_V_Ch_Usr —
+matching the leading byte on **all 32 header and terminator frames** in the
+capture. The destination is carried twice, in the envelope and in the Link
+Control, and agrees on all 32.
+
+**The experiment is worth copying.** Two private calls in opposite directions
+between the same two radios, with group calls either side. Source and
+destination move in opposite directions between them, so neither field can be
+confused for the other, for a constant, or for the envelope's sender ID. One
+capture, two fields settled, and it took the operator four minutes to key.
+
+`Voice.Destination` stops being marked unverified after three weeks. It carried
+that warning because no capture had ever moved it; this one moves it three ways
+in two minutes.
+
+### A transmission that never ended was reported as running for seven hours
+
+The console showed a live transmission of **7h14m18s** in 45 frames, with a
+station counted as transmitting, while the radios were silent.
+
+An IPSC call ended on its last-frame flag and on nothing else. There was no
+timeout anywhere, and a peer that keeps keepaliving is never dropped, so a
+transmission whose terminator never arrived stayed open for as long as the
+repeater stayed up. `CallViews` then rendered it as *now minus started*,
+unbounded.
+
+**Three true statements that lie together**: peers expire on silence, calls end
+on a terminator, and a peer that keeps keepaliving keeps a call whose terminator
+never came. Every one of those is correct alone. This is the §8a shape and it is
+worth recognising on sight.
+
+The fix is a silence timeout at `calls.StreamTimeout`, imported rather than
+restated so the two listeners cannot drift, plus a ceiling of four minutes.
+**Every radio on an amateur network has a time-out timer**, 180 seconds on this
+one, so frames still arriving after four minutes are a stuck record rather than
+a long over. The ceiling is keyed on the start time where the timeout is keyed
+on the last frame, so the two cannot fail together, and it is meant to be dead
+weight. If it ever fires, that is a defect report.
+
+A superseded stream was also being discarded silently: a new stream ID replaced
+the record outright, so a call whose terminator never arrived left a `call
+started` with no `call ended` anywhere and vanished with nothing said about it.
+
+### Counting the same transmission at three layers
+
+The console reported an IPSC transmission of 45 frames while the DMR side
+recorded 22 for the same stream in the same second, and **neither number said
+where the other 23 went**.
+
+Conversion is ruled out by measurement rather than by argument: every
+transmission in `ipsc-private-voice.pcap` through the converter gives 136 in for
+134 out, 148 for 146, 88 for 86 — the arithmetic of three repeat headers
+becoming one and a terminator being added. Joining part-way through costs at most
+one superframe, by design.
+
+So a call now carries **frames received, bursts converted, bursts delivered**,
+and the end-of-call line reports all three. On air it reads
+`"frames":28 "converted":26 "delivered":26`, which is the healthy shape. **The
+gap itself is still unexplained and is now instrumented rather than argued
+about.**
+
+The end of a transmission is logged after delivery rather than at the frame
+carrying the terminator, because delivery happens outside the peer lock and a
+line written earlier would under-report every call by exactly the last
+datagram's worth.
+
+### Two warnings that had stopped meaning anything
+
+**Seventeen `call started` lines for one press of one button.** Each data burst
+carries its own stream ID, so each is its own call. The history had merged runs
+of bursts into one entry since the text work; the journal had not, so the
+console and the journal disagreed about how many things had happened, from the
+same process, about the same second. `DataBurstWindow` is now exported so the
+two cannot drift.
+
+**Four `abandoned transmission` warnings per text message.** A text reserves its
+destinations and then ends without a terminator, because data has no terminator
+and is not meant to. The call tracker had learned this; the routing reaper had
+not, because they are separate mechanisms and only one had been read carefully.
+That warning is also how a peer that lost power mid-over is noticed, and one an
+operator has learned to scroll past does not do that job.
+
+**A voice header is a data frame type**, so it takes the reservation one frame
+before the audio arrives. Classifying on that alone would have filed every real
+transmission as data and silenced the warning permanently — the one way that
+patch could have hurt audio, and the reason the flag is corrected upwards.
+
+### Open, in order
+
+1. **Private calls on air.** 0225 is deployed and untested against a radio.
+   KD9EJA's private call to K9MLS should produce `call started` with
+   `"private":true` and a `relaying transmission` line. **Whether the far end
+   rings is a separate question** and is the same one Paul's private calls have
+   been posing for a week: QSP delivering and MMDVMHost presenting are different
+   things.
+2. **Who owns Last-heard.** `DeliverFromIPSC` already calls `observe`, so the
+   shared tracker records every IPSC transmission — with history, merging, end
+   reasons and callsign lookup — and `/api/peers` appends the IPSC listener's own
+   `CallViews` on top with no dedup. **Every Motorola over should be appearing
+   twice**, with different frame counts, looking like two transmissions. It was
+   not visible on 2026-09-05 only because the IPSC row was the stuck one and sat
+   in Active rather than Recent. The choice is which source owns the panel; the
+   tracker has everything, but a parrot transmission is consumed before
+   `Deliver` and would vanish. **This is a decision for the operator, not a
+   defect to fix quietly.**
+3. **The 45-versus-22 gap**, now instrumented. Wait for it to recur and read the
+   three counters.
+4. **Repeater-to-hotspot text.** MMDVMHost accepts the preambles and the data
+   header — it reads the block count out of it — and then ends the transmission.
+   The five Rate 1/2 blocks after the header are the suspect. Next step is
+   MMDVMHost at debug on the Pi-Star, which will say whether they arrive.
+5. **Text over IPSC has no call record.** The text branch never touches
+   `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
+   the new counters. The layer-by-layer accounting covers voice and not data.
+6. **`/api/peers` is unauthenticated** and carries repeater radio IDs and
+   addresses. A decision, not a defect.
+7. **The vocoder**, then **subscription on air**, then **P25**.
+
+### The method, now proved twelve times
+
+**Every reading taken by eye has been wrong. Every differential has been right.**
+On 2026-09-05 an eye reading put 220 vocoder frames in a capture that holds 228,
+inside a test comment, and the test caught it before the patch shipped.
+
+Two diagnostics did all the work again: *log the same fact at two layers and read
+the gap*, and *read Last-heard first when two stations cannot hear each other*.
+
+### A test that could not fail, for the fourth time
+
+The first version of the routing-reaper test asserted that no warning was
+written — and arranged, without meaning to, for there to be nothing to warn
+about: with no peers ready the burst reserved nothing. **It passed with the fix
+removed.** It now asserts a reservation was taken before it asserts anything
+about the journal.
+
+This keeps happening to tests that assert an absence. A test that something did
+*not* happen has to establish that the thing had a chance to happen first, and
+the only way to know it does is to break the code and watch the test fail.
 
 ---
 
