@@ -53,7 +53,11 @@
 
   /* ---- Text ---------------------------------------------------------- */
   --color-foreground: #ffffff;
-  /* Contrast against --color-background is 7.4:1, above the 4.5:1 minimum. */
+  /* Contrast against --color-background is 9.35:1, above the 4.5:1 minimum.
+     It read 7.4:1 here until 2026-09-05, from before the background was
+     darkened; the number was stale and nothing checked it, which is the whole
+     argument for the ratios in console/tokens_test.go being asserted rather
+     than written down. */
   --color-foreground-muted: #a9b4c9;
   --color-foreground-subtle: #8391a8;
 

@@ -139,9 +139,14 @@ body {
    So it is set apart rather than merely dimmed: a rule above it, air between the
    groups, and letters spaced wide enough that it reads as a label for what
    follows rather than as one of them. */
+/* **A heading is structure, and it belongs to the group under it.** The space
+   above it and the space below it were within one step of each other, which
+   leaves it floating between two groups rather than introducing one, and
+   proximity is the strongest grouping signal there is — stronger than the
+   uppercase, the tracking and the size put together. */
 .nav__heading {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-4) var(--space-3) 0;
+  margin: 0 0 var(--space-2);
+  padding: var(--space-5) var(--space-3) 0;
   border-top: 1px solid var(--color-border);
   font-size: 10px;
   font-weight: var(--weight-semibold);
@@ -194,8 +199,16 @@ body {
   box-shadow: inset 2px 0 0 var(--color-primary);
 }
 
+/* **A planned page and a section heading must not be the same colour.** Both
+   were --color-foreground-subtle, at the same left inset, in the same column,
+   and the eye groups by colour and position long before it reads a 10px
+   uppercase label as a different kind of thing. An operator seeing the sidebar
+   for the first time read the headings as more links.
+   --color-unavailable is the token that already means "this is not built",
+   used with the phase badge beside it and on the health panel for the same
+   subsystems, so this reuses a meaning rather than inventing a fourth grey. */
 .nav__link[aria-disabled="true"] {
-  color: var(--color-foreground-subtle);
+  color: var(--color-unavailable);
   cursor: not-allowed;
 }
 
@@ -1576,6 +1589,15 @@ select.field__input {
      control down the difference. The timeslot select sat visibly lower than the
      inputs beside it. */
   align-content: start;
+}
+
+/* **A label is inline where the paragraph it replaces was block.** Two fields
+   on the links page were captioned with a <p>, which looks right and leaves
+   the control unlabelled for a screen reader and unfocusable by clicking its
+   caption. Swapping the tag fixes both and would have moved the caption onto
+   the same line as its control without this. */
+label.picker__label {
+  display: block;
 }
 
 .picker__label {
