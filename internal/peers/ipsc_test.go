@@ -404,3 +404,71 @@ func TestTheIPSCSinkIsNotSilentlyUnwired(t *testing.T) {
 		t.Fatal("a sink set through SetIPSCSink was never called, so wiring it has no effect")
 	}
 }
+
+// TestARunOfDataBurstsIsOneLineInTheJournal is the console and the journal
+// agreeing about how many things happened.
+//
+// Every burst of a text message or of CSBK signalling carries its own stream
+// ID, so each is its own call and each wrote a "call started" line at info.
+// One press of one button on one radio produced seventeen of them inside a
+// second on 2026-09-05, while the history — which has merged runs of data
+// bursts into one entry since the text work — showed one. Two numbers for one
+// event, from the same process.
+func TestARunOfDataBurstsIsOneLineInTheJournal(t *testing.T) {
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo}))
+
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(nil)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: readyFromMaster{m: master}})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	l, err := peers.NewListener(log, peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+		Calls: calls.NewTracker(calls.Options{}),
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	burst := func(stream uint32) hbp.Data {
+		return hbp.Data{
+			RepeaterID: motorola, SourceID: 3132910, TargetID: 3155373,
+			Timeslot: hbp.Timeslot2, CallType: hbp.CallPrivate,
+			FrameType: hbp.FrameTypeSync, StreamID: hbp.StreamID(stream),
+		}
+	}
+	for i := 0; i < 8; i++ {
+		l.DeliverFromIPSC(motorola, burst(uint32(0x1000+i)))
+	}
+	if got := strings.Count(buf.String(), `msg="call started"`); got != 1 {
+		t.Errorf("a run of eight data bursts wrote %d call-started lines, want 1:\n%s",
+			got, buf.String())
+	}
+
+	// **Voice always starts a run of its own.** A transmission is an event
+	// however soon it follows a text, and suppressing one would hide the thing
+	// this journal exists to report.
+	buf.Reset()
+	voice := burst(0x2000)
+	voice.FrameType = hbp.FrameTypeVoiceSync
+	l.DeliverFromIPSC(motorola, voice)
+	if got := strings.Count(buf.String(), `msg="call started"`); got != 1 {
+		t.Errorf("a voice transmission after a data run wrote %d call-started lines, want 1", got)
+	}
+}

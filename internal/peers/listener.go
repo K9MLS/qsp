@@ -184,6 +184,14 @@ type Listener struct {
 	ipscRefusedMu sync.Mutex
 	ipscRefused   ipscRefusal
 
+	// dataRun remembers the last data burst logged, so that a run of them
+	// reads as one event in the journal as it already does in the history.
+	//
+	// It is guarded because observe runs on two goroutines: the serve loop for
+	// Homebrew traffic and the IPSC listener's for a Motorola repeater's.
+	dataRunMu sync.Mutex
+	dataRun   dataRun
+
 	// playback replays parrot recordings. Nil when parrot is off.
 	playback *playback
 	// ctx bounds every playback goroutine, so shutdown stops them.
@@ -957,9 +965,20 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Calls == nil {
 		return
 	}
-	started, ended := l.cfg.Calls.Update(peer, frame, time.Now())
+	now := time.Now()
+	started, ended := l.cfg.Calls.Update(peer, frame, now)
 	if started != nil {
-		l.log.Info("call started",
+		// **A run of data bursts is one event, and the journal says so once.**
+		// Each burst carries its own stream ID, so each is its own call, and
+		// one press of one button on one radio wrote seventeen "call started"
+		// lines in a second. The history has merged these into a single entry
+		// since the text work; the journal had not, so the console and the
+		// journal disagreed about how many things had happened.
+		level := slog.LevelInfo
+		if l.continuesADataRun(*started, now) {
+			level = slog.LevelDebug
+		}
+		l.log.Log(context.Background(), level, "call started",
 			logging.PeerID(started.Source),
 			logging.Talkgroup(started.Target),
 			logging.Timeslot(int(started.Key.Timeslot)),
@@ -972,6 +991,41 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 		l.storeCall(*ended)
 	}
 	l.refreshCalls()
+}
+
+// continuesADataRun reports whether a starting call carries on the run of data
+// bursts the last one began, and records it either way.
+//
+// **The rule is the history's rule**, because the two numbers an operator sees
+// have to agree: same source, same target, same call type, same timeslot, and
+// within calls.DataBurstWindow. Voice always starts a run of its own — a
+// transmission is an event however soon it follows another.
+func (l *Listener) continuesADataRun(c calls.Call, now time.Time) bool {
+	l.dataRunMu.Lock()
+	defer l.dataRunMu.Unlock()
+	if c.Voice {
+		l.dataRun = dataRun{}
+		return false
+	}
+	run := dataRun{
+		source: c.Source, target: c.Target,
+		group: c.Group, timeslot: c.Key.Timeslot, at: now,
+	}
+	prev := l.dataRun
+	l.dataRun = run
+	return !prev.at.IsZero() &&
+		prev.source == run.source && prev.target == run.target &&
+		prev.group == run.group && prev.timeslot == run.timeslot &&
+		now.Sub(prev.at) <= calls.DataBurstWindow
+}
+
+// dataRun is the last data burst the journal reported, for deciding whether the
+// next one is the same event carrying on.
+type dataRun struct {
+	source, target uint32
+	group          bool
+	timeslot       hbp.Timeslot
+	at             time.Time
 }
 
 // expireCalls closes transmissions that stopped without a terminator.

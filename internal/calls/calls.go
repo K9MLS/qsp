@@ -316,11 +316,17 @@ func (t *Tracker) finish(key Key, call *Call, at time.Time, reason EndReason) *C
 	return &finished
 }
 
-// dataBurstWindow is how close two data bursts must be to count as one event.
+// DataBurstWindow is how close two data bursts must be to count as one event.
 //
 // A text message's bursts arrive within a second of each other; two messages a
 // minute apart are two things that happened and should read as two.
-const dataBurstWindow = 5 * time.Second
+//
+// **It is exported because the journal has to agree with the history.** The
+// history merges a run of bursts into one entry; a listener that logged each
+// burst's start on a different rule would say seventeen things happened where
+// the console says one, and the two would drift apart the first time either
+// number was tuned.
+const DataBurstWindow = 5 * time.Second
 
 // mergeableData returns the history entry a data burst continues, if any.
 //
@@ -344,7 +350,7 @@ func (t *Tracker) mergeableData(c Call) *Call {
 		prev.Key.Timeslot != c.Key.Timeslot {
 		return nil
 	}
-	if c.Started.Sub(prev.Ended) > dataBurstWindow {
+	if c.Started.Sub(prev.Ended) > DataBurstWindow {
 		return nil
 	}
 	return prev
