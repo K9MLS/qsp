@@ -69,6 +69,11 @@ type Config struct {
 // It does not authenticate. No capture contains an authenticated registration
 // or any refusal, and ICMP unreachable is provably ignored by a repeater, so
 // the only "no" QSP can say is silence. AllowedPeers is that silence.
+// maxPeerName bounds an operator-supplied repeater callsign. Callsigns run to
+// seven characters and a suffix; the room above that is for "K9MLS/R" and the
+// like, not for a description of the site.
+const maxPeerName = 20
+
 type IPSC struct {
 	// Enabled turns the IPSC listener on.
 	Enabled bool `json:"enabled"`
@@ -86,6 +91,23 @@ type IPSC struct {
 	// peer, which is right on a bench and wrong on a public address — an IPSC
 	// port reachable from the internet attracts whatever is pointed at it.
 	AllowedPeers []uint32 `json:"allowed_peers"`
+	// PeerNames is the callsign an administrator gave each repeater, keyed by
+	// radio ID.
+	//
+	// **A Motorola repeater announces no callsign and most never will have
+	// one to look up.** A hotspot states its callsign at login; an IPSC
+	// repeater states nothing, so QSP matches its radio ID against the public
+	// registry — and a repeater on a private ID like 999999 is not in that
+	// registry and never will be. The console showed a bare number for
+	// precisely the peers carrying the network, on every row where a hotspot
+	// showed a callsign.
+	//
+	// **It is separate from AllowedPeers because it answers a different
+	// question.** AllowedPeers decides who is answered and is the only "no"
+	// this protocol can say; a name decides what an operator reads. Folding a
+	// label into the admission list would put display text on the path that
+	// decides whether a datagram is processed.
+	PeerNames map[uint32]string `json:"peer_names,omitempty"`
 	// PeerTimeoutSeconds is how long a peer may be silent before it is
 	// dropped. Zero uses three missed keepalives plus a margin.
 	//
@@ -1074,6 +1096,38 @@ func (c Config) Validate() error {
 					fmt.Sprintf("%d is also ipsc.master_id", p),
 					"give the master an ID of its own; a repeater refuses to register with a master "+
 						"carrying its own ID, and retries silently rather than reporting it")
+			}
+		}
+		allowed := make(map[uint32]bool, len(c.IPSC.AllowedPeers))
+		for _, p := range c.IPSC.AllowedPeers {
+			allowed[p] = true
+		}
+		for id, name := range c.IPSC.PeerNames {
+			trimmed := strings.TrimSpace(name)
+			switch {
+			case trimmed == "":
+				v.add(fmt.Sprintf("ipsc.peer_names.%d", id), "is empty",
+					"remove the entry rather than naming a repeater with a blank; "+
+						"a blank name reads as a lookup that failed")
+			case trimmed != name:
+				v.add(fmt.Sprintf("ipsc.peer_names.%d", id),
+					fmt.Sprintf("%q has leading or trailing whitespace", name),
+					"a name is shown beside a radio ID and the space is invisible there")
+			case len(trimmed) > maxPeerName:
+				v.add(fmt.Sprintf("ipsc.peer_names.%d", id),
+					fmt.Sprintf("is %d characters, over the %d allowed", len(trimmed), maxPeerName),
+					"a callsign column is narrow; use the repeater's callsign rather than a description")
+			}
+			// **A name for a repeater that is not admitted is read by
+			// nothing.** That pattern has been the defect nine times in this
+			// codebase, so it is an error here rather than a curiosity to
+			// find later. An empty allow list admits everybody, so a name is
+			// never orphaned by one.
+			if len(allowed) > 0 && !allowed[id] {
+				v.add(fmt.Sprintf("ipsc.peer_names.%d", id),
+					"names a repeater that is not in ipsc.allowed_peers",
+					"add the radio ID to the allowed list, or remove the name; as it stands "+
+						"the name will never be shown because the repeater is never answered")
 			}
 		}
 		if c.IPSC.PeerTimeoutSeconds < 0 {

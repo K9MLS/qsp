@@ -227,7 +227,7 @@ func TestALookedUpCallsignIsMarkedAsOne(t *testing.T) {
 			{ID: 3155413, Protocol: ProtocolHomebrew, Callsign: "KB9TYC"},
 		}},
 		fixedPeers{peers: []PeerView{
-			{ID: 315544, Protocol: ProtocolIPSC, Callsign: "KD9EJA", CallsignLookedUp: true},
+			{ID: 315544, Protocol: ProtocolIPSC, Callsign: "KD9EJA", CallsignSource: CallsignFromRegistry},
 			{ID: 999999, Protocol: ProtocolIPSC},
 		}},
 	)
@@ -237,14 +237,14 @@ func TestALookedUpCallsignIsMarkedAsOne(t *testing.T) {
 		byID[p.ID] = p
 	}
 
-	if got := byID[3155413]; got.CallsignLookedUp {
+	if got := byID[3155413]; got.CallsignSource == CallsignFromRegistry {
 		t.Error("a Homebrew peer's announced callsign is marked as looked up")
 	}
-	if got := byID[315544]; !got.CallsignLookedUp {
+	if got := byID[315544]; got.CallsignSource != CallsignFromRegistry {
 		t.Error("a repeater's registry callsign is not marked as looked up; " +
 			"the console would present a guess as a statement")
 	}
-	if got := byID[999999]; got.Callsign != "" || got.CallsignLookedUp {
+	if got := byID[999999]; got.Callsign != "" || got.CallsignSource != "" {
 		t.Errorf("a repeater with no registry record shows %q; it should show "+
 			"nothing and let the console say why", got.Callsign)
 	}

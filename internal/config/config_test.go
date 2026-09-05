@@ -481,3 +481,54 @@ func TestAJoinTalkgroupNeedsABridgeWhenNothingRepeats(t *testing.T) {
 		t.Errorf("the error does not explain: %v", err)
 	}
 }
+
+// TestANameForARepeaterThatIsNotAdmittedIsRefused is the pattern that has been
+// the defect nine times in this codebase.
+//
+// A setting declared and read by nothing looks exactly like a setting that
+// works. A callsign attached to a radio ID the listener never answers is
+// never shown, and an operator who typed it has no way to discover that
+// except by waiting for a repeater to connect and reading a bare number.
+func TestANameForARepeaterThatIsNotAdmittedIsRefused(t *testing.T) {
+	base := Default()
+	base.IPSC.Enabled = true
+	base.IPSC.ListenAddress = "0.0.0.0:50000"
+	base.IPSC.MasterID = 3132911
+	cc := uint8(11)
+	base.IPSC.ColourCode = &cc
+
+	orphan := base
+	orphan.IPSC.AllowedPeers = []uint32{315544}
+	orphan.IPSC.PeerNames = map[uint32]string{999999: "K9MLS"}
+	if err := orphan.Validate(); err == nil {
+		t.Error("a callsign for a repeater that is never answered was accepted")
+	}
+
+	// **An empty allow list admits everybody**, so a name is never orphaned by
+	// one and refusing it there would make naming impossible on a bench.
+	open := base
+	open.IPSC.AllowedPeers = nil
+	open.IPSC.PeerNames = map[uint32]string{999999: "K9MLS"}
+	if err := open.Validate(); err != nil {
+		t.Errorf("a callsign was refused while every repeater is admitted: %v", err)
+	}
+
+	matched := base
+	matched.IPSC.AllowedPeers = []uint32{999999}
+	matched.IPSC.PeerNames = map[uint32]string{999999: "K9MLS"}
+	if err := matched.Validate(); err != nil {
+		t.Errorf("a callsign for an admitted repeater was refused: %v", err)
+	}
+
+	for name, bad := range map[string]string{
+		"blank":  "   ",
+		"padded": " K9MLS ",
+		"longer than a call sign has any business being": strings.Repeat("K", 21),
+	} {
+		c := matched
+		c.IPSC.PeerNames = map[uint32]string{999999: bad}
+		if err := c.Validate(); err == nil {
+			t.Errorf("a %s callsign was accepted", name)
+		}
+	}
+}

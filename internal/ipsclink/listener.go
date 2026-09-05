@@ -77,6 +77,10 @@ type Config struct {
 	// answered, which is the right default for a bench and the wrong one for a
 	// public address.
 	AllowedPeers []uint32
+	// PeerNames is the callsign an administrator gave each repeater, keyed by
+	// radio ID. Display only: it is never consulted when deciding whether to
+	// answer a datagram.
+	PeerNames map[uint32]string
 	// PeerTimeout is how long a registered peer may go without a keepalive
 	// before it is dropped. Zero uses DefaultPeerTimeout.
 	PeerTimeout time.Duration
@@ -314,6 +318,8 @@ type Listener struct {
 	// it keeps the read side free of locks on the hot path, which is the same
 	// trade snapshot makes for the peer list.
 	allowed atomic.Pointer[map[uint32]bool]
+	// peerNames is display only; see SetPeerNames.
+	peerNames atomic.Pointer[map[uint32]string]
 
 	conn    *net.UDPConn
 	running atomic.Bool
@@ -405,6 +411,7 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 		encoders: map[uint32]*ipscbridge.Encoder{},
 	}
 	l.SetAllowedPeers(cfg.AllowedPeers)
+	l.SetPeerNames(cfg.PeerNames)
 	l.publish()
 	return l, nil
 }
@@ -429,6 +436,32 @@ func (l *Listener) SetAllowedPeers(ids []uint32) {
 		built[id] = true
 	}
 	l.allowed.Store(&built)
+}
+
+// SetPeerNames replaces the callsigns an administrator gave these repeaters.
+//
+// **It is live for the same reason the allow list is.** An operator adding a
+// repeater names it in the same save, and a name that waited for a restart
+// would leave the console showing a bare radio ID after a successful save —
+// which is the shape of defect that put SetAllowedPeers here in the first
+// place.
+//
+// Display only. Nothing on the path that decides whether to answer a datagram
+// reads this, and it must stay that way: a label is not an admission.
+func (l *Listener) SetPeerNames(names map[uint32]string) {
+	built := make(map[uint32]string, len(names))
+	for id, name := range names {
+		built[id] = name
+	}
+	l.peerNames.Store(&built)
+}
+
+// PeerName returns the callsign an administrator gave a repeater, if any.
+func (l *Listener) PeerName(id uint32) string {
+	if m := l.peerNames.Load(); m != nil {
+		return (*m)[id]
+	}
+	return ""
 }
 
 // allowedSet returns the current allow list, never nil.

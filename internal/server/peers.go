@@ -27,19 +27,32 @@ type AttachmentView struct {
 // a peer's outstanding challenge salt, and exposing the domain struct directly
 // would put a live credential one careless JSON tag away from the network.
 // Adding a field here is an explicit act.
+// Where a callsign came from. See PeerView.CallsignSource.
+const (
+	CallsignFromPeer     = "peer"
+	CallsignFromRegistry = "registry"
+	CallsignFromOperator = "operator"
+)
+
 type PeerView struct {
 	// ID is the peer's DMR repeater or radio ID.
 	ID uint32 `json:"id"`
-	// CallsignLookedUp says the callsign came from the RadioID registry rather
-	// than from the peer.
+	// CallsignSource says where the callsign came from: "peer" if the peer
+	// announced it, "registry" if QSP looked it up, "operator" if an
+	// administrator wrote it down. Empty when there is no callsign.
 	//
-	// **The two are not the same claim.** A Homebrew peer states its callsign
-	// at login and QSP repeats it; an IPSC repeater states nothing, so anything
-	// shown for one is QSP matching a radio ID against a public registry that
-	// can be stale, wrong, or describing the operator rather than the
-	// repeater. Presenting a guess in the same style as a statement is the
-	// shape of fake data §7 forbids, so the console marks it.
-	CallsignLookedUp bool `json:"callsign_looked_up,omitempty"`
+	// **They are three different claims and the console shows three.** A
+	// Homebrew peer states its callsign at login and QSP repeats it; an IPSC
+	// repeater states nothing, so a registry match is QSP guessing from a
+	// public database that can be stale, wrong, or describing the operator
+	// rather than the repeater; and an operator's own label is neither
+	// announced nor verified, but it is the person who owns the repeater
+	// saying what it is. Presenting a guess in the same style as a statement
+	// is the shape of fake data §7 forbids.
+	//
+	// It replaced a CallsignLookedUp bool, which could express two of the
+	// three and quietly filed the third under "announced".
+	CallsignSource string `json:"callsign_source,omitempty"`
 	// Protocol is which listener this peer belongs to.
 	//
 	// **A blank column means two different things without it.** A Homebrew

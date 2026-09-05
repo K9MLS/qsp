@@ -138,6 +138,7 @@ func applyToListener(listener *peers.Listener, ipsc *ipsclink.Listener) func(con
 		// nothing below can fail in a way that should leave it answered.
 		if ipsc != nil {
 			ipsc.SetAllowedPeers(cfg.IPSC.AllowedPeers)
+			ipsc.SetPeerNames(cfg.IPSC.PeerNames)
 		}
 		sched, err := buildSchedule(cfg)
 		if err != nil {

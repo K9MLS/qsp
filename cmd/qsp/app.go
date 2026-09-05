@@ -446,6 +446,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			ListenAddress: cfg.IPSC.ListenAddress,
 			MasterID:      cfg.IPSC.MasterID,
 			AllowedPeers:  cfg.IPSC.AllowedPeers,
+			PeerNames:     cfg.IPSC.PeerNames,
 			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
 			Deliver:       deliver,
 			Parrot:        ipscParrot,
@@ -1073,9 +1074,16 @@ func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 		// not in it and will simply come back unknown, which is why the console
 		// still has to say "not sent" rather than assume a blank means a
 		// failure.
-		if name := resolve(peer.RadioID, nil, p.names); name != "" {
+		// **The operator's own label wins.** A repeater on a private radio ID
+		// is not in the registry and never will be, and where both exist the
+		// person running the repeater knows better than a public database
+		// that may describe whoever registered the ID years ago.
+		if name := p.listener.PeerName(peer.RadioID); name != "" {
 			v.Callsign = name
-			v.CallsignLookedUp = true
+			v.CallsignSource = server.CallsignFromOperator
+		} else if name := resolve(peer.RadioID, nil, p.names); name != "" {
+			v.Callsign = name
+			v.CallsignSource = server.CallsignFromRegistry
 		}
 		out = append(out, v)
 	}
@@ -1160,6 +1168,11 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 			State:    string(peer.State),
 			Ready:    peer.State.CanPassTraffic(),
 			IdleFor:  peer.Idle(now).Truncate(time.Second).String(),
+		}
+		if v.Callsign != "" {
+			// A Homebrew peer states this at login, which is the strongest of
+			// the three claims and the only one QSP does not construct.
+			v.CallsignSource = server.CallsignFromPeer
 		}
 		if !peer.ConfiguredAt.IsZero() {
 			v.ConnectedFor = now.Sub(peer.ConfiguredAt).Truncate(time.Second).String()

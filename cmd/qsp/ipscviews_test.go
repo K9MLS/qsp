@@ -34,9 +34,19 @@ func TestTheIPSCAdapterMarksALookedUpCallsign(t *testing.T) {
 	}
 	body := src[i : i+j]
 
-	if !strings.Contains(body, "v.CallsignLookedUp = true") {
+	if !strings.Contains(body, "server.CallsignFromRegistry") {
 		t.Error("the IPSC adapter sets a callsign without marking it as looked up; " +
 			"a registry guess would be shown exactly like a callsign the peer announced")
+	}
+	// **An operator's own label is a third claim and must outrank the
+	// registry.** A repeater on a private radio ID is not in the registry and
+	// never will be, so a lookup that wins would leave the peers carrying this
+	// network showing bare numbers however carefully they were named.
+	if !strings.Contains(body, "server.CallsignFromOperator") {
+		t.Error("the IPSC adapter ignores the callsign an administrator gave a repeater")
+	}
+	if strings.Index(body, "CallsignFromOperator") > strings.Index(body, "CallsignFromRegistry") {
+		t.Error("the registry lookup is tried before the operator's own label")
 	}
 	if !strings.Contains(body, "resolve(peer.RadioID") {
 		t.Error("the IPSC adapter no longer resolves a callsign; repeaters would " +

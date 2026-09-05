@@ -289,13 +289,24 @@
    * IP Site Connect carries no callsign at all, so an em dash there would be a
    * blank meaning "not applicable" wearing the costume of "not set". */
   function peerCallsign(p) {
-    if (p.callsign && p.callsign_looked_up) {
+    if (p.callsign && p.callsign_source === "registry") {
       /* Looked up, not announced, and shown differently because the two are
        * different claims. A Homebrew peer states its callsign at login; this
        * is QSP matching a radio ID against a public registry that can be
        * stale, or that describes the operator rather than the repeater. */
       return '<span class="callsign callsign--guessed" ' +
         'title="Looked up from the RadioID registry; IP Site Connect carries no callsign">' +
+        escapeText(p.callsign) + "</span>";
+    }
+    if (p.callsign && p.callsign_source === "operator") {
+      /* **Neither announced nor looked up: written down.** A repeater on a
+       * private radio ID is in no registry, so this is the only way its
+       * callsign ever appears — and it is the person who owns the repeater
+       * saying what it is, which is a stronger claim than a public database
+       * and a weaker one than the peer stating it itself. Marked, because
+       * three claims shown identically are one claim with two lies in it. */
+      return '<span class="callsign callsign--named" ' +
+        'title="Named in this network\u2019s settings; IP Site Connect carries no callsign">' +
         escapeText(p.callsign) + "</span>";
     }
     if (p.callsign) {

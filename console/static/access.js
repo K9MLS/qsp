@@ -242,14 +242,18 @@
     panel.hidden = false;
 
     var ids = ipsc.allowed_peers || [];
+    var named = ipsc.peer_names || {};
     el.innerHTML =
       '<h3 class="acl__title">Allowed repeaters</h3>' +
       '<p class="acl__state" id="acl-ipsc-state">' + describeIPSC(ids) + "</p>" +
-      '<label class="field__label" for="acl-ipsc-ids">One radio ID per line</label>' +
+      '<label class="field__label" for="acl-ipsc-ids">One radio ID per line, ' +
+        "and a callsign after it if you want one</label>" +
       '<textarea class="field__input acl__ids" id="acl-ipsc-ids" rows="4" ' +
-        'spellcheck="false">' + escapeText(ids.join("\n")) + "</textarea>" +
+        'spellcheck="false">' + escapeText(writeIPSC(ids, named)) + "</textarea>" +
       '<p class="acl__hint">Takes effect on save. A repeater removed here stops ' +
-        "being answered without a restart.</p>";
+        "being answered without a restart. A Motorola repeater announces no " +
+        "callsign and one on a private radio ID is in no registry, so a name " +
+        "written here is the only one the console can show.</p>";
 
     var box = document.getElementById("acl-ipsc-ids");
     if (box) {
@@ -275,20 +279,57 @@
 
   /* readIPSC returns the radio IDs currently typed, ignoring blanks and
    * anything that is not a number — the same tolerance the lists above give a
-   * half-finished line. */
+   * half-finished line.
+   *
+   * **A line may carry a callsign after the ID.** The two are stored in
+   * different places — the ID decides admission, the name decides only what an
+   * operator reads — but asking somebody to keep two lists in step by hand is
+   * how one of them goes stale. One field, two destinations. */
   function readIPSC() {
+    return parseIPSC().ids;
+  }
+
+  /* readIPSCNames returns the callsigns typed beside those IDs. */
+  function readIPSCNames() {
+    return parseIPSC().names;
+  }
+
+  function parseIPSC() {
     var box = document.getElementById("acl-ipsc-ids");
+    var out = { ids: [], names: {} };
     if (!box) {
-      return [];
+      return out;
     }
-    var out = [];
     box.value.split("\n").forEach(function (line) {
       var t = line.trim();
-      if (t !== "" && /^[0-9]+$/.test(t)) {
-        out.push(parseInt(t, 10));
+      if (t === "") {
+        return;
+      }
+      var parts = t.split(/[\s,]+/);
+      if (!/^[0-9]+$/.test(parts[0])) {
+        return;
+      }
+      var id = parseInt(parts[0], 10);
+      out.ids.push(id);
+      var name = parts.slice(1).join(" ").trim();
+      if (name !== "") {
+        out.names[String(id)] = name;
       }
     });
     return out;
+  }
+
+  /* writeIPSC turns the two stored shapes back into the one field they were
+   * typed in. A name whose repeater is no longer listed is dropped rather than
+   * carried invisibly: the server refuses to save one, and showing it here
+   * would offer an operator a line they cannot keep. */
+  function writeIPSC(ids, names) {
+    return ids
+      .map(function (id) {
+        var name = names[String(id)];
+        return name ? id + " " + name : String(id);
+      })
+      .join("\n");
   }
 
   function render(cfg) {
@@ -351,6 +392,7 @@
     });
     if (next.ipsc && next.ipsc.enabled) {
       next.ipsc.allowed_peers = readIPSC();
+      next.ipsc.peer_names = readIPSCNames();
     }
 
     saveButton.disabled = true;

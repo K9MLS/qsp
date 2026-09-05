@@ -597,3 +597,39 @@ func TestATransmissionIsCountedAtEveryLayerItCrosses(t *testing.T) {
 		t.Errorf("%d frames converted from %d received, want 86", c.Converted, len(bodies))
 	}
 }
+
+// TestARepeaterCanBeGivenACallsign is what an operator sees instead of a
+// number.
+//
+// A Motorola repeater announces no callsign, and one on a private radio ID —
+// 999999 here, as on the network this was written for — is in no registry and
+// never will be. **The console showed a bare number for precisely the peers
+// carrying the network**, on every row where a hotspot showed a callsign.
+func TestARepeaterCanBeGivenACallsign(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{
+		AllowedPeers: []uint32{peerID},
+		PeerNames:    map[uint32]string{peerID: "K9MLS"},
+	})
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+
+	if got := l.PeerName(peerID); got != "K9MLS" {
+		t.Errorf("the repeater is named %q, want %q", got, "K9MLS")
+	}
+	if got := l.PeerName(peerID + 1); got != "" {
+		t.Errorf("an unnamed repeater is called %q, want nothing", got)
+	}
+
+	// **Live, for the reason the allow list is live.** An operator adding a
+	// repeater names it in the same save, and a name that waited for a restart
+	// would leave a bare radio ID on the console after a successful save.
+	l.SetPeerNames(map[uint32]string{peerID: "K9MLS/R"})
+	if got := l.PeerName(peerID); got != "K9MLS/R" {
+		t.Errorf("after a reload the repeater is named %q, want %q", got, "K9MLS/R")
+	}
+
+	// A name is display only and must never reach the decision to answer.
+	l.SetPeerNames(nil)
+	send(t, conn, ipsc.KindKeepaliveRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindKeepaliveReply)
+}
