@@ -1,8 +1,12 @@
 package ipsclink_test
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"net"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -20,13 +24,23 @@ const (
 // never collide with each other or with a real one.
 func start(t *testing.T, cfg ipsclink.Config) (*ipsclink.Listener, *net.UDPConn) {
 	t.Helper()
+	return startLogging(t, cfg, logging.Discard())
+}
+
+// startLogging is start with a journal the test can read.
+//
+// Some of what this listener does is only visible in the journal: a superseded
+// transmission is ended and then immediately replaced, so no snapshot ever
+// shows it, and the log line is the whole of the evidence that it ended at all.
+func startLogging(t *testing.T, cfg ipsclink.Config, log *slog.Logger) (*ipsclink.Listener, *net.UDPConn) {
+	t.Helper()
 	if cfg.ListenAddress == "" {
 		cfg.ListenAddress = "127.0.0.1:0"
 	}
 	if cfg.MasterID == 0 {
 		cfg.MasterID = masterID
 	}
-	l, err := ipsclink.New(logging.Discard(), cfg)
+	l, err := ipsclink.New(log, cfg)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -293,5 +307,175 @@ func TestARefusalStopsBeingReported(t *testing.T) {
 	if _, ok := l.LastRefused(later); ok {
 		t.Error("a refusal from over a minute ago is still reported; " +
 			"the status cannot recover and will be ignored")
+	}
+}
+
+// syncBuffer is a journal a test can read while the listener writes it.
+//
+// The listener logs from its own goroutine and the race detector is a blocking
+// gate, so a bare bytes.Buffer would fail the gate rather than the assertion.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// waitForCall returns the peer's current call once it has counted frames.
+func waitForCall(t *testing.T, l *ipsclink.Listener, frames uint64) *ipsclink.Call {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		peers := l.Peers()
+		if len(peers) == 1 && peers[0].LastCall != nil && peers[0].LastCall.Frames == frames {
+			return peers[0].LastCall
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no call with %d frames was recorded", frames)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// waitForJournal fails unless the journal comes to contain a phrase.
+func waitForJournal(t *testing.T, journal *syncBuffer, want string) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if strings.Contains(journal.String(), want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("journal never said %q; it said:\n%s", want, journal.String())
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// voiceFrames sends a transmission that stops without its terminator.
+func voiceFrames(t *testing.T, conn *net.UDPConn, stream uint16, n int) {
+	t.Helper()
+	flags := uint16(0x80dd)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			flags = 0x805d
+		}
+		send(t, conn, ipsc.KindVoice, peerID, voiceBody(stream, flags, uint16(i)))
+	}
+}
+
+// TestATransmissionThatStopsWithoutATerminatorIsClosed is the defect that put
+// seven hours in front of an operator.
+//
+// A call ended on its last-frame flag and on nothing else. A peer that keeps
+// keepaliving is never dropped, so a transmission whose terminator never
+// arrived stayed open for as long as the repeater stayed up: on 2026-09-05 the
+// console reported one running for 7h14m18s, in 45 frames, and counted the
+// station as transmitting.
+func TestATransmissionThatStopsWithoutATerminatorIsClosed(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{})
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+
+	voiceFrames(t, conn, 0x3360, 2)
+	waitForCall(t, l, 2)
+
+	if closed := l.ExpireCallsAt(time.Now()); closed != 0 {
+		t.Errorf("closed %d transmissions that had just been heard", closed)
+	}
+	if c := l.Peers()[0].LastCall; !c.Ended.IsZero() {
+		t.Error("a transmission still arriving was closed")
+	}
+
+	sweep := time.Now().Add(2 * ipsclink.CallTimeout)
+	if closed := l.ExpireCallsAt(sweep); closed != 1 {
+		t.Fatalf("closed %d transmissions, want 1", closed)
+	}
+
+	c := l.Peers()[0].LastCall
+	if c.Ended.IsZero() {
+		t.Fatal("the transmission is still open after the sweep")
+	}
+	if !c.Lost {
+		t.Error("a transmission that ended without a terminator is not marked lost")
+	}
+	// **It ended when its last frame arrived, not when the sweep noticed.**
+	// Recording the sweep time would stretch every lost transmission by up to
+	// the timeout, which is the number an operator reads.
+	if got := c.Ended.Sub(c.Started); got >= ipsclink.CallTimeout {
+		t.Errorf("a two-frame transmission is recorded as %s long", got)
+	}
+	if !c.Ended.Before(sweep) {
+		t.Error("the transmission is recorded as ending at the sweep")
+	}
+}
+
+// TestATransmissionIsNotReportedForLongerThanARadioCanTransmit is the second
+// mechanism, and it is meant never to fire.
+//
+// Every radio on an amateur network has a time-out timer — 180 seconds on this
+// one — so frames still arriving after four minutes are a stuck record rather
+// than a long over. It is keyed on the start time where the silence timeout is
+// keyed on the last frame, so the two cannot fail together.
+func TestATransmissionIsNotReportedForLongerThanARadioCanTransmit(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{})
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+
+	voiceFrames(t, conn, 0x3360, 2)
+	waitForCall(t, l, 2)
+
+	sweep := time.Now().Add(ipsclink.MaxCallDuration + time.Second)
+	if closed := l.ExpireCallsAt(sweep); closed != 1 {
+		t.Fatalf("closed %d transmissions, want 1", closed)
+	}
+	c := l.Peers()[0].LastCall
+	// **The end time is what says which mechanism fired.** The silence timeout
+	// ends a transmission at its last frame; the ceiling ends one at the sweep,
+	// because frames may still be arriving.
+	if !c.Ended.Equal(sweep) {
+		t.Errorf("the transmission ended at %s, want the sweep at %s — the "+
+			"silence timeout closed it and the ceiling was never exercised",
+			c.Ended, sweep)
+	}
+	// The console reports an open transmission as running for now minus its
+	// start, so an open record past the ceiling is the seven-hour row.
+	if c.Ended.IsZero() {
+		t.Error("a transmission past the ceiling is still reported as running")
+	}
+}
+
+// TestASupersededTransmissionIsEndedRatherThanOverwritten is the same defect in
+// its quieter form.
+//
+// A new stream ID replaced the record outright, so a transmission whose
+// terminator never arrived left a `call started` with no `call ended` anywhere
+// and vanished with nothing said about it. Two are in the journal for
+// 2026-09-04.
+func TestASupersededTransmissionIsEndedRatherThanOverwritten(t *testing.T) {
+	journal := &syncBuffer{}
+	l, conn := startLogging(t, ipsclink.Config{},
+		logging.New(journal, logging.Options{Level: slog.LevelInfo, Format: logging.FormatJSON}))
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+
+	voiceFrames(t, conn, 0x3360, 2)
+	waitForCall(t, l, 2)
+	voiceFrames(t, conn, 0x4471, 1)
+	waitForCall(t, l, 1)
+
+	waitForJournal(t, journal, "call ended without a terminator")
+	if c := l.Peers()[0].LastCall; c.StreamID != 0x4471 {
+		t.Errorf("the current transmission is stream %#04x, want 0x4471", c.StreamID)
 	}
 }

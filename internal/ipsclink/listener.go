@@ -52,6 +52,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/parrot"
@@ -114,6 +115,38 @@ type Config struct {
 // named to avoid.
 const DefaultPeerTimeout = 50 * time.Second
 
+// CallTimeout is how long a transmission may be silent before it is presumed
+// lost.
+//
+// **It is the Homebrew listener's constant, imported rather than restated.**
+// The two listeners feed one Last-heard panel, and a transmission that is over
+// on one side and running on the other is a difference an operator would read
+// as a fault in the network rather than in QSP.
+const CallTimeout = calls.StreamTimeout
+
+// MaxCallDuration is the longest a transmission may be reported as running,
+// however many frames keep arriving.
+//
+// **Every radio on an amateur network has a time-out timer**, 180 seconds on
+// this one, so a transmission longer than that is not a long over: it is a
+// stuck record, a replay, or a defect. Four minutes leaves a full minute of
+// margin, so a lawful over that runs to its time-out timer is never reported as
+// a fault.
+//
+// It is a second mechanism and it is meant to be dead weight. CallTimeout ends
+// every transmission that stops; this one ends the transmission that never
+// stops, which is the failure that put seven hours in front of an operator, and
+// it is keyed on a different field so that the two cannot fail together.
+const MaxCallDuration = 4 * time.Minute
+
+// CallSweepInterval is how often the sweep runs.
+//
+// **A sweep is a deadline, not a cadence.** It ran at PeerTimeout/4 — twelve and
+// a half seconds — which is fine for dropping a repeater that unplugged and far
+// too slow for a two-second stream timeout. It also gates parrot playback for a
+// recording that ended in silence, which waited the same twelve seconds.
+const CallSweepInterval = 500 * time.Millisecond
+
 // Peer is a repeater the listener has answered.
 type Peer struct {
 	// RadioID is the peer's own ID, from the envelope of every message.
@@ -166,8 +199,92 @@ type Call struct {
 	Timeslot hbp.Timeslot
 	// Started and Ended bound the transmission. Ended is zero while it runs.
 	Started, Ended time.Time
+	// LastFrame is when the most recent frame arrived.
+	//
+	// **A transmission ends when its last frame arrived, not when a sweep
+	// noticed.** Recording the sweep time would stretch every lost
+	// transmission by up to the sweep interval, and the duration is the one
+	// thing this record exists to report.
+	LastFrame time.Time
 	// Frames counts voice frames.
 	Frames uint64
+	// Lost reports that the transmission ended without a terminator.
+	Lost bool
+}
+
+// endReason says why a transmission was closed, and chooses what the journal
+// says about it.
+//
+// **The three are worth telling apart.** A terminator is a normal over. Silence
+// is a lossy link or a peer that vanished, which is worth an operator's
+// attention. Running past MaxCallDuration is neither: it is QSP failing to
+// notice an end, and it should never appear.
+type endReason int
+
+const (
+	endTerminated endReason = iota
+	endSilent
+	endTooLong
+)
+
+// endCall closes a peer's current transmission at the given time.
+//
+// The caller holds l.mu. Calling it on a peer with no call, or one already
+// ended, does nothing — every caller would otherwise repeat the same guard.
+func (l *Listener) endCall(p *Peer, at time.Time, reason endReason) {
+	c := p.LastCall
+	if c == nil || !c.Ended.IsZero() {
+		return
+	}
+	c.Ended = at
+	c.Lost = reason != endTerminated
+	duration := at.Sub(c.Started).Round(time.Millisecond)
+	switch reason {
+	case endTerminated:
+		l.log.Info("call ended", "radio_id", p.RadioID, "source", c.Source,
+			"frames", c.Frames, "duration", duration)
+	case endSilent:
+		l.log.Warn("call ended without a terminator", "radio_id", p.RadioID,
+			"source", c.Source, "frames", c.Frames, "duration", duration)
+	case endTooLong:
+		l.log.Warn("call exceeded the longest transmission QSP will report",
+			"radio_id", p.RadioID, "source", c.Source, "frames", c.Frames,
+			"duration", duration, "limit", MaxCallDuration.String())
+	}
+}
+
+// ExpireCallsAt closes transmissions that stopped without a terminator, and
+// reports how many.
+//
+// **Nothing did this until 0223.** A call ended on its last-frame flag and on
+// nothing else, and a peer that keeps keepaliving is never dropped, so a
+// transmission whose terminator never arrived stayed open for as long as the
+// repeater stayed up. One was reported as running for seven hours and fourteen
+// minutes, with a frame count of 45, on a console that also said one station was
+// transmitting.
+func (l *Listener) ExpireCallsAt(now time.Time) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var closed int
+	for _, p := range l.peers {
+		c := p.LastCall
+		if c == nil || !c.Ended.IsZero() {
+			continue
+		}
+		switch {
+		case now.Sub(c.Started) > MaxCallDuration:
+			l.endCall(p, now, endTooLong)
+		case now.Sub(c.LastFrame) > CallTimeout:
+			l.endCall(p, c.LastFrame, endSilent)
+		default:
+			continue
+		}
+		closed++
+	}
+	if closed > 0 {
+		l.publishLocked()
+	}
+	return closed
 }
 
 // Listener serves IPSC peers on a UDP socket.
@@ -651,12 +768,21 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 	}
 
 	if p.LastCall == nil || p.LastCall.StreamID != v.StreamID || !p.LastCall.Ended.IsZero() {
+		// **A superseded transmission is ended, not overwritten.** This
+		// replaced the record outright, so a call whose terminator never
+		// arrived left a `call started` with no `call ended` anywhere in the
+		// journal and disappeared from the console without a line about it.
+		// Two of them are in the log for 2026-09-04 22:48.
+		if prev := p.LastCall; prev != nil && prev.Ended.IsZero() {
+			l.endCall(p, prev.LastFrame, endSilent)
+		}
 		p.LastCall = &Call{
 			StreamID:    v.StreamID,
 			Source:      v.SourceID,
 			Destination: v.Destination,
 			Timeslot:    slot,
 			Started:     now,
+			LastFrame:   now,
 		}
 		// The slot bit is logged raw alongside the slot it was read as, so
 		// that a key-up on a known timeslot settles the polarity from the
@@ -668,10 +794,9 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 			"stream", fmt.Sprintf("%#04x", v.StreamID))
 	}
 	p.LastCall.Frames++
+	p.LastCall.LastFrame = now
 	if v.IsLastFrame() {
-		p.LastCall.Ended = now
-		l.log.Info("call ended", "radio_id", p.RadioID, "source", v.SourceID,
-			"frames", p.LastCall.Frames, "duration", now.Sub(p.LastCall.Started).Round(time.Millisecond))
+		l.endCall(p, now, endTerminated)
 	}
 
 	if l.cfg.Deliver == nil || conv == nil {
@@ -680,14 +805,19 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) []hbp.D
 	return conv.Convert(msg, hbp.RepeaterID(p.RadioID))
 }
 
-// expire drops peers that stop keepaliving.
+// expire is the sweep: it drops peers that stop keepaliving, closes
+// transmissions that stop without a terminator, and finishes parrot recordings.
+//
+// All three are the same kind of judgement — something ended because nothing
+// more arrived — and all three run on the tightest of the deadlines rather than
+// the loosest, which is why the interval is named for calls.
 //
 // A repeater that is unplugged sends nothing and says nothing: there is no
 // disconnect message in any capture. Silence is the only signal there is, so a
 // peer that has been quiet longer than PeerTimeout is gone, and saying so is
 // better than a console that shows a repeater which left an hour ago.
 func (l *Listener) expire(ctx context.Context) {
-	tick := time.NewTicker(l.cfg.PeerTimeout / 4)
+	tick := time.NewTicker(CallSweepInterval)
 	defer tick.Stop()
 	for {
 		select {
@@ -695,6 +825,7 @@ func (l *Listener) expire(ctx context.Context) {
 			return
 		case now := <-tick.C:
 			l.ExpireAt(now)
+			l.ExpireCallsAt(now)
 			l.expireParrot()
 		}
 	}

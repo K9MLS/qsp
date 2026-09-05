@@ -1104,6 +1104,10 @@ func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallVie
 		v.Duration = c.Ended.Sub(c.Started).Truncate(time.Second).String()
 		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
 		v.EndedAt = c.Ended.UTC()
+		// The Homebrew side has carried this since the terminator-less close
+		// was written; the Motorola side had nothing to carry, because no call
+		// of its own could end without a terminator.
+		v.Lost = c.Lost
 		recent = append(recent, v)
 	}
 	return active, recent
