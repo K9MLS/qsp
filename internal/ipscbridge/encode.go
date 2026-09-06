@@ -155,6 +155,23 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 	// rebuilding. It carries no vocoder core, so it has to be recognised
 	// before the core is looked for. See ADR-0045.
 	if frame.FrameType == hbp.FrameTypeSync {
+		// **A voice header is a data burst too, and it is not a text.** The
+		// frame type alone cannot tell them apart: MMDVMHost opens a
+		// transmission with a voice Link Control header carried in a
+		// data-sync burst, which arrived here and left as a group text —
+		// kind 0x83, with the voice transmission's own stream ID and flags
+		// on it. Three captures of real Motorola masters contain no 0x83 at
+		// all; a master sends 0x80 with the header marker in byte 30.
+		//
+		// They are dropped rather than converted, because this encoder builds
+		// its own header and terminator from the voice stream a few lines
+		// below — three headers, as Motorola sends three. Passing these on as
+		// well would announce one transmission twice, in two message types,
+		// one of which says the audio about to arrive is a text message.
+		switch frame.DataType {
+		case dmrfec.DataTypeVoiceLCHeader, dmrfec.DataTypeTerminatorWithLC:
+			return nil
+		}
 		if m, ok := e.text(st, frame, slot); ok {
 			return []ipsc.Message{m}
 		}

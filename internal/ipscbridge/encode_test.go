@@ -226,3 +226,66 @@ func TestTwoOversFromOneRadioAreTwoStreams(t *testing.T) {
 		}
 	}
 }
+
+// TestAVoiceTransmissionGoesOutAsVoice is what three captures of real masters
+// say and what this encoder did not.
+//
+// A voice Link Control header is carried in a data-sync burst, exactly like a
+// text message, so dispatching on the frame type alone sent it to the text
+// encoder — and it left as kind 0x83, the group text, carrying the voice
+// transmission's own stream ID and flags. A capture on 2026-09-06 has two of
+// them ahead of every outbound transmission.
+//
+// **No captured Motorola master sends 0x83 at all.** ipsc-master-voice,
+// ipsc-probe-voice and ipsc-two-peers hold 288, 66 and 326 voice datagrams and
+// every one is 0x80, marked in byte 30 as header, terminator or audio.
+func TestAVoiceTransmissionGoesOutAsVoice(t *testing.T) {
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
+
+	kinds := map[ipsc.Kind]int{}
+	markers := map[byte]int{}
+	for _, m := range voiceMessages(t) {
+		// Convert produces what a hotspot sends: a Link Control header and a
+		// terminator in data-sync bursts, with the audio between them.
+		for _, burst := range c.Convert(m, hbp.RepeaterID(3132910)) {
+			for _, out := range e.Encode(burst) {
+				kinds[out.Kind]++
+				if len(out.Body) > 25 {
+					// The slot bit shares byte 30 of the frame with the
+					// marker, so audio reads 0x0a on one timeslot and 0x8a on
+					// the other. Reading the raw byte is how a whole timeslot
+					// of audio went missing for a fortnight.
+					markers[ipsc.FrameKindOf(out.Body[25])]++
+				}
+			}
+		}
+	}
+
+	if len(kinds) == 0 {
+		t.Fatal("the transmission encoded to nothing; this test would prove nothing")
+	}
+	for kind, n := range kinds {
+		if kind != ipsc.KindVoice {
+			t.Errorf("%d datagrams of a voice transmission went out as %#02x, and no "+
+				"captured master sends anything but %#02x for voice",
+				n, byte(kind), byte(ipsc.KindVoice))
+		}
+	}
+
+	// **And it is still a complete transmission.** Dropping the header burst
+	// would be the wrong fix if the encoder did not build its own, so this
+	// asserts the shape a master sends: a header, audio, a terminator.
+	for marker, what := range map[byte]string{
+		ipsc.FrameHeader:     "header",
+		ipsc.FrameVoice:      "audio",
+		ipsc.FrameTerminator: "terminator",
+	} {
+		if markers[marker] == 0 {
+			t.Errorf("the transmission carries no %s", what)
+		}
+	}
+}
