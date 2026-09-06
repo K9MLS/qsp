@@ -633,3 +633,47 @@ func TestARepeaterCanBeGivenACallsign(t *testing.T) {
 	send(t, conn, ipsc.KindKeepaliveRequest, peerID, registerBody())
 	expectReply(t, conn, ipsc.KindKeepaliveReply)
 }
+
+// TestARepeaterThatNeverRegisteredHereIsStillConnected is the dash an operator
+// asked about.
+//
+// A peer record is created by any datagram, and only a registration sets
+// Registered. So a repeater that registered with a previous process and simply
+// kept sending keepalives is known, answered and passing traffic while this
+// instance has never seen it register — which is what happens to every
+// repeater on the network each time QSP restarts.
+//
+// **The console read "REGISTERED" beside an empty Connected column**, which is
+// two claims that cannot both be right. FirstHeard is the one QSP can always
+// make.
+func TestARepeaterThatNeverRegisteredHereIsStillConnected(t *testing.T) {
+	l, conn := start(t, ipsclink.Config{})
+
+	// A keepalive and nothing else: the repeater believes it is registered,
+	// because it registered with the process that stopped.
+	send(t, conn, ipsc.KindKeepaliveRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindKeepaliveReply)
+
+	peers := l.Peers()
+	if len(peers) != 1 {
+		t.Fatalf("%d peers known, want 1", len(peers))
+	}
+	if !peers[0].Registered.IsZero() {
+		t.Error("a peer that only sent a keepalive is recorded as having registered here")
+	}
+	if peers[0].FirstHeard.IsZero() {
+		t.Fatal("a peer that is answered and passing traffic has no contact time, " +
+			"so the console shows a dash where every other row shows a duration")
+	}
+
+	// **First heard is not moved by later traffic.** It is how long the peer
+	// has been in contact; refreshing it on every datagram would make a
+	// repeater that has been up for hours report a few milliseconds.
+	first := peers[0].FirstHeard
+	time.Sleep(20 * time.Millisecond)
+	send(t, conn, ipsc.KindKeepaliveRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindKeepaliveReply)
+	if got := l.Peers()[0].FirstHeard; !got.Equal(first) {
+		t.Errorf("first heard moved from %s to %s on a later datagram", first, got)
+	}
+}

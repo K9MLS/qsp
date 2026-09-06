@@ -170,6 +170,19 @@ type Peer struct {
 	// a peer sources from a different port than the one it addresses, and
 	// replies go to the source or they go nowhere.
 	Address string
+	// FirstHeard is when this listener first heard from the peer.
+	//
+	// **It is not the same as Registered, and the difference is the point.** A
+	// peer record is created by any datagram, so a repeater that registered
+	// with a previous process and simply kept sending keepalives is known,
+	// answered and passing traffic without this instance ever having seen its
+	// registration. Registered stays zero for it; this does not.
+	//
+	// The console shows how long a peer has been in contact, which is what an
+	// operator reads "connected for" as. Reporting only what QSP witnessed a
+	// registration for left a dash beside a repeater that had been carrying
+	// audio for hours.
+	FirstHeard time.Time
 	// Registered is when the peer's registration was answered.
 	Registered time.Time
 	// LastHeard is the arrival time of its most recent message of any kind.
@@ -770,7 +783,7 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) ([
 
 	p, known := l.peers[msg.SenderID]
 	if !known {
-		p = &Peer{RadioID: msg.SenderID}
+		p = &Peer{RadioID: msg.SenderID, FirstHeard: now}
 		l.peers[msg.SenderID] = p
 	}
 	p.Address = from.String()

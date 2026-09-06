@@ -1063,8 +1063,15 @@ func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 			State: "registered",
 			Ready: true,
 		}
-		if !peer.Registered.IsZero() {
-			v.ConnectedFor = now.Sub(peer.Registered).Truncate(time.Second).String()
+		// **How long it has been in contact, not how long since a handshake
+		// this instance happened to witness.** A repeater that registered with
+		// a previous process and kept sending keepalives is answered and
+		// passing traffic, and reporting only what QSP saw a registration for
+		// left a dash beside a repeater that had been carrying audio for
+		// hours. The Homebrew column means the same thing, so the two now
+		// answer the same question in the same units.
+		if !peer.FirstHeard.IsZero() {
+			v.ConnectedFor = now.Sub(peer.FirstHeard).Truncate(time.Second).String()
 		}
 		// Learned from the repeater's own frames rather than announced, so a
 		// repeater that has never transmitted shows none. That is worth
