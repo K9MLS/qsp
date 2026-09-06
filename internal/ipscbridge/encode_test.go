@@ -1,8 +1,11 @@
 package ipscbridge_test
 
 import (
+	"time"
+
 	"bytes"
 	"encoding/binary"
+	"github.com/k9mls/qsp/internal/calls"
 	"testing"
 
 	"github.com/k9mls/qsp/internal/ipscbridge"
@@ -287,5 +290,88 @@ func TestAVoiceTransmissionGoesOutAsVoice(t *testing.T) {
 		if markers[marker] == 0 {
 			t.Errorf("the transmission carries no %s", what)
 		}
+	}
+}
+
+// TestATextIsOneTransmission is the week-old defect a differential named.
+//
+// A text sent from a hotspot never arrived at a Motorola repeater, while a text
+// from that repeater arrived perfectly. Two captures on 2026-09-06, the same
+// two repeaters, opposite directions:
+//
+//	repeater sends   stream 6f08 throughout, flags 80dd then 805d, sequence
+//	                 f396 f397 f398 f399 counting up across 21 frames
+//	QSP sends        stream 7e5d 7e5d 72fc 72fc, counter a8 a8 a9 a9, flags
+//	                 805d always, sequence 0 1 0 1 across 36 frames
+//
+// **MMDVMHost gives every data burst its own stream ID**, and this encoder kept
+// its per-transmission state under that ID — so every burst restarted the
+// transmission. QSP sent eighteen fragments of two frames, each announcing
+// itself as the continuation of nothing, and the far repeater reassembled a
+// message from none of them.
+func TestATextIsOneTransmission(t *testing.T) {
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Real text bursts, each restamped with its own stream as MMDVMHost does.
+	var bursts []hbp.Data
+	for _, m := range textMessages(t) {
+		if out, ok := c.ConvertText(m, hbp.RepeaterID(3132910)); ok {
+			bursts = append(bursts, out)
+		}
+	}
+	if len(bursts) < 4 {
+		t.Fatalf("the fixture yielded %d bursts; this test would prove nothing", len(bursts))
+	}
+
+	at := time.Unix(1757000000, 0).UTC()
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
+	e.Now = func() time.Time { return at }
+
+	streams := map[uint16]int{}
+	counters := map[byte]int{}
+	var sent int
+	for i, b := range bursts {
+		// A fresh stream per burst, in the shape streamFor produces: the
+		// varying part in the high half, since that is what the encoder
+		// writes. Ids that differed only in the low half made every outbound
+		// stream 0x0000 and the first assertion below passed on nothing.
+		b.StreamID = hbp.StreamID(uint32(0x1000+i)<<16 | 0xcdee)
+		b.SourceID = 3132910
+		b.TargetID = 3155373
+		at = at.Add(60 * time.Millisecond)
+		for _, m := range e.Encode(b) {
+			streams[binary.BigEndian.Uint16(m.Body[10:12])]++
+			counters[m.Body[0]]++
+			sent++
+		}
+	}
+	if sent == 0 {
+		t.Fatal("the text encoded to nothing")
+	}
+	if len(streams) != 1 {
+		t.Errorf("one text went out under %d stream IDs; a repeater sees that many "+
+			"transmissions and reassembles a message from none of them", len(streams))
+	}
+	if len(counters) != 1 {
+		t.Errorf("one text went out under %d call counters", len(counters))
+	}
+
+	// **And a text a minute later is a different transmission.** Merging on
+	// source and target alone would join two messages into one, which is the
+	// mistake in the other direction.
+	at = at.Add(2 * calls.DataBurstWindow)
+	b := bursts[0]
+	b.StreamID = hbp.StreamID(uint32(0x9999)<<16 | 0xcdee)
+	b.SourceID = 3132910
+	b.TargetID = 3155373
+	for _, m := range e.Encode(b) {
+		streams[binary.BigEndian.Uint16(m.Body[10:12])]++
+	}
+	if len(streams) != 2 {
+		t.Errorf("a text %s after the last is still the same transmission",
+			2*calls.DataBurstWindow)
 	}
 }

@@ -2,7 +2,9 @@ package ipscbridge
 
 import (
 	"encoding/binary"
+	"time"
 
+	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/dmrfec"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
@@ -66,6 +68,16 @@ type Encoder struct {
 	colourCode uint8
 	cfg        Config
 	slots      [2]encodeState
+	// Now is the clock, so a test can put two bursts a minute apart without
+	// waiting a minute. Nil means time.Now.
+	Now func() time.Time
+}
+
+func (e *Encoder) now() time.Time {
+	if e.Now != nil {
+		return e.Now()
+	}
+	return time.Now()
 }
 
 type encodeState struct {
@@ -75,6 +87,25 @@ type encodeState struct {
 	timestamp uint32
 	counter   uint8
 	opened    bool
+
+	// A run of data bursts is one transmission, and these say which run.
+	//
+	// **MMDVMHost gives every data burst its own stream ID.** Keying the state
+	// above on the stream alone therefore restarted the transmission on every
+	// burst of a text message: a new call counter, the sequence back to zero,
+	// and never the first-frame flag. A capture on 2026-09-06 shows QSP
+	// sending eighteen two-frame transmissions where the repeater at the other
+	// end sends one of twenty-one, and the receiving repeater reassembled a
+	// message from none of them.
+	//
+	// The history has merged runs of data bursts since the text work and the
+	// journal since 0227. This is the third place that has to know it, and the
+	// only one where getting it wrong loses the message rather than the
+	// tidiness of a log.
+	dataSource uint32
+	dataTarget uint32
+	dataAt     time.Time
+	inData     bool
 }
 
 // NewEncoder returns an encoder that sends as the given master radio ID, using
@@ -128,7 +159,25 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 	}
 	st := &e.slots[slot]
 
-	if frame.StreamID != st.stream || !st.seen {
+	// A data burst continues the run before it when it comes from the same
+	// radio, to the same place, within the window the call history uses. The
+	// stream ID is deliberately not part of that test: it is the field that
+	// changes on every burst and the reason this was needed.
+	now := e.now()
+	continuesData := frame.FrameType == hbp.FrameTypeSync &&
+		st.inData && st.dataSource == frame.SourceID &&
+		st.dataTarget == frame.TargetID &&
+		now.Sub(st.dataAt) <= calls.DataBurstWindow
+	if frame.FrameType == hbp.FrameTypeSync {
+		st.inData = true
+		st.dataSource = frame.SourceID
+		st.dataTarget = frame.TargetID
+		st.dataAt = now
+	} else {
+		st.inData = false
+	}
+
+	if (frame.StreamID != st.stream || !st.seen) && !continuesData {
 		st.stream = frame.StreamID
 		st.seen = true
 		st.sequence = 0
@@ -256,7 +305,11 @@ func (e *Encoder) preamble(st *encodeState, src hbp.Data, slot int, flags uint16
 	// with and can be followed across a capture. When it came from a hotspot
 	// it is the top of the 32-bit stream MMDVM generates per transmission,
 	// which varies as required.
-	binary.BigEndian.PutUint16(body[10:12], uint16(src.StreamID>>16))
+	// **The transmission's stream, not the frame's.** They are the same for
+	// voice, where one over is one stream. They are not for a text: MMDVMHost
+	// gives every data burst its own ID, and writing the frame's put a run of
+	// bursts on the wire as a run of separate transmissions.
+	binary.BigEndian.PutUint16(body[10:12], uint16(st.stream>>16))
 
 	// The timeslot bit and the last-frame bit share byte 17 of the frame.
 	var b17 byte
