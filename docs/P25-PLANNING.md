@@ -74,7 +74,22 @@ interface. A copy is at
 <https://www.qsl.net/kb9mwr/projects/dv/apco25/TIA-102.BAHA-2006.pdf> and the
 TIA-102 series is on archive.org.
 
-**This raises a question ADR-0029 does not answer.** That ADR forbids reading
+**The permission question is narrower than it first appears.**
+
+ADR-0029 governs IP Site Connect, which has no published specification, and
+forbids reading other people's *implementations* because of the derivative-work
+consequence. [ADR-0040](adr/) already settled the other case: the DMR air
+interface is ETSI TS 102 361-1, a free download, and `internal/dmrfec` carries
+Golay, Reed-Solomon and BPTC(196,96) from it with a clause citation on each.
+**A published standard is neither a capture nor somebody's code.**
+
+So TIA-102.BAHA is the P25 analogue of TS 102 361-1 and the existing precedent
+covers it. What ADR-0029 still governs is anything Motorola-proprietary — the
+V.24 framing above HDLC has no published specification, and the third-party
+write-ups of it are somebody else's captures rather than a standard.
+
+**What follows is the original framing, kept because the distinction is worth
+seeing rather than being told.** That ADR forbids reading
 DMRlink, HBlink3 or other implementations, and says protocol knowledge must
 come from captures. A published standard is a specification rather than
 somebody's code, and the V.24 write-ups are captures somebody else took and

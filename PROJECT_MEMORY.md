@@ -2200,9 +2200,82 @@ treatment.
 The nav markup is **copied into seven pages**. Nothing shares it, so every rule
 about it is seven rules, which is why the tests for it count the copies.
 
+### Private text has never worked, and the reason is a missing codec
+
+**Every data block of a text message is dropped, silently, in both directions.**
+One text from a radio through the XPR8300 on 2026-09-06, every burst:
+
+```
+17:52:11.195  .233 -> QSP   54 bytes  Data header   relayed
+17:52:11.258  .233 -> QSP   60 bytes  data block    dropped
+   ... six blocks, none relayed
+```
+
+The preamble and the header cross. **Not one content block does.** MMDVMHost at
+the far end receives a header promising blocks and never gets them, which is
+exactly what §8i recorded as "the five Rate 1/2 blocks after the header are the
+suspect" and could not explain.
+
+Note the lengths: everything QSP relays is 54 bytes, every block is 60. Six
+octets more, which is an 18-octet information block where a 54-byte datagram
+carries 12.
+
+**ADR-0045 predicted this in writing**: *Rate 3/4 bursts are refused rather than
+truncated. None appeared in the captured texts, so this has never yet
+mattered.* The one text captured for that ADR was short enough to fit in bursts
+`DecodeBPTC` can read. A real message is not.
+
+`Encoder.text` calls `dmrfec.DecodeBPTC`, which cannot read a Trellis-coded
+burst, and returns false. Since 0242 that at least warns; before it, nothing.
+
+**It explains every symptom.** KD9EJA's texts reach K9MLS because his repeater's
+bursts are in a coding QSP accepts. K9MLS's never reach KD9EJA because the
+content is dropped. Neither radio gets an acknowledgement because no message is
+ever assembled to acknowledge. Group text on the local repeater works because
+it never crosses the bridge.
+
+### What it takes, and the permission question that does not exist
+
+Rate 3/4 data uses a Trellis code. `internal/dmrfec` implements BPTC(196,96),
+Golay, Reed-Solomon and the Data Type table and nothing else.
+
+**ADR-0029 does not apply and an amendment was proposed in error.** That ADR
+governs IP Site Connect, which has no published specification, and forbids
+reading other people's *implementations* because of the derivative-work
+consequence. The DMR air interface is the other side of the bridge and
+[ADR-0040](docs/adr/) settled it: `internal/dmrfec/linkcontrol.go` says so at
+the top, and the package already carries Golay, Reed-Solomon (12,9,4) and
+BPTC(196,96) from ETSI TS 102 361-1, each cited by clause. **Rate 3/4 is the
+same kind of constant on the same side of the bridge.**
+
+Everything needed is in ETSI TS 102 361-1 V1.1.1 Annex B.2.4:
+
+- **Table B.7**, the encoder state transition table: eight FSM states by eight
+  input tribits, giving one of sixteen constellation points. The FSM has the
+  property that the current input is the next state, which makes decoding a
+  table lookup rather than a Viterbi search when the burst is clean.
+- **Table B.8**, constellation point to dibit pair.
+- **Table B.9**, the 98-entry interleave schedule.
+- **Table B.10**, transmit bit ordering.
+- **Table B.6**: 48 tribits in, 98 dibits out, (196,144). A flushing tribit of
+  zero is appended.
+
+The tables are not transcribed here. ETSI's copyright notice forbids
+reproduction, the document is a free download, and a clause reference is what
+this project cites elsewhere.
+
+**Build decode first.** `qsp-session.pcap00` holds real Rate 3/4 bursts in both
+directions whose content the operator typed, so a decoder that recovers a known
+message from those bytes is proof no unit test can match. Encode second,
+verified by round-tripping the same bursts — decode can be checked against
+reality and encode can only be checked against decode.
+
 ### Open, in order
 
-1. **Private calls on air.** 0225 is deployed and untested against a radio.
+1. **Rate 3/4 Trellis in internal/dmrfec**, then the text path handling all
+   three block codings. This is the largest single piece of DMR work left and
+   the last thing between the network and working text.
+2. **Private calls on air: done.** Proved in both directions on 2026-09-06.
    KD9EJA's private call to K9MLS should produce `call started` with
    `"private":true` and a `relaying transmission` line. **Whether the far end
    rings is a separate question** and is the same one Paul's private calls have
