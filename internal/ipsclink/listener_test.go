@@ -677,3 +677,49 @@ func TestARepeaterThatNeverRegisteredHereIsStillConnected(t *testing.T) {
 		t.Errorf("first heard moved from %s to %s on a later datagram", first, got)
 	}
 }
+
+// TestRelayingToARepeaterIsReported is the silence that cost an evening.
+//
+// The Homebrew side logs a line for every destination it relays to. This path
+// logged nothing at all, so an operator whose text did not arrive could not
+// tell whether QSP had sent it, and the only way to find out was a packet
+// capture. **A frame that encodes to no message is worse still**: it goes
+// nowhere and said nothing about it, which is the shape Constitution §18
+// exists to forbid.
+func TestRelayingToARepeaterIsReported(t *testing.T) {
+	journal := &syncBuffer{}
+	l, conn := startLogging(t, ipsclink.Config{
+		Bridge: ipscbridge.Config{ColourCode: 11, SlotBitIsTimeslot2: true},
+	}, logging.New(journal, logging.Options{Level: slog.LevelInfo, Format: logging.FormatJSON}))
+
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+	waitForPeers(t, l, 1)
+
+	bodies := voiceBodies(t, "../../testdata/ipsc/ipsc-private-voice.pcap", 0x310d)
+	frames := 0
+	for _, body := range bodies {
+		msg := ipsc.Message{Kind: ipsc.KindVoice, SenderID: peerID + 1, Body: body}
+		v, ok := msg.AsVoice()
+		if !ok {
+			continue
+		}
+		// Origin is a different repeater, so this peer is a destination.
+		l.SendVoice(peerID+1, hbp.Data{
+			RepeaterID: hbp.RepeaterID(peerID + 1), SourceID: v.SourceID,
+			TargetID: v.Destination, Timeslot: hbp.Timeslot2,
+			CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice,
+			StreamID: hbp.StreamID(v.StreamID),
+		})
+		frames++
+	}
+	if frames == 0 {
+		t.Fatal("no frames were relayed; this test would prove nothing")
+	}
+
+	got := journal.String()
+	if n := strings.Count(got, `"msg":"relaying transmission"`); n != 1 {
+		t.Errorf("%d relay lines for one transmission of %d frames, want 1:\n%s",
+			n, frames, got)
+	}
+}

@@ -344,6 +344,9 @@ type Listener struct {
 	allowed atomic.Pointer[map[uint32]bool]
 	// peerNames is display only; see SetPeerNames.
 	peerNames atomic.Pointer[map[uint32]string]
+	// relayed is the last stream sent to each repeater, so a relayed
+	// transmission is reported once rather than once per frame. Guarded by mu.
+	relayed map[uint32]hbp.StreamID
 
 	conn    *net.UDPConn
 	running atomic.Bool
@@ -563,12 +566,26 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		msgs []ipsc.Message
 	}
 	var batch []outbound
+	// **This path reported nothing, ever.** The Homebrew side logs a line per
+	// destination it relays to; the repeaters got their audio in silence, so
+	// an operator whose transmission did not arrive could not tell whether QSP
+	// had sent it. On 2026-09-06 that turned "KD9EJA did not receive my text"
+	// into an hour of reading code, when one line would have said which
+	// repeaters were written to and which frames encoded to nothing.
+	var relayedTo, encodedNothing []uint32
 
 	l.mu.Lock()
+	if l.relayed == nil {
+		l.relayed = map[uint32]hbp.StreamID{}
+	}
 	for id, p := range l.peers {
 		if id == origin || p.Address == "" {
 			continue
 		}
+		// Once per transmission per repeater, not once per frame: an over is
+		// fifty frames a second and a line for each is a line nobody reads.
+		first := l.relayed[id] != frame.StreamID
+		l.relayed[id] = frame.StreamID
 		enc, ok := l.encoders[id]
 		if !ok {
 			enc = ipscbridge.NewEncoder(l.cfg.MasterID, l.cfg.Bridge)
@@ -581,11 +598,33 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		if p.ColourCodeKnown {
 			enc.SetColourCode(p.ColourCode)
 		}
-		if msgs := enc.Encode(frame); len(msgs) > 0 {
+		msgs := enc.Encode(frame)
+		if len(msgs) > 0 {
 			batch = append(batch, outbound{addr: p.Address, msgs: msgs})
+			if first {
+				relayedTo = append(relayedTo, id)
+			}
+		} else if first {
+			// A frame this encoder makes nothing of is a frame that goes
+			// nowhere, and that has to be said out loud. Constitution §18.
+			encodedNothing = append(encodedNothing, id)
 		}
 	}
 	l.mu.Unlock()
+
+	for _, id := range relayedTo {
+		l.log.Info("relaying transmission", "subsystem", "ipsc",
+			"radio_id", id, "source", frame.SourceID,
+			"destination", uint32(frame.TargetID),
+			"private", frame.CallType == hbp.CallPrivate,
+			"stream", fmt.Sprintf("%#08x", uint32(frame.StreamID)))
+	}
+	for _, id := range encodedNothing {
+		l.log.Warn("nothing to relay: the frame encoded to no message",
+			"subsystem", "ipsc", "radio_id", id, "source", frame.SourceID,
+			"destination", uint32(frame.TargetID),
+			"frame_type", int(frame.FrameType), "data_type", int(frame.DataType))
+	}
 
 	// Encoding happens under the lock because an encoder is peer state;
 	// writing happens outside it, so a slow socket cannot stall the listener.

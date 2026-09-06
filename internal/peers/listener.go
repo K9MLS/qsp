@@ -865,7 +865,17 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 	// destination and a reason, and a refusal that names no destination still
 	// names one reason.
 	if res.Reason != "" && l.noteRoutingDrop(routing.Drop{Reason: res.Reason}) {
-		l.log.Info("transmission not carried",
+		// **"Not carried" has to mean nowhere at all.** When the Homebrew side
+		// has nowhere to put a frame the Motorola repeaters still take it, so
+		// reporting that as a transmission going nowhere is a second lie in
+		// place of the silence this replaced — written on 2026-09-06 and
+		// corrected the same evening, after an operator read it and reasonably
+		// concluded his text had been thrown away.
+		msg := "transmission not carried"
+		if res.NoHomebrewDestination {
+			msg = "no hotspot has this radio; carried to the Motorola repeaters only"
+		}
+		l.log.Info(msg,
 			logging.PeerID(uint32(from)),
 			slog.String("reason", res.Reason),
 		)
