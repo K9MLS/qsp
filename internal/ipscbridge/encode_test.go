@@ -2,6 +2,7 @@ package ipscbridge_test
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/k9mls/qsp/internal/ipscbridge"
@@ -145,5 +146,83 @@ func TestATransmissionOpensWithThreeHeaders(t *testing.T) {
 	}
 	if !v.IsFirstFrame() {
 		t.Errorf("the first message carries flags %#04x, want the first-frame flag", v.Flags)
+	}
+}
+
+// TestTwoOversFromOneRadioAreTwoStreams is a defect a capture found and no ear
+// could have.
+//
+// streamFor packs a 16-bit IPSC stream into the top of a Homebrew stream ID and
+// the sender's radio ID into the bottom. The encoder wrote the **low** half,
+// which is the radio ID and nothing else, so every transmission a given radio
+// ever made left here carrying one stream ID for ever. A capture on 2026-09-06
+// caught two overs nineteen seconds apart, on different talkgroups and
+// different timeslots, both relayed as 0x0cdee — the low half of 3132910.
+//
+// **A receiver tells one transmission from the next by this field.** QSP's own
+// listener starts a new call when it changes and the converter does the same,
+// so two consecutive overs from one radio arrive at a repeater with grounds to
+// be read as one continuing transmission.
+func TestTwoOversFromOneRadioAreTwoStreams(t *testing.T) {
+	const source = 3132910
+
+	// The shape streamFor produces: the IPSC stream on top, the radio ID
+	// underneath. Two overs from one radio differ only in the top half, which
+	// is exactly the case that used to collapse.
+	relayed := func(ipscStream uint16) hbp.StreamID {
+		return hbp.StreamID(uint32(ipscStream)<<16 | source&0xFFFF)
+	}
+
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 11})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// One real burst, re-stamped with each transmission's stream, so the audio
+	// is a capture's and only the field under test changes.
+	var audio hbp.Data
+	for _, m := range voiceMessages(t) {
+		for _, burst := range c.Convert(m, hbp.RepeaterID(source)) {
+			if burst.FrameType != hbp.FrameTypeSync {
+				audio = burst
+				break
+			}
+		}
+		if audio.FrameType != 0 || audio.SourceID != 0 {
+			break
+		}
+	}
+	if audio.SourceID == 0 {
+		t.Fatal("the fixture yielded no audio burst; this test would prove nothing")
+	}
+
+	seen := map[uint16]uint16{}
+	for _, ipscStream := range []uint16{0x07db3, 0x079f5} {
+		e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
+		burst := audio
+		burst.SourceID = source
+		burst.StreamID = relayed(ipscStream)
+
+		out := e.Encode(burst)
+		if len(out) == 0 {
+			t.Fatal("a voice burst encoded to nothing")
+		}
+		last := out[len(out)-1]
+		got := binary.BigEndian.Uint16(last.Body[10:12])
+
+		if prev, ok := seen[got]; ok {
+			t.Errorf("streams %#04x and %#04x both went out as %#04x, so a repeater "+
+				"has grounds to hear two overs as one", prev, ipscStream, got)
+		}
+		seen[got] = ipscStream
+
+		// **It carries the stream it arrived with.** A relayed transmission
+		// that keeps its own identifier can be followed from one repeater to
+		// the other in a single capture, which is how the defect above was
+		// found in the first place.
+		if got != ipscStream {
+			t.Errorf("a transmission that arrived as %#04x was relayed as %#04x",
+				ipscStream, got)
+		}
 	}
 }

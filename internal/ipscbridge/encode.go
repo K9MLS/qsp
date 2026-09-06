@@ -221,7 +221,25 @@ func (e *Encoder) preamble(st *encodeState, src hbp.Data, slot int, flags uint16
 	// copied rather than reasoned about.
 	body[7] = 0x02
 
-	binary.BigEndian.PutUint16(body[10:12], uint16(src.StreamID))
+	// **The high half, not the low.** streamFor packs a 16-bit IPSC stream into
+	// the top of a Homebrew stream ID and the sender's radio ID into the
+	// bottom, so the low half of a relayed frame is the radio ID and nothing
+	// else: every transmission that radio ever makes would leave here carrying
+	// one stream ID for ever. A capture on 2026-09-06 shows two overs nineteen
+	// seconds apart, on different talkgroups and different timeslots, both
+	// going out as 0x0cdee — the low half of 3132910.
+	//
+	// A receiver tells one transmission from the next by this field. QSP's own
+	// listener does exactly that, and so does the converter, so two
+	// consecutive overs from one radio would arrive at a repeater with grounds
+	// to be treated as one continuing transmission.
+	//
+	// The high half is the originating IPSC stream when the audio came from a
+	// repeater, so a relayed transmission leaves with the stream it arrived
+	// with and can be followed across a capture. When it came from a hotspot
+	// it is the top of the 32-bit stream MMDVM generates per transmission,
+	// which varies as required.
+	binary.BigEndian.PutUint16(body[10:12], uint16(src.StreamID>>16))
 
 	// The timeslot bit and the last-frame bit share byte 17 of the frame.
 	var b17 byte
