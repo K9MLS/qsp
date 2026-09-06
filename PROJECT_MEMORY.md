@@ -2234,6 +2234,22 @@ about it is seven rules, which is why the tests for it count the copies.
    addresses. A decision, not a defect.
 8. **The vocoder**, then **subscription on air**, then **P25**.
 
+**P25 is researched but not started.** [docs/P25-PLANNING.md](docs/P25-PLANNING.md)
+records what a P25-only network would take, written after the operator asked
+whether one could be built without a vocoder dongle. It can: ADR-0034 says P25
+is never transcoded to reach DMR, so a P25-only network moves IMBE frames as
+opaque payload and no dongle is involved. **The reflector side is ordinary work
+and can be captured today on the Pi-Star at no cost**; the Quantar side is not
+IP at all but synchronous serial carrying HDLC, which cannot be captured with
+tcpdump and needs the Cisco router the operator already owns.
+
+One decision waits on the operator and belongs in an ADR before any P25 code
+exists: **ADR-0029 forbids reading other implementations and says nothing about
+published standards.** TIA-102.BAHA is a specification rather than somebody's
+code, and the V.24 reverse engineering is a capture somebody else took and
+published, but this would be the first protocol knowledge to enter from a
+document.
+
 ### The method, now proved twelve times
 
 **Every reading taken by eye has been wrong. Every differential has been right.**
