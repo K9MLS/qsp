@@ -1,6 +1,8 @@
 package ipscbridge
 
 import (
+	"fmt"
+
 	"github.com/k9mls/qsp/internal/dmrfec"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
@@ -48,15 +50,12 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 		return hbp.Data{}, false
 	}
 
-	// Only the twelve-octet blocks can be placed in a burst. A Rate 3/4 burst
-	// carries twenty-two octets and does not fit the 96-bit information block,
-	// so it is refused rather than truncated — half a text message delivered
-	// is worse than none, because it looks like it worked.
-	if len(t.Block) != dmrfec.LinkControlBlockBytes {
-		return hbp.Data{}, false
-	}
-
-	burst, err := dmrfec.BuildDataBurstFromBlock(c.cfg.ColourCode, t.DataType, t.Block)
+	// Two block sizes, two codings, and for eighteen patches only one of them
+	// was built. A twelve-octet block is BPTC(196,96); an eighteen-octet one
+	// is Rate 3/4 Trellis, and **every content block of every text is one of
+	// those**. Refusing them dropped the message and delivered the header, so
+	// the far end saw a header promising blocks that never came.
+	burst, err := c.burstFor(t.DataType, t.Block)
 	if err != nil {
 		return hbp.Data{}, false
 	}
@@ -106,6 +105,32 @@ func (c *Converter) ConvertText(m ipsc.Message, repeater hbp.RepeaterID) (hbp.Da
 	}
 	copy(out.Payload[:], burst)
 	return out, true
+}
+
+// burstFor codes one information block into the DMR burst that carries it.
+//
+// **The block's length decides the coding, not the data type.** Byte 30 of the
+// datagram agrees on every captured frame, but the block QSP holds is the
+// thing being coded, and a length that disagrees with a data type is a
+// datagram to refuse rather than a burst to build from whichever of the two we
+// happened to trust.
+func (c *Converter) burstFor(dataType uint8, block []byte) ([]byte, error) {
+	switch len(block) {
+	case dmrfec.Rate34BlockBytes:
+		if dataType != dmrfec.DataTypeRate34 {
+			return nil, fmt.Errorf("ipscbridge: an %d-octet block arrived as data type %#x",
+				len(block), dataType)
+		}
+		return dmrfec.BuildRate34Burst(c.cfg.ColourCode, block)
+	case dmrfec.LinkControlBlockBytes:
+		if dataType == dmrfec.DataTypeRate34 {
+			return nil, fmt.Errorf("ipscbridge: a Rate 3/4 burst carried only %d octets",
+				len(block))
+		}
+		return dmrfec.BuildDataBurstFromBlock(c.cfg.ColourCode, dataType, block)
+	default:
+		return nil, fmt.Errorf("ipscbridge: no coding carries a %d-octet block", len(block))
+	}
 }
 
 // timeslotFor turns the raw slot bit into a timeslot under the configured

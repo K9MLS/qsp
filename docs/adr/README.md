@@ -54,5 +54,6 @@ conclusion.
 | [0042](ADR-0042-the-outbound-frame-shape-is-measured.md) | The outbound frame shape is measured, and the colour code belongs to the repeater | Accepted |
 | [0043](ADR-0043-qsp-is-the-master.md) | QSP is the master, and a club runs no second one | Accepted |
 | [0044](ADR-0044-access-control-covers-ipsc.md) | Access control covers IP Site Connect, with no new configuration | Accepted |
-| [0045](ADR-0045-ipsc-text-messages.md) | Text over IP Site Connect is DMR data in the voice envelope | Accepted — amended |
+| [0045](ADR-0045-ipsc-text-messages.md) | Text over IP Site Connect is DMR data in the voice envelope | Accepted — amended; block sizes superseded by 0047 |
 | [0046](ADR-0046-ipsc-private-calls.md) | A private call over IP Site Connect is `0x81` | Accepted |
+| [0047](ADR-0047-rate-34-text-blocks.md) | A text message is Rate 3/4 blocks, and QSP carries them whole | Accepted — one step named as unmeasured |

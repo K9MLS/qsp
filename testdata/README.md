@@ -16,12 +16,23 @@ that actually matters. See Constitution §3 and
 | `hbp/hbp-login-session.pcap` | Full HBP login handshake plus keepalives, two implementations |
 | `hbp/hbp-voice-session.pcap` | Seven complete voice streams with headers and terminators |
 | `p25/p25-gateway-idle.pcap` | P25Gateway polling only — **no voice**, insufficient for a parser |
+| `ipsc/*.pcap` | Registration, voice, private calls and text over IP Site Connect |
 
-IPSC has no fixture and therefore no implementation. See
+**IPSC is implemented entirely from these captures.** See
 [`IPSC-CAPTURE-REQUEST.md`](IPSC-CAPTURE-REQUEST.md) and
 [ADR-0029](../docs/adr/ADR-0029-ipsc-from-capture.md): the protocol has no
 published specification, so a capture is the only route that does not make QSP's
 implementation a derivative of somebody else's.
+
+### Still wanted
+
+**A text message sent from a hotspot**, captured on the QSP server with
+`tcpdump` running unfiltered. MMDVMHost produces Rate 3/4 *coded* bursts and no
+capture in this repository holds one — the IPSC fixtures carry blocks that a
+repeater has already decoded, and every Homebrew data frame captured so far is
+voice. It is the one measurement standing between the text path and being
+measured end to end. See
+[ADR-0047](../docs/adr/ADR-0047-rate-34-text-blocks.md).
 
 Each has a sibling `.md` recording provenance, structure, sanitization and
 expected parser behaviour. Read it before using the fixture.

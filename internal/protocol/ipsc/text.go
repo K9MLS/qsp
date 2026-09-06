@@ -53,12 +53,50 @@ const (
 	// TextBlockLen is the length of that block, which is the 96-bit
 	// information block of a BPTC(196,96) data burst.
 	TextBlockLen = 12
-	// TextSlotTypeAt is the DMR Slot Type: colour code high, data type low.
+	// TextSlotTypeAt is the DMR Slot Type of a 54-byte burst: colour code
+	// high, data type low. Use [TextSlotTypeFor] rather than this constant,
+	// because a Rate 3/4 burst carries it six bytes further along.
 	TextSlotTypeAt = 51
-	// TextRate34At is where a Rate 3/4 burst's longer payload begins. Those
-	// frames are 60 bytes where the rest are 54.
-	TextRate34Len = 22
+	// TextRate34Len is the length of the block a Rate 3/4 burst carries: 144
+	// bits where BPTC carries 96. Those datagrams are 60 bytes where the rest
+	// are 54, and the six-byte difference is the whole of it.
+	//
+	// **This read 22 for eighteen patches.** Nothing had ever exercised it,
+	// because ConvertText refused any block that was not twelve octets and
+	// dropped it, so the wrong length was carried by a path that never ran.
+	// Twenty-two octets from byte 38 runs to byte 59: the eighteen real ones
+	// followed by the zero, the Slot Type and both tail bytes, which is
+	// envelope handed out as message content.
+	TextRate34Len = 18
+	// TextRate34Total is the length of a datagram carrying one, measured
+	// across 42 of them in testdata/ipsc/ipsc-text-rate34.pcap and
+	// testdata/ipsc/ipsc-text.pcap. Byte 30 reads Rate 3/4 in every one.
+	TextRate34Total = 60
 )
+
+// TextBlockLenFor gives the length of the information block in a text burst
+// whose datagram is n bytes long.
+//
+// **The datagram length is the discriminator, not the data type.** Byte 30
+// agrees on all 42 captured Rate 3/4 frames, but a truncated datagram with a
+// plausible byte 30 would make a length read from it an over-read, and this
+// function is what stands between a short datagram and a slice out of range.
+func TextBlockLenFor(datagramLen int) int {
+	if datagramLen >= TextRate34Total {
+		return TextRate34Len
+	}
+	return TextBlockLen
+}
+
+// TextSlotTypeFor gives the offset of the Slot Type in such a datagram.
+//
+// It follows the block: one zero octet, then the Slot Type. On a 54-byte burst
+// that is byte 51, which is where ADR-0045 measured it; on a 60-byte burst it
+// is byte 57, and reading 51 there gives four bits of somebody's message where
+// the colour code should be.
+func TextSlotTypeFor(datagramLen int) int {
+	return TextBlockAt + TextBlockLenFor(datagramLen) + 1
+}
 
 // IsText reports whether a message carries a text message burst.
 func (k Kind) IsText() bool { return k == KindTextGroup || k == KindTextPrivate }
@@ -89,8 +127,13 @@ type Text struct {
 	ColourCode uint8
 	// SlotSet reports the timeslot bit, whose polarity is configuration.
 	SlotSet bool
-	// Block is the twelve octets at TextBlockAt, or the twenty-two octets of a
+	// Block is the twelve octets at TextBlockAt, or the eighteen octets of a
 	// Rate 3/4 burst. **Carried, not interpreted.**
+	//
+	// A Rate 3/4 block is sixteen octets of user data followed by a seven-bit
+	// serial number and a nine-bit CRC; dmrfec.Rate34Serial reads them and
+	// dmrfec.CRC9 checks them. This package does neither, because a bridge
+	// carries a payload it does not understand.
 	Block []byte
 }
 
@@ -107,8 +150,9 @@ func (m Message) AsText() (Text, bool) {
 	// Body offsets are five less than datagram offsets: a body begins after
 	// the type byte and the 32-bit sender ID.
 	b := m.Body
-	const need = TextSlotTypeAt - HeaderLen + 1
-	if len(b) < need {
+	datagramLen := HeaderLen + len(b)
+	slotTypeAt := TextSlotTypeFor(datagramLen) - HeaderLen
+	if len(b) < slotTypeAt+1 {
 		return Text{}, false
 	}
 
@@ -122,17 +166,15 @@ func (m Message) AsText() (Text, bool) {
 		Sequence:    binary.BigEndian.Uint16(b[15:17]),
 		Timestamp:   binary.BigEndian.Uint32(b[17:21]),
 		DataType:    b[TextDataTypeAt-HeaderLen],
-		ColourCode:  b[TextSlotTypeAt-HeaderLen] >> 4,
+		ColourCode:  b[slotTypeAt] >> 4,
 		SlotSet:     b[12]&FlagSlot != 0,
 	}
 
-	// A Rate 3/4 burst carries more, and the extra is the rest of the same
-	// payload rather than a different field.
-	blockLen := TextBlockLen
-	if len(b) >= TextBlockAt-HeaderLen+TextRate34Len {
-		blockLen = TextRate34Len
-	}
-	t.Block = append([]byte(nil), b[TextBlockAt-HeaderLen:TextBlockAt-HeaderLen+blockLen]...)
+	// A Rate 3/4 burst carries a longer block, and the extra six octets are
+	// more of the same payload rather than a different field.
+	blockLen := TextBlockLenFor(datagramLen)
+	at := TextBlockAt - HeaderLen
+	t.Block = append([]byte(nil), b[at:at+blockLen]...)
 	return t, true
 }
 

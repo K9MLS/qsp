@@ -299,6 +299,29 @@ const (
 // reasoned about.
 var HeaderConstants = [6]byte{0x00, 0x0a, 0x80, 0x0a, 0x00, 0x60}
 
+// HeaderConstantsRate34 is the same six bytes in a Rate 3/4 text burst, where
+// two of them differ.
+//
+// **They are not constant after all; they track the payload size.** Byte 37
+// reads 0x60 on every 54-byte frame and 0x90 on every 60-byte one, which are
+// 96 and 144: the bit counts of the two information blocks. Byte 33 goes 0x0a
+// to 0x0d over the same 192 frames. Two readings of byte 33 fit two data
+// points and a third would be needed to choose between them, so both values
+// are recorded rather than computed.
+//
+// Copying the 12-octet constants into a Rate 3/4 burst would have announced 96
+// bits of payload in a datagram carrying 144.
+var HeaderConstantsRate34 = [6]byte{0x00, 0x0d, 0x80, 0x0a, 0x00, 0x90}
+
+// HeaderConstantsFor returns whichever of the two a block of the given length
+// belongs with.
+func HeaderConstantsFor(blockLen int) [6]byte {
+	if blockLen == TextRate34Len {
+		return HeaderConstantsRate34
+	}
+	return HeaderConstants
+}
+
 // ColourCode returns the DMR colour code a voice message carries.
 //
 // # Two encodings, both measured

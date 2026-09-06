@@ -33,25 +33,24 @@ package dmrfec
 //
 // **No capture anywhere contains a Rate 3/4 coded burst.** Every Homebrew
 // fixture in testdata/hbp is voice — data types 0x1 and 0x2 and nothing else —
+// every Homebrew frame in qsp-session.pcap00 is voice outbound to a hotspot,
 // and the IPSC captures carry decoded blocks rather than coded bursts, because
 // the texts that exposed this went repeater to repeater and never crossed a
-// hotspot. So the tables here are transcribed from the standard and checked
-// only by this package agreeing with itself: encode then decode returns what
-// went in, which a transcription error would satisfy just as well.
+// hotspot. So the tables here come from the standard and are checked only by
+// this package agreeing with itself: encode then decode returns what went in,
+// which a transcription error would satisfy just as well. That is precisely
+// how the constellation mapping above stayed wrong.
 //
-// **The block layout either side of them is proved.** Feeding the 18-octet
-// blocks from qsp-session.pcap00 through the structure this file assumes —
-// two octets of block serial number and CRC-9, then sixteen of payload —
-// yields a UDP datagram carrying UTF-16 text, and the text is a message the
-// operator typed: "I can't talk right now...". That settles the sizes, the
-// prefix and the encoding; it says nothing about the trellis.
+// **The block layout either side of them is proved**, and rate34.go holds the
+// measurement: sixteen octets of user data followed by a seven-bit block serial
+// number and a nine-bit CRC, in that order, over 42 blocks in two captures.
 //
-// This ships on the terms ADR-0041 set for the outbound IPSC path: reasoned
-// rather than measured, marked plainly as such, and replaced by a measurement
-// the moment one exists. **The capture that would settle it is a text sent
-// from a hotspot**, which produces coded bursts from MMDVMHost; decoding one
-// into the message that was typed is the proof, and it takes five minutes to
-// record.
+// The trellis itself ships on the terms ADR-0041 set for the outbound IPSC
+// path: reasoned rather than measured, marked plainly as such, and replaced by
+// a measurement the moment one exists. **The capture that would settle it is a
+// text sent from a hotspot**, which produces coded bursts from MMDVMHost;
+// decoding one into the message that was typed is the proof, and it takes five
+// minutes to record.
 
 // Rate 3/4 sizes, Table B.6. 48 tribits in, 98 dibits out, and a flushing
 // tribit of zero appended to empty the final state.
@@ -89,25 +88,37 @@ var trellisTransitions = [8][8]byte{
 // with the specification's ±1 and ±3 amplitudes written as the two-bit values
 // they are transmitted as.
 //
-// The spec tabulates amplitudes because they are what the modulator emits.
-// On the wire each is a dibit: +1 is 01, -1 is 00, +3 is 11, -3 is 10.
+// # The amplitudes are not the bits, and getting that wrong is invisible
+//
+// Table B.8 tabulates amplitudes because they are what the modulator emits.
+// Turning one into the two bits that carry it needs a second table, and it is
+// not in Annex B at all: **clause 10.2.2.1, table 10.3** maps the information
+// bits to 4FSK deviation, and it reads 01 for +3, 00 for +1, 10 for -1 and 11
+// for -3.
+//
+// This file first shipped with +1 as 01, -1 as 00, +3 as 11 and -3 as 10 —
+// every one of the sixteen entries wrong. That mapping is a permutation of the
+// four dibit values, so encoding and decoding still agreed with each other
+// perfectly and every shape test passed; only a radio would have noticed. It
+// is the exact failure this file's own header warned about when it said the
+// tables were checked only by the package agreeing with itself.
 var trellisPoints = [16][2]byte{
-	0:  {0b01, 0b00}, // +1 -1
-	1:  {0b00, 0b00}, // -1 -1
-	2:  {0b11, 0b10}, // +3 -3
-	3:  {0b10, 0b10}, // -3 -3
-	4:  {0b10, 0b00}, // -3 -1
-	5:  {0b11, 0b00}, // +3 -1
-	6:  {0b00, 0b10}, // -1 -3
-	7:  {0b01, 0b10}, // +1 -3
-	8:  {0b10, 0b11}, // -3 +3
-	9:  {0b11, 0b11}, // +3 +3
-	10: {0b00, 0b01}, // -1 +1
-	11: {0b01, 0b01}, // +1 +1
-	12: {0b01, 0b11}, // +1 +3
-	13: {0b00, 0b11}, // -1 +3
-	14: {0b11, 0b01}, // +3 +1
-	15: {0b10, 0b01}, // -3 +1
+	0:  {0b00, 0b10}, // +1 -1
+	1:  {0b10, 0b10}, // -1 -1
+	2:  {0b01, 0b11}, // +3 -3
+	3:  {0b11, 0b11}, // -3 -3
+	4:  {0b11, 0b10}, // -3 -1
+	5:  {0b01, 0b10}, // +3 -1
+	6:  {0b10, 0b11}, // -1 -3
+	7:  {0b00, 0b11}, // +1 -3
+	8:  {0b11, 0b01}, // -3 +3
+	9:  {0b01, 0b01}, // +3 +3
+	10: {0b10, 0b00}, // -1 +1
+	11: {0b00, 0b00}, // +1 +1
+	12: {0b00, 0b01}, // +1 +3
+	13: {0b10, 0b01}, // -1 +3
+	14: {0b01, 0b00}, // +3 +1
+	15: {0b11, 0b00}, // -3 +1
 }
 
 // trellisInterleave is Table B.9, read as Table B.10 uses it: the dibit at

@@ -1,6 +1,6 @@
 # ADR-0045: Text over IP Site Connect is DMR data in the voice envelope
 
-**Status:** Accepted — the one open assumption was checked and disproved; see the amendment
+**Status:** Accepted — amended twice; the block sizes here are superseded by [ADR-0047](ADR-0047-rate-34-text-blocks.md)
 **Date:** 2026-09-03
 
 ## Context
@@ -60,6 +60,13 @@ the DMR Slot Type established by the voice work — colour code high, data type
 low. Two independent encodings of one fact, agreeing, which is the same pattern
 that validated the voice frame shape. The nine exceptions are the 60-byte
 Rate 3/4 frames and one 34-byte frame, where byte 51 is not the Slot Type.
+
+*(Amended 2026-09-06.)* **Those nine exceptions were the whole defect, filed as
+a footnote.** A 60-byte datagram carries an eighteen-octet block, so everything
+from byte 38 onward sits six bytes later and the Slot Type is at byte 57. This
+record noticed that a documented offset did not hold on nine frames and moved
+on; three days later no text message on the network had ever carried its
+content. See [ADR-0047](ADR-0047-rate-34-text-blocks.md).
 
 Colour code reads 4 in 150 of 162, matching `ipsc-master-voice.pcap`.
 

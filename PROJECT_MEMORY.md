@@ -4,7 +4,7 @@
 Last regenerated: 2026-08-25, at 0.1.4, after the Phase 1 gate closed and the
 repository went to GitHub. **Duplicate sections collapsed 2026-09-02** — the
 file had grown six copies of §8f in five versions, and a session read the wrong
-one. Newest session notes are at the end of the §8 series; **read §8j first**,
+one. Newest session notes are at the end of the §8 series; **read §8k first**,
 then §8a.
 
 ---
@@ -1995,6 +1995,9 @@ is what cost the evening.
 
 ## 8j. Where the next session starts, as of 2026-09-05
 
+**Superseded by §8k.** Its account of the Rate 3/4 block layout is backwards
+and its open list is stale; everything else it settled still stands.
+
 Read §0, then §6b and §6c, then this. It supersedes §8i; everything §8i settled
 remains settled except where named. **§8a is the section that matters most** and
 this day did nothing but confirm it again.
@@ -2417,6 +2420,150 @@ about the journal.
 This keeps happening to tests that assert an absence. A test that something did
 *not* happen has to establish that the thing had a chance to happen first, and
 the only way to know it does is to break the code and watch the test fail.
+
+---
+
+## 8k. Where the next session starts, as of 2026-09-06 evening
+
+Read §0, then §6b and §6c, then this. It supersedes §8j; everything §8j settled
+remains settled except where named. **§8a is still the section that matters
+most.**
+
+### The whole day, in one sentence
+
+**A text message has never carried its content, and the codec written to fix
+that was wrong in a way no test in this repository could have caught.**
+
+### Text now works, and the block is measured
+
+[ADR-0047](docs/adr/ADR-0047-rate-34-text-blocks.md).
+`testdata/ipsc/ipsc-text-rate34.pcap`.
+
+Every content block of every text was dropped in both directions, because
+`ConvertText` refused anything that was not twelve octets and `Encoder.text`
+handed every burst to `DecodeBPTC`. A Rate 3/4 block is eighteen octets and
+needs a trellis.
+
+**The block is sixteen octets of user data, then a seven-bit serial number and
+a nine-bit CRC**, and three independent things say so: the user-data halves of
+one transmission's six blocks concatenate into an IPv4 datagram whose addresses
+are Motorola's radio-IP encoding of the two radio IDs in the envelope, carrying
+UDP on 4007 whose payload reads *"I can't talk right now..."*; the serial
+numbers run 0 to 5; and the CRC-9 verifies on 42 blocks out of 42.
+
+**Clause 8.2.2.2 draws the block the other way round**, control pair first. The
+two octets are identical either way and only their position differs. That is
+the one unmeasured step; see below.
+
+The CRC is not the one clause B.3.11 describes — B.3.11 puts the serial first
+and adds an inversion, and that matches none of the 42 blocks under any
+nine-bit generator. All 256 were searched against seven message orderings and
+both inversions; exactly one combination matches everything, and it is
+B.3.11's own generator over the message in IPSC's order with no inversion.
+
+### The defect that no test could see, and why that matters more than the fix
+
+`trellis.go` shipped with all sixteen constellation entries wrong: it mapped
+`+1 → 01, -1 → 00, +3 → 11, -3 → 10` where table 10.3 gives `01 → +3,
+00 → +1, 10 → -1, 11 → -3`.
+
+**The wrong mapping is a permutation of the four dibit values**, so encode and
+decode agreed with each other perfectly, every shape test passed, and the
+package was internally consistent and externally useless. Wiring it in as it
+stood would have transmitted well-formed bursts no radio could read, with a
+symptom identical to the one being fixed.
+
+The file's own header had said the tables were *checked only by this package
+agreeing with itself*. **A file that documents why it cannot be trusted is not
+the same as a file that has been checked**, and a session read that sentence,
+wrote a handover saying "wire the codec in", and moved on.
+
+The transferable rule: **a round trip through your own tables proves wiring,
+never correctness.** The tests that carry weight are the ones ending at a fact
+outside the repository — an IPv4 header, a CRC over somebody else's bytes, a
+sentence the operator typed. Every test in `rate34_test.go` that could pass
+with wrong tables says so in its own comment.
+
+### Two offsets that had been measured and filed as exceptions
+
+ADR-0045 recorded that byte 30 agrees with the low nibble of byte 51 in 153 of
+162 frames and that *the nine exceptions are the 60-byte Rate 3/4 frames, where
+byte 51 is not the Slot Type.* **That was the whole defect, written down as a
+footnote three days before anybody looked at it.** A 60-byte datagram carries
+an eighteen-octet block, so everything from byte 38 sits six bytes later and
+the Slot Type is at 57.
+
+Bytes 32 to 37 are not constant either: `00 0d 80 0a 00 90` against
+`00 0a 80 0a 00 60`, and byte 37 is the payload bit count, 96 against 144.
+
+**Nine frames where a documented offset does not hold is a measurement of a
+different layout.** It is not an exception, and calling it one costs whatever
+the feature was worth.
+
+### The one thing still unmeasured, and how it reports itself
+
+**No capture anywhere holds a Rate 3/4 burst as it goes over the air.** The
+IPSC fixtures carry blocks a repeater has already decoded, and every Homebrew
+frame in `qsp-session.pcap00` is voice — checked, not assumed.
+
+So which end of the block a hotspot expects the control pair is unknown, and it
+decides whether anything QSP transmits can be read. Rather than argue it:
+
+- `dmrfec.Rate34AirOrder` is one constant, set to control-first because 8.2.2.2
+  is the layout clause and MMDVMHost implements the standard;
+- `DecodeRate34Burst` verifies the CRC-9 both ways round and reports which
+  arrangement it found;
+- the listener logs that as `rate34_block` on the `relaying transmission` line,
+  once per transmission.
+
+**One text sent from the Pi-Star radio makes the journal say the answer.** It
+takes five minutes and it is the only thing between this and a measured text
+path. It was asked for in the last handover and not done.
+
+### Open, in order
+
+1. **Send one text from the Pi-Star radio**, `tcpdump` running unfiltered, and
+   read `rate34_block` in the journal. Everything below is worth less than
+   this.
+2. **Send a text from the XPR8300 to KD9EJA and to a hotspot** and confirm it
+   arrives. A capture of the outbound side beside
+   `testdata/ipsc/ipsc-text-outbound.pcap` would show 60-byte datagrams where
+   that one shows none.
+3. **Text over IPSC still has no call record.** The text branch never touches
+   `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
+   the transmission counters. Carried forward from §8j.
+4. **Who owns Last-heard.** Unchanged from §8j: `DeliverFromIPSC` calls
+   `observe` and `/api/peers` appends `CallViews` on top with no dedup, so
+   every Motorola over should appear twice. A decision for the operator.
+5. **The 45-versus-22 gap**, still instrumented, still waiting to recur.
+6. **The rest of the UI review.** Nine pages unmeasured.
+7. **`/api/peers` is unauthenticated.** A decision, not a defect.
+8. **The vocoder**, then **subscription on air**, then **P25**.
+
+### Corrections to §7 and to the last handover
+
+**staticcheck runs in this container.** §7 and `HANDOVER.md` both say it cannot,
+and that a patch will fail as a gate chain stopping before the tests. Built
+through the full 1.22 → 1.23 → 1.24.6 → 1.27 chain it runs clean over the whole
+tree in about a minute. The baseline is still seven named failures in
+`cmd/qsp`, and still nothing else.
+
+**`qsp-session.pcap00` was cited by §8j and by `trellis.go` and was not in the
+repository.** It is 2,5 MB and mostly voice; the 166 datagrams that matter are
+now committed as `testdata/ipsc/ipsc-text-rate34.pcap` with the parent's md5 in
+its provenance note. Two documents rested on evidence nobody else could check,
+and one of them described the block backwards.
+
+### The method, now proved fourteen times
+
+**Every reading taken by eye has been wrong. Every differential has been
+right.** Two more this session, both caught by a test rather than by review:
+the Text Messaging Service header is ten octets rather than twelve, and its
+text is UTF-16 little-endian rather than big.
+
+And a new one worth keeping: **a constant that round-trips is not a constant
+that is correct.** Sixteen wrong table entries survived a full test suite
+because they were wrong consistently.
 
 ---
 

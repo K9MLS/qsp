@@ -1,6 +1,7 @@
 package ipscbridge_test
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"testing"
@@ -11,12 +12,36 @@ import (
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
 )
 
-// textFixture is the only capture of text over IP Site Connect.
-const textFixture = "../../testdata/ipsc/ipsc-text.pcap"
+// The captures of text over IP Site Connect. The first holds mostly CSBK
+// preambles, data headers and short blocks; the second is where the Rate 3/4
+// content blocks are, extracted from a whole day's session capture.
+const (
+	textFixture   = "../../testdata/ipsc/ipsc-text.pcap"
+	rate34Fixture = "../../testdata/ipsc/ipsc-text-rate34.pcap"
+)
+
+// rate34TextMessages reads the capture that holds Rate 3/4 blocks.
+func rate34TextMessages(tb testing.TB) []ipsc.Message {
+	tb.Helper()
+	out := readTextMessages(tb, rate34Fixture)
+	if len(out) < 100 {
+		tb.Fatalf("only %d text messages read; the fixture reader is broken", len(out))
+	}
+	return out
+}
 
 func textMessages(tb testing.TB) []ipsc.Message {
 	tb.Helper()
-	raw, err := os.ReadFile(textFixture)
+	out := readTextMessages(tb, textFixture)
+	if len(out) < 100 {
+		tb.Fatalf("only %d text messages read; the fixture reader is broken", len(out))
+	}
+	return out
+}
+
+func readTextMessages(tb testing.TB, path string) []ipsc.Message {
+	tb.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		tb.Fatalf("%v", err)
 	}
@@ -45,9 +70,6 @@ func textMessages(tb testing.TB) []ipsc.Message {
 			tb.Fatalf("a text burst did not parse: %v", err)
 		}
 		out = append(out, m)
-	}
-	if len(out) < 100 {
-		tb.Fatalf("only %d text messages read; the fixture reader is broken", len(out))
 	}
 	return out
 }
@@ -148,33 +170,75 @@ func TestAPrivateTextStaysPrivate(t *testing.T) {
 	}
 }
 
-// TestARateThreeQuarterBurstIsRefusedRatherThanTruncated guards the case that
-// would corrupt a message while appearing to work.
+// TestARateThreeQuarterBurstCrossesTheBridge replaces a test that asserted the
+// opposite.
 //
-// Those bursts carry twenty-two octets and a data burst holds twelve. Placing
-// the first twelve would deliver a text with a hole in it, which a radio would
-// display as text — **half a message delivered is worse than none, because it
-// looks like it worked.**
-func TestARateThreeQuarterBurstIsRefusedRatherThanTruncated(t *testing.T) {
+// It used to say those bursts were refused because they did not fit, and the
+// belief behind it was that a Rate 3/4 burst carried twenty-two octets. It
+// carries eighteen, it fits a burst perfectly well under a trellis code, and
+// **refusing it dropped every content block of every text message.** The old
+// test passed for eighteen patches while the network could not send a text.
+//
+// Half a message delivered is still worse than none, so this asserts the burst
+// round-trips rather than merely that it was built.
+func TestARateThreeQuarterBurstCrossesTheBridge(t *testing.T) {
 	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 4})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
 
 	var seen int
-	for _, m := range textMessages(t) {
+	for _, m := range rate34TextMessages(t) {
 		txt, ok := m.AsText()
-		if !ok || len(txt.Block) == dmrfec.LinkControlBlockBytes {
+		if !ok || len(txt.Block) != dmrfec.Rate34BlockBytes {
 			continue
 		}
 		seen++
-		if _, ok := c.ConvertText(m, hbp.RepeaterID(999999)); ok {
-			t.Fatalf("a %d-octet block was converted; it does not fit a burst",
-				len(txt.Block))
+		out, ok := c.ConvertText(m, hbp.RepeaterID(999999))
+		if !ok {
+			t.Fatalf("a Rate 3/4 block was refused: %x", txt.Block)
+		}
+		if out.DataType != dmrfec.DataTypeRate34 {
+			t.Fatalf("burst went out as data type %#x", out.DataType)
+		}
+		back, _, ok := dmrfec.DecodeRate34Burst(out.Payload[:])
+		if !ok {
+			t.Fatalf("the burst QSP built did not decode")
+		}
+		if !bytes.Equal(back, txt.Block) {
+			t.Fatalf("round trip gave %x, want %x", back, txt.Block)
 		}
 	}
 	if seen == 0 {
 		t.Fatal("the fixture should hold Rate 3/4 bursts")
+	}
+}
+
+// TestABlockOfNeitherSizeIsStillRefused keeps the guard the test above gave up.
+//
+// Twelve octets and eighteen are the only two an information block can be. A
+// block of any other length has been misread somewhere upstream, and coding it
+// under whichever scheme is nearest would put a corrupt message on air.
+func TestABlockOfNeitherSizeIsStillRefused(t *testing.T) {
+	c, err := ipscbridge.New(ipscbridge.Config{ColourCode: 4})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	var m ipsc.Message
+	for _, c := range rate34TextMessages(t) {
+		if txt, ok := c.AsText(); ok && len(txt.Block) == dmrfec.Rate34BlockBytes {
+			m = c
+			break
+		}
+	}
+	if m.Kind == 0 {
+		t.Fatal("the fixture holds no Rate 3/4 message")
+	}
+	// One octet short of a Rate 3/4 block, built by truncating the datagram.
+	short := ipsc.Message{Kind: m.Kind, SenderID: m.SenderID,
+		Body: append([]byte(nil), m.Body[:len(m.Body)-1]...)}
+	if _, ok := c.ConvertText(short, hbp.RepeaterID(999999)); ok {
+		t.Error("a truncated Rate 3/4 datagram was converted")
 	}
 }
 

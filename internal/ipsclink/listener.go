@@ -619,12 +619,31 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 	}
 	l.mu.Unlock()
 
+	// The one thing about the text path nobody has measured, reported rather
+	// than argued about. A Rate 3/4 block carries a block serial number and a
+	// CRC-9; IP Site Connect puts them at the end of the block and ETSI
+	// figure 8.8 draws them at the front, and which arrangement a hotspot
+	// puts on air decides whether the message QSP transmits can be read at
+	// all. **One text from a Pi-Star makes this line say which**, and
+	// dmrfec.Rate34AirOrder is the single constant that follows from it.
+	//
+	// Once per transmission, not once per frame: a text is a run of bursts
+	// and a line for each is a line nobody reads.
+	rate34 := ""
+	if ipscbridge.IsRate34(frame) {
+		rate34 = ipscbridge.Rate34OrderOf(frame).String()
+	}
 	for _, id := range relayedTo {
-		l.log.Info("relaying transmission",
+		attrs := []any{
 			"radio_id", id, "source", frame.SourceID,
 			"destination", uint32(frame.TargetID),
 			"private", frame.CallType == hbp.CallPrivate,
-			"stream", fmt.Sprintf("%#08x", uint32(frame.StreamID)))
+			"stream", fmt.Sprintf("%#08x", uint32(frame.StreamID)),
+		}
+		if rate34 != "" {
+			attrs = append(attrs, "rate34_block", rate34)
+		}
+		l.log.Info("relaying transmission", attrs...)
 	}
 	for _, id := range encodedNothing {
 		l.log.Warn("nothing to relay: the frame could not be read",

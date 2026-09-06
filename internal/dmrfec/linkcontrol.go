@@ -77,13 +77,17 @@ var rsParityColumns = [LinkControlBytes][3]byte{
 // LinkControlBytes is the length of a Full Link Control PDU.
 const LinkControlBytes = 9
 
-// Data Type values, ETSI Table 9.22. Only the two this package builds are
+// Data Type values, ETSI Table 9.22. Only the ones this package builds are
 // named; naming the rest would suggest QSP produces them.
 const (
 	// DataTypeVoiceLCHeader opens a voice transmission.
 	DataTypeVoiceLCHeader uint8 = 0x1
 	// DataTypeTerminatorWithLC closes one.
 	DataTypeTerminatorWithLC uint8 = 0x2
+	// DataTypeRate34 is a Rate 3/4 coded data block, which is what the
+	// content of a text message travels in. It is the one data type whose
+	// burst this package codes with a trellis rather than BPTC.
+	DataTypeRate34 uint8 = 0x8
 )
 
 // rsMaskFor returns the mask applied to the parity for a data type.
@@ -330,6 +334,21 @@ func dataBurstFromPayload(colourCode, dataType uint8, payload []byte) ([]byte, e
 	coded, err := EncodeBPTC(payload)
 	if err != nil {
 		return nil, err
+	}
+	return dataBurstFromCoded(colourCode, dataType, coded)
+}
+
+// dataBurstFromCoded lays 196 already-coded bits, the Slot Type and the sync
+// pattern into one 33-byte burst.
+//
+// It is separate from dataBurstFromPayload because a Rate 3/4 block is coded
+// with a trellis rather than BPTC, and everything after that coding step —
+// where the two 98-bit halves go, where the twenty Slot Type bits go, which
+// sync pattern sits between them — is identical for both.
+func dataBurstFromCoded(colourCode, dataType uint8, coded []byte) ([]byte, error) {
+	if len(coded) != BPTCCodedBits {
+		return nil, fmt.Errorf("dmrfec: a coded burst payload is %d bits, want %d",
+			len(coded), BPTCCodedBits)
 	}
 	slot, err := SlotType(colourCode, dataType)
 	if err != nil {

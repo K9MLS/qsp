@@ -4,6 +4,108 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every content block of every text message was dropped, in both
+  directions.** A text long enough to be worth sending is carried in Rate 3/4
+  blocks; QSP handled only the twelve-octet BPTC ones and refused the rest, so
+  the preamble crossed the bridge, the data header crossed, and the message
+  never did. See [ADR-0047](docs/adr/ADR-0047-rate-34-text-blocks.md).
+
+  It explains every report on the network: KD9EJA's texts arrive because his
+  repeater's bursts are in a coding QSP accepts, K9MLS's never do because the
+  content is dropped, neither radio acknowledges because no message is ever
+  assembled to acknowledge, and group text on the local repeater works because
+  it never crosses the bridge.
+
+- **The Rate 3/4 codec added in 0242 had all sixteen constellation entries
+  wrong.** It mapped the amplitudes to dibits as `+1 → 01, -1 → 00, +3 → 11,
+  -3 → 10`; ETSI TS 102 361-1 table 10.3 gives `01 → +3, 00 → +1, 10 → -1,
+  11 → -3`.
+
+  **No test could have caught it.** The wrong mapping is a permutation of the
+  four dibit values, so encoding and decoding agreed with each other perfectly
+  and every shape test passed. Wiring the codec in as it stood would have put
+  well-formed bursts on air that no radio could read, with a symptom identical
+  to the one being fixed. The file's own header had warned that its tables were
+  "checked only by this package agreeing with itself".
+
+- **`ipsc.TextRate34Len` read 22 where a Rate 3/4 block is 18 octets.**
+  Twenty-two octets from byte 38 runs to byte 59: the eighteen real ones
+  followed by the zero, the Slot Type and both tail bytes, which is envelope
+  handed out as message content. Nothing had ever exercised it, because the
+  converter refused any block that was not twelve octets.
+
+- **The Slot Type of a 60-byte text datagram is at byte 57, not 51.**
+  Everything from the block onward sits six bytes later. ADR-0045 recorded that
+  byte 51 disagreed with the frame's data type on exactly the nine Rate 3/4
+  frames in its capture and filed it as an exception; it was the defect.
+
+- **Bytes 32 to 37 of a Rate 3/4 datagram are not the constants a voice header
+  carries.** They read `00 0d 80 0a 00 90` against `00 0a 80 0a 00 60`, and
+  byte 37 is the payload bit count — 96 against 144. Copying the twelve-octet
+  block's constants would have announced the wrong size.
+
+### Added
+
+- **`internal/dmrfec/rate34.go`**: the Rate 3/4 confirmed data block, its
+  CRC-9, and burst assembly. `BuildRate34Burst` and `DecodeRate34Burst` sit
+  beside the BPTC pair and share the burst layout, which Annex E.3 was read to
+  confirm.
+
+- **The block structure, measured rather than assumed.** Sixteen octets of user
+  data, then a seven-bit serial number and a nine-bit CRC. The user-data halves
+  of one transmission's six blocks concatenate into an IPv4 datagram whose
+  addresses are Motorola's radio-IP encoding of the two radio IDs in the
+  envelope, carrying UDP on port 4007 whose payload is the sentence the
+  operator typed. Serial numbers run 0 to 5. The CRC-9 verifies on 42 blocks
+  out of 42.
+
+  **The CRC is not the one clause B.3.11 describes.** B.3.11 puts the serial
+  first and adds an inversion polynomial, and that arrangement matches none of
+  the 42 blocks under any nine-bit generator. A search over all 256 generators,
+  seven message orderings and both inversions found exactly one combination
+  that matches every block: B.3.11's own generator over the message in the
+  order IP Site Connect presents it, with no inversion.
+
+- **`rate34_block` in the `relaying transmission` journal line.** Which end of
+  the block a sender puts the control pair is the one step of the text path
+  nobody has measured, and it decides whether anything QSP transmits can be
+  read. `DecodeRate34Burst` verifies the CRC-9 both ways round and reports the
+  arrangement it actually found, so **one text from a Pi-Star settles it from
+  the journal** instead of from an argument. `dmrfec.Rate34AirOrder` is the
+  single constant that follows from the answer.
+
+- **`testdata/ipsc/ipsc-text-rate34.pcap`**, 166 datagrams filtered from a
+  whole-day session capture: 30 Rate 3/4 blocks in, 0 relayed out.
+  **`testdata/ipsc/ipsc-text-outbound.pcap`**, what a remote peer received on
+  2026-09-06 — thirty-three preambles, three data headers and no content at
+  all. The defect, visible in one table.
+
+### Changed
+
+- `TestARateThreeQuarterBurstIsRefusedRatherThanTruncated` is deleted. It
+  asserted the wrong belief and passed for eighteen patches while the network
+  could not send a text. `TestARateThreeQuarterBurstCrossesTheBridge` replaces
+  it and asserts the burst round-trips rather than merely that it was built;
+  `TestABlockOfNeitherSizeIsStillRefused` keeps the guard the old test was
+  actually providing.
+
+- `testdata/README.md` no longer says IPSC has no fixture and no
+  implementation, which stopped being true weeks ago, and names the one capture
+  still wanted.
+
+### Notes
+
+- **Two readings taken by eye were wrong again, and a test caught both.** The
+  Text Messaging Service header is ten octets rather than twelve, and its text
+  is UTF-16 little-endian rather than big. Tenth and eleventh time.
+
+- **staticcheck runs in the development container after all.** §7 and
+  `HANDOVER.md` both say it cannot, and that a patch will fail as a gate chain
+  stopping before the tests. With the 1.27 toolchain built through the full
+  1.22 → 1.23 → 1.24.6 → 1.27 chain it runs clean over the whole tree.
+
 ### Added
 - **§8i**, where the next session starts. §8g is superseded and says so: its
   open list claims text messages work, and repeater-to-hotspot text does not.

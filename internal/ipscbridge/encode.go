@@ -535,22 +535,20 @@ func (e *Encoder) position(src hbp.Data) (class byte, lcss uint8, fragment uint3
 // it on a talkgroup for everyone to read, so the call type is taken from the
 // frame rather than assumed.
 func (e *Encoder) text(st *encodeState, frame hbp.Data, slot int) (ipsc.Message, bool) {
-	payload, _, ok := dmrfec.DecodeBPTC(frame.Payload[:])
+	block, ok := e.blockOf(frame)
 	if !ok {
 		return ipsc.Message{}, false
 	}
-	block := dmrfec.BurstBytesFrom(payload)
-	if len(block) < dmrfec.LinkControlBlockBytes {
-		return ipsc.Message{}, false
-	}
-	block = block[:dmrfec.LinkControlBlockBytes]
 
 	kind := ipsc.KindTextGroup
 	if frame.CallType == hbp.CallPrivate {
 		kind = ipsc.KindTextPrivate
 	}
 
-	body := make([]byte, bodyTail+ipsc.HeaderTailLen)
+	// A Rate 3/4 datagram is six bytes longer, and everything from the block
+	// onward moves with it: the zero, the Slot Type and the two tail bytes.
+	extra := len(block) - dmrfec.LinkControlBlockBytes
+	body := make([]byte, bodyTail+extra+ipsc.HeaderTailLen)
 	e.preamble(st, frame, slot, flagsMiddle, body)
 
 	// Byte 12 of the datagram reads 0x01 on every captured data burst where a
@@ -565,9 +563,78 @@ func (e *Encoder) text(st *encodeState, frame hbp.Data, slot int) (ipsc.Message,
 		b31 |= ipsc.HeaderSlotBit
 	}
 	body[bodyLength] = b31
-	copy(body[bodyConstants:], ipsc.HeaderConstants[:])
+	constants := ipsc.HeaderConstantsFor(len(block))
+	copy(body[bodyConstants:], constants[:])
 	copy(body[bodyLC:], block)
-	body[bodySlotType] = dmrfec.SlotTypeInfo(e.colourCode, frame.DataType)
+	body[bodySlotType+extra] = dmrfec.SlotTypeInfo(e.colourCode, frame.DataType)
 
 	return ipsc.Message{Kind: kind, SenderID: e.masterID, Body: body}, true
+}
+
+// blockOf reads the information block back out of a Homebrew data burst.
+//
+// # Two codings, and the burst says which
+//
+// A twelve-octet block is BPTC(196,96) and an eighteen-octet one is Rate 3/4
+// Trellis. **Only the first was ever implemented**, so `DecodeBPTC` was handed
+// every burst and returned false for the Trellis ones, and every content block
+// of every text going this way was dropped with the header let through.
+//
+// The Slot Type in the burst is what chooses, because it is the field the
+// standard puts there for exactly this purpose and it is protected by a Golay
+// code. The frame's own data type is checked against it rather than trusted:
+// they are two encodings of one fact, and this project has been caught by a
+// pair of those disagreeing before.
+func (e *Encoder) blockOf(frame hbp.Data) (block []byte, ok bool) {
+	if !IsRate34(frame) {
+		payload, _, ok := dmrfec.DecodeBPTC(frame.Payload[:])
+		if !ok {
+			return nil, false
+		}
+		full := dmrfec.BurstBytesFrom(payload)
+		if len(full) < dmrfec.LinkControlBlockBytes {
+			return nil, false
+		}
+		return full[:dmrfec.LinkControlBlockBytes], true
+	}
+	block, _, ok = dmrfec.DecodeRate34Burst(frame.Payload[:])
+	if !ok {
+		return nil, false
+	}
+	return block, true
+}
+
+// IsRate34 reports whether a Homebrew data burst carries a Rate 3/4 block.
+//
+// The Slot Type inside the burst and the frame's own data type are two
+// encodings of one fact, and this returns true only when they agree. A pair of
+// those disagreeing has cost this project time before, and a burst whose two
+// answers differ is one to refuse rather than to code by whichever was
+// consulted first.
+func IsRate34(frame hbp.Data) bool {
+	_, dataType, ok := dmrfec.SlotTypeOf(frame.Payload[:])
+	if !ok {
+		return false
+	}
+	return dataType == dmrfec.DataTypeRate34 && frame.DataType == dmrfec.DataTypeRate34
+}
+
+// Rate34OrderOf reports which end of a Rate 3/4 block the sender put the block
+// serial number and CRC, or dmrfec.Rate34OrderUnknown for anything else.
+//
+// **This is the one part of the text path nobody has measured.** IP Site
+// Connect delivers the control pair last and ETSI figure 8.8 draws it first;
+// which of those a hotspot puts on air decides whether the message QSP
+// transmits can be read at all. Rather than argue it out, the listener logs
+// what this returns for the first burst of each transmission: one text from a
+// Pi-Star settles it from the journal.
+func Rate34OrderOf(frame hbp.Data) dmrfec.Rate34Order {
+	if !IsRate34(frame) {
+		return dmrfec.Rate34OrderUnknown
+	}
+	_, order, ok := dmrfec.DecodeRate34Burst(frame.Payload[:])
+	if !ok {
+		return dmrfec.Rate34OrderUnknown
+	}
+	return order
 }
