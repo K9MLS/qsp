@@ -1,4 +1,4 @@
-# Handover, 2026-09-05
+# Handover, 2026-09-06
 
 Read `NEW-SESSION.md` for the standing brief and **§8j** of `PROJECT_MEMORY.md`
 for where to start, then **§8a**, which is the section that matters most. §8b
@@ -6,110 +6,70 @@ through §8i are superseded and carry banners saying so. **§0's table is worth
 doubting** — it was wrong about access control for weeks because it is the
 section everybody reads and nobody re-reads.
 
+## Start here
+
+**Wire the Rate 3/4 Trellis codec into the text path.** `internal/dmrfec` gained
+`trellis.go` and nothing calls it. `Encoder.text` and `Converter.ConvertText`
+still handle only BPTC, so every data block of every text is still dropped.
+
+That is the whole of what stands between this network and working text
+messages, and the diagnosis is finished: see §8j.
+
 ## The headline
 
-**A whole message type had never been accepted, and a call record never ended.**
+**Private text has never worked because a codec was missing**, and the codec now
+exists. Every data block of a text is refused: the preamble crosses the bridge,
+the header crosses, and the content does not, so a radio at the far end sees a
+header promising blocks that never arrive.
 
-`0x81` is a private voice call. QSP had refused it since the IPSC listener was
-written, so **no private call from a Motorola repeater had ever crossed the
-bridge**. It is `0x80` with a radio ID where the talkgroup goes, and nothing
-else about the frame changes — proved by two private calls in opposite
-directions between the same two radios, with group calls either side, so source
-and destination move in opposite ways and neither can be confused for the other.
-Byte 38 is the DMR Full Link Control opcode and agrees with the leading byte on
-all 32 header and terminator frames in the capture.
+ADR-0045 wrote the gap down when the text work was done — *Rate 3/4 bursts are
+refused rather than truncated* — and nobody connected it to the symptom for
+eighteen patches. It explains every report: KD9EJA's texts arrive, K9MLS's never
+do, neither radio acknowledges, and group text on the local repeater is fine.
 
-Separately, the console reported a transmission **running for 7h14m18s** while
-the radios were silent. An IPSC call ended on its last-frame flag and on nothing
-else, and a peer that keeps keepaliving is never dropped, so a transmission
-whose terminator never arrived stayed open for as long as the repeater stayed
-up.
+**Private calls now work in both directions**, proved on air and in a capture,
+which also settles the inferred half of ADR-0046.
 
-## How both were found
+## Do this when you next have a radio, it takes five minutes
 
-The first by reading a journal full of `unrecognised datagram` and noticing the
-lengths were voice's. The second by an operator looking at a dashboard and
-saying *I hear nothing on the radios*.
+**Send one text from the Pi-Star radio** — not the XPR8300 — with `tcpdump`
+running unfiltered. That puts MMDVMHost in the path, which produces Rate 3/4
+**coded** bursts. No capture anywhere contains one: the Homebrew fixtures are
+voice only, and the IPSC captures carry decoded blocks.
 
-**Neither could have been found any other way**, because in both cases the code
-was doing exactly what it was written to do.
-
-## Also done
-
-- **Three counts per transmission** — received, converted, delivered — because
-  the console said 45 frames and the DMR side said 22 for the same stream in the
-  same second and nothing said where the rest went. Conversion is ruled out by
-  measurement; the gap is now instrumented rather than argued about.
-- **One `call started` per run of data bursts** instead of seventeen, matching
-  the rule the history has used since the text work.
-- **A finished data burst is no longer reported as an abandoned transmission.**
-  Four false warnings per text message. That warning is how a peer that lost
-  power mid-over is noticed.
-
-## The console had its first review
-
-An operator said the sidebar's section headings looked like links. **The
-stylesheet agreed**: headings and not-yet-built links were the same colour, at
-the same inset, in the same column. Fixed, along with two captions that were
-`<p>` elements dressed as labels and a stale contrast figure.
-
-Two decisions came out of it. **Administration is hidden from a signed-out
-visitor** — shipped hidden, revealed on a confirmed session, so the default is
-the safe state and there is no flash on every page load. And **a Motorola
-repeater can be given the callsign it never announces**, in a config field
-separate from the allow list, because deciding who is answered and deciding what
-somebody reads are different questions. `CallsignLookedUp` became
-`CallsignSource`: announced, looked up, or written down are three claims and a
-bool holds two.
-
-**`/mnt/skills/user/ui-ux-pro-max` had been installed for this project and never
-read.** A skill nobody opens is the same defect as a symbol nobody calls.
-
-Nine of eleven pages still have not been measured.
-
-## Do this first
-
-**Private calls on air.** 0.1.67 is deployed and no radio has tested `0x81`.
-KD9EJA's private call to K9MLS should log `"private":true` and a `relaying
-transmission` line. **Whether the far end rings is a separate question**, and it
-is the same one Paul's private calls have been posing for a week.
-
-## Decide this
-
-**Which source owns Last-heard.** `DeliverFromIPSC` already observes into the
-shared tracker, and `/api/peers` appends the IPSC listener's own call views on
-top with no dedup, so every Motorola over should be appearing twice. This is a
-choice about what members see, not a defect to fix quietly. §8j item 2.
-
-## Also worth knowing
-
-**Three of my own quick readings during the UI review were wrong** — a contrast
-comment misread, a regex that reported 33 false positives, a focus-ring gap that
-did not exist. The console was in better shape than either of us assumed, and
-measuring is what established that. Same lesson as the differentials, different
-medium.
+Decoding one into the message that was typed proves the trellis tables, which
+are currently transcribed from the standard and guarded only by shape tests.
 
 ## The method
 
 **Every reading taken by eye has been wrong. Every differential has been right**,
-now twelve times. On 2026-09-05 an eye reading put 220 vocoder frames in a
-capture that holds 228; the test caught it before the patch shipped.
+now thirteen times. Six defects on 2026-09-06 were found by reading captures
+byte by byte after a regression test that sounded perfect; three of them were in
+files open on the screen at the time.
 
 ## Traps
 
-**A test that asserts an absence can arrange for it.** The routing-reaper test
-passed with the fix removed, because with no peers ready the burst reserved
-nothing and there was nothing to warn about. Fourth time this has happened.
-Break the code and watch the test fail, or it is not a test.
+**A change made late in a session gets the same confidence as one made early,
+and should not.** Four patches written on the evening of 2026-09-06 were
+corrected the same evening, one of them reintroducing within the hour a defect
+fixed earlier the same afternoon.
+
+**A test that asserts an absence can arrange for the absence.** Three did that
+evening. Break the code and watch the test fail, or it is not a test.
 
 **Never count test failures.** The container baseline is seven, by name, in §7.
 
 **staticcheck cannot run in the container.** Expect a patch to fail as a gate
-chain that stops before the tests. Never begin a comment line with `go:`,
-`line:`, `export:` or `extern:`.
+chain that stops before the tests.
 
 **Ask the running binary which commit it is.** `qsp --version`. `systemctl
 is-active` says something started; only the version says what.
+
+**A failed `git am` leaves its rebase directory behind** and the next one fails
+with "previous rebase directory still exists". `git am --abort` first, then
+`git log --oneline -3` before assuming anything about what is applied. This
+happened four times on 2026-09-06, every time because a patch was already
+applied and the operator ran the block anyway.
 
 **Never use `git checkout` to undo a deliberate break**; it reverts the whole
 uncommitted file. Copy the file first.

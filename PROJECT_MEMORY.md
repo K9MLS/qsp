@@ -2200,6 +2200,80 @@ treatment.
 The nav markup is **copied into seven pages**. Nothing shares it, so every rule
 about it is seven rules, which is why the tests for it count the copies.
 
+### The evening: six defects, none of them audible
+
+All six were found by reading captures byte by byte, after a regression test that
+sounded perfect. **The audio was fine every time.** None of these would have been
+found by listening, and none by reading the code — three of them were in files
+open on the screen at the time.
+
+**A relayed transmission carried the sender's radio ID where its stream ID
+belongs.** `streamFor` packs the IPSC stream into the top of a Homebrew stream
+ID and the radio ID into the bottom; the encoder wrote the low half. Two overs
+nineteen seconds apart, on different talkgroups and timeslots, both went out as
+`0x0cdee`. A receiver tells one transmission from the next by that field.
+
+**Every voice transmission was announced as a group text.** A voice Link Control
+header travels in a data-sync burst, the same frame type a text uses, so
+dispatching on frame type alone sent MMDVMHost's header to the text encoder and
+it left as `0x83`. Three captures of real Motorola masters hold 288, 66 and 326
+voice datagrams and every one is `0x80`; not one `0x83` appears in any of them.
+
+**A private call between two Motorola repeaters was blocked by a Homebrew
+verdict.** Routing resolves a private call by locating the radio among the
+Homebrew peers; a radio behind an IPSC repeater is not there, so a reason was
+set, and `sendToIPSC` bailed on any reason at all — a path that never needed the
+lookup, because a repeater receives everything and filters in its codeplug. The
+call in the other direction worked because that radio happened to sit on a
+hotspot, so the defect hid behind where two operators keep their radios.
+
+**`Result.Reason` was never logged.** Read in exactly one place to make a
+decision and printed nowhere, so a transmission carried nowhere produced a `call
+started` line and silence. That is the trap the drop reasons fell into, in the
+same function, fixed for those and left here.
+
+**`SendVoice` reported nothing, ever.** The Homebrew side logs a line per
+destination; the repeaters got their traffic in silence, so "KD9EJA did not
+receive my text" could not be answered without a packet capture.
+
+**One text went out as eighteen transmissions.** MMDVMHost gives every data
+burst its own stream ID and the encoder kept its per-transmission state under
+that ID, so every burst restarted the transmission: new call counter, sequence
+back to zero, never the first-frame flag. The repeater at the other end sends
+one transmission of twenty-one.
+
+### Four corrections to patches written the same evening
+
+Worth recording as a rate rather than as incidents.
+
+- `0228` warned on data bursts that had not been abandoned. Fixed.
+- Two patches later `0240` warned on voice headers dropped on purpose — **the
+  same defect, reintroduced in a different subsystem within the hour**, and it
+  filled the journal during an ordinary rag-chew.
+- `0239`'s new log line said "transmission not carried" in exactly the case
+  where the Motorola repeaters do carry it. The operator read it and reasonably
+  concluded his text had been thrown away.
+- An amendment to ADR-0029 was recommended to permit reading the standard. **No
+  amendment was needed**: ADR-0040 settled it weeks ago and says so at the top
+  of `internal/dmrfec/linkcontrol.go`, a file that had been edited all day.
+
+Three tests written that evening also passed on nothing until they were broken
+on purpose: a banned radio that never reaches the code under test, stream IDs
+differing only in a half the encoder does not write, and an assertion about
+frame counts that was arithmetic about the test's own clock.
+
+**The pattern is not carelessness in any one of them.** It is that a change made
+at the end of a long session gets the same confidence as one made at the start,
+and the evidence says it should not.
+
+### What now works
+
+Private calls in both directions, proved on air and in a capture: `0x81`
+inbound, and QSP sending `0x81` to a repeater — which no capture anywhere held
+before 2026-09-06, so ADR-0046's inferred half is now measured. Two consecutive
+private overs carry distinct streams. A text is one transmission. Voice is
+announced as voice.
+
 ### Private text has never worked, and the reason is a missing codec
 
 **Every data block of a text message is dropped, silently, in both directions.**
