@@ -432,9 +432,15 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		}
 		colourCode := *cfg.IPSC.ColourCode
 
-		var deliver func(hbp.RepeaterID, hbp.Data)
+		var deliver, observe func(hbp.RepeaterID, hbp.Data)
 		if a.dmr != nil {
 			deliver = a.dmr.DeliverFromIPSC
+			// Recording a transmission and carrying it are separate acts, and
+			// parrot takes what it handles before Deliver is reached. Without
+			// this, a Motorola operator keying the parrot talkgroup would
+			// leave no trace on the console while a hotspot operator doing the
+			// same left one.
+			observe = a.dmr.ObserveFromIPSC
 			log.Info("IPSC audio is bridged to DMR peers",
 				slog.Int("colour_code", int(colourCode)),
 				slog.Bool("slot_bit_is_timeslot2", cfg.IPSC.SlotBitIsTimeslot2))
@@ -448,6 +454,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			AllowedPeers:  cfg.IPSC.AllowedPeers,
 			PeerNames:     cfg.IPSC.PeerNames,
 			PeerTimeout:   time.Duration(cfg.IPSC.PeerTimeoutSeconds) * time.Second,
+			Observe:       observe,
 			Deliver:       deliver,
 			Parrot:        ipscParrot,
 			Bridge: ipscbridge.Config{
@@ -1064,7 +1071,10 @@ func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 		// seeing: it is exactly the case where ADR-0042's mirroring is falling
 		// back to ipsc.colour_code.
 		if peer.ColourCodeKnown {
-			v.ColorCode = strconv.Itoa(int(peer.ColourCode))
+			// Two digits, because the Homebrew side reports two and one
+			// column showing "1" beside "01" reads as two different things
+			// being measured.
+			v.ColorCode = fmt.Sprintf("%02d", peer.ColourCode)
 		}
 		// Looked up rather than announced, and marked as such. IP Site Connect
 		// carries no callsign, so the alternative to a registry lookup is a
@@ -1090,38 +1100,26 @@ func (p ipscPeerViews) PeerViews(now time.Time) []server.PeerView {
 	return out
 }
 
-func (p ipscPeerViews) CallViews(now time.Time) (active, recent []server.CallView) {
-	for _, peer := range p.listener.Peers() {
-		c := peer.LastCall
-		if c == nil {
-			continue
-		}
-		v := server.CallView{
-			Source: c.Source,
-			Target: c.Destination,
-			// **Not always true, since 0x81.** Every IPSC call was reported
-			// as a group call for as long as the listener refused the
-			// private ones outright.
-			Group:    !c.Private,
-			Timeslot: int(c.Timeslot),
-			Frames:   int(c.Frames),
-			Voice:    c.Frames > 0,
-		}
-		if c.Ended.IsZero() {
-			v.Duration = now.Sub(c.Started).Truncate(time.Second).String()
-			active = append(active, v)
-			continue
-		}
-		v.Duration = c.Ended.Sub(c.Started).Truncate(time.Second).String()
-		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
-		v.EndedAt = c.Ended.UTC()
-		// The Homebrew side has carried this since the terminator-less close
-		// was written; the Motorola side had nothing to carry, because no call
-		// of its own could end without a terminator.
-		v.Lost = c.Lost
-		recent = append(recent, v)
-	}
-	return active, recent
+// CallViews contributes nothing, deliberately.
+//
+// **Every IPSC transmission was appearing in Last heard twice.**
+// DeliverFromIPSC observes each converted burst into the shared call tracker
+// before routing it, so the tracker already holds every transmission that
+// crosses the bridge — with a resolved callsign, merged data bursts, an end
+// reason and history. This adapter then appended the IPSC listener's own view
+// of the same transmission on top, and nothing deduplicated the two.
+//
+// A member saw one over as two, a fraction of a second apart, with different
+// frame counts: 8 against 10, because the IPSC side counts the header and
+// terminator that the converter folds into one of each, and different
+// durations, because one truncates to whole seconds and the other does not.
+// Two records of one event that disagree about how long it was.
+//
+// The tracker owns Last heard. **Peer.LastCall stays** — it is what the
+// three-layer frame counters hang off and what the peer row reads — but it is
+// peer state, not a second call history.
+func (p ipscPeerViews) CallViews(time.Time) (active, recent []server.CallView) {
+	return nil, nil
 }
 
 // Traffic reports the Motorola listener's own figures in their own object.

@@ -97,6 +97,17 @@ type Config struct {
 	// parrots instead.
 	Parrot *parrot.Recorder
 
+	// Observe records each converted burst as a transmission, whatever becomes
+	// of it afterwards. Optional; nil means transmissions are not recorded.
+	//
+	// **It is separate from Deliver because parrot consumes what it handles.**
+	// On the Homebrew side a frame is observed before forwarding, so a member's
+	// echo test appears in Last heard like any other over. Here parrot runs
+	// before Deliver, so a burst it takes would be recorded nowhere at all —
+	// and a Motorola operator keying the parrot talkgroup would leave no trace
+	// while a hotspot operator doing the same left one.
+	Observe func(from hbp.RepeaterID, frame hbp.Data)
+
 	// Deliver receives each burst converted from a repeater's audio, with the
 	// repeater's radio ID as its origin.
 	//
@@ -715,7 +726,13 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	frames, ended := l.record(msg, from, now)
 	var delivered int
 	for _, f := range frames {
-		// Parrot first, and it consumes what it handles, exactly as on the
+		// Observed before parrot has a chance to take it, for the reason the
+		// Homebrew side observes before forwarding: the record of who has been
+		// on the network is not conditional on where their audio went.
+		if l.cfg.Observe != nil {
+			l.cfg.Observe(hbp.RepeaterID(msg.SenderID), f)
+		}
+		// Parrot next, and it consumes what it handles, exactly as on the
 		// Homebrew side. A recording answers the member who made it; routing
 		// it as well would put somebody's echo test on the network.
 		if l.parrotHandles(hbp.RepeaterID(msg.SenderID), f) {

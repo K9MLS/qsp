@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 )
@@ -28,10 +29,16 @@ func peersServer(t *testing.T, dmr, ipsc PeerSource) *Server {
 	t.Helper()
 	bus := events.NewBus(nil, events.Options{})
 	t.Cleanup(bus.Close)
+	a := newStubAuth()
+	a.sessions["signed-in"] = auth.Session{
+		Token: "signed-in", Username: "operator",
+		ExpiresAt: time.Now().Add(time.Hour).UTC(),
+	}
 	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
 		ListenAddress: "127.0.0.1:0",
 		Peers:         dmr,
 		IPSCPeers:     ipsc,
+		Auth:          a,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -41,8 +48,21 @@ func peersServer(t *testing.T, dmr, ipsc PeerSource) *Server {
 
 func peersBody(t *testing.T, srv *Server) peersResponse {
 	t.Helper()
+	return peersBodyAs(t, srv, false)
+}
+
+// peersBodyAs fetches the peer list as a visitor or as a signed-in operator.
+//
+// The two differ: an address is an artefact of the connection rather than
+// something a station announced, so it is withheld from a public caller.
+func peersBodyAs(t *testing.T, srv *Server, signedIn bool) peersResponse {
+	t.Helper()
 	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/peers", nil))
+	req := httptest.NewRequest(http.MethodGet, "/api/peers", nil)
+	if signedIn {
+		req.AddCookie(&http.Cookie{Name: SessionCookie, Value: "signed-in"})
+	}
+	srv.Handler().ServeHTTP(rec, req)
 	var body peersResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
@@ -247,5 +267,50 @@ func TestALookedUpCallsignIsMarkedAsOne(t *testing.T) {
 	if got := byID[999999]; got.Callsign != "" || got.CallsignSource != "" {
 		t.Errorf("a repeater with no registry record shows %q; it should show "+
 			"nothing and let the console say why", got.Callsign)
+	}
+}
+
+// TestAnAddressIsNotPublished is the one field on this endpoint that a peer
+// never announced.
+//
+// /api/peers is deliberately unauthenticated, and the reasoning recorded for
+// that covers what a station chose to make public: its callsign, its location,
+// its talkgroups. **An address is none of those.** It is an artefact of the
+// connection, observed by this server, and it is a member's home internet
+// connection together with the fact that they are on the air right now.
+//
+// A callsign already leads to a name through the licence database, so that is
+// not the exposure. What an address adds is precise and actionable: where to
+// aim traffic to put one member off the air during a net.
+func TestAnAddressIsNotPublished(t *testing.T) {
+	srv := peersServer(t,
+		fixedPeers{peers: []PeerView{
+			{ID: 3155413, Protocol: ProtocolHomebrew, Callsign: "KB9TYC",
+				Address: "198.51.100.172:45383"},
+		}},
+		fixedPeers{peers: []PeerView{
+			{ID: 315544, Protocol: ProtocolIPSC, Address: "198.51.100.2:50004"},
+		}},
+	)
+
+	for _, p := range peersBody(t, srv).Peers {
+		if p.Address != "" {
+			t.Errorf("peer %d published address %q to a caller who is not signed in",
+				p.ID, p.Address)
+		}
+	}
+
+	// The complementary half. Withholding it from everybody would take a
+	// diagnostic away from the one person entitled to it, and an operator
+	// chasing a peer that will not connect is signed in already.
+	body := peersBodyAs(t, srv, true)
+	var withAddress int
+	for _, p := range body.Peers {
+		if p.Address != "" {
+			withAddress++
+		}
+	}
+	if withAddress != 2 {
+		t.Errorf("%d of 2 peers showed an address to a signed-in operator", withAddress)
 	}
 }

@@ -53,3 +53,39 @@ func TestTheIPSCAdapterMarksALookedUpCallsign(t *testing.T) {
 			"show as bare radio IDs")
 	}
 }
+
+// TestTheIPSCAdapterKeepsNoCallHistoryOfItsOwn is the duplicate a member saw.
+//
+// Every IPSC transmission was appearing in Last heard twice: once from the
+// shared call tracker, which the IPSC listener feeds through its Observe hook,
+// and once from this adapter's own view of Peer.LastCall. Nothing deduplicated
+// them, so one over read as two a fraction of a second apart — 8 frames against
+// 10, because the IPSC side counts the header and terminator the converter
+// folds into one of each, and 350ms against 0s, because one truncates the
+// duration to whole seconds and the other does not.
+//
+// **Two records of one event that disagree about how long it was.**
+func TestTheIPSCAdapterKeepsNoCallHistoryOfItsOwn(t *testing.T) {
+	src, err := os.ReadFile("app.go")
+	if err != nil {
+		t.Fatalf("reading app.go: %v", err)
+	}
+	i := strings.Index(string(src), "func (p ipscPeerViews) CallViews(")
+	if i < 0 {
+		t.Fatal("the IPSC call view adapter is gone; this test needs rewriting")
+	}
+	rest := string(src)[i:]
+	j := strings.Index(rest, "\nfunc ")
+	if j < 0 {
+		j = len(rest)
+	}
+	body := rest[:j]
+
+	if strings.Contains(body, "append(") {
+		t.Error("the IPSC adapter builds call views again; every transmission through " +
+			"a Motorola repeater will appear in Last heard twice")
+	}
+	if !strings.Contains(body, "return nil, nil") {
+		t.Error("the IPSC adapter no longer returns an empty call history")
+	}
+}

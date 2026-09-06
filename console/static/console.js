@@ -221,6 +221,31 @@
       return;
     }
 
+    /* **A column that is empty on every row is noise, not information.**
+     * Subscription is off on most networks, and with it off every Homebrew
+     * peer receives everything, so the talkgroup column reads as a dash
+     * forever — while remaining the answer to "why can I not hear that
+     * talkgroup" the moment subscription is on. Shown when there is something
+     * to show, rather than deleted and rebuilt later. */
+    var anyAttachments = false;
+    for (var n = 0; n < list.length; n++) {
+      if ((list[n].attachments || []).length > 0) {
+        anyAttachments = true;
+        break;
+      }
+    }
+
+    /* The address is withheld from an unauthenticated caller, so the column is
+     * withheld with it: ten dashes under a heading invite somebody to report a
+     * fault that is not there. */
+    var anyAddress = false;
+    for (var m = 0; m < list.length; m++) {
+      if (list[m].address) {
+        anyAddress = true;
+        break;
+      }
+    }
+
     var rows = "";
     var seen = {};
     for (var i = 0; i < list.length; i++) {
@@ -238,25 +263,30 @@
         '<td class="mono">' + escapeText(p.connected_for || "—") + "</td>" +
         '<td class="mono">' + escapeText(p.idle_for) + "</td>" +
         '<td class="mono">' + peerColourCode(p) + "</td>" +
-        '<td class="cell--wrap">' + peerAttachments(p) + "</td>" +
+        (anyAttachments
+          ? '<td class="cell--wrap">' + peerAttachments(p) + "</td>"
+          : "") +
         '<td class="cell--wrap">' + peerPlace(p) + "</td>" +
-        '<td class="mono">' + escapeText(p.address) + "</td>" +
+        (anyAddress ? '<td class="mono">' + escapeText(p.address) + "</td>" : "") +
         "</tr>";
     }
 
     peersBody.innerHTML =
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Connected peers, scrollable"><table class="table">' +
       "<caption>Peers currently registered with this master. " +
-      "IP Site Connect repeaters announce no callsign, location or talkgroups; " +
-      "those columns read &ldquo;not sent&rdquo; rather than being empty.</caption>" +
+      "A Motorola repeater announces no callsign or location, so a callsign " +
+      "here was written down by an administrator and a dash means nothing was " +
+      "sent. Addresses are shown to a signed-in administrator only.</caption>" +
       "<thead><tr>" +
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
       "<th scope=\"col\">Link</th>" +
       "<th scope=\"col\">State</th><th scope=\"col\">Connected</th>" +
       "<th scope=\"col\">Idle</th><th scope=\"col\">CC</th>" +
-      "<th scope=\"col\" class=\"cell--wrap\">Talkgroups</th>" +
+      (anyAttachments
+        ? "<th scope=\"col\" class=\"cell--wrap\">Talkgroups</th>"
+        : "") +
       "<th scope=\"col\" class=\"cell--wrap\">Location</th>" +
-      "<th scope=\"col\">Address</th>" +
+      (anyAddress ? "<th scope=\"col\">Address</th>" : "") +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
 
     knownPeerIds = seen;
@@ -278,7 +308,9 @@
    * no callsign and no talkgroups reads as a misconfigured hotspot. */
   function protocolPill(p) {
     if (isIPSC(p)) {
-      return '<span class="pill pill--ipsc" title="Motorola IP Site Connect">IPSC</span>';
+      return '<span class="pill pill--ipsc" ' +
+        'title="Motorola IP Site Connect. A repeater receives every talkgroup ' +
+        'and filters by its own codeplug.">IPSC</span>';
     }
     return '<span class="pill pill--homebrew" title="Homebrew / MMDVM">Homebrew</span>';
   }

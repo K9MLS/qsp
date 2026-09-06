@@ -278,3 +278,65 @@ func TestParrotConsumesTheFrameOnTheIPSCPath(t *testing.T) {
 		t.Error("no frame on the ordinary talkgroup was delivered; parrot is consuming too much")
 	}
 }
+
+// TestAParrotTransmissionIsStillRecorded is the gap that opened when the IPSC
+// listener stopped keeping a call history of its own.
+//
+// Last heard is built from the shared call tracker, which sees a transmission
+// when it is delivered. **Parrot consumes what it handles before delivery**, so
+// a member keying the parrot talkgroup through a Motorola repeater would leave
+// no trace anywhere an operator looks — while the same member doing it through
+// a hotspot would, because that listener observes before it forwards.
+//
+// The record of who has been on the network is not conditional on where their
+// audio went.
+func TestAParrotTransmissionIsStillRecorded(t *testing.T) {
+	const parrotTG = 9998
+
+	var mu sync.Mutex
+	var observed, delivered int
+	_, conn := start(t, ipsclink.Config{
+		Parrot: parrotFor(t, parrotTG),
+		Bridge: ipscbridge.Config{SlotBitIsTimeslot2: true},
+		Observe: func(_ hbp.RepeaterID, _ hbp.Data) {
+			mu.Lock()
+			observed++
+			mu.Unlock()
+		},
+		Deliver: func(_ hbp.RepeaterID, _ hbp.Data) {
+			mu.Lock()
+			delivered++
+			mu.Unlock()
+		},
+	})
+
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+	for range 8 {
+		send(t, conn, ipsc.KindVoice, peerID, voiceBodyOn(t, parrotTG))
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		n := observed
+		mu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if observed == 0 {
+		t.Error("a parrot transmission was recorded nowhere; it would not appear in Last heard")
+	}
+	// The complementary half: observing must not resurrect the frame. A parrot
+	// burst that reached routing would put one member's echo test on every
+	// repeater and hotspot on the network.
+	if delivered != 0 {
+		t.Errorf("%d parrot frames reached the DMR side, want none", delivered)
+	}
+}

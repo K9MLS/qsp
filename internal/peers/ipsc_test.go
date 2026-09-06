@@ -244,11 +244,19 @@ func TestMotorolaTrafficReachesTheCallTracker(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = l.Close() })
 
-	l.DeliverFromIPSC(motorola, hbp.Data{
+	// **Recording and routing are two calls now, in this order**, which is how
+	// the IPSC listener drives them: it observes every converted burst and
+	// then offers it to parrot, and only what parrot leaves is delivered. A
+	// single method that did both would record nothing for a frame parrot
+	// takes, and recording it in both places is how one transmission came to
+	// appear in Last heard twice.
+	frame := hbp.Data{
 		RepeaterID: motorola, SourceID: 3132910, TargetID: 2,
 		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
 		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0xC0FFEE03,
-	})
+	}
+	l.ObserveFromIPSC(motorola, frame)
+	l.DeliverFromIPSC(motorola, frame)
 
 	active := tracker.Active()
 	if len(active) == 0 {
@@ -454,7 +462,7 @@ func TestARunOfDataBurstsIsOneLineInTheJournal(t *testing.T) {
 		}
 	}
 	for i := 0; i < 8; i++ {
-		l.DeliverFromIPSC(motorola, burst(uint32(0x1000+i)))
+		l.ObserveFromIPSC(motorola, burst(uint32(0x1000+i)))
 	}
 	if got := strings.Count(buf.String(), `msg="call started"`); got != 1 {
 		t.Errorf("a run of eight data bursts wrote %d call-started lines, want 1:\n%s",
@@ -467,7 +475,7 @@ func TestARunOfDataBurstsIsOneLineInTheJournal(t *testing.T) {
 	buf.Reset()
 	voice := burst(0x2000)
 	voice.FrameType = hbp.FrameTypeVoiceSync
-	l.DeliverFromIPSC(motorola, voice)
+	l.ObserveFromIPSC(motorola, voice)
 	if got := strings.Count(buf.String(), `msg="call started"`); got != 1 {
 		t.Errorf("a voice transmission after a data run wrote %d call-started lines, want 1", got)
 	}

@@ -609,18 +609,30 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 // Triggers do run. Opening an on-demand bridge needs no reverse path, and a
 // Motorola repeater keying up is as good a reason to open one as any other
 // peer.
+// ObserveFromIPSC records a transmission from a Motorola repeater without
+// routing it.
+//
+// **Recording and carrying are separate acts.** Parrot runs in the IPSC
+// listener and consumes what it handles, so a burst it takes never reaches
+// DeliverFromIPSC — and a member keying the parrot talkgroup through a
+// repeater would leave no trace anywhere an operator looks, while the same
+// member doing it through a hotspot would, because this listener observes
+// before it forwards.
+func (l *Listener) ObserveFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
+	l.observe(from, frame)
+}
+
+// **It routes and does not record.** ObserveFromIPSC does the recording, and
+// the IPSC listener calls that for every converted burst before offering it to
+// parrot — so a frame parrot takes is still in Last heard, and a frame that
+// reaches here is recorded exactly once. Recording in both places is how one
+// transmission came to appear in the panel twice, with two frame counts and two
+// durations that disagreed.
 func (l *Listener) DeliverFromIPSC(from hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
 	}
-	// Observed before it is routed, for the same reason peer traffic is: the
-	// console shows who is talking, and a Motorola repeater's operator is as
-	// entitled to appear there as anybody on a hotspot. Without this a
-	// transmission crossed the bridge and left no trace anywhere an operator
-	// looks — which is how it was noticed, by keying up and watching the
-	// dashboard stay empty.
 	l.warnIfIDShared(from)
-	l.observe(from, frame)
 
 	// **The subscriber list bans a radio, not a repeater**, so it has to apply
 	// here as well as on the Homebrew data path. Without it a banned operator

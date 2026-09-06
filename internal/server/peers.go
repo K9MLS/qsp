@@ -66,6 +66,10 @@ type PeerView struct {
 	// Callsign is what the peer announced. Empty until it is configured.
 	Callsign string `json:"callsign"`
 	// Address is where its datagrams arrive from.
+	//
+	// **Empty unless the caller is signed in.** It is not something the peer
+	// announced; it is a member's home connection plus the fact that they are
+	// on the air right now, and this endpoint is public. See handlePeers.
 	Address string `json:"address"`
 	// State is its position in the login sequence.
 	State string `json:"state"`
@@ -332,6 +336,19 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Enabled = true
+	// **An address is not something a peer announced.** /api/peers is
+	// deliberately unauthenticated: it describes stations that chose to
+	// announce themselves on a network their operators joined, which is what
+	// makes the callsign, the location and the talkgroups fair to publish. The
+	// address is not that. It is an artefact of the connection, observed by
+	// this server, and it is a member's home internet connection together with
+	// the fact that they are online right now.
+	//
+	// A callsign already leads to a name through the licence database. What an
+	// address adds is precise and actionable: where to aim traffic to put one
+	// member off the air during a net. An operator diagnosing a peer is signed
+	// in anyway.
+	_, signedIn := s.session(r)
 	body.Forwarding = s.Forwarding()
 	body.Map = s.MapSettings()
 	body.Peers = append(body.Peers, s.opts.Peers.PeerViews(now)...)
@@ -353,6 +370,12 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		a, r := s.opts.IPSCPeers.CallViews(now)
 		body.Active = append(body.Active, a...)
 		body.Recent = append(body.Recent, r...)
+	}
+
+	if !signedIn {
+		for i := range body.Peers {
+			body.Peers[i].Address = ""
+		}
 	}
 
 	// One list, ordered as each was ordered alone: peers by ID, recent calls
