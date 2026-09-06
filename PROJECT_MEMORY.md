@@ -2113,6 +2113,93 @@ before the audio arrives. Classifying on that alone would have filed every real
 transmission as data and silenced the warning permanently — the one way that
 patch could have hurt audio, and the reason the flag is corrected upwards.
 
+### The first UI review this console has had
+
+An operator looked at the sidebar and said the section headings looked like
+links. **The stylesheet agreed with him**: `.nav__heading` and
+`.nav__link[aria-disabled="true"]` were both `--color-foreground-subtle`, at the
+same left inset, in the same column. Size, tracking and uppercase were carrying
+the whole distinction, and none of them wins against colour.
+
+That prompted the review the console had never had — and prompted a question
+worth recording: `/mnt/skills/user/ui-ux-pro-max` had been installed for this
+project and never once read. **A skill nobody opens is the same defect as a
+symbol nobody calls**, which this file has documented nine times about Go and
+had not noticed about itself.
+
+**Three of my own quick readings during that review were wrong**, which is the
+same lesson as §8a in a different medium:
+
+- I said `tokens.css` admitted a ratio under the 4.5:1 floor. It records a
+  *rejected* option and why it was rejected. Measured, every pair clears the
+  floor.
+- A regex reported 33 unlabelled form fields across six pages. It could not
+  handle a tag spanning two lines. The real number was two.
+- I flagged the join page as having no focus rings. It loads `console.css`
+  first and inherits all twelve.
+
+The real findings were four, not the many I predicted. **The console was in
+better shape than either of us assumed**, and the way to find out was to measure
+rather than to look.
+
+### What changed, and the two decisions behind it
+
+**Planned links moved to `--color-unavailable`**, the token that already means
+"not built" and sits beside the phase badge saying which phase brings it, so a
+heading no longer shares a colour with anything clickable. Headings also gained
+space above and lost it below: proximity is the strongest grouping signal there
+is, and a heading floating equidistant between two groups introduces neither.
+
+**Two fields on the links page were captioned with a `<p>`** carrying the label
+class — right size, right colour, right position, no association with the
+control. A `<label>` is inline where the paragraph was block, so the fix needed
+a display rule or it would have slid both captions onto the same line as their
+controls: a correct accessibility change that looks like a layout bug.
+
+**The administration group ships hidden and `nav.js` reveals it.** It used to be
+listed to everybody with a note saying to sign in, on the grounds that hiding a
+page makes the console lie about what exists. The operator overruled that, and
+the implementation matters: revealing on a confirmed session means the default
+is the state a visitor should see, there is no flash of admin links on every
+load, and a fetch that never returns leaves a signed-out console rather than a
+signed-in-looking one. One line stands where the group was, because a console
+with no visible way to administer anything reads as a console that cannot.
+
+**`ipsc.peer_names` gives a Motorola repeater the callsign it never announces.**
+A repeater on a private radio ID — 999999 and 999998 here — is in no registry
+and never will be, so the console showed a bare number for precisely the peers
+carrying the network. Two decisions inside it:
+
+- **It is a separate field from `allowed_peers`**, because the allow list
+  decides who is answered and a name decides only what somebody reads. Folding
+  a label into the admission list would put display text on the path that
+  decides whether a datagram is processed. The console still presents one
+  field — a line reads `315544 KD9EJA` and the page splits it — because two
+  lists kept in step by hand is how one goes stale.
+- **`PeerView.CallsignLookedUp` became `CallsignSource`**, because there are
+  three claims and a bool holds two: announced by the peer, looked up in a
+  public registry that may describe whoever registered the ID years ago, or
+  written down by the operator who owns the repeater. The operator's label
+  outranks the registry. All three render differently, by underline style
+  rather than colour, so the distinction survives a screenshot and a
+  colour-blind reader.
+
+A name for a repeater not in `allowed_peers` is refused at validation. It would
+otherwise be invisible — never shown, never explained — which is the
+declared-and-read-by-nothing pattern again. An empty allow list admits
+everybody, so nothing is orphaned that way.
+
+### What the review did not cover
+
+**Two components out of eleven pages.** The sidebar and one access panel were
+read closely; the peers table, traffic, health, history, bridges, links, the
+join flow and the maps were looked at and not measured. "Fewer findings than
+expected" is not "none", and the pages an operator uses most have not had this
+treatment.
+
+The nav markup is **copied into seven pages**. Nothing shares it, so every rule
+about it is seven rules, which is why the tests for it count the copies.
+
 ### Open, in order
 
 1. **Private calls on air.** 0225 is deployed and untested against a radio.
@@ -2133,16 +2220,19 @@ patch could have hurt audio, and the reason the flag is corrected upwards.
    defect to fix quietly.**
 3. **The 45-versus-22 gap**, now instrumented. Wait for it to recur and read the
    three counters.
-4. **Repeater-to-hotspot text.** MMDVMHost accepts the preambles and the data
+4. **The rest of the UI review.** Nine pages have not been measured, and the
+   peers table is the one an operator looks at most and the one the callsign
+   work just changed.
+5. **Repeater-to-hotspot text.** MMDVMHost accepts the preambles and the data
    header — it reads the block count out of it — and then ends the transmission.
    The five Rate 1/2 blocks after the header are the suspect. Next step is
    MMDVMHost at debug on the Pi-Star, which will say whether they arrive.
-5. **Text over IPSC has no call record.** The text branch never touches
+6. **Text over IPSC has no call record.** The text branch never touches
    `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
    the new counters. The layer-by-layer accounting covers voice and not data.
-6. **`/api/peers` is unauthenticated** and carries repeater radio IDs and
+7. **`/api/peers` is unauthenticated** and carries repeater radio IDs and
    addresses. A decision, not a defect.
-7. **The vocoder**, then **subscription on air**, then **P25**.
+8. **The vocoder**, then **subscription on air**, then **P25**.
 
 ### The method, now proved twelve times
 

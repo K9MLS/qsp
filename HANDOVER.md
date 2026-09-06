@@ -46,6 +46,27 @@ was doing exactly what it was written to do.
   Four false warnings per text message. That warning is how a peer that lost
   power mid-over is noticed.
 
+## The console had its first review
+
+An operator said the sidebar's section headings looked like links. **The
+stylesheet agreed**: headings and not-yet-built links were the same colour, at
+the same inset, in the same column. Fixed, along with two captions that were
+`<p>` elements dressed as labels and a stale contrast figure.
+
+Two decisions came out of it. **Administration is hidden from a signed-out
+visitor** — shipped hidden, revealed on a confirmed session, so the default is
+the safe state and there is no flash on every page load. And **a Motorola
+repeater can be given the callsign it never announces**, in a config field
+separate from the allow list, because deciding who is answered and deciding what
+somebody reads are different questions. `CallsignLookedUp` became
+`CallsignSource`: announced, looked up, or written down are three claims and a
+bool holds two.
+
+**`/mnt/skills/user/ui-ux-pro-max` had been installed for this project and never
+read.** A skill nobody opens is the same defect as a symbol nobody calls.
+
+Nine of eleven pages still have not been measured.
+
 ## Do this first
 
 **Private calls on air.** 0.1.67 is deployed and no radio has tested `0x81`.
@@ -59,6 +80,14 @@ is the same one Paul's private calls have been posing for a week.
 shared tracker, and `/api/peers` appends the IPSC listener's own call views on
 top with no dedup, so every Motorola over should be appearing twice. This is a
 choice about what members see, not a defect to fix quietly. §8j item 2.
+
+## Also worth knowing
+
+**Three of my own quick readings during the UI review were wrong** — a contrast
+comment misread, a regex that reported 33 false positives, a focus-ring gap that
+did not exist. The console was in better shape than either of us assumed, and
+measuring is what established that. Same lesson as the differentials, different
+medium.
 
 ## The method
 
