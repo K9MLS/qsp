@@ -129,7 +129,7 @@ func TestAGroupCallIsStillAGroupCall(t *testing.T) {
 // precedent, not a proof, and recorded as such in the fixture's own notes.
 func TestAPrivateCallGoesOutAsAPrivateCall(t *testing.T) {
 	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
-	out := e.Encode(hbp.Data{
+	out, _ := e.Encode(hbp.Data{
 		SourceID: 3155413, TargetID: 3132910, Timeslot: hbp.Timeslot2,
 		CallType: hbp.CallPrivate, FrameType: hbp.FrameTypeVoiceSync,
 		StreamID: 0xC0FFEE,

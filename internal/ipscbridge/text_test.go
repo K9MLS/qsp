@@ -248,7 +248,7 @@ func TestATextGoesOutAsItCameIn(t *testing.T) {
 			t.Fatal("a twelve-octet block was refused by the converter")
 		}
 
-		msgs := e.Encode(burst)
+		msgs, _ := e.Encode(burst)
 		if len(msgs) != 1 {
 			t.Fatalf("encoding a text produced %d messages, want exactly one; "+
 				"a data burst has no headers and no superframe", len(msgs))

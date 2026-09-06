@@ -8,6 +8,7 @@ import (
 	"github.com/k9mls/qsp/internal/calls"
 	"testing"
 
+	"github.com/k9mls/qsp/internal/dmrfec"
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/ipsc"
@@ -43,7 +44,7 @@ func TestTheAudioSurvivesTheRoundTrip(t *testing.T) {
 			if burst.FrameType == hbp.FrameTypeSync {
 				continue // a header or terminator this package built
 			}
-			out := e.Encode(burst)
+			out, _ := e.Encode(burst)
 			if len(out) == 0 {
 				t.Fatal("a voice burst encoded to nothing")
 			}
@@ -97,7 +98,7 @@ func ipscCoreOf(t *testing.T, m ipsc.Message) []byte {
 // 24-bit source instead.
 func TestASenderIDIsTheMasters(t *testing.T) {
 	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
-	out := e.Encode(hbp.Data{
+	out, _ := e.Encode(hbp.Data{
 		SourceID: 3155413, TargetID: 2, Timeslot: hbp.Timeslot2,
 		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoiceSync,
 		StreamID: 0xC0FFEE,
@@ -131,7 +132,7 @@ func TestATransmissionOpensWithThreeHeaders(t *testing.T) {
 			if burst.FrameType == hbp.FrameTypeSync {
 				continue
 			}
-			if out := e.Encode(burst); len(out) > 0 {
+			if out, _ := e.Encode(burst); len(out) > 0 {
 				first = out
 				break
 			}
@@ -206,7 +207,7 @@ func TestTwoOversFromOneRadioAreTwoStreams(t *testing.T) {
 		burst.SourceID = source
 		burst.StreamID = relayed(ipscStream)
 
-		out := e.Encode(burst)
+		out, _ := e.Encode(burst)
 		if len(out) == 0 {
 			t.Fatal("a voice burst encoded to nothing")
 		}
@@ -255,7 +256,8 @@ func TestAVoiceTransmissionGoesOutAsVoice(t *testing.T) {
 		// Convert produces what a hotspot sends: a Link Control header and a
 		// terminator in data-sync bursts, with the audio between them.
 		for _, burst := range c.Convert(m, hbp.RepeaterID(3132910)) {
-			for _, out := range e.Encode(burst) {
+			msgs, _ := e.Encode(burst)
+			for _, out := range msgs {
 				kinds[out.Kind]++
 				if len(out.Body) > 25 {
 					// The slot bit shares byte 30 of the frame with the
@@ -342,7 +344,8 @@ func TestATextIsOneTransmission(t *testing.T) {
 		b.SourceID = 3132910
 		b.TargetID = 3155373
 		at = at.Add(60 * time.Millisecond)
-		for _, m := range e.Encode(b) {
+		enc, _ := e.Encode(b)
+		for _, m := range enc {
 			streams[binary.BigEndian.Uint16(m.Body[10:12])]++
 			counters[m.Body[0]]++
 			sent++
@@ -367,11 +370,61 @@ func TestATextIsOneTransmission(t *testing.T) {
 	b.StreamID = hbp.StreamID(uint32(0x9999)<<16 | 0xcdee)
 	b.SourceID = 3132910
 	b.TargetID = 3155373
-	for _, m := range e.Encode(b) {
+	enc, _ := e.Encode(b)
+	for _, m := range enc {
 		streams[binary.BigEndian.Uint16(m.Body[10:12])]++
 	}
 	if len(streams) != 2 {
 		t.Errorf("a text %s after the last is still the same transmission",
 			2*calls.DataBurstWindow)
 	}
+}
+
+// mustEncode returns the messages an encoder produced, ignoring whether the
+// frame was understood. Tests that care assert on the flag themselves.
+func mustEncode(e *ipscbridge.Encoder, frame hbp.Data) []ipsc.Message {
+	msgs, _ := e.Encode(frame)
+	return msgs
+}
+
+// TestADeliberateDropIsNotAFailure is a warning that fired on correct
+// behaviour.
+//
+// This encoder drops a voice Link Control header on purpose, because it builds
+// its own three headers from the voice stream. The caller warns about a frame
+// it cannot carry, and with one answer for both cases it warned once per over
+// per repeater on every transmission on the network — a wall of WARN lines
+// during an ordinary rag-chew, on 2026-09-06, minutes after the warning was
+// added.
+//
+// **Nothing to send and could not be read are different answers.** A warning
+// that fires on correct behaviour is how a warning stops being read, which is
+// the same defect the routing reaper had that afternoon.
+func TestADeliberateDropIsNotAFailure(t *testing.T) {
+	e := ipscbridge.NewEncoder(3132911, ipscbridge.Config{ColourCode: 11})
+
+	// The header burst MMDVMHost opens a transmission with.
+	msgs, understood := e.Encode(hbp.Data{
+		SourceID: 3132910, TargetID: 2, Timeslot: hbp.Timeslot2,
+		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeSync,
+		DataType: dmrfec.DataTypeVoiceLCHeader, StreamID: 0xC0FFEE,
+	})
+	if len(msgs) != 0 {
+		t.Errorf("a voice header produced %d messages; the encoder builds its own", len(msgs))
+	}
+	if !understood {
+		t.Error("a voice header the encoder drops on purpose is reported as unreadable, " +
+			"so every transmission on the network warns")
+	}
+
+	// **The other answer is unproven, and that is worth writing down.** No
+	// frame could be constructed that this encoder refuses: zeroed, all ones
+	// and patterned payloads were all accepted, on both voice frame types and
+	// on a data burst, because the FEC decoders correct rather than reject.
+	//
+	// So the warning the caller emits for an unreadable frame may never fire
+	// on this network, and asserting it here would be asserting something
+	// nobody has demonstrated. The flag stays because the branch exists and
+	// costs nothing; if a frame ever does come back false, that is a capture
+	// worth taking.
 }

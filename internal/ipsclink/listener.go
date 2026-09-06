@@ -598,30 +598,37 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		if p.ColourCodeKnown {
 			enc.SetColourCode(p.ColourCode)
 		}
-		msgs := enc.Encode(frame)
-		if len(msgs) > 0 {
+		msgs, understood := enc.Encode(frame)
+		switch {
+		case len(msgs) > 0:
 			batch = append(batch, outbound{addr: p.Address, msgs: msgs})
 			if first {
 				relayedTo = append(relayedTo, id)
 			}
-		} else if first {
-			// A frame this encoder makes nothing of is a frame that goes
-			// nowhere, and that has to be said out loud. Constitution §18.
+		case !understood && first:
+			// A frame this encoder cannot read is a frame that goes nowhere,
+			// and that has to be said out loud. Constitution §18.
+			//
+			// **Only when it could not read it.** A voice Link Control header
+			// is dropped on purpose, because the encoder builds its own, and
+			// warning about that fired once per over per repeater on every
+			// transmission on the network — a warning on correct behaviour,
+			// which is how a warning stops being read.
 			encodedNothing = append(encodedNothing, id)
 		}
 	}
 	l.mu.Unlock()
 
 	for _, id := range relayedTo {
-		l.log.Info("relaying transmission", "subsystem", "ipsc",
+		l.log.Info("relaying transmission",
 			"radio_id", id, "source", frame.SourceID,
 			"destination", uint32(frame.TargetID),
 			"private", frame.CallType == hbp.CallPrivate,
 			"stream", fmt.Sprintf("%#08x", uint32(frame.StreamID)))
 	}
 	for _, id := range encodedNothing {
-		l.log.Warn("nothing to relay: the frame encoded to no message",
-			"subsystem", "ipsc", "radio_id", id, "source", frame.SourceID,
+		l.log.Warn("nothing to relay: the frame could not be read",
+			"radio_id", id, "source", frame.SourceID,
 			"destination", uint32(frame.TargetID),
 			"frame_type", int(frame.FrameType), "data_type", int(frame.DataType))
 	}
@@ -672,7 +679,7 @@ func (l *Listener) SendVoiceTo(target uint32, frame hbp.Data) error {
 	if p.ColourCodeKnown {
 		enc.SetColourCode(p.ColourCode)
 	}
-	msgs := enc.Encode(frame)
+	msgs, _ := enc.Encode(frame)
 	address := p.Address
 	l.mu.Unlock()
 

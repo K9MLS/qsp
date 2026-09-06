@@ -161,7 +161,7 @@ func TestTheOutboundVoiceShapeMatchesARepeater(t *testing.T) {
 					if burst.FrameType == hbp.FrameTypeSync {
 						continue // signalling this package built, not audio
 					}
-					for _, out := range e.Encode(burst) {
+					for _, out := range mustEncode(e, burst) {
 						if _, _, _, ok := out.Payload(); ok {
 							got = append(got, len(out.Marshal()))
 						}
@@ -225,7 +225,7 @@ func TestAVoiceHeaderIsTheBytesARepeaterSends(t *testing.T) {
 		SlotBitIsTimeslot2: true,
 	})
 
-	msgs := e.Encode(hbp.Data{
+	msgs, _ := e.Encode(hbp.Data{
 		SourceID:  source,
 		TargetID:  destination,
 		Timeslot:  hbp.Timeslot2, // the captured frame has the slot bit set

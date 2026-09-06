@@ -156,7 +156,7 @@ func TestQSPsHeaderIsAMastersHeader(t *testing.T) {
 	for i := range burst {
 		burst[i] = byte(i * 7)
 	}
-	msgs := e.Encode(hbp.Data{
+	msgs, _ := e.Encode(hbp.Data{
 		SourceID: source, TargetID: destination, Timeslot: hbp.Timeslot2,
 		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x1212, Payload: burst,
 	})
@@ -215,7 +215,7 @@ func TestQSPOpensATransmissionWithThreeHeaders(t *testing.T) {
 	for i := range burst {
 		burst[i] = byte(i * 7)
 	}
-	msgs := e.Encode(hbp.Data{
+	msgs, _ := e.Encode(hbp.Data{
 		SourceID: 0x2fcdee, TargetID: 2, Timeslot: hbp.Timeslot2,
 		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x1212, Payload: burst,
 	})

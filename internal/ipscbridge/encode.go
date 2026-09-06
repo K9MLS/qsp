@@ -150,9 +150,17 @@ func (e *Encoder) SetColourCode(cc uint8) {
 // receive: the three headers that open a transmission, the voice frame itself,
 // or the terminator that closes it.
 //
-// It returns nothing for a frame whose audio cannot be recovered, because a
-// frame with no vocoder payload is not something to send onward.
-func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
+// The second return says whether the frame was understood. **Nothing to send
+// and could not be read are different answers**, and they were the same one
+// until 0242: this encoder deliberately drops a voice Link Control header
+// because it builds its own three headers below, and the caller — which warns
+// about a frame it cannot carry — warned once per over per repeater on every
+// transmission on the network. A warning that fires on correct behaviour is the
+// defect the routing reaper had this same afternoon.
+//
+// False means the audio could not be recovered. True with no messages means
+// there was deliberately nothing to send.
+func (e *Encoder) Encode(frame hbp.Data) ([]ipsc.Message, bool) {
 	slot := 0
 	if frame.Timeslot == hbp.Timeslot2 {
 		slot = 1
@@ -192,12 +200,13 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 	// A terminator closes the transmission and carries no audio of its own.
 	if frame.IsTerminator() {
 		if !st.opened {
-			return nil
+			// A terminator for a transmission this encoder never opened.
+			return nil, true
 		}
 		st.opened = false
 		st.seen = false
 		return []ipsc.Message{e.signalling(st, frame, slot, flagsLast,
-			ipsc.FrameTerminator, dmrfec.DataTypeTerminatorWithLC)}
+			ipsc.FrameTerminator, dmrfec.DataTypeTerminatorWithLC)}, true
 	}
 
 	// A text message is DMR data, not audio, and needs re-wrapping rather than
@@ -219,17 +228,18 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 		// one of which says the audio about to arrive is a text message.
 		switch frame.DataType {
 		case dmrfec.DataTypeVoiceLCHeader, dmrfec.DataTypeTerminatorWithLC:
-			return nil
+			// Understood and deliberately not sent.
+			return nil, true
 		}
 		if m, ok := e.text(st, frame, slot); ok {
-			return []ipsc.Message{m}
+			return []ipsc.Message{m}, true
 		}
-		return nil
+		return nil, false
 	}
 
 	core, _, ok := dmrfec.IPSCFromBurst(frame.Payload[:])
 	if !ok {
-		return nil
+		return nil, false
 	}
 
 	var out []ipsc.Message
@@ -248,7 +258,7 @@ func (e *Encoder) Encode(frame hbp.Data) []ipsc.Message {
 		}
 	}
 	out = append(out, e.voice(st, frame, slot, core))
-	return out
+	return out, true
 }
 
 // Frame flag values, observed on every captured transmission.
