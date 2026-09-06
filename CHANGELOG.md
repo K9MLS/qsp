@@ -55,8 +55,18 @@ All notable changes to QSP. Dates are UTC.
   It was recorded at 22:39 while a stale binary was being chased, and three
   further requests were made for a capture already on disk.
 
-- **Still unconfirmed: that a radio displays the message.** Every measurement
-  here is about bytes leaving QSP correctly. The last hop is a handheld screen.
+- **Confirmed on air.** Repeater to repeater works and displays. Hotspot
+  delivery works without the sending radio's delivery confirmation, which is
+  accepted: ADR-0045 established the ack comes from a repeater on RF one hop
+  from the radio, and a hotspot has none. The outbound capture shows the same
+  fact from the other end — the sender retries its last block eight times and
+  gives up.
+
+- **The stream IDs were not a second defect.** The 296 Homebrew frames carry
+  242 stream IDs and decompose without remainder: 224 single-CSBK preambles and
+  18 streams of a data header with its three blocks. 224 + 18 = 242, and
+  224 + 18×4 = 296. Pinned by `TestTheStreamIDsGroupExactlyTwoWays`, because
+  the journal makes it look alarming and the next person will wonder too.
 
 ### Fixed
 

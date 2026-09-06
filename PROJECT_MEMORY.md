@@ -2423,7 +2423,7 @@ the only way to know it does is to break the code and watch the test fail.
 
 ---
 
-## 8k. Where the next session starts, as of 2026-09-06 night
+## 8k. Where the next session starts, as of 2026-09-06 night, text complete
 
 Read §0, then §6b and §6c, then this. It supersedes §8j; everything §8j settled
 remains settled except where named. **§8a is still the section that matters
@@ -2527,18 +2527,13 @@ a corollary: read it when it arrives, not when the argument runs out.
 
 ### Open, in order
 
-1. **Nobody has confirmed a radio displayed a message.** Every measurement in
-   this section is about bytes leaving QSP correctly; the last hop is a
-   handheld screen and only an operator can report it. Send a text both ways —
-   repeater to hotspot and hotspot to repeater — and say whether it appeared.
-2. **Every relay line carries a different stream ID, about 111 ms apart.** If
-   each burst is being treated as its own transmission rather than one text
-   being one transmission, that is a second defect underneath the one just
-   fixed, and it would explain how text behaves in Last-heard and the call
-   records. Not investigated. The stream IDs in the IPSC datagrams and the
-   Homebrew ones are in the two new fixtures and can be compared without a
-   radio.
-3. **Text over IPSC still has no call record.** The text branch never touches
+**Text is done.** Confirmed on air repeater to repeater. Hotspot delivery works
+without the sending radio's confirmation, which is accepted rather than open:
+the ack comes from a repeater on RF one hop from the radio and a hotspot has
+none. The stream IDs turned out not to be a second defect — 224 single-CSBK
+preambles and 18 header-and-blocks streams, decomposing without remainder.
+
+1. **Text over IPSC still has no call record.** The text branch never touches
    `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
    the transmission counters. Carried forward from §8j.
 4. **Who owns Last-heard.** Unchanged from §8j: `DeliverFromIPSC` calls

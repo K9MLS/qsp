@@ -1,6 +1,6 @@
 # ADR-0047: A text message is Rate 3/4 blocks, and QSP carries them whole
 
-**Status:** Accepted — **amended the same evening; nothing is unmeasured now**
+**Status:** Accepted — amended twice the same evening; **confirmed on air**
 **Date:** 2026-09-06
 
 ## Context
@@ -193,3 +193,44 @@ further requests were made for a capture that was already on disk. The rule
 this project keeps relearning is *run the system and read what it says*; the
 corollary is that the reading has to happen when the capture arrives, not when
 the argument about it runs out.
+
+## Confirmed on air, 2026-09-06
+
+**Repeater to repeater works.** The operator sent a private text between two
+Motorola repeaters through QSP and it arrived and displayed.
+
+**Hotspot delivery works without the acknowledgement.** A text to a Pi-Star
+arrives; the sending radio does not get its delivery confirmation. **Accepted,
+not a defect to chase**, and two separate measurements say why.
+
+ADR-0045's amendment established that the confirmation comes from the repeater
+on RF, one hop from the sending radio, and that the master is not part of it.
+A hotspot has no repeater in that path, so nothing exists to generate the ack.
+
+`testdata/ipsc/ipsc-text-rate34-out.pcap` shows the same fact from the other
+end: block serials run 0, 1, 2, 3 and then the final block eight more times —
+the sending end retrying for an acknowledgement that never comes, then giving
+up. Two pieces of evidence taken hours apart describing one thing from opposite
+directions.
+
+This is consistent rather than proved. A hotspot-to-hotspot capture would
+settle it, and it is not worth taking: the operator's judgement that this is
+acceptable on the Pi-Star side matches the evidence, and no member has asked
+for anything more.
+
+### The stream IDs were not a second defect
+
+Relaying a text produced a `relaying transmission` line every 111 ms, each with
+a different stream ID, which looks exactly like each burst being treated as its
+own transmission. It is not.
+
+The 296 Homebrew frames in `testdata/hbp/hbp-text-rate34.pcap` carry 242 stream
+IDs and decompose without remainder into two shapes: **224 streams of a single
+preamble CSBK, and 18 streams of a data header followed by its three Rate 3/4
+blocks.** 224 + 18 = 242, and 224 + 18×4 = 296. Any other grouping leaves a
+remainder.
+
+A preamble CSBK is a standalone control block rather than part of the data
+transmission, so a fresh stream ID for each is what a hotspot is supposed to
+send. `TestTheStreamIDsGroupExactlyTwoWays` pins it, because the next person to
+read that journal will have the same suspicion.

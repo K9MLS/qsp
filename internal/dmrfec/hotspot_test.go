@@ -179,6 +179,101 @@ func TestTheHotspotsMessageDecodes(t *testing.T) {
 	}
 }
 
+// TestTheStreamIDsGroupExactlyTwoWays answers a question the journal raised.
+//
+// Relaying a text produced a `relaying transmission` line every 111 ms, each
+// with a different stream ID, which looks exactly like each burst being
+// treated as its own transmission — a defect that would explain how text
+// behaves in Last-heard and the call records.
+//
+// **It is not one.** The 296 Homebrew frames in this capture carry 242 stream
+// IDs, and they decompose without remainder into two shapes: 224 streams of a
+// single preamble CSBK, and 18 streams of a data header followed by its three
+// Rate 3/4 blocks. The message is grouped correctly and always was. A preamble
+// CSBK is a standalone control block rather than part of the data
+// transmission, so a fresh stream ID for each is what a hotspot is supposed to
+// send, and 224 of them is what makes the journal look alarming.
+//
+// The arithmetic is the whole argument: 224 + 18 = 242, and 224 + 18×4 = 296.
+// Any other grouping leaves a remainder.
+func TestTheStreamIDsGroupExactlyTwoWays(t *testing.T) {
+	raw, err := os.ReadFile(hotspotFixture)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	type stream struct {
+		id     uint32
+		frames []uint8
+	}
+	var order []uint32
+	streams := map[uint32]*stream{}
+	var total int
+	for off := 24; off+16 <= len(raw); {
+		incl := int(binary.LittleEndian.Uint32(raw[off+8 : off+12]))
+		off += 16
+		if off+incl > len(raw) {
+			break
+		}
+		rec := raw[off : off+incl]
+		off += incl
+		if len(rec) < 20 || binary.BigEndian.Uint16(rec[0:2]) != 0x0800 {
+			continue
+		}
+		ip := rec[20:]
+		if len(ip) < 20 || ip[9] != 17 {
+			continue
+		}
+		// Only the hotspot's own frames: 192.168.1.155.
+		if binary.BigEndian.Uint32(ip[12:16]) != 0xc0a8019b {
+			continue
+		}
+		udp := ip[(ip[0]&0x0f)*4:]
+		if len(udp) < 8 {
+			continue
+		}
+		d := udp[8:]
+		if len(d) != 55 || string(d[:4]) != "DMRD" {
+			continue
+		}
+		total++
+		id := binary.BigEndian.Uint32(d[16:20])
+		if _, ok := streams[id]; !ok {
+			streams[id] = &stream{id: id}
+			order = append(order, id)
+		}
+		streams[id].frames = append(streams[id].frames, d[15]&0x0f)
+	}
+
+	const (
+		csbk       = 0x3
+		dataHeader = 0x6
+	)
+	var preambles, transmissions int
+	for _, id := range order {
+		switch got := streams[id].frames; {
+		case len(got) == 1 && got[0] == csbk:
+			preambles++
+		case len(got) == 4 && got[0] == dataHeader &&
+			got[1] == dmrfec.DataTypeRate34 &&
+			got[2] == dmrfec.DataTypeRate34 &&
+			got[3] == dmrfec.DataTypeRate34:
+			transmissions++
+		default:
+			t.Errorf("stream %#08x has an unexpected shape: %v", id, got)
+		}
+	}
+
+	if total != 296 || len(order) != 242 {
+		t.Fatalf("%d frames in %d streams, want 296 in 242", total, len(order))
+	}
+	if preambles != 224 {
+		t.Errorf("%d single-CSBK streams, want 224", preambles)
+	}
+	if transmissions != 18 {
+		t.Errorf("%d header-and-blocks streams, want 18", transmissions)
+	}
+}
+
 // TestABurstQSPBuildsMatchesTheShapeAHotspotSends compares the two ends.
 //
 // Re-coding a block a hotspot sent must reproduce that hotspot's burst

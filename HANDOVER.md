@@ -1,4 +1,4 @@
-# Handover, 2026-09-06 night
+# Handover, 2026-09-06 night, text complete
 
 Read `NEW-SESSION.md` for the standing brief and **§8k** of `PROJECT_MEMORY.md`
 for where to start, then **§8a**, which is the section that matters most. §8b
@@ -6,20 +6,22 @@ through §8j are superseded and carry banners saying so. **§0's table is worth
 doubting** — it was wrong about access control for weeks because it is the
 section everybody reads and nobody re-reads.
 
-## Start here, and it needs a radio rather than a keyboard
+## Text is finished. Start on the call record.
 
-**Send a text both ways — repeater to hotspot and hotspot to repeater — and say
-whether it appeared on the screen.**
+**Private text messages work and are confirmed on air**, repeater to repeater.
+The hotspot direction delivers without the sending radio's confirmation, which
+is accepted rather than open: ADR-0045 established the acknowledgement comes
+from a repeater on RF one hop from the radio, and a hotspot has none in that
+path. Do not go looking for that ack.
 
-Everything else about the text path is measured now. Fifty-four real bursts
-from a hotspot decode with these tables and none decode with the ones that
-shipped in 0242; QSP's encoder reproduces those bursts byte-for-byte; QSP put
-twelve Rate 3/4 datagrams on the wire in production where it had put none.
-**What nobody has confirmed is that a handheld displays the result**, and no
-capture can answer that.
+The stream IDs that made the journal look like every burst was its own
+transmission were not a second defect either — 224 single-CSBK preambles and 18
+streams of a header with its three blocks, decomposing without remainder.
 
-If it does not display, the next thing to look at is item 2 below rather than
-the codec.
+**The first open item is that text over IPSC produces no call record.** The
+text branch never touches `recordVoice`, so a text from a repeater generates no
+`ipsc` line and none of the transmission counters. §8k has the rest of the
+list.
 
 ## The headline
 
