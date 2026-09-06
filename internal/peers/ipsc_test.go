@@ -3,11 +3,13 @@ package peers_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/access"
 	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/peers"
@@ -562,3 +564,114 @@ type alwaysReady struct{}
 
 func (alwaysReady) Ready(hbp.RepeaterID) bool    { return true }
 func (alwaysReady) ReadyPeers() []hbp.RepeaterID { return []hbp.RepeaterID{motorola, testID} }
+
+// TestAPrivateCallReachesTheOtherRepeater is what an operator keyed and did not
+// hear.
+//
+// A private call from one Motorola repeater to a radio behind another was
+// refused by a lookup that has no bearing on it. Routing resolves a private
+// call by locating the called radio among the Homebrew peers; a radio living
+// behind an IPSC repeater is not there, so the result carried a reason, and
+// sendToIPSC bailed on any reason at all.
+//
+// **The repeater path never needed that lookup.** A Motorola repeater receives
+// everything and filters in its own codeplug, which is exactly how a group call
+// between two of them works. On 2026-09-06 the same call in the opposite
+// direction worked, because that radio happened to sit on a hotspot and could
+// be located — so the defect hid behind a network where one operator was on a
+// hotspot and the other was not.
+func TestAPrivateCallReachesTheOtherRepeater(t *testing.T) {
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(nil)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: alwaysReady{}, Subscribers: master,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	var toIPSC int
+	l, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+		Calls: calls.NewTracker(calls.Options{}),
+		IPSC:  func(uint32, hbp.Data) { toIPSC++ },
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	// A private call to a radio no hotspot has ever heard: exactly the call
+	// that vanished.
+	l.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 3155373,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallPrivate,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x6135,
+	})
+	if toIPSC == 0 {
+		t.Error("a private call between two Motorola repeaters reached no repeater; " +
+			"the operator keys up and nothing happens")
+	}
+
+	// **The complementary half, and the reason this is not simply ignoring the
+	// verdict.** A refusal that stopped being a refusal here would carry a
+	// judged transmission to every repeater on the network.
+	//
+	// It uses a talkgroup the access lists forbid rather than a banned radio:
+	// a banned radio is stopped before routing is reached, so asserting that
+	// it never reaches a repeater passes whether this guard exists or not.
+	// The first version of this test did exactly that and proved nothing.
+	forbidden, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: alwaysReady{}, Subscribers: master,
+		Access: deniedTalkgroup(t, 99),
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	var refusedToIPSC int
+	judged, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: forbidden,
+		Calls: calls.NewTracker(calls.Options{}),
+		IPSC:  func(uint32, hbp.Data) { refusedToIPSC++ },
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	if err := judged.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = judged.Close() })
+
+	judged.DeliverFromIPSC(motorola, hbp.Data{
+		RepeaterID: motorola, SourceID: 3132910, TargetID: 99,
+		Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x6136,
+	})
+	if refusedToIPSC != 0 {
+		t.Errorf("a talkgroup the access lists forbid reached %d repeaters", refusedToIPSC)
+	}
+}
+
+// deniedTalkgroup builds access lists that permit everything but one talkgroup.
+func deniedTalkgroup(t *testing.T, tg uint32) access.Lists {
+	t.Helper()
+	l, err := access.Parse("dmr.access.talkgroups", access.Talkgroup, access.ModeDeny,
+		[]string{fmt.Sprint(tg)})
+	if err != nil {
+		t.Fatalf("access.Parse: %v", err)
+	}
+	return access.Lists{Talkgroup1: l, Talkgroup2: l}
+}

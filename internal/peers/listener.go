@@ -742,7 +742,15 @@ func (l *Listener) sendToIPSC(origin hbp.RepeaterID, frame hbp.Data, res routing
 	// list is not the same thing: a network of Motorola repeaters and no
 	// hotspots has nowhere on the Homebrew side to deliver and the frame
 	// should still reach the other repeaters.
-	if res.Reason != "" {
+	//
+	// **Except when nothing judged it.** A private call to a radio no hotspot
+	// has heard is not refused; there is only nowhere on this side to put it,
+	// and a repeater receives everything and filters in its own codeplug. That
+	// distinction is the difference between a private call between two
+	// Motorola repeaters working and vanishing, which is what it did on
+	// 2026-09-06 while the same call the other way worked because the called
+	// radio happened to sit on a hotspot.
+	if res.Reason != "" && !res.NoHomebrewDestination {
 		return
 	}
 	l.cfg.IPSC(uint32(origin), frame)
@@ -841,6 +849,26 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		}
 		l.forwarded.Add(1)
 		l.sent.Add(1)
+	}
+
+	// **A transmission carried nowhere says why.** Result.Reason was set by
+	// routing, read once to decide whether the Motorola repeaters should get
+	// the frame, and printed nowhere at all — so a private call to a radio
+	// nothing had located produced a `call started` line and then silence. An
+	// operator keyed up, heard nothing, and the sentence explaining it existed
+	// in memory and went to no journal.
+	//
+	// This is the trap the drop reasons below fell into, in the same function,
+	// and it was fixed for those and left here. Constitution §18.
+	//
+	// Once per transmission rather than per frame: the drop window keys on a
+	// destination and a reason, and a refusal that names no destination still
+	// names one reason.
+	if res.Reason != "" && l.noteRoutingDrop(routing.Drop{Reason: res.Reason}) {
+		l.log.Info("transmission not carried",
+			logging.PeerID(uint32(from)),
+			slog.String("reason", res.Reason),
+		)
 	}
 
 	for _, drop := range res.Drops {

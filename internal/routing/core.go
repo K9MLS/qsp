@@ -81,6 +81,23 @@ type Result struct {
 	StartedStreams []Endpoint
 	// Reason explains why nothing was delivered, when nothing was.
 	Reason string
+	// NoHomebrewDestination says nothing here judged the frame: there is
+	// simply nowhere on the Homebrew side to deliver it.
+	//
+	// **Only a judgement should stop a Motorola repeater hearing a frame.** A
+	// banned radio or a held destination must reach nobody by any path. A
+	// private call to a radio no hotspot has heard is neither: the repeaters
+	// receive everything and filter in their own codeplugs, which is exactly
+	// how a group call between two of them works today.
+	//
+	// Collapsing the two blocked every private call between two Motorola
+	// repeaters on 2026-09-06, while the same call in the other direction
+	// worked because that radio happened to sit on a hotspot.
+	//
+	// **False is the blocking answer**, so a refusal added later and not
+	// classified keeps today's behaviour rather than quietly leaking to the
+	// repeaters.
+	NoHomebrewDestination bool
 }
 
 // SubscriberLookup reports which peer a radio was last heard through.
@@ -421,9 +438,16 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 		if !found {
 			// Naming the radio matters: "not heard recently" is something an
 			// operator can act on, and silence is not.
-			return Result{Reason: fmt.Sprintf(
-				"radio %d has not been heard recently, so there is nowhere to send a private call to it",
-				frame.TargetID)}
+			//
+			// Not refused. Nothing here judged the transmission; there is
+			// only nowhere on this side to deliver it, and a Motorola
+			// repeater does its own filtering.
+			return Result{
+				Reason: fmt.Sprintf(
+					"radio %d has not been heard recently, so there is nowhere to send a private call to it",
+					frame.TargetID),
+				NoHomebrewDestination: true,
+			}
 		}
 		targets = append(targets, routeTarget{
 			Endpoint: Endpoint{Peer: peer, Talkgroup: frame.TargetID, Timeslot: slot},
