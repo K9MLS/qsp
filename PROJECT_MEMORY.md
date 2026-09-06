@@ -2423,7 +2423,7 @@ the only way to know it does is to break the code and watch the test fail.
 
 ---
 
-## 8k. Where the next session starts, as of 2026-09-06 evening
+## 8k. Where the next session starts, as of 2026-09-06 night
 
 Read §0, then §6b and §6c, then this. It supersedes §8j; everything §8j settled
 remains settled except where named. **§8a is still the section that matters
@@ -2500,35 +2500,44 @@ Bytes 32 to 37 are not constant either: `00 0d 80 0a 00 90` against
 different layout.** It is not an exception, and calling it one costs whatever
 the feature was worth.
 
-### The one thing still unmeasured, and how it reports itself
+### The capture was taken, and it settles everything
 
-**No capture anywhere holds a Rate 3/4 burst as it goes over the air.** The
-IPSC fixtures carry blocks a repeater has already decoded, and every Homebrew
-frame in `qsp-session.pcap00` is voice — checked, not assumed.
+`testdata/hbp/hbp-text-rate34.pcap`: **54 Rate 3/4 bursts from MMDVMHost**,
+recorded while the operator typed `Hi` into a handheld.
 
-So which end of the block a hotspot expects the control pair is unknown, and it
-decides whether anything QSP transmits can be read. Rather than argue it:
+| Constellation mapping | Bursts decoded |
+|---|---|
+| Table 10.3, corrected in 0243 | **54 of 54** |
+| The mapping that shipped in 0242 | **0 of 54** |
 
-- `dmrfec.Rate34AirOrder` is one constant, set to control-first because 8.2.2.2
-  is the layout clause and MMDVMHost implements the standard;
-- `DecodeRate34Burst` verifies the CRC-9 both ways round and reports which
-  arrangement it found;
-- the listener logs that as `rate34_block` on the `relaying transmission` line,
-  once per transmission.
+**49 verify their CRC-9 control-first and none verify control-last**, so
+`dmrfec.Rate34AirOrder` is measured. **QSP's encoder reproduces all 49 bursts
+byte-for-byte** — the only check here a wrong table cannot pass, because the
+other side came out of somebody else's encoder. The three blocks reassemble
+into an IPv4 datagram carrying UTF-16 little-endian `Hi`.
 
-**One text sent from the Pi-Star radio makes the journal say the answer.** It
-takes five minutes and it is the only thing between this and a measured text
-path. It was asked for in the last handover and not done.
+And `testdata/ipsc/ipsc-text-rate34-out.pcap` shows QSP transmitting twelve
+Rate 3/4 datagrams in production from build 0.1.85, where the same path
+recorded eight hours earlier carried none.
+
+**The capture existed for eight hours before anybody read it.** It was recorded
+at 22:39 while a stale binary was being chased, and three further requests were
+made for a capture already on disk. *Run the system and read what it says* has
+a corollary: read it when it arrives, not when the argument runs out.
 
 ### Open, in order
 
-1. **Send one text from the Pi-Star radio**, `tcpdump` running unfiltered, and
-   read `rate34_block` in the journal. Everything below is worth less than
-   this.
-2. **Send a text from the XPR8300 to KD9EJA and to a hotspot** and confirm it
-   arrives. A capture of the outbound side beside
-   `testdata/ipsc/ipsc-text-outbound.pcap` would show 60-byte datagrams where
-   that one shows none.
+1. **Nobody has confirmed a radio displayed a message.** Every measurement in
+   this section is about bytes leaving QSP correctly; the last hop is a
+   handheld screen and only an operator can report it. Send a text both ways —
+   repeater to hotspot and hotspot to repeater — and say whether it appeared.
+2. **Every relay line carries a different stream ID, about 111 ms apart.** If
+   each burst is being treated as its own transmission rather than one text
+   being one transmission, that is a second defect underneath the one just
+   fixed, and it would explain how text behaves in Last-heard and the call
+   records. Not investigated. The stream IDs in the IPSC datagrams and the
+   Homebrew ones are in the two new fixtures and can be compared without a
+   radio.
 3. **Text over IPSC still has no call record.** The text branch never touches
    `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
    the transmission counters. Carried forward from §8j.

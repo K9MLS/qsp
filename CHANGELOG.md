@@ -4,6 +4,60 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Verified
+
+- **The trellis tables are proved against real bursts, and the differential is
+  total.** `testdata/hbp/hbp-text-rate34.pcap` holds 54 Rate 3/4 bursts from
+  MMDVMHost on a Pi-Star. Decoded with the corrected table 10.3 mapping: **54
+  of 54**. Decoded with the mapping that shipped in 0242: **none**.
+
+  Everything about that codec before this capture rested on encode and decode
+  agreeing with each other, which sixteen wrong constellation entries satisfied
+  perfectly.
+
+- **`dmrfec.Rate34AirOrder` is measured rather than reasoned.** 49 of the 54
+  verify their CRC-9 read control-first; **none** verify control-last. The
+  constant was already right, and it is no longer a defensible guess. ADR-0047
+  is amended and no longer names an unmeasured step.
+
+- **QSP's encoder reproduces a hotspot's bursts byte-for-byte**, all 49. This is
+  the only check in the repository that a wrong table cannot pass, because the
+  bytes on the other side came out of somebody else's encoder.
+
+- **The message decodes end to end.** Three blocks reassemble into an IPv4
+  datagram of total length 42, from `0c 2f cd ee` to `0c 30 25 ad`, UDP on port
+  4007, UTF-16 little-endian `Hi`.
+
+- **QSP transmitted twelve Rate 3/4 datagrams in production**, captured in
+  `testdata/ipsc/ipsc-text-rate34-out.pcap` from build 0.1.85. Byte 30 reads
+  `0x08`, the constants block reads `00 0d 80 0a 00 90`, byte 56 is zero and
+  byte 57 is `0xb8`. Before 0243 that count was zero on the same path, which
+  `ipsc-text-outbound.pcap` records.
+
+  One of the twelve fails its CRC-9 and was relayed anyway — ADR-0047's decision
+  to carry rather than drop, meeting real traffic on its first day.
+
+### Added
+
+- `testdata/hbp/hbp-text-rate34.pcap` and
+  `testdata/ipsc/ipsc-text-rate34-out.pcap`, with provenance notes.
+- Four tests in `internal/dmrfec` and one in `internal/ipscbridge` that end at
+  facts outside this repository.
+
+### Notes
+
+- **A test written from an assumption failed the same way a constant read by
+  eye does.** The outbound serial numbers were asserted to run 0, 1, 2, 3 three
+  times over. They run 0, 1, 2, 3 and then the last block eight more times: a
+  master owes no acknowledgement, so the sending end repeats until it gives up.
+
+- **The capture that settled all of this sat on the server for eight hours.**
+  It was recorded at 22:39 while a stale binary was being chased, and three
+  further requests were made for a capture already on disk.
+
+- **Still unconfirmed: that a radio displays the message.** Every measurement
+  here is about bytes leaving QSP correctly. The last hop is a handheld screen.
+
 ### Fixed
 
 - **Every content block of every text message was dropped, in both

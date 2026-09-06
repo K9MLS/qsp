@@ -1,6 +1,6 @@
 # ADR-0047: A text message is Rate 3/4 blocks, and QSP carries them whole
 
-**Status:** Accepted, with one step named as unmeasured
+**Status:** Accepted — **amended the same evening; nothing is unmeasured now**
 **Date:** 2026-09-06
 
 ## Context
@@ -111,27 +111,45 @@ nothing about what a bridge understands.**
   else's application protocol on the path of every message is a feature nobody
   asked for.
 
-### The one step that is not measured
+### The one step that was not measured, and now is
 
-**No capture anywhere contains a Rate 3/4 burst as it goes over the air.** The
-IPSC captures carry the block already decoded, and every Homebrew frame in
-`qsp-session.pcap00` is voice. So whether a hotspot expects the control pair at
-the front of the block or the back is unknown, and it decides whether anything
-QSP transmits can be read.
+*(Amended 2026-09-06, hours after this record was written.)*
 
-This is not settled by argument. It is:
+This section originally said that no capture anywhere held a Rate 3/4 burst as
+it goes over the air, that whether a hotspot expects the control pair at the
+front of the block or the back was therefore unknown, and that
+`dmrfec.Rate34AirOrder` was set to control-first for a reason rather than a
+measurement.
 
-- **named**: `dmrfec.Rate34AirOrder`, one constant, with a test pinned to it;
-- **reported**: `DecodeRate34Burst` verifies the CRC-9 both ways round and says
-  which arrangement it actually found, and the IPSC listener logs that once per
-  transmission as `rate34_block`;
-- **cheap to settle**: one text sent from a Pi-Star radio with `tcpdump`
-  running makes the journal say the answer.
+**The capture was taken the same evening and it settles both questions.**
+`testdata/hbp/hbp-text-rate34.pcap`: 54 Rate 3/4 bursts from MMDVMHost on a
+Pi-Star, recorded while the operator typed `Hi` into a handheld.
 
-`Rate34AirOrder` is set to control-first because clause 8.2.2.2 is the clause
-that describes the block's layout and MMDVMHost implements the standard. That
-is a reason, not a measurement, and this record should be amended the day the
-capture exists — as ADR-0041's inferred half was, and ADR-0046's.
+| Constellation mapping | Bursts decoded |
+|---|---|
+| Table 10.3, as corrected above | **54 of 54** |
+| The mapping that shipped in 0242 | **0 of 54** |
+
+Not a marginal improvement in either direction. **49 of the 54 verify their
+CRC-9 read control-first and none verify control-last**, so `Rate34AirOrder`
+was right and is now measured. The five that verify neither are serial 2
+arriving three ways, differing by single bits — errors the hotspot passed
+through, which is the case this record decided to carry rather than drop,
+meeting real traffic on its first day.
+
+**And QSP's encoder reproduces those bursts exactly.** Re-coding each decoded
+block gives back the same 33 bytes MMDVMHost sent, for all 49. That is the only
+check in this repository a wrong table cannot pass, because the bytes on the
+other side came out of somebody else's encoder. Everything before it — the
+round trips, the shape assertions, the CRC over blocks we also parsed — could
+have been satisfied by a self-consistent mistake, and once was.
+
+The three blocks reassemble into an IPv4 datagram of total length 42 carrying
+UTF-16 little-endian `Hi`.
+
+The instrumentation stays. `DecodeRate34Burst` still reports the arrangement it
+finds and the listener still logs `rate34_block`, because the next hotspot on
+this network may not be a Pi-Star.
 
 ## Consequences
 
@@ -160,3 +178,18 @@ document. The tables here are cited by clause and not reproduced in prose.
 **Two readings taken by eye were wrong again**, and a test caught both: the
 Text Messaging Service header is ten octets rather than twelve, and its text is
 UTF-16 little-endian rather than big. That is the tenth and eleventh time.
+
+**And a third, in a test written from an assumption.** The outbound capture's
+block serial numbers were asserted to run 0, 1, 2, 3 three times over, because
+the message had been sent three times. They run 0, 1, 2, 3 and then the final
+block eight more times: a master owes no acknowledgement, so the sending end
+repeats its last block until it gives up. **A test written from what the author
+expected the capture to contain rather than from the capture is the same defect
+as a constant read off the hex by eye**, and it fails the same way.
+
+**The capture that settled this existed for eight hours before anybody read
+it.** It was recorded at 22:39 while a stale binary was being chased, and three
+further requests were made for a capture that was already on disk. The rule
+this project keeps relearning is *run the system and read what it says*; the
+corollary is that the reading has to happen when the capture arrives, not when
+the argument about it runs out.

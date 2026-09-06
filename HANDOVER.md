@@ -1,4 +1,4 @@
-# Handover, 2026-09-06 evening
+# Handover, 2026-09-06 night
 
 Read `NEW-SESSION.md` for the standing brief and **§8k** of `PROJECT_MEMORY.md`
 for where to start, then **§8a**, which is the section that matters most. §8b
@@ -8,37 +8,34 @@ section everybody reads and nobody re-reads.
 
 ## Start here, and it needs a radio rather than a keyboard
 
-**Send one text from the Pi-Star radio** — not the XPR8300 — with `tcpdump`
-running unfiltered on the QSP server, then read the journal for `rate34_block`
-on a `relaying transmission` line.
+**Send a text both ways — repeater to hotspot and hotspot to repeater — and say
+whether it appeared on the screen.**
 
-That one line settles the only part of the text path that is not measured:
-whether a hotspot puts a Rate 3/4 block's serial number and CRC at the front of
-the block or the back. IP Site Connect puts them at the back and ETSI figure
-8.8 draws them at the front, and which one goes on air decides whether anything
-QSP transmits can be read at all. `dmrfec.Rate34AirOrder` is the single
-constant that follows from the answer.
+Everything else about the text path is measured now. Fifty-four real bursts
+from a hotspot decode with these tables and none decode with the ones that
+shipped in 0242; QSP's encoder reproduces those bursts byte-for-byte; QSP put
+twelve Rate 3/4 datagrams on the wire in production where it had put none.
+**What nobody has confirmed is that a handheld displays the result**, and no
+capture can answer that.
 
-**This was the first item in the last handover too, and it did not get done.**
-Everything else on the list is worth less than five minutes with a radio.
+If it does not display, the next thing to look at is item 2 below rather than
+the codec.
 
 ## The headline
 
-**Text messages carry their content now.** Every block of every text was
-dropped in both directions — the preamble crossed, the header crossed, the
-message never did. A Rate 3/4 block is eighteen octets and needs a trellis
-code; QSP handled only the twelve-octet BPTC ones.
+**Text messages carry their content now**, and the whole path is measured
+against traffic from somebody else's equipment. Every block of every text used
+to be dropped in both directions — the preamble crossed, the header crossed,
+the message never did.
 
-**And the codec written for that last session had all sixteen constellation
-entries wrong.** It is a permutation of the four dibit values, so encode and
-decode agreed with each other perfectly and every test passed. Wiring it in as
-it stood would have transmitted well-formed bursts no radio could read, with a
-symptom identical to the one being fixed.
+**The codec written the session before had all sixteen constellation entries
+wrong**, and 54 real bursts prove it: 54 of 54 decode with the corrected
+tables, 0 of 54 with the old ones. It is a permutation of the four dibit
+values, so encode and decode agreed with each other perfectly and every test
+passed. Wiring it in as it stood would have transmitted well-formed bursts no
+radio could read, with a symptom identical to the one being fixed.
 
-The block is measured now, not assumed: sixteen octets of user data, then a
-seven-bit serial and a nine-bit CRC, proved by an IPv4 header that reassembles,
-serial numbers that count 0 to 5, and a CRC-9 that verifies on 42 blocks out of
-42. See [ADR-0047](docs/adr/ADR-0047-rate-34-text-blocks.md).
+See [ADR-0047](docs/adr/ADR-0047-rate-34-text-blocks.md).
 
 ## The method
 
@@ -67,6 +64,15 @@ package agreeing with itself. A session read that and wrote a handover saying
 `TestARateThreeQuarterBurstIsRefusedRatherThanTruncated` went further: it
 asserted the wrong thing entirely and passed for eighteen patches while the
 network could not send a text.
+
+**A test written from what you expect a capture to contain is the same defect
+as a constant read off the hex by eye.** The outbound serials were asserted to
+run 0, 1, 2, 3 three times over because the message was sent three times. They
+run 0, 1, 2, 3 and then the last block eight more times.
+
+**Read the capture when it arrives.** The one that settled the whole trellis
+question sat on the server for eight hours while a stale binary was chased, and
+was asked for three more times after it already existed.
 
 **Never count test failures.** The container baseline is seven, by name, in §7.
 
