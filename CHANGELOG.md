@@ -4,6 +4,52 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **One text message put two rows in Last heard, and the more prominent of them
+  carried no message.** A hotspot sends sixteen preamble CSBKs, each with its
+  own stream ID, over 1.87 seconds — then the data header and the content
+  blocks share a single stream and arrive in 142 ms. The call tracker grouped
+  both correctly and there genuinely were two runs; the row reading 1.86s and
+  fifteen frames was padding.
+
+  A preamble exists so receiving radios wake up. Nobody sent it, and it is no
+  longer recorded as a transmission.
+
+  **Named by its opcode, not by its shape in the stream.** ETSI figure 7.8 puts
+  the CSBKO in the low six bits of the block's first octet and the Feature ID in
+  the second, and all sixteen preambles in
+  `testdata/hbp/hbp-text-preambles.pcap` carry **opcode 61, feature ID 0**, with
+  no other opcode present. The first idea — data type 3 alone in a stream —
+  would also have hidden a radio check, a call alert and a **remote monitor**, a
+  command that makes somebody's radio transmit without its operator knowing and
+  the one thing an administrator most needs to see.
+
+  `Stats.Preambles` counts what was skipped, so suppressing them is not the same
+  as hiding them. A burst that does not decode is deliberately **not** treated
+  as a preamble: when QSP cannot tell what something is, the console shows it.
+
+### Added
+
+- `dmrfec.CSBKOf` and `dmrfec.CSBK`, reading the opcode and Feature ID from a
+  control block. TS 102 361-2 holds the table that would name opcode 61; this
+  project does not have it, so `CSBKPreamble` records what a preamble carries
+  rather than what the number is called.
+
+- `testdata/hbp/hbp-text-preambles.pcap` — one whole text from a hotspot, with
+  its sixteen preambles, its data header and its five **Rate 1/2** blocks. A
+  short message fits the twelve-octet blocks BPTC carries, so both codings are
+  now exercised by fixtures. The blocks reassemble into a UDP datagram on port
+  4007 whose payload reads `K9MLS`.
+
+### Notes
+
+- **A test asserted the shape of the code rather than the property it
+  protects**, and failed on the first burst the FEC corrected: it treated a
+  damaged CSBK reading as opcode 60 as a failure, when recording that burst is
+  exactly right. The property is that damage never turns something else *into* a
+  preamble. Third such test today.
+
 ### Changed
 
 - **The peers table's three-sentence caption is behind a hint button.** It was

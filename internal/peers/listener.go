@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/calls"
+	"github.com/k9mls/qsp/internal/dmrfec"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
@@ -157,9 +158,12 @@ type Listener struct {
 	recentDrops []DropNote
 	frames      atomic.Uint64
 	forwarded   atomic.Uint64
-	collided    atomic.Uint64
-	peers       atomic.Int64
-	writeErr    atomic.Uint64
+	// preambles counts CSBK preambles skipped by observe, so that suppressing
+	// them from Last heard does not make them invisible. See isPreamble.
+	preambles atomic.Uint64
+	collided  atomic.Uint64
+	peers     atomic.Int64
+	writeErr  atomic.Uint64
 
 	// scheduleState is the set of bridges the schedule last said should be
 	// enabled, so a change can be detected without rebuilding every sweep.
@@ -1028,6 +1032,26 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 	if l.cfg.Calls == nil {
 		return
 	}
+	// **A preamble is not a transmission.** One text from a hotspot sends
+	// sixteen preamble CSBKs, each with its own stream ID, over 1.87 seconds,
+	// and then the data header and content blocks in 142 ms sharing one
+	// stream. The tracker groups both correctly, so one message became two
+	// rows in Last heard — and the longer, more prominent of them carried no
+	// message at all.
+	//
+	// Measured in testdata/hbp/hbp-text-preambles.pcap: opcode 61, feature ID
+	// 0, on all sixteen. **Only that combination is skipped.** A radio check,
+	// a call alert and a remote monitor carry different opcodes and keep their
+	// rows, which matters most for the last of those: it makes somebody's
+	// radio transmit without its operator knowing, and an administrator
+	// should see it.
+	//
+	// The burst is still relayed. This decides what is recorded, not what is
+	// carried, and the count means nothing has been made invisible.
+	if isPreamble(frame) {
+		l.preambles.Add(1)
+		return
+	}
 	now := time.Now()
 	started, ended := l.cfg.Calls.Update(peer, frame, now)
 	if started != nil {
@@ -1055,6 +1079,25 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 	}
 	l.refreshCalls()
 }
+
+// isPreamble reports whether a frame is a CSBK preamble rather than anything a
+// radio operator did.
+//
+// A burst that does not decode is **not** a preamble as far as this is
+// concerned. When QSP cannot tell what something is, the console shows it:
+// suppressing an unreadable block is the one way this could hide a command.
+func isPreamble(frame hbp.Data) bool {
+	if frame.DataType != dataTypeCSBK {
+		return false
+	}
+	c, ok := dmrfec.CSBKOf(frame.Payload[:])
+	return ok && c.IsPreamble()
+}
+
+// dataTypeCSBK is the Data Type a Control Signalling Block carries, ETSI table
+// 9.22. Named here rather than imported because it is the only one this
+// package needs to recognise.
+const dataTypeCSBK uint8 = 0x3
 
 // continuesADataRun reports whether a starting call carries on the run of data
 // bursts the last one began, and records it either way.
@@ -1257,6 +1300,14 @@ type Stats struct {
 	// number that tells an operator somebody is testing rather than that
 	// somebody once did.
 	ParrotActive int
+	// Preambles counts CSBK preambles skipped rather than recorded as
+	// transmissions.
+	//
+	// **It exists so that suppressing them is not the same as hiding them.**
+	// One text sends sixteen, and each used to be a row in Last heard; the
+	// number keeps them accounted for, and it is the thing to read if a
+	// command ever stops appearing when it should.
+	Preambles uint64
 }
 
 // Stats returns current counters. Safe to call from any goroutine.
@@ -1272,6 +1323,7 @@ func (l *Listener) Stats() Stats {
 		Collisions:      l.collided.Load(),
 		WriteErrors:     l.writeErr.Load(),
 		ConfiguredPeers: l.peers.Load(),
+		Preambles:       l.preambles.Load(),
 	}
 	// playback is created when the listener starts serving, so a Stats call
 	// before that must not dereference it.
