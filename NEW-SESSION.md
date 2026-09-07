@@ -38,6 +38,28 @@ Attached is a git bundle of the whole repository. Please start by reading
 Then read `CHANGELOG.md` for recent work and `docs/adr/README.md` for the
 decision records.
 
+
+## Which terminal
+
+The operator works with several terminals open at once, and a command pasted
+into the wrong one has cost this project time repeatedly — a `git` command on
+the server, an `install` chained onto an `scp`, a stale binary deployed and
+diagnosed for twenty minutes. **Every command block gets a header naming the
+machine.**
+
+| Label | Machine | Prompt | For |
+|---|---|---|---|
+| **FEDORA** | development machine | `mike@fedora:~/Documents/QSP/qsp$` | git, patches, the gates, `go build`, `scp` |
+| **QSP-SERVER** | production, 192.168.1.247 | `mike@qsp-server:~$` | install, systemctl, journalctl, curl, tcpdump |
+| **PI-STAR** | hotspot | | Pi-Star and MMDVMHost |
+| **MONITOR** | wherever the console is watched | | the dashboard, tailing logs |
+
+The rule: **anything touching the repository is FEDORA, anything touching the
+running service is QSP-SERVER.** `scp` ends a FEDORA block; the `install` and
+`restart` that follow are a separate QSP-SERVER block and are never chained on
+to it.
+
+
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with

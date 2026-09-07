@@ -711,51 +711,6 @@ body {
   color: var(--color-foreground-muted);
 }
 
-/* Why a datagram was turned away, under the counter that counts it.
-   A count with no time axis reads as "this morning" whatever hour produced it,
-   which is how eighteen frames from 23:29 became a question at breakfast. */
-.drops {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  border-top: 1px solid var(--color-border);
-}
-
-.drop {
-  display: flex;
-  gap: var(--space-3);
-  align-items: baseline;
-  padding: var(--space-2) var(--space-5);
-  font-size: var(--text-sm);
-}
-
-.drop + .drop {
-  border-top: 1px solid var(--color-border);
-}
-
-.drop__at {
-  flex: none;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-foreground-subtle);
-}
-
-/* The reason wraps rather than truncating. These sentences name a repeater ID
-   and an address, and an operator needs both — a middle-elided line would hide
-   whichever half mattered. */
-.drop__reason {
-  color: var(--color-foreground-muted);
-  overflow-wrap: anywhere;
-}
-
-/* **Only the unanswered ones carry weight.** A refusal QSP answered is the
-   protocol working: a stale peer is told to log in again and does. Colouring
-   both the same is what made the counter above look like a permanent fault
-   before it was split into answered and ignored. */
-.drop__reason--silent {
-  color: var(--color-foreground);
-}
-
 /* ---- Peer map -------------------------------------------------------- */
 /* QSP draws its own map rather than vendoring one; see
    docs/adr/ADR-0025-no-bundled-map.md. These are the styles that map needs. */

@@ -287,7 +287,7 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 
 	msg, err := hbp.Parse(datagram)
 	if err != nil {
-		return dropped("unparseable datagram from %s: %v", from, err)
+		return dropped("unparseable datagram from %s: %v", displayAddr(from), err)
 	}
 
 	now := m.cfg.Now().UTC()
@@ -308,7 +308,7 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 	default:
 		// Messages a master receives but has no role for, such as MSTPONG
 		// arriving at a master rather than a peer.
-		return dropped("%s from %s is not a message a master acts on", msg.Kind(), from)
+		return dropped("%s from %s is not a message a master acts on", msg.Kind(), displayAddr(from))
 	}
 }
 
@@ -324,10 +324,10 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 	if m.logins.locked(from, now) {
 		// The challenge is where a guesser gets a fresh salt, so a locked
 		// source is refused here and not only at the digest.
-		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, from)
+		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, displayAddr(from))
 	}
 	if msg.RepeaterID == 0 {
-		return dropped("login from %s carries repeater ID 0, which is not a valid station", from)
+		return dropped("login from %s carries repeater ID 0, which is not a valid station", displayAddr(from))
 	}
 	// The registration list is consulted before the password, so that a
 	// refused ID never reaches the credential path at all. It also means the
@@ -402,13 +402,13 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 		// Silence rather than a refusal. Answering tells a guesser their
 		// attempt was received and is a reply QSP has been made to send, which
 		// is the amplification an unauthenticated endpoint should not offer.
-		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, from)
+		return dropped("ignoring repeater ID %d from %s: too many failed logins", msg.RepeaterID, displayAddr(from))
 	}
 
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
 		m.noteFailure(msg.RepeaterID, from, ReasonUnsolicited, now)
-		return dropped("authentication from repeater ID %d at %s, which has not logged in", msg.RepeaterID, from)
+		return dropped("authentication from repeater ID %d at %s, which has not logged in", msg.RepeaterID, displayAddr(from))
 	}
 	if p.State != StateChallenged {
 		return dropped("authentication from repeater ID %d while %s, not challenged", msg.RepeaterID, p.State)
@@ -455,7 +455,7 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 func (m *Master) handleConfig(msg hbp.Config, from netip.AddrPort, now time.Time) Outcome {
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
-		return dropped("configuration from repeater ID %d at %s, which has not logged in", msg.RepeaterID, from)
+		return dropped("configuration from repeater ID %d at %s, which has not logged in", msg.RepeaterID, displayAddr(from))
 	}
 	if p.Addr != from {
 		return dropped("configuration for repeater ID %d arrived from %s but it registered from %s",
@@ -513,7 +513,7 @@ func (m *Master) handlePing(msg hbp.Ping, from netip.AddrPort, now time.Time) Ou
 		// makes it the right place to say "you are not registered here".
 		return m.reject(msg.RepeaterID, from,
 			fmt.Sprintf("keepalive from repeater ID %d at %s, which is not registered; "+
-				"answered with MSTNAK so it logs in again", msg.RepeaterID, from))
+				"answered with MSTNAK so it logs in again", msg.RepeaterID, displayAddr(from)))
 	}
 	if !p.State.CanPassTraffic() {
 		return dropped("keepalive from repeater ID %d while %s", msg.RepeaterID, p.State)
@@ -587,15 +587,16 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 		if m.shouldAnswerUnregistered(msg.RepeaterID, now) {
 			return m.reject(msg.RepeaterID, from,
 				fmt.Sprintf("frame from repeater ID %d at %s, which is not registered; "+
-					"answered with MSTNAK so it logs in again", msg.RepeaterID, from))
+					"answered with MSTNAK so it logs in again", msg.RepeaterID, displayAddr(from)))
 		}
-		return dropped("frame from repeater ID %d at %s, which is not registered", msg.RepeaterID, from)
+		return dropped("frame from repeater ID %d at %s, which is not registered", msg.RepeaterID, displayAddr(from))
 	}
 	if !p.State.CanPassTraffic() {
 		return dropped("frame from repeater ID %d while %s; it must complete registration first", msg.RepeaterID, p.State)
 	}
 	if p.Addr != from {
-		return dropped("frame for repeater ID %d arrived from %s but it registered from %s", msg.RepeaterID, from, p.Addr)
+		return dropped("frame for repeater ID %d arrived from %s but it registered from %s",
+			msg.RepeaterID, displayAddr(from), displayAddr(p.Addr))
 	}
 
 	// The peer is heard from whether or not the frame is carried. A subscriber
@@ -707,7 +708,7 @@ func (m *Master) reject(id hbp.RepeaterID, to netip.AddrPort, reason string) Out
 func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome {
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
-		return dropped("close from repeater ID %d at %s, which is not registered", msg.RepeaterID, from)
+		return dropped("close from repeater ID %d at %s, which is not registered", msg.RepeaterID, displayAddr(from))
 	}
 	if p.Addr != from {
 		return dropped("close for repeater ID %d arrived from %s but it registered from %s",

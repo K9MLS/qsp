@@ -82,15 +82,40 @@ func stripComments(src string) string {
 	}
 }
 
-// TestDropNotesAreStyled checks the classes the panel emits have rules, since a
-// class with no rule renders as unstyled text and looks like a bug rather than
-// a list.
-func TestDropNotesAreStyled(t *testing.T) {
+// TestTheDropSummaryUsesAnExistingStyle checks the panel did not grow its own
+// vocabulary for something the stylesheet already says.
+//
+// The first version of this feature introduced .drops, .drop, .drop__at and
+// .drop__reason for a list of journal lines that took a third of the panel and
+// appeared after every restart. It was replaced by one sentence in
+// .inline-note, which the panel already used for the "no voice frames yet"
+// note. **Four new classes to say something an existing class already said is
+// how a stylesheet stops being a system**, and this project has already lost an
+// evening to two rules sharing the name .hint.
+func TestTheDropSummaryUsesAnExistingStyle(t *testing.T) {
 	css := readFile(t, "static/console.css")
-	for _, class := range []string{".drops", ".drop", ".drop__at", ".drop__reason"} {
-		if !strings.Contains(css, class) {
-			t.Errorf("the console emits %s and the stylesheet has no rule for it", class)
+	for _, gone := range []string{".drops", ".drop__at", ".drop__reason"} {
+		if strings.Contains(css, gone) {
+			t.Errorf("%s is still in the stylesheet; the drop list was replaced by a note", gone)
 		}
+	}
+	if !strings.Contains(css, ".inline-note") {
+		t.Error("the style the drop summary uses is not defined")
+	}
+}
+
+// TestTheDropSummaryOnlyAppearsWhenSomethingWasIgnored is the shape of the fix.
+//
+// Every drop was listed before, including the answered ones — a stale peer
+// told to log in again, which is the protocol working. Three of those filled a
+// third of the panel while IGNORED read 0 and had nothing to explain.
+func TestTheDropSummaryOnlyAppearsWhenSomethingWasIgnored(t *testing.T) {
+	js := stripComments(readFile(t, "static/console.js"))
+	if !strings.Contains(js, "if (ignored > 0)") {
+		t.Error("the drop summary is not gated on the counter it explains")
+	}
+	if !strings.Contains(js, "!d.answered") {
+		t.Error("the summary counts answered drops, which are the protocol working")
 	}
 }
 

@@ -376,6 +376,19 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		for i := range body.Peers {
 			body.Peers[i].Address = ""
 		}
+		// **The drop reasons name addresses too**, and blanking the peer field
+		// while leaving them readable three hundred lines away is not
+		// redaction. "keepalive from repeater ID 3132910 at 192.168.1.155:42602,
+		// which is not registered" carries exactly what the field above was
+		// withheld to protect, and the console started drawing those reasons
+		// on the page before anybody noticed.
+		//
+		// The whole field goes rather than the addresses within it. These are
+		// operator diagnostics — why did this peer not connect — and an
+		// operator diagnosing a peer is signed in. Editing an address out of
+		// free prose would be a regular expression standing between a member's
+		// home connection and a public page, which is not a thing to rely on.
+		body.Traffic.RecentDrops = nil
 	}
 
 	// One list, ordered as each was ordered alone: peers by ID, recent calls

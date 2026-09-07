@@ -630,43 +630,50 @@
       metric(ignored, "ignored", ignored > 0 ? "metric--warn" : "metric--muted") +
       "</div>";
 
-    /* **"The reasons are below" was written above and was not true.** The
-     * payload has carried `recent_drops` — timestamp, source, reason verbatim,
-     * and whether QSP answered — since the counters were added, and the console
-     * has never drawn any of it. An operator seeing "25 ignored" had a number
-     * with no time on it and no cause, which on 2026-09-07 took six commands
-     * and a wrong subsystem to answer.
+    /* **Only when something was actually turned away, and then one line.**
      *
-     * The timestamps matter more than the count. "25 ignored" read at breakfast
-     * looks like a morning event; those 25 were eighteen frames of one
-     * transmission at 23:29 the night before, in the second after a restart.
-     * A cumulative counter with no time axis invites exactly that mistake. */
-    var drops = t.recent_drops || [];
-    if (drops.length > 0) {
-      var rows = drops.slice(0, 8).map(function (d) {
-        var when = new Date(d.at);
-        /* Answered is the protocol working, so it is not styled as a problem.
-         * Only silence is. */
+     * The first version of this listed every drop note verbatim: three journal
+     * lines, 120 characters each, taking a third of the panel — and all three
+     * were *answered*, which is the protocol working. It appeared after every
+     * restart, permanently, while IGNORED read 0 and had nothing to explain.
+     *
+     * The counter that raises the question is `ignored`, so this explains that
+     * counter and nothing else. When it is zero there is no question and the
+     * panel says nothing.
+     *
+     * Grouped by source, because eighteen frames of one transmission is one
+     * fact. The time is the part that matters: "25 ignored" read at breakfast
+     * looks like a morning event, and those 25 were one transmission at 23:29
+     * the night before. A cumulative counter with no time axis invites exactly
+     * that reading.
+     *
+     * Signed-in only — recent_drops is withheld from unauthenticated callers
+     * because the reasons name addresses — so this is absent on a public view
+     * rather than empty, which is correct. */
+    if (ignored > 0) {
+      var silent = (t.recent_drops || []).filter(function (d) {
+        return !d.answered;
+      });
+      var bySource = {};
+      silent.forEach(function (d) {
+        var key = d.from || "an unknown source";
+        if (!bySource[key]) bySource[key] = { n: 0, at: d.at };
+        bySource[key].n += 1;
+        if (d.at > bySource[key].at) bySource[key].at = d.at;
+      });
+      var lines = Object.keys(bySource).map(function (key) {
+        var g = bySource[key];
         return (
-          '<li class="drop">' +
-          '<time class="drop__at" datetime="' + escapeText(d.at) + '">' +
-          escapeText(when.toLocaleTimeString()) +
-          "</time>" +
-          '<span class="drop__reason' +
-          (d.answered ? "" : " drop__reason--silent") +
-          '">' +
-          escapeText(d.reason) +
-          "</span>" +
-          "</li>"
+          g.n +
+          (g.n === 1 ? " datagram from " : " datagrams from ") +
+          escapeText(key) +
+          " turned away, last at " +
+          escapeText(new Date(g.at).toLocaleTimeString())
         );
       });
-      trafficBody.innerHTML +=
-        '<ul class="drops">' + rows.join("") + "</ul>";
-      if (drops.length > rows.length) {
+      if (lines.length > 0) {
         trafficBody.innerHTML +=
-          '<p class="inline-note inline-note--neutral">Showing the most recent ' +
-          rows.length + " of " + drops.length +
-          " recorded. Older ones are in the journal.</p>";
+          '<p class="inline-note">' + lines.join(". ") + ".</p>";
       }
     }
 

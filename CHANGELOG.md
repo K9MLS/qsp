@@ -6,6 +6,45 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Drop reasons were published to unauthenticated callers, and they name
+  addresses.** `PeerView.Address` has been blanked for public callers since
+  ADR-0043, on the argument that an address is a member's home internet
+  connection plus the fact they are online now. The reasons in
+  `traffic.recent_drops` carry the same addresses in prose, three hundred lines
+  down the same function, and were not covered.
+
+  It surfaced because the console began drawing those reasons on the page —
+  the second time a leak here has been found by rendering it. The whole field
+  is withheld rather than the addresses edited out of it: these are operator
+  diagnostics, an operator is signed in, and a regular expression is not a
+  thing to put between a member's home connection and a public page.
+
+- **Every drop reason formats its address with `displayAddr` now.** They were
+  printing raw, so a v4 peer read `[::ffff:198.51.100.60]:62032` — in the journal
+  as well as on the page. The helper that unmaps it was in the same file, used
+  by the structured log fields beside them.
+
+### Changed
+
+- **The drop list added earlier today is one line, and only when something was
+  ignored.** It listed every drop verbatim: three journal lines of 120
+  characters taking a third of the panel, all of them *answered* — a stale peer
+  told to log in again, which is the protocol working — appearing after every
+  restart while IGNORED read 0 and had nothing to explain.
+
+  The counter that raises the question is `ignored`, so the note explains that
+  counter and nothing else, grouped by source because eighteen frames of one
+  transmission is one fact. It uses `.inline-note`, which the panel already
+  had; the four classes invented for the list are gone.
+
+  **Rendering a log line is not designing a panel**, and the first version was
+  the former.
+
+- `NEW-SESSION.md` names the four terminals and which commands belong to each.
+  §7 has required this since it was written and it has been ignored all week.
+
+### Fixed
+
 - **A stale transmission lost a second of audio after every restart, in
   silence.** `handlePing` answers an unregistered keepalive with MSTNAK so the
   peer logs in again; `handleData` dropped unregistered frames without a word,
