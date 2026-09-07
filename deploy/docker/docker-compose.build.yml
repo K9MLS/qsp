@@ -1,0 +1,25 @@
+# Build QSP from this checkout instead of pulling a published image.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+#
+# **This is a separate file because the alternative did not survive contact.**
+# It used to be a commented-out block in docker-compose.yml with an instruction
+# to uncomment it. Removing a "# " from "    # build:" leaves five spaces where
+# four are needed, and the first person to try it got
+#
+#   did not find expected key
+#
+# from a YAML parser, on their first command. An override file has nothing to
+# edit and nothing to indent wrongly.
+
+services:
+  qsp:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        # Passing the repository's VERSION here keeps `qsp -version` inside the
+        # container honest about which tree it came from.
+        VERSION: development
+    image: qsp:local

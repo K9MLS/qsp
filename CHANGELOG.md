@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+Six defects, all found by running the container on a clean Ubuntu VM, none of
+them findable by reading the code.
+
+- **The database was outside the volume.** `config.Default()` uses the relative
+  DSN `qsp.db`, and a `scratch` image has no working directory, so it resolved
+  to `/qsp.db` in the container's writable layer while the volume held only the
+  configuration and the password. **Every account and every call record would
+  have been discarded on the next rebuild** — silently, weeks later, with no
+  error. The bootstrap now writes an absolute path beside the configuration.
+
+- **`.env.example` taught an ID that cannot connect.** It shipped
+  `QSP_ALLOWED_PEERS=3132910`, an operator ID; a hotspot registers with that
+  plus a two-digit suffix, `313291001`. QSP's own startup advisory warned about
+  the exact value the example told the operator to enter. Corrected there, in
+  the first-run message and in the guide.
+
+- **The commented-out `build:` block produced invalid YAML.** Removing the
+  `# ` leaves five spaces where four are needed, and the first command run on
+  the test machine returned `did not find expected key`. Building from a
+  checkout is now `docker-compose.build.yml`, an override file with nothing to
+  edit.
+
+- **The guide told operators to `cat` and `grep` inside a shell-less image.**
+  There is no `cat` in `scratch`. It uses `-print-config` and names the host
+  path now.
+
+- **Forwarding is off and the guide never said so**, so peers connect, hear
+  each other, and a newcomer expecting bridges reads silence as a fault.
+
 ### Added
 
 - **A first run writes its own configuration.** Until now the only way to run

@@ -48,6 +48,20 @@ func TestAFirstRunWritesAConfigurationThatValidates(t *testing.T) {
 		t.Fatalf("the configuration QSP wrote does not validate: %v", err)
 	}
 
+	// **The database has to be in the volume.** The default DSN is relative
+	// and a scratch image has no working directory, so "qsp.db" resolved to
+	// /qsp.db in the container's writable layer — every account and every call
+	// record discarded on the next rebuild, silently. Found by listing the
+	// volume on a machine that had run it.
+	if !filepath.IsAbs(cfg.Database.DSN) {
+		t.Errorf("the database DSN is %q, which is relative to a working directory "+
+			"the container does not have", cfg.Database.DSN)
+	}
+	if filepath.Dir(cfg.Database.DSN) != dir {
+		t.Errorf("the database is at %q, outside the directory holding the configuration",
+			cfg.Database.DSN)
+	}
+
 	if !cfg.DMR.Enabled {
 		t.Error("the Homebrew listener is off, so nothing can connect at all")
 	}

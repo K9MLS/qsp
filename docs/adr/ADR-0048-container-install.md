@@ -1,6 +1,6 @@
 # ADR-0048: The container install, and what it has to get right for a stranger
 
-**Status:** Accepted — built and amended by what building it found; not yet run
+**Status:** Accepted — built, run on a clean machine, and amended six times by what that found
 **Date:** 2026-09-06
 
 ## Context
@@ -213,9 +213,52 @@ host networking so no capability is needed for the socket. An operator who wants
 it unprivileged sets `user:` and owns the volume themselves. **Named here rather
 than left as a silent default.**
 
+## Run on a clean machine, 2026-09-07
+
+A stock Ubuntu 24.04 VM with Docker installed from scratch. The image built,
+the volume was created empty, the first run wrote its configuration, the schema
+migrated, both sockets bound and `/healthz` reported healthy.
+
+**Six defects, none of them findable by reading the code.**
+
+1. **The database was outside the volume.** `config.Default()` uses the
+   relative DSN `qsp.db`, and a `scratch` image has no working directory, so it
+   resolved to `/qsp.db` in the container's writable layer. The volume held the
+   configuration and the password and nothing else. **Every account and every
+   call record would have been discarded on the next rebuild, silently, weeks
+   later.** The bootstrap now writes an absolute path beside the configuration.
+
+2. **The example taught an ID that cannot connect.** `.env.example` shipped
+   `QSP_ALLOWED_PEERS=3132910`, an operator ID; a hotspot registers with that
+   plus a two-digit suffix, `313291001`. QSP's own startup advisory warned about
+   the exact value the example told the operator to enter.
+
+3. **The first-run message repeated it**, in the text somebody reads when
+   nothing else has worked yet.
+
+4. **The commented-out `build:` block did not survive contact.** Removing the
+   `# ` leaves five spaces where four are needed, and the first command run on
+   the machine returned `did not find expected key` from a YAML parser. It is a
+   separate override file now, `docker-compose.build.yml`, with nothing to edit.
+
+5. **The guide told the operator to `cat` and `grep` inside a shell-less
+   image.** There is no `cat` in `scratch`. It now uses `-print-config` and
+   names the host path under `/var/lib/docker/volumes`.
+
+6. **Forwarding is off and the guide never said so.** Peers connect, the
+   master repeats between them, and bridges and links do nothing until
+   configured — which is correct and which a newcomer would read as a fault.
+
 ## What is still not proved
 
-**Nothing here has been run.** Docker is not available where the tests run, so
+**No peer has ever registered with a containerised instance.** The test machine
+had no hotspot to point at it, so the login handshake, the access list and the
+NAT-rebind path that made host networking necessary are all still untested in a
+container.
+
+Before this run:
+
+**Nothing here had been run.** Docker is not available where the tests run, so
 the image has never been built and no container has ever started. That is the
 same sentence this record opens by writing about the files it replaced, and it
 is only untrue once an operator runs it.

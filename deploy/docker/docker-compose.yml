@@ -1,21 +1,21 @@
 # QSP, as a container.
 #
 #   cp .env.example .env
-#   nano .env            # two values: a password and your repeater IDs
+#   nano .env            # two values: a password and your hotspot IDs
 #   docker compose up -d
+#
+# To build from a checkout instead of pulling a published image, add the other
+# file rather than editing this one:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml build
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
 #
 # See README.md for what to do before this: a UDP port has to reach this
 # machine from the internet, and no container can arrange that for you.
 
 services:
   qsp:
-    image: ghcr.io/k9mls/qsp:0.1.94
-    # Uncomment to build from a checkout instead of pulling a published image.
-    # build:
-    #   context: ../..
-    #   dockerfile: deploy/docker/Dockerfile
-    #   args:
-    #     VERSION: development
+    image: ghcr.io/k9mls/qsp:0.1.95
 
     container_name: qsp
     restart: unless-stopped

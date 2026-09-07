@@ -34,11 +34,20 @@ docker compose logs -f
 
 ```
 QSP_PEER_PASSWORD=choose-something-long
-QSP_ALLOWED_PEERS=3132910,3155413
+QSP_ALLOWED_PEERS=313291001
 ```
 
 The password is what you put into Pi-Star or WPSD as the master's password.
-The IDs are your own hotspots and repeaters, from <https://radioid.net>.
+
+**The IDs are not your operator ID.** A hotspot registers with your
+seven-digit operator ID plus a two-digit suffix — `3132910` becomes
+`313291001` — and it is shown on the Pi-Star or WPSD dashboard. A repeater
+registers with a six-digit ID. Listing your operator ID alone means nothing
+will connect, and QSP will say so at startup:
+
+```
+access list advisory  dmr.access.registration names 3132910, a seven-digit ID
+```
 
 **QSP will not start an open master for you.** A listener reachable from the
 internet that accepts anybody is a problem for the people it relays to as much
@@ -61,6 +70,20 @@ In Pi-Star or WPSD, add a DMR master:
 Then open `http://<this machine>:8080`. A peer that has connected but not
 transmitted shows "not heard yet" for its colour code and talkgroups — those
 are learned from traffic, and that is the peer working rather than failing.
+
+### Peers connect but hear nothing from each other
+
+That is a working master. **Repeating between peers on the same talkgroup is
+on; forwarding between talkgroups and to other networks is off**, and the
+journal says so on every start:
+
+```
+forwarding disabled; traffic is observed and not relayed
+```
+
+An instance that relays traffic nobody asked it to relay is the one mistake
+this software must not make on somebody's behalf, so bridges and links are
+things you turn on deliberately.
 
 ## What is on and off to begin with
 
@@ -88,8 +111,18 @@ version says what.
 
 ## Your data
 
-Everything is in the `qsp-data` volume: the configuration, the peer password
-and the call history.
+Everything is in the `qsp-data` volume: the configuration, the peer password,
+your accounts and the call history.
+
+```sh
+sudo ls -l /var/lib/docker/volumes/docker_qsp-data/_data/
+```
+
+You should see `qsp.json`, `peer-password` and `qsp.db`. **If `qsp.db` is
+missing, the database is inside the container and will be lost on the next
+rebuild** — that was true of versions before 0.1.95, where the default data
+source name was relative and a `scratch` image has no working directory to
+resolve it against.
 
 ```sh
 docker compose down          # keeps it
@@ -116,14 +149,33 @@ The traffic panel says which.
 `docker compose exec qsp /qsp -config /var/lib/qsp/qsp.json -check` validates
 the configuration without starting anything.
 
-## Building it yourself
+### Reading and editing the configuration
 
-Uncomment the `build:` block in `docker-compose.yml` and:
+**The image has no shell**, so `docker compose exec qsp cat ...` cannot work —
+there is no `cat`, no `grep` and no `sh` in it, which is the point. The binary
+prints its own:
 
 ```sh
-docker compose build --build-arg VERSION=$(cat ../../VERSION)
-docker compose up -d
+docker compose exec qsp /qsp -config /var/lib/qsp/qsp.json -print-config
 ```
+
+To edit it, go through the volume from the host:
+
+```sh
+sudo nano /var/lib/docker/volumes/docker_qsp-data/_data/qsp.json
+docker compose restart
+```
+
+## Building it yourself
+
+Add the override file rather than editing anything:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.build.yml build
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
+```
+
+Takes two or three minutes; most of it is Go compiling.
 
 ## The other way to run it
 

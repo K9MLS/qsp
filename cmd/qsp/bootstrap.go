@@ -61,6 +61,13 @@ const (
 	// allowedPeersEnv is the comma-separated list of repeater IDs permitted to
 	// register.
 	//
+	// **These are not operator IDs.** A hotspot registers with its owner's
+	// seven-digit ID plus a two-digit suffix — 313291001, not 3132910 — and a
+	// repeater uses six digits. QSP already warns about the difference at
+	// startup; the first version of this file told operators to enter exactly
+	// the shape it then warned them about, which was found by reading the log
+	// of a first run on a clean machine.
+	//
 	// **Required, and that was not the plan.** The intention was to write an
 	// empty permit list so a fresh instance carried nothing until its operator
 	// filled it in. The validator refuses that: a permit list with no entries
@@ -193,22 +200,26 @@ A peer password. The shared secret your hotspots use to log in — you
 choose it, and you put the same one into Pi-Star or WPSD. There is no
 default, because a master whose password everybody knows has no password.
 
-The repeater IDs allowed to register. QSP will not start an open master
-for you: a listener reachable from the internet that accepts anybody is a
-problem for the people it relays to as much as for you. These are the DMR
-IDs of your own hotspots and repeaters, from https://radioid.net.
+The IDs allowed to register. QSP will not start an open master for you: a
+listener reachable from the internet that accepts anybody is a problem for
+the people it relays to as much as for you.
+
+  A hotspot registers with your operator ID plus a two-digit suffix, so
+  3132910 becomes 313291001. It is shown on the Pi-Star or WPSD dashboard.
+  A repeater uses a six-digit ID. Your own seven-digit operator ID is not
+  what connects, and listing it alone means nothing will.
 
   Docker    put both in the .env file beside docker-compose.yml
 
               %s=choose-something-long
-              %s=3132910,3155413
+              %s=313291001,315541301
 
             then: docker compose up -d
 
   systemd   in the unit file:
 
               Environment=%[2]s=choose-something-long
-              Environment=%[3]s=3132910,3155413
+              Environment=%[3]s=313291001,315541301
 
             then: systemctl restart qsp
 
@@ -243,6 +254,16 @@ this will never overwrite it.
 // says what it may carry.
 func starterConfig(passwordPath string, allowed []string) config.Config {
 	cfg := config.Default()
+	// **The default DSN is relative and the container has no working
+	// directory.** `config.Default()` uses "qsp.db", resolved against the
+	// process's cwd — which in a `scratch` image is `/`. The database landed
+	// at /qsp.db inside the container's writable layer while the volume held
+	// only the configuration and the password, so every rebuild silently
+	// discarded every account and every call record.
+	//
+	// Found by running it and listing the volume; nothing in the code says a
+	// relative path is wrong, because for the systemd install it is not.
+	cfg.Database.DSN = filepath.Join(filepath.Dir(passwordPath), "qsp.db")
 	cfg.DMR.Enabled = true
 	cfg.DMR.ListenAddress = "0.0.0.0:62031"
 	cfg.DMR.PasswordFile = passwordPath
