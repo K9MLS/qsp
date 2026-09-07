@@ -2580,6 +2580,21 @@ because they were wrong consistently.
 
 ---
 
+### Verify an open item before working it
+
+**Three items on §8k's list turned out already done, in one afternoon.**
+`/api/peers` redaction was built and commented; IPSC `CallViews` returns nil
+with "the tracker owns Last heard" written above it; and the console has
+labelled data with a muted `data` pill since the call tracker learned that one
+text produced fifteen entries.
+
+Each was carried forward across handovers verbatim. **An open item that has
+survived several sessions is a claim about the past, not the present.** Verify
+the defect still exists — one grep — before working it, exactly as a capture is
+read before a protocol is reasoned about. The alternative is building a thing
+twice and shipping two ways to say it, which nearly happened with a `TEXT` pill
+beside the `data` pill that was already there.
+
 ## 8a. How this project finds its defects
 
 > **2026-09-04, four for four.** Every defect found that day came from running

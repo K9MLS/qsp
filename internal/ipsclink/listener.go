@@ -192,6 +192,14 @@ type Peer struct {
 	Keepalives uint64
 	// VoiceFrames counts voice frames received from this peer.
 	VoiceFrames uint64
+	// TextFrames counts text datagrams received from this peer.
+	//
+	// **Separate from VoiceFrames rather than added into it.** That counter is
+	// a documented figure meaning audio, the console draws it as "voice
+	// frames", and a network whose text works and whose audio does not would
+	// have read as healthy. A text is also many datagrams for one message, so
+	// summing the two would make a single text look like a long over.
+	TextFrames uint64
 	// LastCall describes the most recent transmission, if there was one.
 	LastCall *Call
 	// ColourCode is the DMR colour code this repeater uses, learned from the
@@ -874,6 +882,8 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) ([
 		// rebuilding, so it needs none of the superframe state voice does.
 		// See ADR-0045.
 		p.LastHeard = now
+		p.TextFrames++
+		l.recordText(p, msg, now)
 		if f, ok := l.converterFor(p.RadioID).ConvertText(msg, hbp.RepeaterID(msg.SenderID)); ok {
 			frames = []hbp.Data{f}
 		}
@@ -896,6 +906,116 @@ func (l *Listener) converterFor(id uint32) *ipscbridge.Converter {
 	}
 	l.bridges[id] = c
 	return c
+}
+
+// recordText records one text transmission, as an event rather than as a call
+// with a duration.
+//
+// # Why a text is not a call
+//
+// Nothing recorded a text at all until now: the branch above converted the
+// burst and returned, so a text from a repeater produced no `call started`,
+// moved no counters, and left Last heard looking as though nothing had
+// happened. An operator watching the console could not tell a working text
+// path from a broken one, which is the condition that hid ADR-0047's defect
+// for eighteen patches.
+//
+// **A text has a stream ID and no usable end.** The fixture settles the first
+// half: 154 datagrams in testdata/ipsc/ipsc-text-rate34.pcap group into 16
+// transmissions by stream ID alone, exactly as voice does. The second half it
+// refuses to settle. The last datagram of a transmission usually carries
+// 0x4000 in the flags field where the others carry 0x2080 — and that holds for
+// **nine of the sixteen**. In the other seven the bit is set twice, or on the
+// first datagram, or in the middle, all of them short groups carrying the 0x13
+// marker whose meaning this project has never claimed to know.
+//
+// Nine of sixteen is not a reading. It is the same shape as ADR-0045's "nine
+// exceptions", which turned out to be the whole defect.
+//
+// So a text is recorded as an instant: started and ended at the same moment,
+// the moment its first datagram arrives. That needs no marker, and it matches
+// what a text is — an operator wants to know that K9MLS texted KD9EJA at
+// 11:42, not how long the transmission took. A repeated stream ID within one
+// message updates the record rather than opening a second, so a text that
+// takes twenty datagrams still reads as one event.
+//
+// # What this deliberately does not do
+//
+// **It does not put a text in Last heard, because a text is already there.**
+// ObserveFromIPSC feeds the shared call tracker, the tracker coalesces data
+// bursts inside calls.DataBurstWindow — it learned that when a single text
+// produced fifteen entries — and the console already tags anything that is not
+// voice with a muted `data` pill. A flag here to mark a text, and a second
+// pill to draw it, would be a fourth thing saying what three existing things
+// already say.
+//
+// That was built and removed before this shipped. Three separate items on the
+// open list turned out already done the same afternoon, which is what §8a now
+// records: **an open item that has survived several sessions is a claim about
+// the past.** Check the defect still exists before working it.
+//
+// What was actually missing is here and is small: a journal line, a counter,
+// and the colour code.
+func (l *Listener) recordText(p *Peer, msg ipsc.Message, now time.Time) {
+	t, ok := msg.AsText()
+	if !ok {
+		return
+	}
+
+	// **The colour code comes from the text's own Slot Type**, not from
+	// Message.ColourCode, which returns false for anything that is not voice
+	// by its first line. AsText already reads it, at the offset
+	// TextSlotTypeFor gives — byte 51 on a 54-byte datagram and byte 57 on a
+	// Rate 3/4 one, which is the six-byte shift ADR-0047 measured.
+	//
+	// Learning it here as well as from voice is the one part of this an
+	// operator sees. A repeater that had only ever sent text showed "not heard
+	// yet" in the peer table for as long as it stayed connected, and both
+	// Motorola peers on the live network read that way while the text path was
+	// working perfectly.
+	if !p.ColourCodeKnown || p.ColourCode != t.ColourCode {
+		if !p.ColourCodeKnown {
+			l.log.Info("learned a peer's colour code", "radio_id", p.RadioID,
+				"colour_code", int(t.ColourCode), "from", "text")
+		}
+		p.ColourCode, p.ColourCodeKnown = t.ColourCode, true
+	}
+
+	// Already recorded: a text is many datagrams and one event.
+	if p.LastCall != nil && p.LastCall.StreamID == t.StreamID && !p.LastCall.Ended.IsZero() {
+		p.LastCall.Frames++
+		p.LastCall.LastFrame = now
+		return
+	}
+
+	// A voice transmission still running when a text arrives is closed the way
+	// a superseded one is, rather than overwritten. Same reasoning as
+	// recordVoice: a call that vanishes without a `call ended` is a call
+	// nobody can account for afterwards.
+	if prev := p.LastCall; prev != nil && prev.Ended.IsZero() {
+		l.endCall(p, prev.LastFrame, endSilent)
+	}
+
+	slot := hbp.Timeslot1
+	if conv := l.converterFor(p.RadioID); conv != nil {
+		slot = conv.Timeslot(msg)
+	}
+
+	p.LastCall = &Call{
+		StreamID:    t.StreamID,
+		Source:      t.Source,
+		Destination: t.Destination,
+		Private:     t.Private,
+		Timeslot:    slot,
+		Started:     now,
+		Ended:       now,
+		LastFrame:   now,
+		Frames:      1,
+	}
+	l.log.Info("text", "radio_id", p.RadioID, "source", t.Source,
+		"destination", t.Destination, "private", t.Private,
+		"timeslot", int(slot),
+		"stream", fmt.Sprintf("%#04x", t.StreamID))
 }
 
 // recordVoice tracks one voice frame and converts it. It reports whether the

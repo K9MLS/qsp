@@ -6,6 +6,48 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A text from a repeater left no trace: no journal line, no counter, no
+  colour code.** The branch converted the burst and returned, so an operator
+  could not tell a working text path from a broken one — which is the condition
+  that hid ADR-0047's defect for eighteen patches while the network could not
+  send a message at all.
+
+  `recordText` writes one `text` line per transmission with source,
+  destination, private flag, timeslot and stream. A text is many datagrams and
+  one event: 154 datagrams in `ipsc-text-rate34.pcap` group into 16
+  transmissions by stream ID alone, exactly as voice does, so a repeated stream
+  updates the record rather than opening a second.
+
+- **A repeater that had only ever sent text showed "not heard yet" for its
+  colour code, indefinitely.** It was learned in `recordVoice` and nowhere
+  else. Both Motorola peers on the live network read that way on 2026-09-07
+  while text was working perfectly. It now comes from the text's own Slot Type,
+  at the offset ADR-0047 measured — `Message.ColourCode` returns false for
+  anything that is not voice by its first line.
+
+- `Peer.TextFrames` counts text datagrams, **deliberately not added into
+  `VoiceFrames`**: that figure is documented as audio and the console draws it
+  as "voice frames", so a network whose text worked and whose audio did not
+  would have read as healthy.
+
+### Notes
+
+- **A text is recorded as an instant, started and ended together**, because no
+  reliable end marker exists for one. The flags bit that looks like it marks
+  the last datagram holds for **nine of the sixteen** transmissions in the
+  fixture; in the rest it is set twice, or on the first, or in the middle. Nine
+  of sixteen is the same shape as ADR-0045's "nine exceptions", which turned
+  out to be the whole defect.
+
+- **Three open items turned out already done**, in one afternoon: `/api/peers`
+  redaction, IPSC `CallViews` double-counting, and the console's `data` pill. A
+  `Call.Text` flag and a second pill were built and removed before shipping.
+  §8a now records the rule — **an open item that has survived several sessions
+  is a claim about the past** — and says to verify the defect before working
+  it.
+
+### Fixed
+
 - **Drop reasons were published to unauthenticated callers, and they name
   addresses.** `PeerView.Address` has been blanked for public callers since
   ADR-0043, on the argument that an address is a member's home internet

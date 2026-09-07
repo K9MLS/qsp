@@ -38,7 +38,7 @@ func textBodies(tb testing.TB, want ipsc.Kind, n int) [][]byte {
 			continue
 		}
 		udp := ip[(ip[0]&0x0f)*4:]
-		// 54-byte datagrams only: a Rate 3/4 burst is refused by design.
+		// 54-byte datagrams only. This once said "a Rate 3/4 burst is refused\n		// by design", which stopped being true in ADR-0047; the other fixture\n		// carries those and TestATextIsRecordedAsOneEvent reads it.
 		if len(udp) < 9 || ipsc.Kind(udp[8]) != want {
 			continue
 		}
