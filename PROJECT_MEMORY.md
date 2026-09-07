@@ -2533,7 +2533,16 @@ the ack comes from a repeater on RF one hop from the radio and a hotspot has
 none. The stream IDs turned out not to be a second defect — 224 single-CSBK
 preambles and 18 header-and-blocks streams, decomposing without remainder.
 
-1. **Text over IPSC still has no call record.** The text branch never touches
+**Going public is now the shape of the work.** [ADR-0048](docs/adr/ADR-0048-container-install.md)
+records the container install decisions; the operator wants `docker compose up`
+to work on first run for people who are not advanced. Its first step is a
+decision rather than code, and `deploy/docker` turns out never to have been run
+— no UDP ports, Go 1.22, the wrong volume path.
+
+1. **`/api/peers` is unauthenticated**, and it now gates something: ADR-0048's
+   console bind address cannot default to `0.0.0.0` until it is settled, and
+   `127.0.0.1` is a wall on minute one for a newcomer. A decision, not a patch.
+2. **Text over IPSC still has no call record.** The text branch never touches
    `recordVoice`, so a text from a repeater produces no `ipsc` line and none of
    the transmission counters. Carried forward from §8j.
 4. **Who owns Last-heard.** Unchanged from §8j: `DeliverFromIPSC` calls

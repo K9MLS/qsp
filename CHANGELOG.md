@@ -4,6 +4,21 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **[ADR-0048](docs/adr/ADR-0048-container-install.md)** records the decisions
+  for a `docker compose up` install: one value for the operator to fill in, the
+  first-run config bootstrap in the binary rather than an entrypoint script,
+  host networking, and the console's bind address gated on `/api/peers` being
+  settled first. Proposed; none of it is built.
+
+  **It also records that `deploy/docker` has never been run.** The compose file
+  publishes no UDP ports and does not use host networking, so a container
+  started from it cannot receive a single DMR packet; the build stage pins Go
+  1.22 where the module needs 1.27; the volume is `/data` where everything else
+  says `/var/lib/qsp`; and the healthcheck's comment and its command disagree.
+  Twelfth instance of something built, wired and never called.
+
 ### Verified
 
 - **The trellis tables are proved against real bursts, and the differential is

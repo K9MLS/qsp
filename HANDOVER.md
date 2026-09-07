@@ -18,10 +18,23 @@ The stream IDs that made the journal look like every burst was its own
 transmission were not a second defect either — 224 single-CSBK preambles and 18
 streams of a header with its three blocks, decomposing without remainder.
 
-**The first open item is that text over IPSC produces no call record.** The
-text branch never touches `recordVoice`, so a text from a repeater generates no
-`ipsc` line and none of the transmission counters. §8k has the rest of the
-list.
+**The work is turning toward going public**, and
+[ADR-0048](docs/adr/ADR-0048-container-install.md) records what a
+`docker compose up` install has to get right for somebody who is not advanced.
+Nothing in it is built.
+
+**Its first step is a decision from the operator rather than code:
+`/api/peers` is unauthenticated and returns peer addresses**, so the console
+cannot default to `0.0.0.0` until that is settled — and `127.0.0.1` under host
+networking means a newcomer sees nothing on minute one.
+
+After that: the first-run config bootstrap in `cmd/qsp`, then the container
+files, which are the least interesting part. Text over IPSC still produces no
+call record. §8k has the rest.
+
+**`deploy/docker` has never been run.** Do not treat it as a starting point: it
+publishes no UDP ports, builds on Go 1.22, and uses a volume path nothing else
+uses.
 
 ## The headline
 

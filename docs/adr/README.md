@@ -56,4 +56,5 @@ conclusion.
 | [0044](ADR-0044-access-control-covers-ipsc.md) | Access control covers IP Site Connect, with no new configuration | Accepted |
 | [0045](ADR-0045-ipsc-text-messages.md) | Text over IP Site Connect is DMR data in the voice envelope | Accepted — amended; block sizes superseded by 0047 |
 | [0046](ADR-0046-ipsc-private-calls.md) | A private call over IP Site Connect is `0x81` | Accepted |
-| [0047](ADR-0047-rate-34-text-blocks.md) | A text message is Rate 3/4 blocks, and QSP carries them whole | Accepted — one step named as unmeasured |
+| [0047](ADR-0047-rate-34-text-blocks.md) | A text message is Rate 3/4 blocks, and QSP carries them whole | Accepted — confirmed on air |
+| [0048](ADR-0048-container-install.md) | The container install, and what it has to get right for a stranger | Proposed |
