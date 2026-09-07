@@ -6,7 +6,22 @@ through §8j are superseded and carry banners saying so. **§0's table is worth
 doubting** — it was wrong about access control for weeks because it is the
 section everybody reads and nobody re-reads.
 
-## Text is finished. Start on the call record.
+## Start on the first-account setup page
+
+[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md) records the decisions
+and nothing is built. A fresh install has no accounts and the console says
+nothing about it; the operator has to know to run `adduser` from a terminal.
+
+**The console binds to 0.0.0.0**, so a plain "create your administrator" page
+would be owned by whoever reached it first. The decision is a one-time token
+printed to the journal on first start, a `/setup` route that exists only while
+there are no accounts, and `adduser` left working for anyone who prefers a
+terminal.
+
+It is the first unauthenticated route this console has ever had, which is why it
+is an ADR rather than a patch.
+
+## Text is finished. The call record is still open.
 
 **Private text messages work and are confirmed on air**, repeater to repeater.
 The hotspot direction delivers without the sending radio's confirmation, which

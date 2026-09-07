@@ -4,6 +4,16 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md)**: the first
+  administrator account should be created from the home page, not from a
+  terminal command an operator has to know about. Because the console binds to
+  `0.0.0.0`, a plain setup page would be owned by whoever reached it first, so
+  the decision is a one-time token printed to the journal on first start and a
+  `/setup` route that ceases to exist once an account is created. Proposed;
+  nothing built.
+
 ### Fixed
 
 - **Nobody could create an account in the container, so nobody could sign in.**
