@@ -630,6 +630,46 @@
       metric(ignored, "ignored", ignored > 0 ? "metric--warn" : "metric--muted") +
       "</div>";
 
+    /* **"The reasons are below" was written above and was not true.** The
+     * payload has carried `recent_drops` — timestamp, source, reason verbatim,
+     * and whether QSP answered — since the counters were added, and the console
+     * has never drawn any of it. An operator seeing "25 ignored" had a number
+     * with no time on it and no cause, which on 2026-09-07 took six commands
+     * and a wrong subsystem to answer.
+     *
+     * The timestamps matter more than the count. "25 ignored" read at breakfast
+     * looks like a morning event; those 25 were eighteen frames of one
+     * transmission at 23:29 the night before, in the second after a restart.
+     * A cumulative counter with no time axis invites exactly that mistake. */
+    var drops = t.recent_drops || [];
+    if (drops.length > 0) {
+      var rows = drops.slice(0, 8).map(function (d) {
+        var when = new Date(d.at);
+        /* Answered is the protocol working, so it is not styled as a problem.
+         * Only silence is. */
+        return (
+          '<li class="drop">' +
+          '<time class="drop__at" datetime="' + escapeText(d.at) + '">' +
+          escapeText(when.toLocaleTimeString()) +
+          "</time>" +
+          '<span class="drop__reason' +
+          (d.answered ? "" : " drop__reason--silent") +
+          '">' +
+          escapeText(d.reason) +
+          "</span>" +
+          "</li>"
+        );
+      });
+      trafficBody.innerHTML +=
+        '<ul class="drops">' + rows.join("") + "</ul>";
+      if (drops.length > rows.length) {
+        trafficBody.innerHTML +=
+          '<p class="inline-note inline-note--neutral">Showing the most recent ' +
+          rows.length + " of " + drops.length +
+          " recorded. Older ones are in the journal.</p>";
+      }
+    }
+
     /* The case that cost an evening: a peer connected and sending keepalives,
      * whose voice frames never arrive. The peer table looks healthy and Last
      * heard looks empty, which is indistinguishable from nobody talking.

@@ -4,6 +4,48 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A stale transmission lost a second of audio after every restart, in
+  silence.** `handlePing` answers an unregistered keepalive with MSTNAK so the
+  peer logs in again; `handleData` dropped unregistered frames without a word,
+  so a peer that keyed up before its next keepalive transmitted into nothing.
+
+  Measured: QSP restarted at 23:27:10 on 2026-09-06, a station keyed up at
+  23:29:21, and **eighteen consecutive frames were dropped over 1.02 seconds**
+  before the hotspot's keepalive arrived 51 ms later and was answered.
+
+  The old code's reasoning — voice arrives every 60 ms and answering each would
+  put hundreds of datagrams on the wire — is right about answering *each* and
+  wrong about answering *at all*. The first frame from an unregistered peer is
+  now answered, then suppressed for five seconds per repeater ID, which turns
+  a transmission's worth of MSTNAKs into one. The map is bounded, because its
+  key comes from an unauthenticated datagram.
+
+- **The traffic panel said "the reasons are below" and drew nothing.** The
+  payload has carried `recent_drops` — timestamp, source, reason verbatim and
+  whether QSP answered — since the counters were added, and the console never
+  rendered any of it. Thirteenth instance of something built, wired and never
+  called.
+
+  The timestamps are the point. "25 ignored" read at breakfast looks like a
+  morning event; those 25 were eighteen frames of one transmission at 23:29 the
+  night before. A cumulative counter with no time axis invites exactly that
+  reading, and answering it took six commands and a wrong subsystem.
+
+### Notes
+
+- **A test passed with the feature deliberately deleted.** The first version of
+  `TestTheTrafficPanelDrawsWhatItSaysItDraws` searched the whole file, and the
+  comment explaining the rendering mentioned every field by name. It now strips
+  comments first, and fails when the rendering is removed — checked by removing
+  it.
+
+- **And a test blamed the code for its own wrong assumption.** A new case used
+  the `voice()` helper for two stations, not having read that it hardcodes
+  `RepeaterID`; its first argument is a source radio. Same mistake as reading a
+  constant off a hex dump by eye, one layer up, and the third in two days.
+
 ### Documentation
 
 - **[ADR-0048](docs/adr/ADR-0048-container-install.md)** records the decisions

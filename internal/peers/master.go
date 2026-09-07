@@ -174,6 +174,59 @@ type Master struct {
 	// for the console. The address is what is throttled; the ID is what an
 	// operator recognises.
 	claimedIDs map[netip.Addr]hbp.RepeaterID
+	// answeredUnregistered records when each repeater ID last had a frame
+	// answered with MSTNAK, so a stale peer is told once rather than once per
+	// 60 ms. See handleData and unregisteredFrameInterval.
+	answeredUnregistered map[hbp.RepeaterID]time.Time
+}
+
+// unregisteredFrameInterval is how long QSP waits before answering another
+// unregistered frame from the same repeater ID.
+//
+// **Long enough that one transmission produces one MSTNAK, short enough that a
+// peer which ignored the first still recovers quickly.** A transmission runs
+// for seconds and a frame arrives every 60 ms, so anything above a second or
+// two collapses a whole over into a single answer. Five seconds also sits
+// below the ten-second keepalive interval that used to be the only path back,
+// which is the point of the change.
+const unregisteredFrameInterval = 5 * time.Second
+
+// maxUnregisteredTracked bounds how many repeater IDs are remembered for that
+// suppression at once.
+//
+// A network this software is built for has tens of peers, not thousands, so
+// anything above a few hundred is forged traffic rather than stations. Pruning
+// only removes entries that have already expired, so the cap costs nothing an
+// operator would notice.
+const maxUnregisteredTracked = 256
+
+// shouldAnswerUnregistered reports whether this frame is the one to answer, and
+// records that it was.
+//
+// The caller holds the write lock: handleData is reached through Deliver, which
+// takes it. Reading and writing the map here rather than in two steps keeps the
+// decision and the record from drifting apart.
+func (m *Master) shouldAnswerUnregistered(id hbp.RepeaterID, now time.Time) bool {
+	if m.answeredUnregistered == nil {
+		m.answeredUnregistered = make(map[hbp.RepeaterID]time.Time)
+	}
+	if last, ok := m.answeredUnregistered[id]; ok && now.Sub(last) < unregisteredFrameInterval {
+		return false
+	}
+	// **Bounded, because the key is a repeater ID from an unauthenticated
+	// datagram.** Anyone can send DMRD claiming any ID, so without this the
+	// map grows by one entry per forged ID for as long as the process runs.
+	// An entry older than the interval can no longer suppress anything, so
+	// dropping it changes no decision.
+	if len(m.answeredUnregistered) >= maxUnregisteredTracked {
+		for other, at := range m.answeredUnregistered {
+			if now.Sub(at) >= unregisteredFrameInterval {
+				delete(m.answeredUnregistered, other)
+			}
+		}
+	}
+	m.answeredUnregistered[id] = now
+	return true
 }
 
 // NewMaster constructs a Master.
@@ -510,6 +563,32 @@ func (m *Master) handlePing(msg hbp.Ping, from netip.AddrPort, now time.Time) Ou
 func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Outcome {
 	p, ok := m.peers[msg.RepeaterID]
 	if !ok {
+		// **Answered once, then dropped in silence until the peer has had
+		// time to act on it.**
+		//
+		// handlePing already answers an unregistered keepalive with MSTNAK so
+		// the peer logs in again, and explicitly declined to do the same for
+		// frames: a stale peer sends one every 60 ms, and answering each would
+		// put five hundred datagrams on the wire for one transmission. That
+		// reasoning is right about answering *each* and wrong about answering
+		// *at all*, and the difference cost a second of somebody's audio.
+		//
+		// Measured on 2026-09-06: QSP restarted at 23:27:10, a station keyed
+		// up at 23:29:21, and **eighteen consecutive frames were dropped in
+		// silence over 1.02 seconds** before the hotspot's own keepalive
+		// arrived 51 ms later and was answered. The window is bounded by the
+		// peer's keepalive interval, so every restart costs up to that much of
+		// whoever transmits first.
+		//
+		// One MSTNAK per peer per unregisteredFrameInterval keeps the fast
+		// recovery and drops the datagram count from five hundred to one. It
+		// is smaller than the frame that prompted it, so there is no
+		// amplification to argue about.
+		if m.shouldAnswerUnregistered(msg.RepeaterID, now) {
+			return m.reject(msg.RepeaterID, from,
+				fmt.Sprintf("frame from repeater ID %d at %s, which is not registered; "+
+					"answered with MSTNAK so it logs in again", msg.RepeaterID, from))
+		}
 		return dropped("frame from repeater ID %d at %s, which is not registered", msg.RepeaterID, from)
 	}
 	if !p.State.CanPassTraffic() {

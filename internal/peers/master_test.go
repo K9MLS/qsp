@@ -271,8 +271,9 @@ func TestHandshakeCannotBeSkipped(t *testing.T) {
 		"key without login":    {hbp.Key{RepeaterID: testID}, 0, ""},
 		"ping without login": {hbp.Ping{RepeaterID: testID}, 1,
 			"a keepalive from an unregistered peer is answered with MSTNAK so it logs in again"},
-		"data without login": {hbp.Data{RepeaterID: testID, SourceID: uint32(testID), TargetID: 3100}, 0,
-			"voice arrives every 60 ms; answering each would put hundreds of datagrams on the wire"},
+		"data without login": {hbp.Data{RepeaterID: testID, SourceID: uint32(testID), TargetID: 3100}, 1,
+			"the first frame of a stale transmission is answered with MSTNAK, once per five seconds, " +
+				"so a peer does not wait for its own keepalive to find out"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

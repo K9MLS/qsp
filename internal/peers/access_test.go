@@ -299,20 +299,89 @@ func TestAStalePeerIsToldToLogInAgain(t *testing.T) {
 	}
 }
 
-// TestStaleVoiceFramesAreNotAnswered is the measured half of the same
-// decision. Voice arrives at roughly one frame every 60 ms, so answering each
-// would put hundreds of datagrams on the wire for one transmission. The
-// keepalive is the peer's own liveness check and is enough.
-func TestStaleVoiceFramesAreNotAnswered(t *testing.T) {
+// TestAStaleTransmissionIsAnsweredOnce is the measured half of the same
+// decision, and it moved.
+//
+// It used to assert that stale voice frames were never answered at all,
+// because voice arrives every 60 ms and answering each would put hundreds of
+// datagrams on the wire. That is right about answering each and wrong about
+// answering at all, and **the difference was a second of somebody's audio**:
+// after the 23:27 restart on 2026-09-06 a station keyed up and eighteen
+// consecutive frames were dropped in silence over 1.02 seconds, until the
+// hotspot's own keepalive arrived and was answered.
+//
+// One answer per transmission gives the peer the same instruction the keepalive
+// would have, seconds earlier, for one datagram instead of hundreds.
+func TestAStaleTransmissionIsAnsweredOnce(t *testing.T) {
 	h := newHarness(t)
-	for seq := uint8(0); seq < 5; seq++ {
+
+	var answered int
+	for seq := uint8(0); seq < 20; seq++ {
 		out := h.send(voice(3121001, 0xEEEE, seq), addrA)
-		if len(out.Responses) != 0 {
-			t.Fatalf("a stale voice frame produced %d responses; only keepalives are answered",
-				len(out.Responses))
-		}
+		answered += len(out.Responses)
 		if out.Dropped == "" {
 			t.Error("a stale voice frame was discarded without an explanation")
 		}
+		if out.Data != nil {
+			t.Fatal("a frame was accepted from an unregistered station")
+		}
+		h.c.advance(60 * time.Millisecond)
+	}
+	if answered != 1 {
+		t.Errorf("twenty frames of one transmission produced %d answers, want 1", answered)
+	}
+	if h.m.Count() != 0 {
+		t.Error("answering a stale frame created a registration")
+	}
+}
+
+// TestAStaleTransmissionIsAnsweredAgainLater checks the other edge of the
+// suppression: a peer that ignored the first MSTNAK, or one that keys up again
+// much later, must not be met with permanent silence.
+func TestAStaleTransmissionIsAnsweredAgainLater(t *testing.T) {
+	h := newHarness(t)
+
+	if out := h.send(voice(3121001, 0xEEEE, 0), addrA); len(out.Responses) != 1 {
+		t.Fatalf("the first stale frame produced %d responses, want 1", len(out.Responses))
+	}
+	if out := h.send(voice(3121001, 0xEEEE, 1), addrA); len(out.Responses) != 0 {
+		t.Fatalf("the second frame was answered too; the suppression is not working")
+	}
+
+	h.c.advance(6 * time.Second)
+	if out := h.send(voice(3121001, 0xEEEE, 2), addrA); len(out.Responses) != 1 {
+		t.Errorf("a frame after the interval produced %d responses, want 1", len(out.Responses))
+	}
+}
+
+// TestOneStaleStationDoesNotSilenceAnother checks the suppression is per
+// repeater ID rather than global. Two hotspots come back from a restart at the
+// same moment, and each needs telling.
+//
+// The frames are built here rather than with voice(), which hardcodes
+// RepeaterID and takes a *source radio* as its argument. Writing this test
+// against what that helper looked like it did produced a failure that blamed
+// the code — the same mistake as reading a constant off a hex dump by eye, one
+// layer up.
+func TestOneStaleStationDoesNotSilenceAnother(t *testing.T) {
+	h := newHarness(t)
+
+	stale := func(repeater hbp.RepeaterID) hbp.Data {
+		return hbp.Data{
+			RepeaterID: repeater,
+			SourceID:   uint32(repeater),
+			TargetID:   9,
+			Timeslot:   hbp.Timeslot2,
+			CallType:   hbp.CallGroup,
+			FrameType:  hbp.FrameTypeVoice,
+			StreamID:   hbp.StreamID(repeater),
+		}
+	}
+
+	if out := h.send(stale(3121001), addrA); len(out.Responses) != 1 {
+		t.Fatalf("the first station produced %d responses, want 1", len(out.Responses))
+	}
+	if out := h.send(stale(3121002), addrB); len(out.Responses) != 1 {
+		t.Errorf("a second station was silenced by the first station's answer")
 	}
 }
