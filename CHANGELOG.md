@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **The peers table's three-sentence caption is behind a hint button.** It was
+  true, and it sat above the table permanently, costing a line of the panel on
+  every load to say something an operator needs once.
+
+  `hints.js` is the console's existing answer: a button beside the heading that
+  reveals a paragraph in the flow. Its own header explains why it is not a
+  floating tooltip — positioning against a measured box cost this project most
+  of a day, hover does not exist on a touch screen, and the content security
+  policy forbids the inline styles a positioned tooltip needs.
+
+  The caption stays, because a table without one is announced by a screen
+  reader as nothing in particular, and the address line is kept only when it
+  says something: telling a signed-in administrator that addresses are for
+  signed-in administrators is noise, while telling a signed-out one why the
+  column is missing answers their question.
+
+  The hint also now explains that colour code and talkgroups are learned from
+  traffic, so "not heard yet" reads as a peer working rather than failing.
+
+### Fixed
+
+- **`index.html` did not load `hints.js`.** The new button would have rendered
+  correctly, because the stylesheet is shared, and done nothing at all — which
+  that file's own header calls "worse than no buttons at all".
+
+  Fourteenth instance of something built, styled and never wired.
+  `TestEveryHintButtonIsWiredAndSaysSomething` now checks every page for a hint
+  button whose script is absent or whose disclosure does not exist, and
+  `TestHintsAreReachableWithoutAMouse` checks each is a real `<button>` with a
+  label and a type — the two properties `hints.js` chose a button for.
+
 ### Fixed
 
 - **A text from a repeater left no trace: no journal line, no counter, no

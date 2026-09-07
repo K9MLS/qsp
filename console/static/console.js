@@ -273,10 +273,23 @@
 
     peersBody.innerHTML =
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Connected peers, scrollable"><table class="table">' +
-      "<caption>Peers currently registered with this master. " +
-      "A Motorola repeater announces no callsign or location, so a callsign " +
-      "here was written down by an administrator and a dash means nothing was " +
-      "sent. Addresses are shown to a signed-in administrator only.</caption>" +
+      /* **Three sentences of explanation moved to the hint beside the
+       * heading.** They were true and they sat above the table permanently,
+       * costing a line of the panel on every load to say something an operator
+       * needs once. hints.js is the console's existing answer to that: a
+       * button that reveals a paragraph in the flow, chosen over a floating
+       * tooltip because hover does not exist on a touch screen and is not
+       * reachable from a keyboard.
+       *
+       * A caption is kept because a table without one is a table a screen
+       * reader announces as nothing in particular, and the sign-in line is
+       * kept only when it says something — telling a signed-in administrator
+       * that addresses are for signed-in administrators is noise, and telling
+       * a signed-out one why the column is missing is the answer to their
+       * question. */
+      "<caption>Peers currently registered with this master." +
+      (anyAddress ? "" : " Sign in to see peer addresses.") +
+      "</caption>" +
       "<thead><tr>" +
       "<th scope=\"col\">Callsign</th><th scope=\"col\">Radio ID</th>" +
       "<th scope=\"col\">Link</th>" +
