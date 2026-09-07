@@ -1663,6 +1663,17 @@ label.picker__label {
 
 /* Wrapping a configuration file would put a rule on two lines and invite a
    member to paste it as two, so this scrolls instead. */
+/* A label with its copy button on the same line, above the block it copies.
+   These blocks hold three hundred characters of base64, and the first operator
+   to use the peering page had to drag-select a scrolling one-line box and hope
+   they caught both ends. */
+.copyable {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  justify-content: space-between;
+}
+
 .config {
   overflow-x: auto;
   margin: 0 0 var(--space-3);

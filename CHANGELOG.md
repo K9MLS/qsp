@@ -6,6 +6,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A peering could be offered and never completed.** The side that offers
+  generates the passphrase and already has it; a reciprocal invitation carries
+  that secret's *fingerprint* rather than a new secret, exactly as
+  `peering.Reciprocal` describes. So the administrator pasting a reciprocal back
+  had nothing to type — and the form demanded it anyway, ending with
+  `a passphrase must be at least 24 characters` printed under an empty box that
+  could not be filled, on the second of two steps, after everything else had
+  worked.
+
+  The offering instance now holds its own passphrase, keyed by fingerprint,
+  until the reciprocal arrives. In memory only, bounded, and forgotten on use:
+  the secret lives in its passphrase file from that point and a second copy is
+  one nobody asked for. An invitation this instance did not offer still asks.
+
+- **No copy button on any of the token blocks.** They hold three hundred
+  characters of base64 in a scrolling one-line box, there are three of them in
+  one workflow, and copying one meant dragging across it and hoping both ends
+  came too.
+
+  The fallback matters as much as the button: `navigator.clipboard` needs a
+  secure context and a console reached over plain HTTP on a LAN is not one, so
+  selecting the whole block is the path most operators will take.
+
+### Fixed
+
 - **Nobody could offer a peering from the console.** `peering.Invitation`
   requires a callsign so the far end knows who is asking, and **the offer form
   had no callsign box at all.** The refusal named the missing field and the page

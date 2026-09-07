@@ -90,3 +90,33 @@ func max(a, b int) int {
 	}
 	return b
 }
+
+// TestEveryTokenBlockHasACopyButton is the complaint an operator made on first
+// use, and it was a fair one.
+//
+// These blocks hold three hundred characters of base64 in a scrolling one-line
+// box. Copying one meant dragging across it and hoping both ends came with it,
+// and there are three of them in one workflow.
+func TestEveryTokenBlockHasACopyButton(t *testing.T) {
+	html := readFile(t, "static/links.html")
+
+	for _, id := range []string{"offer-token", "offer-pass", "accept-reciprocal"} {
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Fatalf("the page has no %s block at all", id)
+		}
+		if !strings.Contains(html, `data-copy="`+id+`"`) {
+			t.Errorf("%s holds a long token and has no copy button", id)
+		}
+	}
+
+	js := stripComments(readFile(t, "static/links.js"))
+	if !strings.Contains(js, "data-copy") {
+		t.Error("the copy buttons are in the markup and nothing wires them up")
+	}
+	// **The fallback is not decoration.** navigator.clipboard needs a secure
+	// context, and a console reached over plain HTTP on a LAN is not one, so
+	// selection is the path most operators will actually take.
+	if !strings.Contains(js, "isSecureContext") || !strings.Contains(js, "selectNodeContents") {
+		t.Error("copying has no fallback for a console served over plain HTTP")
+	}
+}

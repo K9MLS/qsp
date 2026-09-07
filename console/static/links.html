@@ -153,9 +153,17 @@
           </div>
           <button class="button" id="offer" type="button">Generate an invitation</button>
           <div id="offer-result" hidden>
-            <p class="picker__label">Invitation &mdash; send this by email</p>
+            <div class="copyable">
+              <p class="picker__label">Invitation &mdash; send this by email</p>
+              <button class="button button--quiet" type="button"
+                      data-copy="offer-token">Copy</button>
+            </div>
             <pre class="config" id="offer-token"></pre>
-            <p class="picker__label">Passphrase &mdash; send this another way</p>
+            <div class="copyable">
+              <p class="picker__label">Passphrase &mdash; send this another way</p>
+              <button class="button button--quiet" type="button"
+                      data-copy="offer-pass">Copy</button>
+            </div>
             <pre class="config" id="offer-pass"></pre>
             <p class="link__advice">This passphrase is shown once and is not
               stored anywhere you can read it back. Send it over something you
@@ -215,15 +223,23 @@
                     placeholder="QSP-PEER-1.…"></textarea>
           <label class="picker__label" for="accept-pass">Passphrase</label>
           <input class="picker__input picker__input--wide" id="accept-pass" type="password"
-                 placeholder="sent to you separately">
+                 placeholder="sent to you separately — leave empty for a reply to your own offer">
           <button class="button" id="accept" type="button">Read this invitation</button>
           <div id="accept-confirm" hidden>
             <p class="link__summary" id="accept-summary"></p>
             <button class="button button--primary" id="accept-go" type="button">Agree to this peering</button>
           </div>
           <div id="accept-result" hidden>
-            <p class="picker__label">Send this back to them</p>
+            <div class="copyable">
+              <p class="picker__label">Send this back to them</p>
+              <button class="button button--quiet" type="button"
+                      data-copy="accept-reciprocal">Copy</button>
+            </div>
             <pre class="config" id="accept-reciprocal"></pre>
+            <p class="link__advice">They paste this into their own
+              <strong>Accept a peering</strong> box. <strong>They do not need
+              the passphrase again</strong> — it is the one they sent you, and
+              their server still has it.</p>
           </div>
           <p class="link__advice" id="accept-error" hidden></p>
         </div>

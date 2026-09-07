@@ -170,6 +170,44 @@
     });
   }
 
+  /* **Copy buttons, because these are three hundred characters of base64.**
+   * The first operator to use this page had to select a token by dragging
+   * across a scrolling one-line box and hope they got the ends. Selecting the
+   * whole node is what a person means by "copy this".
+   *
+   * navigator.clipboard needs a secure context, and a console reached over
+   * plain HTTP on a LAN is not one — so the selection fallback is not
+   * decoration, it is the path most operators will take. */
+  function copyText(node, button) {
+    var text = node.textContent || "";
+    function done() {
+      var was = button.textContent;
+      button.textContent = "Copied";
+      setTimeout(function () { button.textContent = was; }, 1500);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { select(node); });
+      return;
+    }
+    select(node);
+    try { if (document.execCommand("copy")) { done(); } } catch (e) { /* selected, at least */ }
+  }
+
+  function select(node) {
+    var range = document.createRange();
+    range.selectNodeContents(node);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-copy]"), function (button) {
+    button.addEventListener("click", function () {
+      var node = el(button.getAttribute("data-copy"));
+      if (node) { copyText(node, button); }
+    });
+  });
+
   var offerButton = el("offer");
   if (offerButton) {
     offerButton.addEventListener("click", function () {

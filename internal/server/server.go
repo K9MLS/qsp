@@ -107,9 +107,13 @@ type Server struct {
 	opts   Options
 	log    *slog.Logger
 	health Registry
-	bus    *events.Bus
-	http   *http.Server
-	ln     net.Listener
+	// offered holds passphrases this instance has offered and not yet seen
+	// come back, so a reciprocal invitation needs no secret typed. See
+	// offered.go.
+	offered offeredPassphrases
+	bus     *events.Bus
+	http    *http.Server
+	ln      net.Listener
 
 	// baseCtx is the parent of every request context, and cancelling it is how
 	// Shutdown reaches long-lived handlers.

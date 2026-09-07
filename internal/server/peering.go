@@ -165,6 +165,10 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Held so that the reciprocal can be accepted without asking for a secret
+	// this instance generated itself. See handleAcceptPeering.
+	s.offered.put(peering.FingerprintOf(passphrase), passphrase)
+
 	inv := peering.Invitation{
 		Network:   cfg.DMR.Join.NetworkName,
 		Callsign:  callsign,
@@ -223,7 +227,26 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	if err := inv.Accept(req.Passphrase, time.Now().UTC()); err != nil {
+
+	// **The side that offered already has the passphrase; it generated it.**
+	//
+	// A reciprocal carries the agreed secret's fingerprint rather than a new
+	// secret — Reciprocal says so — so when the offering administrator pastes
+	// one back there is nothing for them to type, and the form demanded it
+	// anyway. The peering stopped there with "a passphrase must be at least 24
+	// characters" beneath an empty box nobody could fill.
+	//
+	// Looked up by fingerprint from the offers this instance has outstanding.
+	// An offer that this instance did not make has none, and the operator is
+	// asked for the passphrase as before.
+	passphrase := req.Passphrase
+	if strings.TrimSpace(passphrase) == "" && inv.Fingerprint != "" {
+		if held, ok := s.offered.take(inv.Fingerprint); ok {
+			passphrase = held
+		}
+	}
+
+	if err := inv.Accept(passphrase, time.Now().UTC()); err != nil {
 		// Recorded even though nothing was written. An administrator who could
 		// not accept a peering is a fact worth having later, and the absence of
 		// a record would make it look as though nobody tried.
@@ -253,7 +276,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	// **The passphrase is written to a file rather than into the
 	// configuration.** Configuration is versioned, kept in a database, and
 	// shown in a console; a secret in it is a secret in all three.
-	path, err := s.writePassphrase(cfg, name, req.Passphrase)
+	path, err := s.writePassphrase(cfg, name, passphrase)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
