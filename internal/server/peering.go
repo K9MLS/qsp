@@ -45,6 +45,19 @@ type offerRequest struct {
 	// the instance that has never peered with anything, which is every
 	// instance the first time.
 	NetworkID uint32 `json:"network_id"`
+	// Callsign is who is asking, and it is required.
+	//
+	// **The same defect, from the other end, and it survived the first fix.**
+	// linkCallsign was taught to read dmr.identity before the links — but
+	// config.Default() leaves identity empty and nothing in QSP has ever asked
+	// an operator to fill it in, so the callsign was still absent on a fresh
+	// instance. The invitation was refused naming a field the page did not
+	// have, and the error then told the operator to check the network ID and
+	// the address, which were both already correct.
+	//
+	// Supplied here, saved as the instance's identity, and filled in from
+	// there next time. See handleOfferPeering.
+	Callsign string `json:"callsign"`
 }
 
 // offerResponse carries the two halves that travel by different routes.
@@ -126,9 +139,35 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 		networkID = firstNetworkID(cfg)
 	}
 
+	// The typed callsign wins, and is remembered. An instance that has one
+	// configured does not need it typed again, which is why the field arrives
+	// pre-filled.
+	callsign := strings.ToUpper(strings.TrimSpace(req.Callsign))
+	if callsign == "" {
+		callsign = linkCallsign(cfg)
+	}
+	if callsign != "" && !strings.EqualFold(callsign, cfg.DMR.Identity.Callsign) {
+		// **Not fatal if it cannot be written.** An invitation the operator can
+		// send is worth more than a saved preference, and the identity can be
+		// set in Administration afterwards. Failing the offer because the
+		// convenience failed would be the defect this whole change removes.
+		saved := cfg
+		saved.DMR.Identity.Callsign = callsign
+		author := "unknown"
+		if sess, ok := SessionFrom(r.Context()); ok {
+			author = sess.Username
+		}
+		if _, err := s.opts.Config.Save(r.Context(), saved,
+			author, "instance callsign, set while offering a peering"); err != nil {
+			s.log.Warn("could not save the instance callsign", "error", err)
+		} else {
+			cfg = saved
+		}
+	}
+
 	inv := peering.Invitation{
 		Network:   cfg.DMR.Join.NetworkName,
-		Callsign:  linkCallsign(cfg),
+		Callsign:  callsign,
 		Address:   address,
 		NetworkID: networkID,
 		Export: []peering.Talkgroup{

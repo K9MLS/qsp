@@ -111,6 +111,16 @@ var (
 	ErrNoCallsign  = errors.New("peering: an invitation needs a callsign, so the other operator " +
 		"knows who is asking")
 	ErrNoNetworkID = errors.New("peering: an invitation needs a network ID")
+	// ErrSchemeInAddress is the mistake an operator makes because every other
+	// address they type all day has a scheme on the front.
+	//
+	// **The form accepted "https://qsp.hopto.me:62045" without a word.** A
+	// peering is carried over UDP to a host and a port; there is no URL, no
+	// TLS and nothing to speak HTTP to. Left alone it produces a link that
+	// resolves nothing and a far end that waits in silence, which is the
+	// hardest kind of fault to find.
+	ErrSchemeInAddress = errors.New("peering: an address is a host and a UDP port, " +
+		"like qsp.example.com:62045 — remove the http:// or https:// from the front")
 )
 
 // NewPassphrase returns a fresh passphrase.
@@ -204,6 +214,8 @@ func (inv Invitation) Validate() error {
 	switch {
 	case strings.TrimSpace(inv.Address) == "":
 		return ErrNoAddress
+	case strings.Contains(inv.Address, "://"):
+		return ErrSchemeInAddress
 	case strings.TrimSpace(inv.Callsign) == "":
 		return ErrNoCallsign
 	case inv.NetworkID == 0:

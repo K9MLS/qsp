@@ -2580,6 +2580,21 @@ because they were wrong consistently.
 
 ---
 
+### Check whether it exists before designing it
+
+**Five things in one day were designed from scratch and found to be already
+built**: `/api/peers` address redaction, IPSC `CallViews` returning nil, the
+console's `data` pill, the hint disclosure button, and the whole Links page with
+its offer-and-accept peering flow.
+
+Every one was a single grep away, and the cost was not only wasted work — twice
+the near-miss was shipping a *second* way to say the same thing, which is how a
+codebase stops having one answer to anything.
+
+The rule below is about open items. This is the wider one: **before writing a
+design, grep for the thing.** It takes ten seconds and it has been wrong five
+times out of five.
+
 ### Verify an open item before working it
 
 **Three items on §8k's list turned out already done, in one afternoon.**

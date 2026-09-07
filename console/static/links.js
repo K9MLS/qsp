@@ -116,6 +116,7 @@
         hide(loading);
         hide(signedOut);
         render(body.links || []);
+        fillOffer(body.identity);
         show(form);
       })
       .catch(function () {
@@ -152,6 +153,23 @@
     });
   }
 
+  /* **Fill the offer form in from what the instance already knows.**
+   * Everything here was a box an operator had to fill from knowledge the
+   * server had all along, and getting any of them wrong produced an error
+   * naming a different field. A value already present is not typed again. */
+  function fillOffer(identity) {
+    if (!identity) return;
+    var pairs = [
+      ["offer-callsign", identity.callsign],
+      ["offer-netid", identity.network_id],
+      ["offer-address", identity.address]
+    ];
+    pairs.forEach(function (p) {
+      var node = el(p[0]);
+      if (node && !node.value && p[1]) node.value = p[1];
+    });
+  }
+
   var offerButton = el("offer");
   if (offerButton) {
     offerButton.addEventListener("click", function () {
@@ -161,7 +179,15 @@
         talkgroup: num("offer-tg"),
         timeslot: num("offer-slot"),
         address: val("offer-address"),
-        network_id: num("offer-netid")
+        network_id: num("offer-netid"),
+        /* **The invitation was refused for a field the page never had.**
+         * peering.Invitation requires a callsign so the far end knows who is
+         * asking, and it was read only from dmr.identity — which
+         * config.Default() leaves empty and nothing ever asked for. So every
+         * instance failed its first peering with an error naming a box that
+         * did not exist, and then told the operator to check two fields that
+         * were already correct. */
+        callsign: val("offer-callsign")
       }).then(function (b) {
         text(el("offer-token"), b.token);
         /* Shown once and never fetched again. It is not stored anywhere the

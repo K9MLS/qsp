@@ -68,6 +68,26 @@ type linksResponse struct {
 	Reason string `json:"reason,omitempty"`
 	// GeneratedAt is when this was read.
 	GeneratedAt time.Time `json:"generated_at"`
+	// Identity is what this instance announces on a link, so the offer form
+	// can fill itself in.
+	//
+	// **An operator should type a callsign once.** Before this the offer form
+	// had no callsign box at all, the invitation was refused for wanting one,
+	// and the error named two other fields that were already correct.
+	Identity linkIdentity `json:"identity"`
+}
+
+// linkIdentity is who this instance is, for the offer form.
+type linkIdentity struct {
+	// Callsign identifies this network to the other administrator.
+	Callsign string `json:"callsign,omitempty"`
+	// NetworkID is what this instance announces, taken from an existing link
+	// when there is one. Empty on an instance that has never peered, which is
+	// every instance the first time.
+	NetworkID uint32 `json:"network_id,omitempty"`
+	// Address is a guess at where the far end should send, and is said to be a
+	// guess on the page: an instance behind NAT announces one nobody can reach.
+	Address string `json:"address,omitempty"`
 }
 
 // handleLinks reports the links to other networks.
@@ -88,6 +108,14 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 	body.Links = s.opts.Links.LinkStatuses()
 	if body.Links == nil {
 		body.Links = []LinkStatus{}
+	}
+	if s.opts.Config != nil {
+		cfg := s.opts.Config.Current()
+		body.Identity = linkIdentity{
+			Callsign:  linkCallsign(cfg),
+			NetworkID: firstNetworkID(cfg),
+			Address:   defaultLinkAddress(cfg),
+		}
 	}
 	writeJSON(w, s.log, http.StatusOK, body)
 }

@@ -4,6 +4,40 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nobody could offer a peering from the console.** `peering.Invitation`
+  requires a callsign so the far end knows who is asking, and **the offer form
+  had no callsign box at all.** The refusal named the missing field and the page
+  then appended advice to check the network ID and the address, which were both
+  already correct — so an operator got an error about something they could not
+  enter, followed by instructions about two things that were not wrong.
+
+  The callsign was read from `dmr.identity`, which `config.Default()` leaves
+  empty and which nothing in QSP has ever asked anybody to fill in. `linkCallsign`
+  was taught to prefer the instance identity over the links precisely because
+  "an instance with no links has none" — fixed from one end while the other end
+  still had no way to supply it.
+
+  There is a callsign box now. It is saved as the instance's identity when the
+  offer is made, and `/api/links` returns the identity so the form fills itself
+  in — every box on it asked for something the server already knew.
+
+- **The address field accepted `https://qsp.hopto.me:62045` without a word.** A
+  peering is UDP to a host and a port: no URL, no TLS, nothing to speak HTTP to.
+  Left alone it produces a link that resolves nothing and a far end waiting in
+  silence, which is the hardest kind of fault to find. It is refused now with a
+  message naming the correct shape.
+
+### Notes
+
+- **The Links page already existed and I proposed building it.** This is the
+  fifth thing today found to be already present after being designed from
+  scratch — after `/api/peers` redaction, IPSC `CallViews`, the console's `data`
+  pill and the hint button. Every one was one grep away. §8a's rule about
+  verifying an open item before working it needs the wider version: **check
+  whether the thing exists before designing it.**
+
 ### Documentation
 
 - **[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md)**: the first

@@ -143,6 +143,13 @@
               <p class="field__note">The ID this network announces on the link.
                 Your own DMR ID is the usual choice.</p>
             </label>
+            <label class="picker__field">
+              <span class="picker__label">Our callsign</span>
+              <input class="picker__input" id="offer-callsign" type="text"
+                     autocapitalize="characters" placeholder="K9MLS">
+              <p class="field__note">So the other operator knows who is asking.
+                Saved as this instance's identity, and filled in next time.</p>
+            </label>
           </div>
           <button class="button" id="offer" type="button">Generate an invitation</button>
           <div id="offer-result" hidden>

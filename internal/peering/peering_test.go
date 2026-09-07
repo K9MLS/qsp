@@ -248,3 +248,37 @@ func TestSomethingElseEntirelyIsNotMistakenForAnInvitation(t *testing.T) {
 		t.Errorf("a newer format gave %v, which does not tell an operator to upgrade", err)
 	}
 }
+
+// TestASchemeInTheAddressIsRefused is the mistake an operator makes because
+// every other address they type all day has one on the front.
+//
+// The form accepted "https://qsp.hopto.me:62045" without a word. A peering is
+// UDP to a host and a port — there is no URL, no TLS, nothing to speak HTTP to.
+// Left alone it produces a link that resolves nothing and a far end waiting in
+// silence, which is the hardest kind of fault to find.
+func TestASchemeInTheAddressIsRefused(t *testing.T) {
+	for _, address := range []string{
+		"https://qsp.example.com:62045",
+		"http://qsp.example.com:62045",
+		"udp://qsp.example.com:62045",
+	} {
+		inv := Invitation{
+			Address:   address,
+			Callsign:  "K9MLS",
+			NetworkID: 3132910,
+		}
+		if err := inv.Validate(); !errors.Is(err, ErrSchemeInAddress) {
+			t.Errorf("%q was accepted (%v); it is not a host and a port", address, err)
+		}
+	}
+
+	// And the shape that is correct still passes.
+	ok := Invitation{
+		Address:   "qsp.example.com:62045",
+		Callsign:  "K9MLS",
+		NetworkID: 3132910,
+	}
+	if err := ok.Validate(); err != nil {
+		t.Errorf("a valid invitation was refused: %v", err)
+	}
+}
