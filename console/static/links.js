@@ -73,6 +73,16 @@
         '<div class="link__head">' +
         '<span class="link__name">' + escapeText(l.name) + "</span>" +
         '<span class="pill pill--' + st.kind + '">' + st.label + "</span>" +
+        /* **A page that creates a link has to remove one.** Accepting a
+         * peering writes an upstream, a bridge and a passphrase file, and
+         * until now nothing could undo any of it: an operator whose first
+         * attempt went wrong was left with a broken link on this page for
+         * good, unless they edited JSON on the server.
+         *
+         * Two clicks, because removing a link takes a network down and a
+         * single button beside a status row is one slip away from doing it. */
+        '<button class="button button--quiet link__remove" type="button" ' +
+        'data-remove="' + escapeText(l.name) + '">Remove</button>' +
         "</div>" +
         '<dl class="link__facts">' +
         fact("Far end", l.far_end || "not configured") +
@@ -93,6 +103,52 @@
         "</div>";
     }
     list.innerHTML = html;
+
+    Array.prototype.forEach.call(list.querySelectorAll("[data-remove]"), function (button) {
+      button.addEventListener("click", function () {
+        var name = button.getAttribute("data-remove");
+        if (button.dataset.armed !== "yes") {
+          button.dataset.armed = "yes";
+          button.textContent = "Remove " + name + "?";
+          button.classList.add("button--danger");
+          /* Disarms itself. A button left in a confirming state is one an
+           * operator meets later having forgotten what it was asking. */
+          setTimeout(function () {
+            button.dataset.armed = "no";
+            button.textContent = "Remove";
+            button.classList.remove("button--danger");
+          }, 5000);
+          return;
+        }
+        button.disabled = true;
+        button.textContent = "Removing";
+        fetch("/api/links/" + encodeURIComponent(name), {
+          method: "DELETE",
+          headers: { Accept: "application/json" },
+          credentials: "same-origin"
+        }).then(function (r) {
+          return r.json().then(function (b) {
+            if (!r.ok) { throw new Error(b.error || "could not remove the link"); }
+            return b;
+          });
+        }).then(function (b) {
+          if (b.orphaned_bridges && b.orphaned_bridges.length) {
+            /* Bridges an operator wrote themselves are left alone even when
+             * they route to the upstream being removed. Silently deleting
+             * somebody's hand-written configuration because it referred to
+             * something else is a surprise nobody asked for — so they are
+             * named instead. */
+            fail("links-note", "Removed " + name + ". These bridges still route to it and were left alone: " +
+              b.orphaned_bridges.join(", "));
+          }
+          load();
+        }).catch(function (e) {
+          button.disabled = false;
+          button.textContent = "Remove";
+          fail("links-note", e.message);
+        });
+      });
+    });
   }
 
   function fact(label, value) {

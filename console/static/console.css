@@ -1667,6 +1667,23 @@ label.picker__label {
    These blocks hold three hundred characters of base64, and the first operator
    to use the peering page had to drag-select a scrolling one-line box and hope
    they caught both ends. */
+/* Removing a link takes a network down, so the control sits with the link it
+   removes rather than in a menu, and arms itself before it acts. */
+.link__remove {
+  margin-left: auto;
+}
+
+/* The armed state of a destructive control. It disarms itself after a few
+   seconds: a button left asking a question is one an operator meets later
+   having forgotten what it asked.
+
+   --color-destructive was already defined and unused here; a --color-danger
+   invented for this would have been a second name for one idea. */
+.button--danger {
+  border-color: var(--color-destructive);
+  color: var(--color-destructive);
+}
+
 .copyable {
   display: flex;
   gap: var(--space-3);

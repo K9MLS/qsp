@@ -227,7 +227,19 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
-Neither endpoint verifies that a callsign belongs to whoever sent the
+`/api/links/{name}`, on DELETE, removes a link, the bridge that was created
+with it, and its passphrase file. **The file is deleted after the configuration is
+saved, never before**: a passphrase removed from under a link that is still
+configured leaves an instance that cannot authenticate and cannot say why,
+while a file left behind under a link that is gone is untidy and harmless.
+
+It removes only what accepting a peering created — the upstream, the bridge
+named for it, and the passphrase. A bridge an operator wrote themselves is left
+alone even when it routes to that upstream, and named in the response, because
+deleting somebody's hand-written configuration as a side effect is a surprise
+nobody asked for. It records an audit event either way.
+
+Neither offer nor accept verifies that a callsign belongs to whoever sent the
 invitation. That is a claim, checkable against RadioID.net by a person. An
 operator agreeing to peer has already decided who they are dealing with.
 

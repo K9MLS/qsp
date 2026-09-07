@@ -120,3 +120,46 @@ func TestEveryTokenBlockHasACopyButton(t *testing.T) {
 		t.Error("copying has no fallback for a console served over plain HTTP")
 	}
 }
+
+// TestALinkCanBeRemovedFromThePage is the rule the whole page broke.
+//
+// **Anything a page creates, it must be able to remove.** Accepting a peering
+// wrote an upstream, a bridge and a passphrase file, and there was no button,
+// no endpoint and no way back — an operator whose first attempt went wrong was
+// left with a broken link on the page unless they edited JSON on the server,
+// which is precisely what this page exists to avoid.
+func TestALinkCanBeRemovedFromThePage(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "data-remove") {
+		t.Fatal("a link cannot be removed from the page")
+	}
+	if !strings.Contains(js, `method: "DELETE"`) {
+		t.Error("the remove button does not call the API")
+	}
+	// **Two clicks.** Removing a link takes a network down, and a single
+	// button beside a status row is one slip away from doing it.
+	if !strings.Contains(js, "armed") {
+		t.Error("the remove button acts on one click")
+	}
+	// And it disarms itself: a button left asking a question is one an
+	// operator meets later having forgotten what it asked.
+	if !strings.Contains(js, "setTimeout") {
+		t.Error("the armed state never expires")
+	}
+}
+
+// TestTheDestructiveStyleReusesItsToken checks the page did not invent a second
+// name for an idea the stylesheet already had.
+func TestTheDestructiveStyleReusesItsToken(t *testing.T) {
+	// **Comments stripped**, because the first version of this failed on the
+	// comment explaining why the token was not invented. Third test today to
+	// read prose instead of code.
+	css := stripComments(readFile(t, "static/console.css"))
+	if !strings.Contains(css, "var(--color-destructive)") {
+		t.Error("the remove button does not use the existing destructive colour")
+	}
+	if strings.Contains(css, "--color-danger") {
+		t.Error("a second token was invented for the colour --color-destructive already names")
+	}
+}

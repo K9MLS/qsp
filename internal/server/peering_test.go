@@ -2,8 +2,12 @@ package server
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/peering"
 )
 
@@ -105,4 +109,84 @@ func TestTheExchangeEnds(t *testing.T) {
 	if _, again := held.take(fingerprint); again {
 		t.Error("the exchange could be closed twice from one offer")
 	}
+}
+
+// TestALinkCanBeRemoved is the gap an operator found by using the page.
+//
+// **Accepting a peering wrote an upstream, a bridge and a passphrase file, and
+// nothing could undo any of it.** An operator whose first attempt went wrong —
+// and the first attempt went wrong, because the exchange could not terminate —
+// was left with a broken link on the page for good, unless they edited JSON on
+// the server. Which is the thing this page exists to avoid.
+func TestALinkCanBeRemoved(t *testing.T) {
+	dir := t.TempDir()
+	pass := filepath.Join(dir, "test.pass")
+	if err := os.WriteFile(pass, []byte("a-secret"), 0o600); err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	cfg := config.Config{}
+	cfg.DMR.Upstreams = []config.Upstream{
+		{Name: "test", PassphraseFile: pass},
+		{Name: "keep"},
+	}
+	cfg.DMR.Bridges = []config.Bridge{
+		{Name: "test-link", Endpoints: []config.Endpoint{{Upstream: "test"}}},
+		{Name: "mine", Endpoints: []config.Endpoint{{Upstream: "test"}}},
+		{Name: "unrelated"},
+	}
+
+	// The three things accept created, and only those.
+	after, orphaned := removeLinkFrom(cfg, "test")
+
+	if len(after.DMR.Upstreams) != 1 || after.DMR.Upstreams[0].Name != "keep" {
+		t.Errorf("upstreams after removal: %+v", after.DMR.Upstreams)
+	}
+	for _, b := range after.DMR.Bridges {
+		if b.Name == "test-link" {
+			t.Error("the bridge accept created was left behind")
+		}
+	}
+	// **A bridge an operator wrote is left alone**, even though it routes to
+	// the upstream being removed. Deleting somebody's hand-written
+	// configuration because it referred to something else is a surprise nobody
+	// asked for; it is named instead.
+	var kept []string
+	for _, b := range after.DMR.Bridges {
+		kept = append(kept, b.Name)
+	}
+	if len(kept) != 2 {
+		t.Errorf("bridges after removal: %v", kept)
+	}
+	if len(orphaned) != 1 || orphaned[0] != "mine" {
+		t.Errorf("orphaned bridges reported as %v, want [mine]", orphaned)
+	}
+}
+
+// removeLinkFrom is the decision handleRemoveLink makes, without the HTTP.
+func removeLinkFrom(cfg config.Config, name string) (config.Config, []string) {
+	kept := make([]config.Upstream, 0, len(cfg.DMR.Upstreams))
+	var removed string
+	for _, u := range cfg.DMR.Upstreams {
+		if strings.EqualFold(u.Name, name) {
+			removed = u.Name
+			continue
+		}
+		kept = append(kept, u)
+	}
+	cfg.DMR.Upstreams = kept
+
+	var orphaned []string
+	bridges := make([]config.Bridge, 0, len(cfg.DMR.Bridges))
+	for _, b := range cfg.DMR.Bridges {
+		if strings.EqualFold(b.Name, removed+"-link") {
+			continue
+		}
+		if bridgeMentions(b, removed) {
+			orphaned = append(orphaned, b.Name)
+		}
+		bridges = append(bridges, b)
+	}
+	cfg.DMR.Bridges = bridges
+	return cfg, orphaned
 }

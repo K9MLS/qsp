@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A link can be removed.** Accepting a peering wrote an upstream, a bridge and
+  a passphrase file, and **nothing in the API or the console could undo any of
+  it** — an operator whose first attempt went wrong was left with a broken link
+  on the page for good, unless they edited JSON on the server. Which is exactly
+  what that page exists to avoid.
+
+  `DELETE /api/links/{name}` and a Remove button on each link. It takes two
+  clicks, because removing a link takes a network down and a single button
+  beside a status row is one slip away from doing it, and the armed state
+  expires after five seconds.
+
+  It removes only what accepting created: the upstream, the bridge named for it,
+  and the passphrase file — **deleted after the configuration is saved, never
+  before**, because a passphrase removed from under a link that is still
+  configured leaves an instance that cannot authenticate and cannot say why. A
+  bridge an operator wrote themselves is left alone even when it routes to that
+  upstream, and named in the response rather than deleted as a side effect.
+
+### Notes
+
+- **The rule this broke: anything a page creates, it must be able to remove.**
+  Nothing checked it, on any page, and the Links page had been shipped without
+  it. `TestALinkCanBeRemovedFromThePage` checks this one.
+
+- A third test today read prose instead of code — it searched the stylesheet
+  for a token name and failed on the comment explaining why that token was
+  *not* invented. Comments are stripped now.
+
 ### Fixed
 
 - **A peering could never be completed: accepting a reply produced another
