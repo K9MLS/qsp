@@ -228,10 +228,17 @@ migrated, both sockets bound and `/healthz` reported healthy.
    call record would have been discarded on the next rebuild, silently, weeks
    later.** The bootstrap now writes an absolute path beside the configuration.
 
-2. **The example taught an ID that cannot connect.** `.env.example` shipped
-   `QSP_ALLOWED_PEERS=3132910`, an operator ID; a hotspot registers with that
-   plus a two-digit suffix, `313291001`. QSP's own startup advisory warned about
-   the exact value the example told the operator to enter.
+2. **The example was correct and was broken by "fixing" it.** QSP prints an
+   advisory at startup about seven-digit IDs, because the registry issues those
+   to operators and some hotspots append a two-digit suffix. That advisory —
+   a `WARN`, not an error — was read as ground truth and the example changed to
+   `313291001`, which **overflows the 24-bit subscriber field and made the
+   first run refuse to start at all.**
+
+   The running network was the evidence the whole time: 3132910, 3155413 and
+   3127045 are registered and passing traffic on the author's instance. An
+   advisory is a prompt to check something, and the thing to check it against
+   is a system that works.
 
 3. **The first-run message repeated it**, in the text somebody reads when
    nothing else has worked yet.
@@ -248,6 +255,13 @@ migrated, both sockets bound and `/healthz` reported healthy.
 6. **Forwarding is off and the guide never said so.** Peers connect, the
    master repeats between them, and bridges and links do nothing until
    configured — which is correct and which a newcomer would read as a fault.
+
+7. **A refused first run left the password file behind.** It was written
+   before the configuration was validated, so an out-of-range ID produced a
+   volume holding `peer-password` and nothing else. A half-made state that
+   survives a refusal is worse than the refusal, because the next attempt
+   starts from somewhere nobody chose. Everything is decided before anything is
+   written now.
 
 ## What is still not proved
 

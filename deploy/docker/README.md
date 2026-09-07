@@ -34,20 +34,25 @@ docker compose logs -f
 
 ```
 QSP_PEER_PASSWORD=choose-something-long
-QSP_ALLOWED_PEERS=313291001
+QSP_ALLOWED_PEERS=3132910
 ```
 
 The password is what you put into Pi-Star or WPSD as the master's password.
 
-**The IDs are not your operator ID.** A hotspot registers with your
-seven-digit operator ID plus a two-digit suffix — `3132910` becomes
-`313291001` — and it is shown on the Pi-Star or WPSD dashboard. A repeater
-registers with a six-digit ID. Listing your operator ID alone means nothing
-will connect, and QSP will say so at startup:
+The IDs are the ones your hotspots register with, shown on their dashboards —
+usually your own seven-digit ID. A Motorola repeater uses six digits.
+
+QSP may print this at startup:
 
 ```
 access list advisory  dmr.access.registration names 3132910, a seven-digit ID
 ```
+
+**That is a prompt to check, not an error.** Some hotspots append a two-digit
+suffix to the operator's ID and some do not; a plain seven-digit ID is
+ordinary and registers perfectly well. Note also that the subscriber field
+holds a *radio's* ID, which is 24 bits — a nine-digit value will be refused
+there.
 
 **QSP will not start an open master for you.** A listener reachable from the
 internet that accepts anybody is a problem for the people it relays to as much

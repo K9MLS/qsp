@@ -16,11 +16,19 @@ them findable by reading the code.
   have been discarded on the next rebuild** — silently, weeks later, with no
   error. The bootstrap now writes an absolute path beside the configuration.
 
-- **`.env.example` taught an ID that cannot connect.** It shipped
-  `QSP_ALLOWED_PEERS=3132910`, an operator ID; a hotspot registers with that
-  plus a two-digit suffix, `313291001`. QSP's own startup advisory warned about
-  the exact value the example told the operator to enter. Corrected there, in
-  the first-run message and in the guide.
+- **A refused first run left the password file behind.** It was written before
+  the configuration was validated, so settings that do not validate produced a
+  volume holding `peer-password` and nothing else. Everything is decided before
+  anything is written now, and the password file is removed if the
+  configuration cannot be.
+
+- **The startup advisory about seven-digit IDs is a prompt, not an error**, and
+  reading it as ground truth broke the working example. `.env.example` was
+  briefly changed to `313291001`, which overflows the 24-bit subscriber field
+  and made a first run refuse to start. The running network was the evidence:
+  3132910, 3155413 and 3127045 are all registered and passing traffic. Restored,
+  with a note in the guide that a plain seven-digit ID is ordinary and that the
+  subscriber field cannot hold a nine-digit value.
 
 - **The commented-out `build:` block produced invalid YAML.** Removing the
   `# ` leaves five spaces where four are needed, and the first command run on

@@ -61,12 +61,18 @@ const (
 	// allowedPeersEnv is the comma-separated list of repeater IDs permitted to
 	// register.
 	//
-	// **These are not operator IDs.** A hotspot registers with its owner's
-	// seven-digit ID plus a two-digit suffix — 313291001, not 3132910 — and a
-	// repeater uses six digits. QSP already warns about the difference at
-	// startup; the first version of this file told operators to enter exactly
-	// the shape it then warned them about, which was found by reading the log
-	// of a first run on a clean machine.
+	// **The ID a hotspot registers with is the one on its dashboard**, and on
+	// this network that is the operator's plain seven-digit ID: 3132910,
+	// 3155413 and 3127045 are all registered and passing traffic. A Motorola
+	// repeater uses six digits.
+	//
+	// QSP prints an advisory at startup about seven-digit IDs, because the
+	// registry issues those to operators and some hotspots append a two-digit
+	// suffix. **It is a warning and not an error**, and a version of this file
+	// treated it as ground truth — changing the example to 313291001, which
+	// overflows the 24-bit subscriber field and made the first run refuse to
+	// start at all. The running network is the evidence; an advisory is a
+	// prompt to check it.
 	//
 	// **Required, and that was not the plan.** The intention was to write an
 	// empty permit list so a fresh instance carried nothing until its operator
@@ -123,29 +129,32 @@ func bootstrapConfig(path string, env func(string) string) (written bool, err er
 	}
 
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false, fmt.Errorf("cannot create %q: %w", dir, err)
-	}
-
 	passwordPath := filepath.Join(dir, "peer-password")
-	if err := writePrivate(passwordPath, []byte(password+"\n")); err != nil {
-		return false, err
-	}
 
+	// **Everything is decided before anything is written.** An earlier version
+	// wrote the password file first and validated afterwards, so a refusal
+	// left `peer-password` sitting in the volume with no configuration beside
+	// it — found when an out-of-range ID made validation fail on a clean
+	// machine. A half-made state that survives a refusal is worse than the
+	// refusal, because the next attempt starts from somewhere nobody chose.
 	cfg := starterConfig(passwordPath, allowed)
 	if err := cfg.Validate(); err != nil {
-		// A starting configuration that does not validate is a defect here,
-		// not in anything the operator did, and it must not reach them as a
-		// puzzling complaint about their own setup.
-		return false, fmt.Errorf("the built-in starting configuration is not valid "+
-			"(this is a bug in QSP rather than anything you did): %w", err)
+		return false, fmt.Errorf("the starting configuration is not valid: %w", err)
 	}
-
 	var buf strings.Builder
 	if err := config.Save(&buf, cfg); err != nil {
 		return false, err
 	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, fmt.Errorf("cannot create %q: %w", dir, err)
+	}
+	if err := writePrivate(passwordPath, []byte(password+"\n")); err != nil {
+		return false, err
+	}
 	if err := writePrivate(path, []byte(buf.String())); err != nil {
+		// The password file is removed rather than left orphaned: see above.
+		_ = os.Remove(passwordPath)
 		return false, err
 	}
 	return true, nil
@@ -204,22 +213,23 @@ The IDs allowed to register. QSP will not start an open master for you: a
 listener reachable from the internet that accepts anybody is a problem for
 the people it relays to as much as for you.
 
-  A hotspot registers with your operator ID plus a two-digit suffix, so
-  3132910 becomes 313291001. It is shown on the Pi-Star or WPSD dashboard.
-  A repeater uses a six-digit ID. Your own seven-digit operator ID is not
-  what connects, and listing it alone means nothing will.
+  Use the ID shown on your hotspot's dashboard, which is usually your own
+  seven-digit ID. A Motorola repeater uses six digits. QSP may print an
+  advisory about seven-digit IDs at startup: it is a prompt to check, not
+  an error, and a hotspot registering with a plain seven-digit ID is
+  ordinary.
 
   Docker    put both in the .env file beside docker-compose.yml
 
               %s=choose-something-long
-              %s=313291001,315541301
+              %s=3132910,3155413
 
             then: docker compose up -d
 
   systemd   in the unit file:
 
               Environment=%[2]s=choose-something-long
-              Environment=%[3]s=313291001,315541301
+              Environment=%[3]s=3132910,3155413
 
             then: systemctl restart qsp
 

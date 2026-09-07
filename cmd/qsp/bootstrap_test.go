@@ -265,3 +265,75 @@ func TestNoAllowedPeersStopsRatherThanOpening(t *testing.T) {
 		t.Error("a password file was left behind by a run that refused to start")
 	}
 }
+
+// TestARefusedFirstRunLeavesNothingBehind is the defect an out-of-range ID
+// exposed on a clean machine.
+//
+// The password file was written before the configuration was validated, so a
+// refusal left `peer-password` sitting in the volume with no configuration
+// beside it. **A half-made state that survives a refusal is worse than the
+// refusal**, because the next attempt starts from somewhere nobody chose — and
+// the second run would then find a password file it did not write and a
+// configuration that still does not exist.
+func TestARefusedFirstRunLeavesNothingBehind(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "qsp.json")
+
+	// A subscriber ID is 24 bits. 313291001 is what an operator types when
+	// told a hotspot appends a two-digit suffix, and it overflows the field —
+	// which is exactly how this was found.
+	written, err := bootstrapConfig(path, envFrom(map[string]string{
+		peerPasswordEnv: "a-shared-secret",
+		allowedPeersEnv: "313291001",
+	}))
+	if written {
+		t.Error("a configuration was written from settings that do not validate")
+	}
+	if err == nil {
+		t.Fatal("an out-of-range ID was accepted")
+	}
+
+	for _, name := range []string{"qsp.json", "peer-password"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("%s was left behind by a run that refused to start", name)
+		}
+	}
+}
+
+// TestTheExampleIDsAreOnesThatCanRegister checks the guidance against the
+// field it goes into.
+//
+// **A version of this taught 313291001**, because QSP prints a startup advisory
+// about seven-digit IDs and that advisory was read as ground truth over a
+// running network. The network is the evidence: 3132910, 3155413 and 3127045
+// are all registered and passing traffic on the author's instance. An advisory
+// is a prompt to check, not an error.
+func TestTheExampleIDsAreOnesThatCanRegister(t *testing.T) {
+	b, err := os.ReadFile("../../deploy/docker/.env.example")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	example := string(b)
+
+	var value string
+	for _, line := range strings.Split(example, "\n") {
+		if rest, ok := strings.CutPrefix(line, allowedPeersEnv+"="); ok {
+			value = rest
+		}
+	}
+	if value == "" {
+		t.Fatalf(".env.example sets no %s", allowedPeersEnv)
+	}
+
+	// The shipped example must produce a configuration that validates, or the
+	// first thing a new operator does is fail.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "qsp.json")
+	if _, err := bootstrapConfig(path, envFrom(map[string]string{
+		peerPasswordEnv: "a-shared-secret",
+		allowedPeersEnv: value,
+	})); err != nil {
+		t.Fatalf(".env.example ships %s=%s, which does not produce a valid "+
+			"configuration: %v", allowedPeersEnv, value, err)
+	}
+}
