@@ -265,6 +265,22 @@
     acceptGo.addEventListener("click", function () {
       hide(el("accept-error"));
       post("/api/links/accept", request(true)).then(function (b) {
+        /* **Nothing to send back when this closes our own offer.** The handler
+         * used to build a reciprocal every time, so accepting a reply produced
+         * another reply and the page asked the operator to send it — forever.
+         * An empty one means both halves are configured and the exchange is
+         * over, and the page has to say so rather than showing an empty box. */
+        if (b.complete) {
+          hide(el("accept-result"));
+          var done = el("accept-done");
+          if (done) {
+            text(done, "Peering with " + (b.callsign || "the other network") +
+              " is complete. Both ends are configured — there is nothing " +
+              "further to send. It appears under Configured links above.");
+            show(done);
+          }
+          return;
+        }
         hide(el("accept-confirm"));
         text(el("accept-reciprocal"), b.reciprocal || "");
         show(el("accept-result"));

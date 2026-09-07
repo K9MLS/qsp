@@ -121,6 +121,15 @@ var (
 	// hardest kind of fault to find.
 	ErrSchemeInAddress = errors.New("peering: an address is a host and a UDP port, " +
 		"like qsp.example.com:62045 — remove the http:// or https:// from the front")
+	// ErrBindAddress is a listen address offered as somewhere to send to.
+	//
+	// **0.0.0.0 means every interface on this machine**, and it is the right
+	// thing in "we listen on". Put into an invitation it tells the far end to
+	// send to every interface on *their* machine, which reaches nothing. The
+	// accept form copied its listen address straight into the reply, so this
+	// went out on a real peering.
+	ErrBindAddress = errors.New("peering: 0.0.0.0 is where this server listens, not " +
+		"somewhere the other end can reach — give the name or address they should send to")
 )
 
 // NewPassphrase returns a fresh passphrase.
@@ -216,6 +225,9 @@ func (inv Invitation) Validate() error {
 		return ErrNoAddress
 	case strings.Contains(inv.Address, "://"):
 		return ErrSchemeInAddress
+	case strings.HasPrefix(strings.TrimSpace(inv.Address), "0.0.0.0:"),
+		strings.HasPrefix(strings.TrimSpace(inv.Address), "[::]:"):
+		return ErrBindAddress
 	case strings.TrimSpace(inv.Callsign) == "":
 		return ErrNoCallsign
 	case inv.NetworkID == 0:

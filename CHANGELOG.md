@@ -6,6 +6,37 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A peering could never be completed: accepting a reply produced another
+  reply, forever.** `handleAcceptPeering` built a reciprocal invitation
+  unconditionally, so the side that closed the exchange was handed one more
+  token and told to send it back. There was no end to it, and **no instruction
+  could have got an operator out** — the page kept producing another.
+
+  A reciprocal is now built only when there is somebody to send one to. The
+  evidence was already present: the offering instance holds its own passphrase,
+  so a held one means this invitation is the reply to an offer we made and the
+  peering ends here. The page says so instead of showing an empty box.
+
+- **The reciprocal announced the link's name as a callsign.** It sent
+  `strings.ToUpper(name)`, so a link an operator called "Test Server" told the
+  far end it was `TEST SERVER`. The callsign is what the other administrator is
+  shown to decide whether they know who is asking; it comes from the instance
+  identity now.
+
+- **A bind address could be offered as somewhere to send to.** "We listen on" is
+  correctly `0.0.0.0:62045` — every interface on this machine — and the reply
+  copied it straight into the address the far end should send to, where it means
+  every interface on *their* machine and reaches nothing. Refused, with a message
+  saying what the field is for.
+
+### Notes
+
+- **Nothing tested the exchange as an exchange.** Every part had a test and the
+  workflow had none, so a handler that could not terminate passed everything.
+  `TestTheExchangeEnds` walks both halves and asserts the second one finishes.
+
+### Fixed
+
 - **A peering could be offered and never completed.** The side that offers
   generates the passphrase and already has it; a reciprocal invitation carries
   that secret's *fingerprint* rather than a new secret, exactly as

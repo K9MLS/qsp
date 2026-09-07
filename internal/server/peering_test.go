@@ -63,3 +63,46 @@ func TestHeldOffersAreBounded(t *testing.T) {
 		t.Error("the most recent offer was evicted")
 	}
 }
+
+// TestTheExchangeEnds is the test that was missing, and its absence cost an
+// operator half an hour of being told where to paste things.
+//
+// A peering has two halves. One side offers; the other accepts and replies; the
+// first side accepts the reply and **it is over**. `handleAcceptPeering` built a
+// reciprocal unconditionally, so accepting a reply produced another reply,
+// which the page presented as one more thing to send back. There was no end to
+// it, and no instruction from anybody could have got the operator out, because
+// the page kept handing them a fresh token.
+//
+// The evidence that distinguishes the two halves was already there: the
+// offering instance holds its own passphrase, so a held one means this is the
+// reply to our own offer.
+func TestTheExchangeEnds(t *testing.T) {
+	var held offeredPassphrases
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	fingerprint := peering.FingerprintOf(passphrase)
+
+	// Alice offers.
+	held.put(fingerprint, passphrase)
+
+	// Bob accepts: he is not holding the passphrase, so he replies.
+	if _, closing := held.take(peering.FingerprintOf("bob has never seen this")); closing {
+		t.Fatal("an instance produced a passphrase for an offer it never made")
+	}
+
+	// Alice accepts Bob's reply: she is holding it, so the exchange ends.
+	got, closing := held.take(fingerprint)
+	if !closing {
+		t.Fatal("the offering side did not recognise the reply to its own offer")
+	}
+	if got != passphrase {
+		t.Errorf("the held passphrase was %q", got)
+	}
+
+	// **And it cannot end twice.** A second accept of the same reply finds
+	// nothing held and would reply again — which is the loop, and is why the
+	// passphrase is forgotten on use rather than kept.
+	if _, again := held.take(fingerprint); again {
+		t.Error("the exchange could be closed twice from one offer")
+	}
+}

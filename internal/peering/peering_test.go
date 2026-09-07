@@ -282,3 +282,24 @@ func TestASchemeInTheAddressIsRefused(t *testing.T) {
 		t.Errorf("a valid invitation was refused: %v", err)
 	}
 }
+
+// TestABindAddressIsRefused is what the accept form put into a real invitation.
+//
+// "We listen on" is correctly 0.0.0.0:62045 — every interface on this machine.
+// The reply copied it straight into the address the far end should send to,
+// where it means every interface on *their* machine and reaches nothing.
+func TestABindAddressIsRefused(t *testing.T) {
+	for _, address := range []string{"0.0.0.0:62045", "[::]:62045"} {
+		inv := Invitation{Address: address, Callsign: "K9MLS", NetworkID: 3132910}
+		if err := inv.Validate(); !errors.Is(err, ErrBindAddress) {
+			t.Errorf("%q was accepted as somewhere to send to (%v)", address, err)
+		}
+	}
+	// A real address on the same port is fine, and so is a name.
+	for _, address := range []string{"192.168.1.27:62045", "qsp.example.com:62045"} {
+		inv := Invitation{Address: address, Callsign: "K9MLS", NetworkID: 3132910}
+		if err := inv.Validate(); err != nil {
+			t.Errorf("%q was refused: %v", address, err)
+		}
+	}
+}

@@ -103,7 +103,14 @@ type acceptResponse struct {
 	Network  string `json:"network"`
 	// Reciprocal is the invitation to send back, carrying the agreed
 	// passphrase's fingerprint rather than a new secret.
+	//
+	// **Empty when there is nobody to send one to.** Accepting the reply to an
+	// offer this instance made is the end of the exchange, and a reciprocal
+	// there produced an endless one.
 	Reciprocal string `json:"reciprocal"`
+	// Complete reports that both halves are now configured and there is
+	// nothing further to send.
+	Complete bool `json:"complete"`
 }
 
 // handleOfferPeering generates an invitation and the passphrase behind it.
@@ -239,10 +246,14 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	// Looked up by fingerprint from the offers this instance has outstanding.
 	// An offer that this instance did not make has none, and the operator is
 	// asked for the passphrase as before.
-	passphrase := req.Passphrase
+	//
+	// **It also tells us which half of the exchange this is**, which is what
+	// stops the loop below: a passphrase we are holding means this invitation
+	// is the reply to an offer we made, and the peering ends here.
+	passphrase, closingOurOffer := req.Passphrase, false
 	if strings.TrimSpace(passphrase) == "" && inv.Fingerprint != "" {
 		if held, ok := s.offered.take(inv.Fingerprint); ok {
-			passphrase = held
+			passphrase, closingOurOffer = held, true
 		}
 	}
 
@@ -327,23 +338,40 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordPeering(r, "peering.accepted", inv.Callsign, inv.Address, audit.OutcomeSuccess)
 
-	// The reply carries the agreed passphrase's fingerprint, never a new
-	// secret: OpenBridge authenticates every datagram against one shared
-	// passphrase, and a second would produce a link that works one way while
-	// both ends report healthy.
-	mine := peering.Invitation{
-		Network:   cfg.DMR.Join.NetworkName,
-		Callsign:  strings.ToUpper(name),
-		Address:   strings.TrimSpace(req.Listen),
-		NetworkID: req.NetworkID,
-		Export:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
-		Import:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
-		Issued:    time.Now().UTC(),
-	}
-	back, err := peering.Reciprocal(inv, mine)
+	// **A reciprocal only when there is somebody to send one to**, and that is
+	// the half of the exchange this is not.
+	//
+	// This used to build one unconditionally, so accepting a reply produced
+	// another reply, which looked like another thing to send back, forever. An
+	// operator following the page's own instructions could not reach the end
+	// of a peering — and no instruction from anybody would have got them out,
+	// because the page kept handing them one more token.
+	//
+	// `closingOurOffer` is the evidence: this instance was holding the
+	// passphrase, which only happens for a reply to an offer it made itself.
 	reply := ""
-	if err == nil {
-		reply, _ = peering.Encode(back)
+	if !closingOurOffer {
+		// The reply carries the agreed passphrase's fingerprint, never a new
+		// secret: OpenBridge authenticates every datagram against one shared
+		// passphrase, and a second would produce a link that works one way
+		// while both ends report healthy.
+		mine := peering.Invitation{
+			Network: cfg.DMR.Join.NetworkName,
+			// **The instance's callsign, not the link's name.** This sent
+			// strings.ToUpper(name), so a link an operator called "Test
+			// Server" announced itself to the far end as TEST SERVER. The
+			// callsign is what the other administrator is shown to decide
+			// whether they know who is asking.
+			Callsign:  linkCallsign(cfg),
+			Address:   strings.TrimSpace(req.Listen),
+			NetworkID: req.NetworkID,
+			Export:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
+			Import:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
+			Issued:    time.Now().UTC(),
+		}
+		if back, err := peering.Reciprocal(inv, mine); err == nil {
+			reply, _ = peering.Encode(back)
+		}
 	}
 
 	writeJSON(w, s.log, http.StatusOK, acceptResponse{
@@ -351,6 +379,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		Callsign:   inv.Callsign,
 		Network:    inv.Network,
 		Reciprocal: reply,
+		Complete:   closingOurOffer,
 	})
 }
 
