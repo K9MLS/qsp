@@ -6,6 +6,43 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Nobody could create an account in the container, so nobody could sign in.**
+  `adduser` turned terminal echo off by running `stty -echo`; the image is a
+  `scratch` layer holding one static binary, with no stty, no shell and no
+  `/bin`. It was the first thing an operator did after a successful install:
+
+  ```
+  qsp: cannot hide the password: stty is not available
+  ```
+
+  Echo is now turned off with a terminal ioctl in the process — `TCGETS`,
+  `TCSETS` and `Termios` are all in the standard library, so this costs **no new
+  dependency**, which ADR-0004 would have made the usual answer
+  (`golang.org/x/term`) expensive. It fixes the same failure on any minimal
+  systemd install too.
+
+  The refusal to read a password from a pipe is kept, and is now the ioctl
+  failing with `ENOTTY` rather than stty complaining: a password that arrives
+  through a pipe is already in a shell history, a script or a CI log.
+
+  Platforms other than Linux keep the stty fallback, because their ioctl
+  request names differ and nothing here can test them. A port starts by writing
+  that file.
+
+- **The install guide never said to create an account**, which made a
+  successfully installed server unusable. It is now a section immediately after
+  the install, and the first-run message names the command too — some operators
+  will read only that.
+
+### Notes
+
+- **A test in this patch was too strict, the mirror of one that was too lax
+  this morning.** It searched `hideinput_linux.go` for the word `stty` and
+  failed on the comment explaining why stty had been removed. Both were reading
+  prose instead of code; it checks the `os/exec` import now.
+
+### Fixed
+
 Six defects, all found by running the container on a clean Ubuntu VM, none of
 them findable by reading the code.
 

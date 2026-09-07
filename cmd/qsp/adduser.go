@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"github.com/k9mls/qsp/internal/auth"
@@ -151,19 +150,20 @@ func unlock(ctx context.Context, cfg config.Config, username string) error {
 // can be fixed. Without echo, because the alternative leaves it in a terminal
 // scrollback and, on a shared machine, on the screen.
 //
-// **Echo is turned off with stty rather than a library.** Go's standard library
-// exposes no way to do it — it needs a terminal ioctl — and the usual answer,
-// golang.org/x/term, would be QSP's second direct dependency. ADR-0004 and
-// ADR-0017 are careful about that count, and a dependency is a poor trade for a
-// program that is already required to run on a Unix host with a terminal
-// attached. If stty is missing, the prompt refuses rather than echoing.
+// **Echo is turned off with a terminal ioctl**, in this process — see
+// hideinput_linux.go. It used to run `stty -echo`, which worked everywhere the
+// author had tried it and nowhere the container runs: a `scratch` image holds
+// one static binary and has no stty, no shell and no /bin at all, so the first
+// thing an operator did after a successful install was fail to create an
+// account.
+//
+// Turning echo off is also the terminal check, and a better one than inspecting
+// the mode of standard input: /dev/null is a character device too, so a password
+// piped from it would have looked like a person typing. The ioctl fails with
+// ENOTTY on anything that is not a terminal, which is exactly the question being
+// asked.
 func readPassword() (string, error) {
-	// **stty is also the terminal check**, and a better one than inspecting
-	// the mode of standard input: /dev/null is a character device too, so a
-	// password piped from it would have looked like a person typing. Turning
-	// echo off fails on anything that is not a terminal, which is exactly the
-	// question being asked.
-	restore, err := disableEcho()
+	restore, err := hideInput()
 	if err != nil {
 		return "", err
 	}
@@ -201,31 +201,4 @@ func promptOnce(prompt string) (string, error) {
 	// Only the line ending is trimmed. A password is allowed to begin or end
 	// with a space, and quietly removing one would make it unenterable later.
 	return strings.TrimRight(line, "\r\n"), nil
-}
-
-// disableEcho turns terminal echo off and returns a function that restores it.
-func disableEcho() (func(), error) {
-	if _, err := exec.LookPath("stty"); err != nil {
-		return nil, fmt.Errorf("cannot hide the password: stty is not available, and typing "+
-			"a password with it echoing to the screen is worse than not setting one: %w", err)
-	}
-	if err := stty("-echo"); err != nil {
-		// A password read from something that is not a terminal appears in
-		// whatever produced it: a shell history, a script, a CI log. Refusing
-		// is the point of prompting at all.
-		return nil, fmt.Errorf("a password must be typed at a terminal, not piped in: %w", err)
-	}
-	return func() { _ = stty("echo") }, nil
-}
-
-func stty(arg string) error {
-	cmd := exec.Command("stty", arg)
-	cmd.Stdin = os.Stdin
-	// Its complaint about a non-terminal is wrapped into ours rather than
-	// printed alongside it, so an operator who piped a password sees one
-	// explanation instead of two.
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("stty %s: %w", arg, err)
-	}
-	return nil
 }

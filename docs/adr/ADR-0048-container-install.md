@@ -263,6 +263,17 @@ migrated, both sockets bound and `/healthz` reported healthy.
    starts from somewhere nobody chose. Everything is decided before anything is
    written now.
 
+### And two more, after the volume was fixed
+
+8. **Nobody could create an account.** `adduser` ran `stty -echo` to hide the
+   typed password, and a `scratch` image has no stty. The first thing an
+   operator does after a successful install is create their account, and it
+   failed — a server nobody can sign in to is not installed. Echo is turned off
+   with a terminal ioctl now, entirely inside the process, at the cost of no new
+   dependency.
+
+9. **The guide never mentioned creating an account at all.**
+
 ## What is still not proved
 
 **No peer has ever registered with a containerised instance.** The test machine

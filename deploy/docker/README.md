@@ -62,6 +62,28 @@ as for you, so it asks who may connect before it starts listening. Add IDs to
 Both values are read **only on the first run**. After that
 `/var/lib/qsp/qsp.json` is yours, and nothing here overwrites it.
 
+## Create your administrator account
+
+**A fresh install has no accounts**, so this is the next thing after
+`docker compose up`. The console will not let you in until you do it.
+
+```sh
+docker compose exec -it qsp /qsp -config /var/lib/qsp/qsp.json adduser mike
+```
+
+It prompts for a password twice and prints
+`Created administrator "mike" in /var/lib/qsp/qsp.db`.
+
+The `-it` matters: the password is typed with echo off, and QSP refuses to read
+one from a pipe — a password that arrives through a pipe is in a shell history,
+a script or a CI log by the time it gets here.
+
+If you forget the password:
+
+```sh
+docker compose exec -it qsp /qsp -config /var/lib/qsp/qsp.json unlock mike
+```
+
 ## Point a hotspot at it
 
 In Pi-Star or WPSD, add a DMR master:
