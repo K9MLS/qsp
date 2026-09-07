@@ -4,7 +4,7 @@
 Last regenerated: 2026-08-25, at 0.1.4, after the Phase 1 gate closed and the
 repository went to GitHub. **Duplicate sections collapsed 2026-09-02** — the
 file had grown six copies of §8f in five versions, and a session read the wrong
-one. Newest session notes are at the end of the §8 series; **read §8k first**,
+one. Newest session notes are at the end of the §8 series; **read §8l first**,
 then §8a.
 
 ---
@@ -2423,7 +2423,99 @@ the only way to know it does is to break the code and watch the test fail.
 
 ---
 
+## 8l. Where the next session starts, as of 2026-09-07 night
+
+Read §0, then §6b and §6c, then this. It supersedes §8k, whose account of the
+text path still stands; everything about the console does not. **§8a is still
+the section that matters most.**
+
+### The day in one sentence
+
+**Private text over IP Site Connect was finished and proved on air, the
+container install was proved on a clean machine, and then the Links page took
+production down.**
+
+### Two defects to fix before anything else
+
+**"We listen on" is written unvalidated.** The accept form took
+`qsp.hopto.me:62045` — a public name resolving to the router — and wrote it into
+an upstream. QSP cannot bind an address this host does not have, refused to
+start, and systemd crash-looped to its start limit. Recovery took two rounds of
+hand-edited JSON on a live server.
+
+The field beside it *is* validated: 0259 refuses `0.0.0.0` in "They send to",
+because a bind address is not somewhere a far end can reach. **The two fields
+are exact opposites and only one was checked**, in the same form, the same
+afternoon.
+
+**`-check` passed the configuration the process then died on.** It reported
+`is valid` and the service failed at bind time. A gate that gives false
+assurance is worse than no gate, and the operator used it exactly as intended.
+It should attempt the binds it can.
+
+### The Links page failed five times in a row, all by design
+
+Every one surfaced within ten minutes of an operator clicking through, and none
+had surfaced in the code review that preceded it:
+
+1. The offer form had **no callsign box** while the invitation is refused
+   without one — an error naming a field that did not exist, followed by advice
+   about two fields that were correct.
+2. The address field accepted `https://` on a UDP host and port.
+3. The reciprocal **demanded a passphrase that does not exist**: only one
+   passphrase exists in a peering and the offering side generated it.
+4. **The exchange could not terminate.** A reciprocal was built
+   unconditionally, so accepting a reply produced another reply, forever. Three
+   messages were spent telling the operator where to paste while the page
+   manufactured an infinite regress.
+5. **A link could not be removed**, from anywhere.
+
+### The rule that was broken, and it is general
+
+**Anything a page creates, it must be able to remove.** Nothing in this project
+checked that on any page. Worth auditing the other console pages for the same
+shape before adding to them.
+
+### And the failure underneath all of it
+
+**Five things were designed from scratch and found to be already built** — the
+`/api/peers` redaction, IPSC `CallViews`, the `data` pill, the hint button, and
+the entire Links page, proposed as new work while it was on screen. Each was one
+grep away.
+
+The deeper version, which is what actually cost the evening: **the peering flow
+was reviewed by reading it and never by using it.** This project's whole method
+is that defects come from running the system. That was applied rigorously to the
+radio side all day — 54 bursts, 42 blocks, an opcode measured from sixteen
+preambles — and not once to the console.
+
+### What is finished
+
+**Private text over IPSC**, confirmed on air by the operator. The trellis codec
+is proved against 54 real MMDVMHost bursts: 54 of 54 decode, and **0 of 54** with
+the tables that shipped in 0242. Both Rate 1/2 and Rate 3/4 have fixtures. One
+text is one row in Last heard.
+
+**The container install**, run on a clean Ubuntu VM: nine defects found, the
+worst a database landing outside the volume — silent data loss on every rebuild.
+
+### Open, in order
+
+1. Validate the listen address where the accept handler writes it.
+2. `-check` should attempt its binds.
+3. **Deploy 0260**, committed and never shipped. It turns tonight's recovery
+   into two clicks.
+4. [ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md): the first
+   administrator account from the home page. Decided, not built.
+5. No peer has ever registered with a containerised instance.
+6. The remaining console pages have never been reviewed by using them.
+
+---
+
 ## 8k. Where the next session starts, as of 2026-09-06 night, text complete
+
+**Superseded by §8l.** Its account of the text path stands; its open list does
+not.
 
 Read §0, then §6b and §6c, then this. It supersedes §8j; everything §8j settled
 remains settled except where named. **§8a is still the section that matters
@@ -2580,6 +2672,23 @@ because they were wrong consistently.
 
 ---
 
+### Review it by using it, not by reading it
+
+**Five defects in the peering flow surfaced within ten minutes of an operator
+clicking through, and none had surfaced in the code review that preceded it.**
+An offer form with no box for a required field; an address field accepting a URL
+where a host and port belong; a reciprocal demanding a passphrase that does not
+exist; an exchange that could not terminate; and a page that creates
+configuration it cannot remove.
+
+This project's method is that defects come from running the system. That was
+applied rigorously to the radio side — 54 bursts to prove a codec, 42 blocks to
+prove a CRC, sixteen preambles to name an opcode — and **never once to the
+console**, which is the half an operator actually touches.
+
+A page is run by clicking every control on it in the order an operator would.
+Reading it finds none of this.
+
 ### Check whether it exists before designing it
 
 **Five things in one day were designed from scratch and found to be already
@@ -2594,6 +2703,16 @@ codebase stops having one answer to anything.
 The rule below is about open items. This is the wider one: **before writing a
 design, grep for the thing.** It takes ten seconds and it has been wrong five
 times out of five.
+
+### Anything a page creates, it must be able to remove
+
+The Links page wrote an upstream, a bridge and a passphrase file, and nothing in
+the API or the console could undo any of it. The operator found out on a live
+production server, at the point where the thing it had written stopped QSP from
+starting, and recovery meant hand-editing JSON twice.
+
+**Nothing in this project checked that rule on any page.** It is worth auditing
+the others before adding to them.
 
 ### Verify an open item before working it
 

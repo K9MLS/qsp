@@ -1,121 +1,147 @@
-# Handover, 2026-09-06 night, text complete
+# Handover, 2026-09-07 night
 
-Read `NEW-SESSION.md` for the standing brief and **§8k** of `PROJECT_MEMORY.md`
-for where to start, then **§8a**, which is the section that matters most. §8b
-through §8j are superseded and carry banners saying so. **§0's table is worth
-doubting** — it was wrong about access control for weeks because it is the
-section everybody reads and nobody re-reads.
+Read `NEW-SESSION.md` for the standing brief and **§8k** of `PROJECT_MEMORY.md`,
+then **§8a**, which is the section that matters most. §8b through §8j are
+superseded and say so.
 
-## Start on the first-account setup page
+## Start here: two defects that took production down tonight
 
-[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md) records the decisions
-and nothing is built. A fresh install has no accounts and the console says
-nothing about it; the operator has to know to run `adduser` from a terminal.
+**Neither is built.** They are the price of the last hour and they come before
+anything else.
 
-**The console binds to 0.0.0.0**, so a plain "create your administrator" page
-would be owned by whoever reached it first. The decision is a one-time token
-printed to the journal on first start, a `/setup` route that exists only while
-there are no accounts, and `adduser` left working for anyone who prefers a
-terminal.
+### 1. "We listen on" is written unvalidated, and it stopped QSP starting
 
-It is the first unauthenticated route this console has ever had, which is why it
-is an ADR rather than a patch.
+The Links page accepted `qsp.hopto.me:62045` in the accept form's **We listen
+on** field and wrote it into an upstream. That name resolves to the router's
+public address, which this machine does not have, so:
 
-## Text is finished. The call record is still open.
+```
+upstream "Test Server": cannot listen on qsp.hopto.me:62045:
+listen udp 198.51.100.238:62045: bind: cannot assign requested address
+```
 
-**Private text messages work and are confirmed on air**, repeater to repeater.
-The hotspot direction delivers without the sending radio's confirmation, which
-is accepted rather than open: ADR-0045 established the acknowledgement comes
-from a repeater on RF one hop from the radio, and a hotspot has none in that
-path. Do not go looking for that ack.
+QSP refused to start — correctly, rather than dropping a link an operator
+configured — and **systemd crash-looped until it hit its start limit.**
 
-The stream IDs that made the journal look like every burst was its own
-transmission were not a second defect either — 224 single-CSBK preambles and 18
-streams of a header with its three blocks, decomposing without remainder.
+The field beside it *is* validated: 0259 refuses `0.0.0.0` in **They send to**,
+because a bind address is not somewhere a far end can reach. The two fields are
+exact opposites and only one was checked. Same form, same afternoon.
 
-**The work is turning toward going public**, and
-[ADR-0048](docs/adr/ADR-0048-container-install.md) records what a
-`docker compose up` install has to get right for somebody who is not advanced.
-Nothing in it is built.
+**What to build:** validate the listen address where the accept handler writes
+it — it must be an address this host can bind, so `0.0.0.0:62045` or a LAN
+address, never a public name. `peering.ErrBindAddress` is the model for the
+message.
 
-**Its first step is a decision from the operator rather than code:
-`/api/peers` is unauthenticated and returns peer addresses**, so the console
-cannot default to `0.0.0.0` until that is settled — and `127.0.0.1` under host
-networking means a newcomer sees nothing on minute one.
+### 2. `-check` passed a configuration the process then died on
 
-After that: the first-run config bootstrap in `cmd/qsp`, then the container
-files, which are the least interesting part. Text over IPSC still produces no
-call record. §8k has the rest.
+```
+sudo qsp -config /var/lib/qsp/qsp.json -check
+/var/lib/qsp/qsp.json is valid
+```
 
-**`deploy/docker` has never been run.** Do not treat it as a starting point: it
-publishes no UDP ports, builds on Go 1.22, and uses a volume path nothing else
-uses.
+and the service then failed at bind time. **A gate that gives false assurance is
+worse than no gate**, and the operator used it exactly as intended.
 
-## The headline
+**What to build:** `-check` should attempt the binds it can — listeners and
+upstream listen addresses — and report what would fail. It cannot prove a port
+is reachable from outside; it can prove an address is one this host has.
 
-**Text messages carry their content now**, and the whole path is measured
-against traffic from somebody else's equipment. Every block of every text used
-to be dropped in both directions — the preamble crossed, the header crossed,
-the message never did.
+### 3. Deploy 0260, which is committed and never went out
 
-**The codec written the session before had all sixteen constellation entries
-wrong**, and 54 real bursts prove it: 54 of 54 decode with the corrected
-tables, 0 of 54 with the old ones. It is a permutation of the four dibit
-values, so encode and decode agreed with each other perfectly and every test
-passed. Wiring it in as it stood would have transmitted well-formed bursts no
-radio could read, with a symptom identical to the one being fixed.
+`A link can be removed` is at HEAD and is not on either server. It turns
+tonight's recovery — hand-editing JSON twice on a live production server — into
+two clicks.
 
-See [ADR-0047](docs/adr/ADR-0047-rate-34-text-blocks.md).
+## What happened tonight, in order
 
-## The method
+The operator tried to peer the test server to production **through the console**,
+which is the right way and the way it will have to work in public. It failed
+five times and each failure was a defect:
 
-**Every reading taken by eye has been wrong. Every differential has been
-right**, now fourteen times. Two more this session, both caught by a test
-rather than by review.
+1. **The offer form had no callsign box**, while the invitation is refused
+   without one. The error named a field that did not exist and then advised
+   checking two fields that were already correct. Fixed in 0257.
+2. **The address field accepted `https://` on a UDP host and port.** Fixed in
+   0257.
+3. **The reciprocal demanded a passphrase that does not exist.** Only one
+   passphrase exists in a peering and the offering side generated it, so the
+   operator had nothing to type into a box the form insisted on. Fixed in 0258.
+4. **The exchange could not terminate.** `handleAcceptPeering` built a
+   reciprocal unconditionally, so accepting a reply produced another reply,
+   forever. **No instruction could have got the operator out** — three messages
+   were spent telling them where to paste while the page manufactured an
+   infinite regress. Fixed in 0259.
+5. **A link could not be removed**, from anywhere. Fixed in 0260, not deployed.
 
-And one worth adding: **a constant that round-trips is not a constant that is
-correct.** A round trip through your own tables proves the wiring and nothing
-else. The tests that carry weight end at a fact outside this repository — an
-IPv4 header, a CRC over somebody else's bytes, a sentence you typed.
+Then the link that all of that produced took production down.
+
+## The rule this page broke, and it is general
+
+**Anything a page creates, it must be able to remove.** Nothing in this project
+checked that, on any page. The Links page shipped without it and an operator
+found out by needing it, on a live network, at the worst moment.
+
+Worth auditing the other console pages for the same shape before adding
+anything to them.
+
+## The failure that produced all five
+
+**Five separate things were designed from scratch today and found to be already
+built**: `/api/peers` address redaction, IPSC `CallViews` returning nil, the
+console's `data` pill, the hint disclosure button, and **the entire Links page**,
+which was proposed as new work while it was on screen.
+
+Every one was a single `grep` away. §8a carries the rule now — *check whether
+the thing exists before designing it* — and the deeper version is this: **the
+peering flow was reviewed by reading it and not by using it.** Every one of
+tonight's five defects surfaced within ten minutes of an operator actually
+clicking through, and none had surfaced in the code review that preceded it.
+
+## What is finished and working
+
+**Private text over IP Site Connect**, confirmed on air. The trellis codec is
+proved against 54 real MMDVMHost bursts (54 of 54 decode; 0 of 54 with the
+tables that shipped in 0242), both Rate 1/2 and Rate 3/4 have fixtures, and one
+text is now one row in Last heard.
+
+**The container install**, run on a clean Ubuntu VM. Nine defects found and
+fixed, including a database that landed outside the volume — silent data loss on
+every rebuild — and `adduser` failing because a `scratch` image has no `stty`.
+
+## Open, in order
+
+1. The listen-address validation, above.
+2. `-check` attempting binds, above.
+3. Deploy 0260.
+4. **[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md)**: the first
+   administrator account should be created from the home page rather than a
+   terminal command. Decisions recorded, nothing built.
+5. **No peer has ever registered with a containerised instance.** The handshake,
+   the access list and the NAT-rebind path are all untested in a container.
+6. Text over IPSC produces no call record entry of its own; the tracker covers
+   it, and §8k has the detail.
+7. The remaining UI pages have never been reviewed by using them.
 
 ## Traps
 
-**A measurement filed as an exception is a defect you have already found.**
-ADR-0045 wrote down that a documented offset failed on exactly the nine Rate
-3/4 frames in its capture, three days before anybody worked out that this was
-why no text had ever arrived.
+**`qsp --version` is not `systemctl is-active`, and neither is the other.** Both
+were confused tonight: a version check was offered where a service check was
+needed, and a running binary reported a version while the service was dead.
 
-**A file that documents why it cannot be trusted has not been checked.**
-`trellis.go` said in its own header that its tables were checked only by the
-package agreeing with itself. A session read that and wrote a handover saying
-"wire the codec in".
+**`systemctl restart` on a rate-limited service stops it and then refuses to
+start it.** Strictly worse than doing nothing. `systemctl reset-failed` first,
+every time, once a service has crash-looped.
 
-**A test that asserts an absence can arrange for the absence.** Still true.
-`TestARateThreeQuarterBurstIsRefusedRatherThanTruncated` went further: it
-asserted the wrong thing entirely and passed for eighteen patches while the
-network could not send a text.
+**A measurement filed as an exception is a defect already found.**
 
-**A test written from what you expect a capture to contain is the same defect
-as a constant read off the hex by eye.** The outbound serials were asserted to
-run 0, 1, 2, 3 three times over because the message was sent three times. They
-run 0, 1, 2, 3 and then the last block eight more times.
-
-**Read the capture when it arrives.** The one that settled the whole trellis
-question sat on the server for eight hours while a stale binary was chased, and
-was asked for three more times after it already existed.
+**A test that reads prose instead of code passes for the wrong reason.** Three
+today: one searched a file for a field name and found it in a comment, one
+searched for `stty` and found the comment explaining its removal, one searched
+for a colour token and found the note explaining why it was not invented. Strip
+comments before searching.
 
 **Never count test failures.** The container baseline is seven, by name, in §7.
 
-**staticcheck does run in the container** — §7 and the last handover both say
-it cannot. Built through the full 1.22 → 1.23 → 1.24.6 → 1.27 chain it runs
-clean over the whole tree in about a minute.
+**`staticcheck` does run in the container**, contrary to §7.
 
-**Ask the running binary which commit it is.** `qsp --version`. `systemctl
-is-active` says something started; only the version says what.
-
-**A failed `git am` leaves its rebase directory behind.** `git am --abort`
-first, then `git log --oneline -3` before assuming anything about what is
-applied.
-
-**Never use `git checkout` to undo a deliberate break**; it reverts the whole
-uncommitted file. Copy the file first.
+**A failed `git am` leaves a rebase directory behind.** `git am --abort` first.

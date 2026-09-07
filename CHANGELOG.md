@@ -4,6 +4,33 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Known defects, not yet fixed
+
+- **"We listen on" is written without validation, and QSP will not start with a
+  bad one.** The accept form takes any string; `qsp.hopto.me:62045` resolves to
+  a router's public address, which the host cannot bind, so the service exits
+  and systemd crash-loops to its start limit. Recovery is hand-edited JSON.
+
+  The field beside it is validated — 0259 refuses `0.0.0.0` in "They send to" —
+  and the two are exact opposites. Same form, same afternoon.
+
+- **`-check` passes configurations the process then dies on.** It reported
+  `is valid` for the above. A gate that gives false assurance is worse than no
+  gate; it should attempt the binds it can.
+
+### Notes
+
+- **The Links page failed five times in a row on first use**, and every failure
+  was a design defect rather than operator error: no callsign box for a required
+  field, a URL accepted where a host and port belong, a reciprocal demanding a
+  passphrase that does not exist, an exchange that could not terminate, and a
+  page that creates configuration it cannot remove. Fixed in 0257 through 0260.
+
+- **The console had never been reviewed by using it.** Every one of those
+  surfaced within ten minutes of an operator clicking through. This project's
+  method — defects come from running the system — was applied all day to the
+  radio side and never to the half an operator touches.
+
 ### Added
 
 - **A link can be removed.** Accepting a peering wrote an upstream, a bridge and
