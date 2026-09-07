@@ -4,6 +4,53 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A first run writes its own configuration.** Until now the only way to run
+  QSP was to build it from source and write `qsp.json` by hand. Given a
+  `-config` path that does not exist, QSP now writes a working configuration
+  and a mode-0600 password file, says so in the journal, and **never touches
+  the file again** — after the first run it is the operator's, including any
+  mistake in it.
+
+  **The radio ID this was going to ask for was never needed.** A Homebrew
+  master has no radio ID of its own; peers bring theirs, and `MasterID` belongs
+  to IP Site Connect, which starts disabled. `config.Default()` validates with
+  no input at all. What the validator refuses is a listener with no password
+  and no access policy, so a first run asks for `QSP_PEER_PASSWORD` and
+  `QSP_ALLOWED_PEERS` — both things an operator genuinely has to decide.
+
+  **The empty allow list turned out to be impossible, and that is better.** The
+  plan was to write a permit list with no entries so a fresh instance carried
+  nothing until its operator filled it in; the validator treats that as a
+  mistake rather than a policy and refuses it. So an operator states who may
+  connect before anything is listening, instead of starting a server that is
+  silently useless. Talkgroups carry everything: registration is the safety
+  boundary.
+
+  It lives in `cmd/qsp` rather than an entrypoint script, so the image keeps no
+  shell, the tests reach it, and the systemd install gets the same behaviour.
+
+- **`deploy/docker` replaced**: a `scratch` image of one static binary, a
+  compose file using host networking, `.env.example`, and an install guide that
+  covers port forwarding and CGNAT **before** it covers `docker compose up`,
+  because that is what actually defeats people.
+
+- `cmd/qsp/deploy_test.go` checks the parts that drift silently: the
+  environment variables the compose file passes against the constants the code
+  reads, the volume path against the entrypoint, host networking against the
+  absence of a `ports:` block, the image tag against `VERSION`, and the build
+  stage's Go version against `go.mod`. **The version check caught its own drift
+  the first time it ran.**
+
+### Notes
+
+- **None of the container work has been run.** Docker is not available where
+  these tests run, so the image has never been built and no container has ever
+  started — which is the same sentence ADR-0048 opens by writing about the
+  files it replaced. It stops being true when somebody runs it on a machine
+  that has never had QSP on it.
+
 ### Fixed
 
 - **One text message put two rows in Last heard, and the more prominent of them

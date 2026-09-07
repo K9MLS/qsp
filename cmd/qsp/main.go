@@ -64,6 +64,23 @@ func realMain() error {
 		return nil
 	}
 
+	// **Before loading, because there may be nothing to load.** A first run in
+	// a container has an empty volume: no configuration, no password file. See
+	// bootstrap.go for why the one thing asked for is a peer password rather
+	// than a radio ID.
+	//
+	// Only when -config names a path. Without one QSP runs on built-in
+	// defaults and writing a file somebody did not ask for would be a
+	// surprise, not a convenience.
+	wroteConfig, err := bootstrapConfig(*configPath, os.Getenv)
+	if err != nil {
+		if errors.Is(err, errNoPeerPassword) || errors.Is(err, errNoAllowedPeers) {
+			explainFirstRun(os.Stderr, *configPath)
+			return errCheckFailed
+		}
+		return err
+	}
+
 	cfg, err := loadConfig(*configPath)
 	if err != nil {
 		if *check {
@@ -124,6 +141,14 @@ func realMain() error {
 	})
 
 	log.Info("starting", "version", buildVersion())
+
+	// **A file appearing in a mounted volume without a word is a surprise the
+	// next operator has to work out for themselves.** Said once, at info, so a
+	// first run is distinguishable from every run after it.
+	if wroteConfig {
+		log.Info("wrote a starting configuration", "path", *configPath,
+			"note", "nothing can register until its repeater ID is listed in dmr.access")
+	}
 
 	// Signal handling is established before any subsystem starts so that an
 	// interrupt during startup is honoured rather than killing the process

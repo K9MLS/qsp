@@ -1,0 +1,66 @@
+# QSP, as a container.
+#
+#   cp .env.example .env
+#   nano .env            # two values: a password and your repeater IDs
+#   docker compose up -d
+#
+# See README.md for what to do before this: a UDP port has to reach this
+# machine from the internet, and no container can arrange that for you.
+
+services:
+  qsp:
+    image: ghcr.io/k9mls/qsp:0.1.94
+    # Uncomment to build from a checkout instead of pulling a published image.
+    # build:
+    #   context: ../..
+    #   dockerfile: deploy/docker/Dockerfile
+    #   args:
+    #     VERSION: development
+
+    container_name: qsp
+    restart: unless-stopped
+
+    # **Host networking, not the default bridge, and this is not cosmetic.**
+    #
+    # Docker's bridge NATs UDP and rewrites source addresses. QSP tracks peers
+    # by address: ADR-0011 as amended records that hotspots rebind their NAT
+    # mapping every eight to nine minutes and that a rebound keepalive must be
+    # answered with MSTNAK. Putting a second NAT in that path produces
+    # intermittent peer-tracking faults, which is the class of defect this
+    # project has spent the most hours on.
+    #
+    # The cost is no port isolation, which for a service whose whole job is to
+    # be reachable by UDP from the internet is not much of a cost.
+    network_mode: host
+
+    environment:
+      # Read from .env. Both are required on the first run only; after that
+      # the configuration file is yours and these are ignored.
+      QSP_PEER_PASSWORD: ${QSP_PEER_PASSWORD:?set it in .env}
+      QSP_ALLOWED_PEERS: ${QSP_ALLOWED_PEERS:?set it in .env}
+
+    volumes:
+      # Configuration, the peer password and the call history. **Keep this.**
+      # Losing it loses your access list and every call record; a `docker
+      # compose down -v` deletes it.
+      - qsp-data:/var/lib/qsp
+
+    # The image has no shell, so the healthcheck is the binary answering about
+    # itself. It reports that the process is alive rather than that the network
+    # is working — the console says the second, and no healthcheck should
+    # pretend to.
+    healthcheck:
+      test: ["CMD", "/qsp", "-version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  qsp-data:

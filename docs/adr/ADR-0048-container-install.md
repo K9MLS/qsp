@@ -1,6 +1,6 @@
 # ADR-0048: The container install, and what it has to get right for a stranger
 
-**Status:** Proposed — the decisions are settled, none of it is built
+**Status:** Accepted — built and amended by what building it found; not yet run
 **Date:** 2026-09-06
 
 ## Context
@@ -16,7 +16,7 @@ recommended settings, for people who are not necessarily advanced.
 
 ### There is already Docker material, and it has never been run
 
-`deploy/docker/Dockerfile` and `deploy/docker/compose.yaml` exist. Reading them
+`deploy/docker/Dockerfile` and a compose file existed. Reading them
 against how QSP actually works, before writing anything new:
 
 - **The compose file publishes no UDP ports and does not use host networking.**
@@ -165,3 +165,67 @@ have cost this project an hour today on its own.
 
 **Steps 2 and 6 are what make it easy.** The container files are the least
 interesting part of this record.
+
+## Amended by building it, 2026-09-07
+
+Three of this record's decisions were wrong, and the code said so.
+
+### The radio ID was never needed
+
+This record said the one value to ask for was the operator's radio ID. **A
+Homebrew master has no radio ID of its own** — peers bring theirs — and
+`MasterID` belongs to IP Site Connect, which starts disabled. `config.Default()`
+validates with no input at all.
+
+What the validator does refuse is a listener with no password and no access
+policy, and it names both. So a first run asks for:
+
+- **`QSP_PEER_PASSWORD`**, the shared secret hotspots authenticate with, written
+  to a mode-0600 file of its own because configuration gets pasted into forum
+  posts;
+- **`QSP_ALLOWED_PEERS`**, the repeater IDs permitted to register.
+
+### The empty allow list is not permitted, and that is better
+
+The plan was to write an empty permit list so a fresh instance carried nothing
+until its operator filled it in. **The validator refuses that**: a permit list
+with no entries refuses every station, and it treats writing one as a mistake
+rather than a policy — which it usually is.
+
+Being made to ask is the better outcome. An operator states who may connect
+*before* anything is listening, rather than starting a server that is silently
+useless and discovering it when a hotspot will not register.
+
+Talkgroups start as a deny list with no entries, the documented way to say
+"all": **registration is the safety boundary**, and which talkgroups to carry is
+a refinement an operator makes once they know what their members use.
+
+### The container runs as root
+
+The image has no `/etc/passwd`, so an unprivileged user is a bare numeric UID,
+and Docker creates the data volume owned by root — so that UID could not write
+the configuration it exists to write. The usual answer is an entrypoint script
+that chowns and drops privileges, which means abandoning `scratch` for a base
+image with a shell, which is the thing the image exists to avoid.
+
+It binds no port below 1024, contains one static binary and no shell, and uses
+host networking so no capability is needed for the socket. An operator who wants
+it unprivileged sets `user:` and owns the volume themselves. **Named here rather
+than left as a silent default.**
+
+## What is still not proved
+
+**Nothing here has been run.** Docker is not available where the tests run, so
+the image has never been built and no container has ever started. That is the
+same sentence this record opens by writing about the files it replaced, and it
+is only untrue once an operator runs it.
+
+What *is* checked is the part that drifts silently, in `cmd/qsp/deploy_test.go`:
+the environment variables the compose file passes against the constants the code
+reads, the volume path against the entrypoint, host networking against the
+absence of a `ports:` block, the image tag against `VERSION`, and the build
+stage's Go version against `go.mod`. The version check caught its own drift the
+first time it ran.
+
+The rest is checked by somebody running it on a machine that has never had QSP
+on it, which is the only way it ever could be.
