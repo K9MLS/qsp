@@ -4,6 +4,47 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **An invitation format for a QSP-to-QSP link**, `internal/peering/link.go`.
+  The first piece of the accept form, which today writes an OpenBridge link
+  with a bridge and a timeslot box — the configuration ADR-0051 exists to
+  prevent — for every peering agreed through the console.
+
+  **The exchange collapses from two round trips to one token.** OpenBridge is
+  symmetric and has no connection, so both ends must be configured and neither
+  can invent the other's address: hence the reciprocal, `Invitation.Reply`, and
+  the held-passphrase store. A QSP link is a peer registration. One side dials,
+  one listens, and only the dialling side is configured at all, so there is
+  nothing to send back.
+
+  **The offer therefore travels the other way.** The listening side offers,
+  because it is the side with something to allocate: a DMR ID in its
+  registration list and a password against that ID. Charlie failed to register
+  with the test server tonight for exactly that reason — 3132914 was not in the
+  list — and the dialling end could say only *check the password and the
+  repeater ID*, because MSTNAK carries no cause. Allocating the ID in the same
+  act that writes the list entry is what stops the two disagreeing.
+
+  `LinkInvitation` carries a display name, a callsign, an address, the DMR ID
+  the far end should present, a password fingerprint and an issue time. No
+  `Export`, `Import`, `NetworkID`, timeslot or `Reply`: everything crosses and
+  each server's own access lists decide what it keeps, the slot crosses
+  unchanged, and one leg cannot loop.
+
+- **A second token prefix, `QSP-PEER-2.`, rather than a field in the first.**
+  `Decode` rejects unknown fields deliberately, so a new field in `Invitation`
+  would make every deployed QSP report a link invitation as malformed JSON. A
+  distinct prefix gets the behaviour the existing comment already claims: an
+  older QSP says *this was written by a newer QSP*. `KindOf` tells the console
+  which form to show, so an operator is never asked to identify a token by
+  reading base64, and each decoder refuses the other's format by name rather
+  than as a parse error.
+
+  Each assertion was checked by breaking the code and watching it fail:
+  removing the fingerprint check, letting `DecodeLink` accept an OpenBridge
+  token, and dropping the repeater-ID rule each turn a different test red.
+
 ### Documentation
 
 - **The deploy check named in four documents has never worked, and the one that
