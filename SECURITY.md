@@ -239,6 +239,18 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
+`/api/links/inbound/{id}`, on DELETE, stops this server accepting registrations
+from one DMR ID. **It is not a removal**: a link that dialled in is in nobody's
+configuration here, so the far end is untouched and will keep dialling. What is
+withdrawn is this side's consent — the password issued to that ID alone is
+deleted, and the registration list is made to refuse it. Without this a server
+could not decline a neighbour from its console at all, which ADR-0052 rule 1
+requires of a federation. It does not disconnect a session already established;
+that survives until it times out or QSP restarts, and the response says so. A
+link authenticating with the shared peer password has nothing of its own to
+revoke, and the response says that too, because an operator who believes a
+network is locked out when it is not has been told something worse than nothing.
+
 `/api/links/{name}`, on DELETE, removes a link, the bridge that was created
 with it, and its passphrase file. **The file is deleted after the configuration is
 saved, never before**: a passphrase removed from under a link that is still

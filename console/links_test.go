@@ -401,3 +401,40 @@ func fieldBlock(t *testing.T, html, id string) string {
 	}
 	return html[start : start+end]
 }
+
+// TestAnInboundLinkCanBeRefused is the rule this project already has, applied
+// to the case it was taken off.
+//
+// **Anything a page creates, it must be able to remove.** 0284 removed the
+// button from inbound links because there was nothing on this side to delete —
+// true until 0288, when the offering side began allocating a DMR ID in the
+// registration list and a password against it. Both are written by this
+// console.
+//
+// The sharper version is ADR-0052 rule 1: a server decides what it accepts. A
+// server that cannot refuse a neighbour from its own console is not sovereign,
+// and the only recourse was asking the other operator or editing JSON.
+func TestAnInboundLinkCanBeRefused(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "/api/links/inbound/") {
+		t.Fatal("the page cannot refuse a link that dialled in, so a rogue network " +
+			"can only be stopped by editing configuration on the server")
+	}
+	// **Not called Remove.** There is no link here to delete; the far end's
+	// configuration is untouched and it will keep dialling. A button promising
+	// removal would be describing something that does not happen.
+	if !strings.Contains(js, "Stop accepting") {
+		t.Error("the control on an inbound link does not say what it actually does")
+	}
+	// Two clicks, as removing an outbound link is, because both take traffic
+	// off a network.
+	if !strings.Contains(js, "Stop accepting \" + name + \"?") {
+		t.Error("refusing a link is one click; it takes a network off the air")
+	}
+	// An operator who believes a rogue network is locked out when the shared
+	// password still admits it has been told something worse than nothing.
+	if !strings.Contains(js, "shared peer password still admits it") {
+		t.Error("the page does not say when a refused link still has a way in")
+	}
+}

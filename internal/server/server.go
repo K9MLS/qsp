@@ -210,6 +210,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		// undo any of it — an operator whose first attempt went wrong was left
 		// with a broken link on the page unless they edited JSON on the server.
 		{"DELETE /api/links/{name}", s.requireSession(s.handleRemoveLink)},
+		{"DELETE /api/links/inbound/{id}", s.requireSession(s.handleRefuseInbound)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},

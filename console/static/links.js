@@ -109,8 +109,19 @@
          * document — so there is nothing on this side to delete, and offering
          * the button invites a click that either does nothing or matches
          * something else by name. Removing it is the far end's to do. */
+        /* **A link that dialled in can be refused, and until 0291 it could
+         * not.** The button was taken off because an inbound link is in
+         * nobody's configuration here — true until the offering side began
+         * allocating a DMR ID and a password for it, which this console
+         * writes and therefore has to be able to withdraw.
+         *
+         * It does not say Remove, because there is no link here to delete.
+         * What it does is stop this server accepting that ID: the far end's
+         * configuration is untouched and will keep dialling. */
         (l.inbound
-          ? ""
+          ? '<button class="button button--quiet link__remove" type="button" ' +
+            'data-refuse="' + escapeText(l.announces || "") + '" ' +
+            'data-name="' + escapeText(l.name) + '">Stop accepting</button>'
           : '<button class="button button--quiet link__remove" type="button" ' +
             'data-remove="' + escapeText(l.name) + '">Remove</button>') +
         "</div>" +
@@ -147,6 +158,8 @@
         "</div>";
     }
     list.innerHTML = html;
+
+    wireRefuse();
 
     Array.prototype.forEach.call(list.querySelectorAll("[data-remove]"), function (button) {
       button.addEventListener("click", function () {
@@ -193,6 +206,70 @@
           button.disabled = false;
           button.textContent = "Remove";
           fail("links-note", e.message);
+        });
+      });
+    });
+  }
+
+  /* Arming a destructive button, which both of these need: removing a link or
+   * refusing one takes traffic off a network, and a single button beside a
+   * status row is one slip away from doing it. */
+  function armed(button, question, act) {
+    if (button.dataset.armed !== "yes") {
+      button.dataset.armed = "yes";
+      button.textContent = question;
+      button.classList.add("button--danger");
+      setTimeout(function () {
+        button.dataset.armed = "no";
+        button.textContent = button.dataset.idle;
+        button.classList.remove("button--danger");
+      }, 5000);
+      return;
+    }
+    act();
+  }
+
+  function wireRefuse() {
+    Array.prototype.forEach.call(list.querySelectorAll("[data-refuse]"), function (button) {
+      button.dataset.idle = "Stop accepting";
+      button.addEventListener("click", function () {
+        var id = button.getAttribute("data-refuse");
+        var name = button.getAttribute("data-name");
+        armed(button, "Stop accepting " + name + "?", function () {
+          button.disabled = true;
+          button.textContent = "Refusing";
+          fetch("/api/links/inbound/" + encodeURIComponent(id), {
+            method: "DELETE",
+            headers: { Accept: "application/json" },
+            credentials: "same-origin"
+          }).then(function (r) {
+            return r.json().then(function (b) {
+              if (!r.ok) { throw new Error(b.error || "could not refuse this link"); }
+              return b;
+            });
+          }).then(function (b) {
+            /* **Everything this did and did not do.** Revoking a password that
+             * was never issued, or refusing an ID a range still permits, both
+             * look identical to success from here — and an operator who
+             * believes a rogue network is locked out when it is not has been
+             * told something worse than nothing. */
+            var said = "DMR ID " + b.peer + ": ";
+            said += b.refused
+              ? "the registration list now refuses it"
+              : "the registration list was not changed";
+            said += b.password_revoked
+              ? ", and its own password is revoked."
+              : ", and it had no password of its own — the shared peer password still admits it.";
+            if (b.reason) { said += " " + b.reason; }
+            said += " A session already established stays up until it times out or QSP restarts.";
+            said += restartNote(b, "this server still accepts it");
+            fail("links-note", said);
+            load();
+          }).catch(function (e) {
+            button.disabled = false;
+            button.textContent = "Stop accepting";
+            fail("links-note", e.message);
+          });
         });
       });
     });

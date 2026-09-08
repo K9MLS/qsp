@@ -6,6 +6,44 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A link that dialled in can be refused, and until now it could not.** 0284
+  took the Remove button off inbound links, reasoning that an inbound link is in
+  nobody's configuration here — this server received a registration, not a
+  document — so there was nothing on this side to delete.
+
+  **That stopped being true two patches later.** 0288 made the offering side
+  allocate a DMR ID in the registration list and a password against that ID.
+  Both are written by this console, and the rule is that anything a page creates
+  it must be able to remove. The reasoning was sound when it was written and was
+  not revisited when the thing that made it sound changed — two statements
+  individually true, together a lie, which §8a says is the shape of almost every
+  defect here.
+
+  The sharper version is ADR-0052 rule 1: a server decides what it accepts and
+  nobody decides for it. The only way to stop accepting a link was to ask the
+  other operator to remove their end, or to edit JSON on the server. **A
+  federation in which a server cannot refuse a neighbour is not one.**
+
+  `DELETE /api/links/inbound/{id}` revokes the password issued to that ID alone
+  and makes the registration list refuse it. **It is not called Remove**,
+  because there is no link here to delete: the far end's configuration is
+  untouched and it will keep dialling. The button says Stop accepting, arms on
+  the first click like the outbound one, and the result reports what was
+  actually withdrawn — including the two cases that look like success and are
+  not. A link authenticating with the shared peer password has nothing of its
+  own to revoke and the shared password still admits it; an ID permitted by a
+  range rather than by an entry is reported instead of having the range split,
+  for the same reason the offer path refuses to split one.
+
+  Refusing the only station a permit list names is refused outright: it would
+  take the whole network off the air to stop one link.
+
+  Three judgements were checked by breaking them — splitting the range,
+  emptying the permit list, and reporting a revoke that did not happen — each
+  turning a different test red. The first attempt at the range break was a
+  compile error rather than a red test, which §7 says must not be read as a
+  pass, so it was redone with a change that builds.
+
 - **The links page offers and accepts a QSP link.** The last piece: until now
   none of this was reachable from a browser, and the only way to write a working
   link was to hand-edit JSON on the server.
