@@ -220,6 +220,18 @@ console**: it is written to a file beside `dmr.password_file` at mode 0600 when
 a peering is accepted, and configuration — which is versioned, stored in the
 database, and shown in the console — carries only its path.
 
+`/api/links/offer-link` offers a link to another QSP server, and **it writes
+before it answers.** A link is a peer registration (ADR-0051), so the offering
+side allocates a DMR ID in its registration list and a password against that ID.
+Both are written in one act: an ID permitted with no password behind it is
+refused at login with a message that reads like the far end's mistake, and a
+password with no list entry is refused with MSTNAK, which carries no reason at
+all. The password is returned once, is never readable again, and is written to
+`dmr.peer_passwords` at mode 0600 in a directory at 0700 — so a link removed
+later takes its own credential with it rather than needing every member's
+password changed, which is what ADR-0035 exists for. The invitation carries only
+a fingerprint of the password, so a forwarded mail thread is not a credential.
+
 `/api/links/accept` writes a link and a bridge after an administrator confirms
 what an invitation says. It refuses a request without an explicit confirmation
 flag, so a peering cannot be created by a request made in passing, and records

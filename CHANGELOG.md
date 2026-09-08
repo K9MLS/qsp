@@ -6,6 +6,46 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The offering side of a QSP link, `POST /api/links/offer-link`.** A link is a
+  peer registration, so the listening side is the one with something to
+  allocate: a DMR ID in its registration list, and a password against that ID.
+  It writes both or neither.
+
+  **That is the whole point of the endpoint.** A password issued without a list
+  entry is refused with MSTNAK, which carries no reason, so the dialling end can
+  say only *check the password and the repeater ID*. A list entry without a
+  password is refused with *no password is configured for repeater ID*, which
+  reads like the far end's mistake. Charlie hit the first of those tonight and
+  the answer was in the other machine's journal.
+
+  **It pays back the shared-password debt rather than deferring it.** ADR-0035
+  exists so a member can be removed without changing everybody's password, and
+  the first QSP link gave that up by authenticating with the shared hotspot
+  password. An offer now settles `dmr.peer_passwords` — beside the shared
+  password file, directory 0700, file 0600 — so a link removed later takes its
+  own credential with it. Requiring the operator to set that directory by hand
+  first would have left the shared password as the path of least resistance.
+
+  **A denied ID is refused, not fixed.** Adding to a permit list is what the
+  operator asked for. Removing an ID from a deny list means splitting a range —
+  `3132900-3132999` — in a live access list, and an edit of that shape took a
+  club's network down for an hour earlier in this project. The refusal names the
+  ID and leaves the decision with the operator.
+
+  Three collisions are refused up front, all of which fail silently on the far
+  end: the server's own IPSC master ID, another link's ID, and a locally
+  configured peer's ID.
+
+- **A defect found by writing the test, not by reading the code.** `DMR.Access`
+  is a pointer and is nil until somebody configures a list — the default, and
+  the state in which every list permits everything. The first version of this
+  handler dereferenced it, so offering a link would have panicked on exactly
+  the servers that had never restricted anything.
+
+  Each of the three irreversible acts was then checked by breaking it: appending
+  to a deny list, falling back to the shared password directory, and writing the
+  password 0644 each turn a different test red.
+
 - **An invitation format for a QSP-to-QSP link**, `internal/peering/link.go`.
   The first piece of the accept form, which today writes an OpenBridge link
   with a bridge and a timeslot box — the configuration ADR-0051 exists to

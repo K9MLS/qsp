@@ -32,4 +32,4 @@ package buildinfo
 // Copying the file here would create two files to keep in step and no way to
 // notice when they drift. A constant plus a test that reads the real file is
 // the same guarantee with one file.
-const Version = "0.1.129"
+const Version = "0.1.130"

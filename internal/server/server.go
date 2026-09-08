@@ -203,6 +203,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
 		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
+		{"POST /api/links/offer-link", s.requireSession(s.handleOfferLink)},
 		{"POST /api/links/accept", s.requireSession(s.handleAcceptPeering)},
 		// **A page that creates a link must remove one.** Accepting a peering
 		// wrote an upstream, a bridge and a passphrase file, and nothing could
