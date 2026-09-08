@@ -4,7 +4,7 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.122**, patches 0261–0280. Everything through 0273 is deployed to
+Version **0.1.123**, patches 0261–0281. Everything through 0273 is deployed to
 production and the test server; 0274 to 0276 are on Fedora only.
 
 **0276 changes the container build**, so the test server needs a rebuild rather
@@ -33,50 +33,54 @@ monitors.
 upstream block: name, address, DMR ID, password file, callsign. No listen
 address, no export list, no import list, no timeslot, no port forward.
 
-## Start here: run relaying with three servers
+## Start here: a server says what it is
 
-**0275 built deduplication and turned relaying on, and no third server has ever
-existed.** Every test is a unit test. This is the same shape as the two
-diagnoses that were wrong earlier today — correct reasoning, never run.
+**An administrator cannot see half their own links.** Production and the test
+server carry audio in both directions, and production's Links page reads *No
+links are configured* — because the test server dials in, and the listening end
+cannot tell a linked network from a hotspot. Same handshake, same port, same
+peer table. It appears on the Peers page as 3132912 beside three hotspots.
 
-A transmission is now carried by the first path it arrives by, keyed on source
-radio ID and stream ID, and a QSP link may relay to the other QSP links. What
-that buys is a club joining the network through one neighbour instead of
-peering with everybody, and what makes it safe is that a copy coming back
-around is recognised and dropped.
+ADR-0051 called that asymmetry invisible in use. It is not, and it was found
+within four minutes of clicking through the console. **ADR-0052 is the frame
+that decision should have been made inside**: QSP is a federation of sovereign
+servers, and three choices made the same day made the sender responsible for
+what the receiver gets.
 
-**The test:** a third QSP instance, linked so that a frame can reach one server
-by two paths. The container on the test server can be duplicated, or a third VM
-stood up. Then key the Pi-Star and confirm a radio hears one copy, not two, and
-that the journal shows the second path refused with
-`already being carried from ...`.
+The work, in ADR-0052's order:
 
-Until that has been run, relaying is a claim.
+1. **A server announces what it is** on registration — QSP, its identifier, its
+   display name, its network's name, its version. The homebrew identity packet
+   already carries callsign, description, location and URL, so this needs no new
+   wire field to begin. **Nothing else in 0052 is possible until servers can
+   identify themselves.**
+2. **The Links page shows inbound links beside outbound ones**, with the same
+   states, counts and last-heard, and the same name at both ends. An
+   administrator asks one question and should not have to know which end
+   dialled.
+3. **A hop count**, bounding relay before deduplication catches it.
+4. **The link's own state while retrying** — retrying, last attempt, last
+   connected. Reconnection works and is silent to the console.
 
-Then, in order:
+Then the accept form, which still writes an OpenBridge link with a bridge and a
+timeslot box, and then removing `Export`, `Import` and the bridge-for-links
+machinery.
 
-1. **The accept form.** It still writes an OpenBridge link with a bridge and a
-   timeslot box. It should write a `qsp` link and ask for neither. Until then
-   every peering an administrator agrees through the console produces the
-   configuration ADR-0051 was written against.
-2. **The arrived-frames console line.** A slot mismatch between two linked
-   servers is still silent: the traffic dies at the far end's ingress and the
-   link looks dead, which is this morning's failure wearing a different label.
-   Not a configuration knob — a mirror. One line per link saying what actually
-   arrived against what this server carries.
+**Before writing any of it, settle what a server's identifier is.** ADR-0052
+leaves it open on purpose: it is the one choice that cannot be changed once
+servers are running, because it is what everybody calls everybody else. A DMR ID
+is unique and already issued, and it is issued to an *operator* — a server
+outlives the person who registered it, and a club running three instances needs
+three from a pool sized for members.
 
-   **The ID-collision refusal is done (0277)**, and it will refuse a
-   configuration both servers could have grown into: they announce IPSC master
-   ID 3132911 today, and a `qsp` link carrying that ID is now refused at
-   startup with the reason named.
-3. Remove `Export`, `Import` and the bridge-for-links machinery.
-4. OpenBridge narrowed to foreign networks; the disabled link on the test
-   server removed.
+## Not run anywhere, and it is the largest claim outstanding
 
-Done in 0276 and never run on a machine: reconnection jitter and the two-minute
-cap, the container version, and the double close on 62045. **The double close
-is the one to watch for** — restart production and confirm the journal no
-longer says `Failed with result 'exit-code'` for a clean stop.
+**Relaying and deduplication have never seen a third server.** Every test is a
+unit test. With two servers there is nothing to relay to, so today's on-air
+evidence says nothing about either. A third instance — a second container on the
+test server on different ports is the cheapest — linked so a frame reaches one
+server by two paths. A radio should hear one copy, and the journal should show
+the second path refused with `already being carried from ...`.
 
 ## Two debts taken deliberately
 

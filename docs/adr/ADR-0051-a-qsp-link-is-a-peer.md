@@ -195,6 +195,15 @@ and it already is, because it serves hotspots. So the far end reconnects on its
 own and the listening side cannot force it. That is exactly how the three
 existing hotspots behave and it has never been a problem, but it is real.
 
+> **Amended 2026-09-08, the same evening.** This section said the asymmetry was
+> invisible in use. It is not. The listening end cannot tell a linked network
+> from a hotspot — same handshake, same port — so its Links page listed nothing
+> while a link was carrying audio, and half of a linked pair looked unlinked to
+> its own administrator. Found within four minutes of clicking through the
+> console, and the claim was reasoned about the wire rather than about the
+> person reading the page. See [ADR-0052](ADR-0052-qsp-is-federated.md), which
+> makes a server announce what it is and shows a link from both ends.
+
 **Two administrators both behind NAT with no forwarding cannot link.** Neither
 can host, and no protocol fixes that without a relay. Serving that case is out
 of scope here and would be a new decision, not an extension of this one.

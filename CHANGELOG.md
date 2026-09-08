@@ -4,6 +4,46 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **ADR-0052: QSP is a federated network.** Each server is sovereign — it
+  decides what it carries, who it links to and what it accepts — and servers
+  cooperate through a shared protocol rather than anyone's central
+  configuration. No headquarters, no registry a club must join, no server more
+  authoritative than another's. That is what makes QSP an alternative to a
+  a commercial DMR server rather than another thing to be admitted to.
+
+  It corrects three decisions taken the same day, and the error in each is the
+  same: **the sender was made responsible for what the receiver gets.**
+  Everything crossing every link is federated at two servers and centralist at a
+  thousand. Locally-chosen link names collide at the third hop. And a link
+  being one server logging into another left the listening end unable to tell a
+  linked network from a hotspot, so half of a linked pair looked unlinked to its
+  own administrator — which 0051 called invisible in use and an operator found
+  within four minutes of clicking through the console.
+
+  Four rules: a server decides what it accepts and nobody decides for it;
+  identity is unique without a coordinator and travels with the server; a server
+  says what it is when it registers; and what a server knows about the wider
+  network is its own partial view rather than a map anybody holds.
+
+  **Two servers stay exactly as simple as they are today.** Every mechanism is
+  inert until a network is large enough to need it, which is a requirement
+  rather than an accident: a club of two must not pay for a federation of a
+  thousand.
+
+  **What a server's identifier should be is left open**, deliberately. It is the
+  one choice here that cannot be changed once servers are running, because it is
+  what everybody calls everybody else, and a DMR ID is issued to an operator
+  while a server outlives the person who registered it.
+
+  No code. The record comes first because it reframes decisions already made,
+  and a frame discovered later is a frame half-applied.
+
+- **ADR-0051 amended.** Its claim that the dialling asymmetry is invisible in
+  use was false, and is marked so where it was made rather than only corrected
+  elsewhere.
+
 ### Added
 
 - **`protocol: "qsp"` links two QSP servers as peers** (ADR-0051), the first
