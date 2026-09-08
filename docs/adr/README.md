@@ -27,7 +27,7 @@ conclusion.
 | [0015](ADR-0015-level-triggered-scheduler.md) | The scheduler is level-triggered, and stores wall time | Accepted |
 | [0016](ADR-0016-ptt-triggered-bridging.md) | PTT-triggered bridging, and how it merges with the schedule | Accepted |
 | [0017](ADR-0017-first-dependency.md) | Adopting modernc.org/sqlite, the first dependency | Accepted |
-| [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed |
+| [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed — narrowed by 0051 to foreign networks |
 | [0019](ADR-0019-master-repeats.md) | A master repeats; bridging is a layer on top | Accepted |
 | [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Accepted |
 | [0021](ADR-0021-private-calls-and-data.md) | Private calls and data are in scope, and share one missing thing | Proposed |
@@ -40,7 +40,7 @@ conclusion.
 | [0028](ADR-0028-parrot.md) | Parrot replays bytes it never understood | Proposed |
 | [0029](ADR-0029-ipsc-from-capture.md) | IPSC is built from a capture, and the capture is the hard part | Proposed |
 | [0030](ADR-0030-radio-id-lookup.md) | Radio IDs are looked up one at a time, and QSP says who is asking | Proposed |
-| [0031](ADR-0031-loop-prevention.md) | A transmission is recognised by who sent it, not by where it arrived | Proposed — amended |
+| [0031](ADR-0031-loop-prevention.md) | A transmission is recognised by who sent it, not by where it arrived | Proposed — amended; 0051 replaces the blunt rule for QSP-to-QSP |
 | [0032](ADR-0032-peering-is-agreed.md) | A peering is agreed by two people, and QSP can prove it was | Accepted |
 | [0033](ADR-0033-last-heard-is-a-record.md) | Last heard is a record, and net control is who it is for | Accepted |
 | [0034](ADR-0034-p25-is-native.md) | P25 is a network of its own, and audio is never transcoded to reach it | Accepted |
@@ -60,3 +60,4 @@ conclusion.
 | [0048](ADR-0048-container-install.md) | The container install, and what it has to get right for a stranger | Accepted — built and run; nine defects found |
 | [0049](ADR-0049-first-account-setup-token.md) | The first administrator account is created from a token in the log | Proposed |
 | [0050](ADR-0050-a-reciprocal-says-so.md) | A reciprocal says so in the token, so an exchange can end after a restart | Accepted |
+| [0051](ADR-0051-a-qsp-link-is-a-peer.md) | A link between two QSP servers is a peer, not a bridge | Accepted |

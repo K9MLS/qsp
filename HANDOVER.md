@@ -1,14 +1,83 @@
-# Handover, 2026-09-08 afternoon
+# Handover, 2026-09-08 evening
 
 Read `NEW-SESSION.md` for the standing brief, then **§8a** of
-`PROJECT_MEMORY.md`, which is the section that matters most, then **§8m** for
-this session. §8b through §8l are superseded and say so.
+`PROJECT_MEMORY.md`, then **ADR-0051**, which decides how linking works from
+here. §8b through §8l are superseded and say so.
 
-Version **0.1.113**, patches 0261–0271. 0261–0270 are on Fedora; **0271 is
-new** and on neither server. **0264 and 0265 are still on neither server**, and
-0264 matters — see below.
+Version **0.1.114**, patches 0261–0272. Everything through 0271 is on Fedora,
+production and the test server. **0272 is the ADR and is new.**
 
-## Start here: deploy 0271 and key a radio
+## Start here: build ADR-0051
+
+**0271 landed and worked on air.** A frame from an OpenBridge link reached a
+Motorola repeater for the first time — `nowhere on the Homebrew side; carried to
+the Motorola repeaters only`, and the repeater keyed. Both directions between a
+link and a repeater are connected.
+
+**The radio still heard nothing, and the cause is not the codec.** A capture of
+what QSP sends to the XPR8300 was diffed against
+`testdata/ipsc/ipsc-master-voice.pcap`. The framing is right: same length
+distribution in the same 4:1:1 ratio, same 60 ms cadence, same six-burst
+superframe, RTP sequence incrementing by 1 and timestamp by 480 per frame in
+both. Three bytes differ, and `voice.go` names every one:
+
+| Offset | Constant | Reference | QSP |
+|---|---|---|---|
+| 17 | `FlagSlot = 0x20` | set | clear |
+| 30 | `FrameSlotBit = 0x80` | `0x8a` | `0x0a` |
+| 31 (54-byte) | `HeaderSlotBit = 0x80` | `0xc0` | `0x40` |
+
+Three independent fields, all the timeslot, all disagreeing the same way.
+**QSP transmitted to the repeater on the slot nobody was listening to**, because
+OpenBridge forced the frame to TS1 and the codeplug has TG 2 on TS 2.
+
+So the burst shape is fine and ADR-0041's caveat, corrected in 0268, described
+the symptom and named the reference that settled it in an afternoon.
+
+**The work is ADR-0051**, in this order:
+
+1. Peer-mode QSP-to-QSP linking, end to end between the two servers. It is the
+   thing that makes the network work and most of it exists —
+   `UpstreamHomebrew`, `validateHomebrewUpstream`, ADR-0024, built and never
+   pointed at a real far end.
+2. The ID-collision refusal and the arrived-frames console line. These are what
+   stop the next silent day.
+3. Remove `Export`, `Import` and the bridge-for-links machinery, once nothing
+   depends on them.
+4. OpenBridge narrowed to foreign networks; existing links re-peered.
+
+Two unexplained bytes, recorded rather than guessed at: byte 5 reads 1–3 in the
+reference and a constant 4 from QSP, and the last byte of the 54-byte header is
+`0x3b` in the reference and `0x00` from QSP. Neither is named in `voice.go`.
+
+## Deploying, which is three machines and three mechanisms
+
+This cost most of an afternoon because the documentation described one deploy
+and there are three. Commands for the wrong machine were sent three times.
+
+- **FEDORA**, `~/Documents/QSP/qsp`. Source of truth. The only place `git am`
+  runs. Patches arrive in `~/Documents/QSP`, not `~/Downloads`. **Fedora runs no
+  sshd**, so nothing pulls from it — it pushes.
+- **QSP-SERVER**, 192.168.1.247. systemd. `scp` the cross-compiled binary,
+  `sudo install -m755`, `systemctl restart`.
+- **TEST SERVER**, 192.168.1.27. **Docker Compose, not systemd.** There is no
+  `qsp.service` there. Its `origin` is GitHub over HTTPS and cannot
+  authenticate, so a bundle goes over `scp` and is fetched from the file. Then
+  `docker compose -f docker-compose.yml -f docker-compose.build.yml build` and
+  the same override on `up -d` — without it, compose tries to pull
+  `ghcr.io/k9mls/qsp:<version>`, gets `denied` because that tag has never been
+  published, and silently leaves the old container running.
+
+**`qsp --version` cannot tell you what is running on either server.** On
+production it runs the binary on disk, which `install` has already replaced, so
+it answers the same before and after a restart. In the container it reads
+`development`. Until both are fixed, ask the process:
+
+```
+sudo md5sum /proc/$(systemctl show -p MainPID --value qsp)/exe /usr/local/bin/qsp
+docker cp qsp:/qsp /tmp/qsp-container && grep -c "<a string only the new build has>" /tmp/qsp-container
+```
+
 
 **Both directions between an OpenBridge link and a Motorola repeater are
 built, tested and never run on air.** Everything below this line is a claim
@@ -41,57 +110,12 @@ differently.
 Pi-Star. A hotspot user on production should be heard on the test server's
 repeater. The reverse already works.
 
-## Then: the accept form's timeslot, and what the new rule found
 
-The accept handler wrote the operator's chosen slot onto the endpoint naming
-the link. OpenBridge passes all traffic on TS1, so nothing arriving from that
-link could ever match it — both ends configured, both healthy, no audio in
-either direction for a day, counters reading Sent 50 / Received 0 on one side
-and Received 28 / Sent 0 on the other.
+## Resolved: the repeater that transmitted silence
 
-`handleAcceptPeering` now writes `config.OpenBridgeTimeslot` on the link
-endpoint and keeps the operator's slot on the local one. `config.Validate`
-refuses any other value on an endpoint naming an enabled **OpenBridge** link,
-scoped so a homebrew link to XLX or DMR+ keeps both slots.
-
-**On its first run the rule refused `deploy/pair/alpha.json` and
-`deploy/pair/bravo.json`.** The shipped pair example carried the same defect,
-so anyone who copied it got two instances that authenticated, reported healthy
-and carried nothing. `TestThePairFacesItself` had passed over it for as long as
-the example has existed. Both corrected.
-
-**A hand-edited `qsp.json` on either server will now refuse to start if its
-link endpoint is on TS2.** Both were corrected by hand on 2026-09-08, so
-neither should trip, but check before restarting rather than after.
-
-## Then: a repeater keys up on network audio and transmits silence
-
-**This is measurable, and a caveat said otherwise for five days.**
-
-The IPSC relay logged, on every start, *"built from inference; no capture of a
-master sending voice exists (ADR-0041)"*. That stopped being true on
-2026-09-03. `testdata/ipsc/ipsc-master-voice.pcap` is 347 packets of an
-XPR8300's own RF, 288 of them voice, captured by K9MLS, and **four tests
-already read it** — `internal/ipscbridge/master_test.go`,
-`internal/ipsclink/parrot_test.go`, `internal/dmrfec/slottype_test.go` and
-`internal/ipscbridge/encode_test.go`.
-
-On 2026-09-08 that stale line was read twice as evidence the direction could not
-be verified, while the reference to verify it against was in the tree. It cost
-an hour. 0268 corrects it and adds a test that fails if a caveat denies a
-fixture the repository contains.
-
-**The work:** compare the voice bursts QSP sends against that capture and diff.
-Not a new investigation — the method §7 records as having worked repeatedly, on
-a reference that already exists.
-
-Everything else in the path is now proven on air:
-
-- The repeater registers with a containerised instance.
-- Its audio is decoded and routed: `frames=46 converted=44 delivered=44`.
-- It crosses an OpenBridge link between two QSP instances, both ways.
-- A hotspot user can key up and **see the repeater transmit** — the header
-  arrives and the repeater acts on it. Only the audio inside is wrong.
+**Answered by measurement, above.** It was the timeslot, not the burst shape.
+ADR-0041's caveat, corrected in 0268, named the reference that settled it. The
+fix is ADR-0051 rather than anything in the encoder.
 
 ## Two things that cost the morning, both now understood
 
@@ -113,16 +137,12 @@ anywhere in the console. You can create a link and remove one; changing one
 character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 0265 closed, and it is worth closing the same way.
 
-## Deploy 0264 before anything else
+## Deployed
 
-**The Links page has been lying on both servers.** `handleLinks` returned early
-when the running link set was nil — and `cmd/qsp` decides that nil *at startup*,
-from the startup configuration, so an instance that booted with no upstreams can
-never display a link accepted afterwards. Both servers showed *No links are
-configured* over the top of working links for a whole morning.
-
-That is every fresh install accepting its first peering. It is fixed in 0264 and
-that patch is not deployed.
+0261 through 0271 are on Fedora, production and the test server. The Links page
+lying over working links (0264) and the IPSC console surface (0265) are both
+live. Production runs under systemd; the test server runs `qsp:local` built from
+the override compose file.
 
 ## What was built, and what each one is worth
 

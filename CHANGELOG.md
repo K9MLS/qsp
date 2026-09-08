@@ -4,6 +4,56 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **ADR-0051: a link between two QSP servers is a peer, not a bridge.** A day of
+  silence between two linked instances, then a repeater keying on network audio
+  with nothing audible, had one cause: OpenBridge forces timeslot 1 because
+  BrandMeister needs it to, and two instances of the same software were using it
+  to talk to each other. The slot was thrown away and everything downstream had
+  to guess.
+
+  It had a home, and that is ADR-0019 repeating one layer out. The only way to
+  get traffic to a link was to write a bridge, a bridge joins endpoints, and an
+  endpoint carries a timeslot — so the accept form asked an operator a question
+  the protocol had already answered. `Upstream.Export` and `Upstream.Import`
+  being read by no routing code was not a defect; nobody wrote that code because
+  there was never anything for those fields to decide.
+
+  A link becomes one server logging into the other as a peer, on the port the
+  master already listens on. Talkgroup and timeslot cross unchanged. Everything
+  crosses by default and each side's access lists are the only fence — no
+  bridge, no export list, no import list, no timeslot on the accept form. The
+  blunt never-relay rule is replaced for QSP-to-QSP by deduplication on source
+  radio ID and stream ID, because ten servers meshed is forty-five peerings and
+  relaying is what makes a large network simple. Links retry forever with capped
+  backoff. OpenBridge stays, narrowed to foreign networks.
+
+  No code yet. The record comes first because it changes how a frame is
+  addressed, and a decision this size rediscovered from the source is a decision
+  half reverted.
+
+### Known defects, not yet fixed
+
+- **Both K9MLS servers announce IPSC master ID 3132911.** Production and the
+  test server, simultaneously, on one LAN. They do not collide today because no
+  repeater talks to both, and it is a near neighbour of a fault that has already
+  cost time: a repeater will not register with a master announcing the
+  repeater's own ID, and retries silently with no indication of cause.
+
+- **The container bakes no version.** `/qsp --version` inside it reads
+  `development (development build)`, so §7's rule — check the running binary
+  after every deploy — has no working implementation on that machine. The build
+  needs the ldflags the systemd binary gets.
+
+- **A clean stop exits 1, intermittently.** `close udp [::]:62045: use of closed
+  network connection` on shutdown, and systemd records `Failed with result
+  'exit-code'` for a stop that was correct. Two closes race on the OpenBridge
+  socket; whoever loses reports an error that reaches the exit code. Not a data
+  race, so the detector will never see it. It means a journal carries failure
+  lines for ordinary restarts, which is exactly what someone chases during a
+  real fault.
+
 ### Fixed
 
 - **A frame arriving over a link never reached a Motorola repeater**, on a
