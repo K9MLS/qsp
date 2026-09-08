@@ -24,10 +24,16 @@ import (
 //
 // # In memory, and only in memory
 //
-// A restart forgets them, and then the operator is asked for the passphrase as
-// they were before — which is a worse experience and not a broken one. Writing
-// them to disk would mean a file of secrets for peerings that may never be
-// accepted, to save typing something the operator was shown.
+// A restart forgets them, and the operator is asked for the passphrase as they
+// were before. Writing them to disk would mean a file of secrets for peerings
+// that may never be accepted, to save typing something the operator was shown.
+//
+// **This used to say that made it "a worse experience and not a broken one",
+// and that was false.** Recognising the end of an exchange depended entirely on
+// this store, so a restart between the two halves meant the offering side no
+// longer knew a reciprocal was a reciprocal, built another one, and could not
+// stop. Invitation.Reply carries that in the token now, which is durable;
+// this store only saves the operator retyping a passphrase.
 type offeredPassphrases struct {
 	mu sync.Mutex
 	// by fingerprint, which is what a reciprocal carries.
@@ -79,21 +85,43 @@ func (o *offeredPassphrases) put(fingerprint, passphrase string) {
 	o.held[fingerprint] = offeredPassphrase{passphrase: passphrase, at: now}
 }
 
-// take returns a held passphrase and forgets it.
+// peek returns a held passphrase and keeps it.
 //
-// **Forgotten on use.** The peering is written at that point and the secret
-// lives in its passphrase file; keeping a second copy in memory afterwards
-// would be a copy nobody asked for.
-func (o *offeredPassphrases) take(fingerprint string) (string, bool) {
+// **Separate from forgetting it, because the accept can still fail.** take used
+// to do both, and it ran before the invitation was checked, before the name was
+// checked and before anything was written — so a refused acceptance consumed
+// the passphrase, and the retry the operator immediately made could no longer
+// fill it in. A name that was already in use was enough to cause it.
+func (o *offeredPassphrases) peek(fingerprint string) (string, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	held, ok := o.held[fingerprint]
 	if !ok {
 		return "", false
 	}
-	delete(o.held, fingerprint)
 	if time.Since(held.at) > offerMemory {
 		return "", false
 	}
 	return held.passphrase, true
+}
+
+// forget drops a held passphrase, once the peering it belongs to is written.
+//
+// The secret lives in its passphrase file from that point; a second copy in
+// memory afterwards is one nobody asked for.
+func (o *offeredPassphrases) forget(fingerprint string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	delete(o.held, fingerprint)
+}
+
+// take returns a held passphrase and forgets it, in one step.
+//
+// Kept for the tests that describe the offer/accept lifecycle in terms of it.
+func (o *offeredPassphrases) take(fingerprint string) (string, bool) {
+	held, ok := o.peek(fingerprint)
+	if ok {
+		o.forget(fingerprint)
+	}
+	return held, ok
 }

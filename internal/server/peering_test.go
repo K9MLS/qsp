@@ -452,3 +452,109 @@ func TestAnAcceptedPeeringSaysItNeedsARestart(t *testing.T) {
 		t.Errorf("the response does not say a restart is needed: %v", got.NeedsRestart)
 	}
 }
+
+// TestTheExchangeEndsEvenWhenThePassphraseIsTyped is 0259's defect returning
+// through a door nobody had closed.
+//
+// Termination used to depend on the held-passphrase lookup, and the lookup only
+// ran when the passphrase box was **empty**. The offering operator has the
+// passphrase — they generated it — and the box is right there, so filling it in
+// skipped the lookup, built another reciprocal, and handed them one more token
+// to send back. Forever. **Termination cannot depend on somebody leaving a
+// field blank.**
+func TestTheExchangeEndsEvenWhenThePassphraseIsTyped(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, _, _ := acceptHarness(t)
+
+	// A reciprocal, as the far end would send it back.
+	reply, err := peering.Reciprocal(
+		peering.Invitation{Fingerprint: peering.FingerprintOf(passphrase), Issued: time.Now().UTC()},
+		peering.Invitation{
+			Network: "Their Network", Callsign: "KD9EJA",
+			Address: "their.example.com:62045", NetworkID: 3155373,
+			Issued: time.Now().UTC(),
+		})
+	if err != nil {
+		t.Fatalf("could not build a reciprocal: %v", err)
+	}
+	token, err := peering.Encode(reply)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+
+	// Nothing held: this instance has restarted since it offered, which is the
+	// case that made the loop unavoidable rather than merely available.
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, token, passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accepting a reciprocal failed with %d: %s", rec.Code, rec.Body.String())
+	}
+	var got acceptResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if !got.Complete {
+		t.Error("accepting a reciprocal did not end the exchange")
+	}
+	if got.Reciprocal != "" {
+		t.Error("accepting a reciprocal produced another one; this is the endless exchange")
+	}
+}
+
+// TestARefusedAcceptKeepsTheHeldPassphrase.
+//
+// take() forgot the passphrase before the invitation, the name or anything else
+// was checked, so a refusal consumed it and the retry the operator made
+// immediately afterwards could no longer fill it in. A name already in use was
+// enough to cause it.
+func TestARefusedAcceptKeepsTheHeldPassphrase(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, cm, _ := acceptHarness(t)
+
+	// A link by this name already exists, so the accept below is refused.
+	cfg := cm.current
+	cfg.DMR.Upstreams = []config.Upstream{{Name: "test"}}
+	cm.current = cfg
+
+	fingerprint := peering.FingerprintOf(passphrase)
+	srv.offered.put(fingerprint, passphrase)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":"","name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase))
+
+	if rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body); rec.Code == http.StatusOK {
+		t.Fatalf("the duplicate name was accepted: %s", rec.Body.String())
+	}
+	if _, ok := srv.offered.peek(fingerprint); !ok {
+		t.Error("a refused acceptance consumed the held passphrase; the retry cannot fill it in")
+	}
+}
+
+// TestALinkNameCannotEscapeTheDataDirectoryFromTheForm.
+//
+// The name becomes filepath.Join(dir, name+".pass"), and the passphrase file is
+// written before the configuration is saved — so waiting for Validate to refuse
+// it would mean refusing after the file had been written somewhere it should
+// not be.
+func TestALinkNameCannotEscapeTheDataDirectoryFromTheForm(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, cm, dir := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"../escaped","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	if rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body); rec.Code != http.StatusBadRequest {
+		t.Fatalf("a name containing a path separator was accepted with %d", rec.Code)
+	}
+	if len(cm.saved) != 0 {
+		t.Error("a configuration was written for a refused name")
+	}
+	if _, err := os.Stat(filepath.Join(filepath.Dir(dir), "escaped.pass")); err == nil {
+		t.Error("a passphrase file was written outside the data directory")
+	}
+}

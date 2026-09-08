@@ -59,3 +59,4 @@ conclusion.
 | [0047](ADR-0047-rate-34-text-blocks.md) | A text message is Rate 3/4 blocks, and QSP carries them whole | Accepted — confirmed on air |
 | [0048](ADR-0048-container-install.md) | The container install, and what it has to get right for a stranger | Accepted — built and run; nine defects found |
 | [0049](ADR-0049-first-account-setup-token.md) | The first administrator account is created from a token in the log | Proposed |
+| [0050](ADR-0050-a-reciprocal-says-so.md) | A reciprocal says so in the token, so an exchange can end after a restart | Accepted |

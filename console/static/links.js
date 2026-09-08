@@ -263,10 +263,19 @@
    * decoration, it is the path most operators will take. */
   function copyText(node, button) {
     var text = node.textContent || "";
+    /* **The word changes as well as the icon.** A tick that turns green is
+     * nothing to an operator who cannot tell the two greens apart, and this
+     * one confirms a three-hundred-character token reached the clipboard —
+     * which is the moment they stop checking and send it. */
     function done() {
-      var was = button.textContent;
-      button.textContent = "Copied";
-      setTimeout(function () { button.textContent = was; }, 1500);
+      var word = button.querySelector(".copyblock__word");
+      var was = word ? word.textContent : "";
+      button.setAttribute("data-copied", "yes");
+      if (word) { word.textContent = "Copied"; }
+      setTimeout(function () {
+        button.removeAttribute("data-copied");
+        if (word) { word.textContent = was; }
+      }, 1500);
     }
     if (navigator.clipboard && window.isSecureContext) {
       navigator.clipboard.writeText(text).then(done, function () { select(node); });

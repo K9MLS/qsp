@@ -1304,8 +1304,13 @@ func (c Config) Validate() error {
 						"another master as a peer")
 			}
 
-			if strings.TrimSpace(u.Name) == "" {
-				v.add(field+".name", "must not be empty",
+			if err := ValidUpstreamName(u.Name); err != nil {
+				// **A link name becomes a file path**: the passphrase is
+				// written to name + ".pass" beside the peer password file and
+				// deleted from there when the link is removed. Checked here as
+				// well as in the handler so a hand-edited document cannot do
+				// what the form now refuses.
+				v.add(field+".name", err.Error(),
 					"name it after the network it reaches, such as \"brandmeister\"")
 			} else if key := strings.ToLower(strings.TrimSpace(u.Name)); upstreamNames[key] {
 				v.add(field+".name", fmt.Sprintf("%q is used by more than one upstream", u.Name),
@@ -1533,6 +1538,9 @@ func (c Config) Validate() error {
 	}
 
 	c.validateAccess(v)
+	// Last, because it reads addresses the rules above have already reported
+	// as malformed, and one mistake should produce one error.
+	c.validateListeners(v)
 
 	if len(v.errs) == 0 {
 		return nil

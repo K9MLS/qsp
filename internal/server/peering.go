@@ -286,12 +286,30 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	// **It also tells us which half of the exchange this is**, which is what
 	// stops the loop below: a passphrase we are holding means this invitation
 	// is the reply to an offer we made, and the peering ends here.
-	passphrase, closingOurOffer := req.Passphrase, false
-	if strings.TrimSpace(passphrase) == "" && inv.Fingerprint != "" {
-		if held, ok := s.offered.take(inv.Fingerprint); ok {
-			passphrase, closingOurOffer = held, true
-		}
+	// **The store is consulted whether or not a passphrase was typed.** The
+	// condition used to be `passphrase == ""`, so an operator who filled in the
+	// box — holding a passphrase they generated themselves, beside a box asking
+	// for one — skipped the lookup entirely, and the exchange built another
+	// reciprocal. Forever. Termination cannot depend on somebody leaving a
+	// field blank.
+	//
+	// Peeked rather than taken. It is forgotten after the peering is written,
+	// so a refusal below leaves the operator able to retry.
+	heldPassphrase, weOfferedThis := "", false
+	if inv.Fingerprint != "" {
+		heldPassphrase, weOfferedThis = s.offered.peek(inv.Fingerprint)
 	}
+	passphrase := req.Passphrase
+	if strings.TrimSpace(passphrase) == "" && weOfferedThis {
+		passphrase = heldPassphrase
+	}
+
+	// **inv.Reply is the durable half of this and weOfferedThis is the
+	// fallback.** A reciprocal says so in the token, so a restart between the
+	// two halves no longer loses the only evidence that a peering is finished.
+	// The memory still answers for a token written by a QSP from before the
+	// field existed.
+	closingOurOffer := inv.Reply || weOfferedThis
 
 	if err := inv.Accept(passphrase, time.Now().UTC()); err != nil {
 		// Recorded even though nothing was written. An administrator who could
@@ -306,8 +324,12 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = strings.ToLower(strings.TrimSpace(inv.Callsign))
 	}
-	if name == "" {
-		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": "the link needs a name"})
+	// **Checked here as well as in Validate, because the passphrase file is
+	// written before the configuration is saved.** The name becomes that
+	// file's path, so waiting for Save to refuse it would mean refusing after
+	// the file had already been written somewhere it should not be.
+	if err := config.ValidUpstreamName(name); err != nil {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -401,6 +423,11 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.recordPeering(r, audit.ActionPeeringAccepted, inv.Callsign, inv.Address, audit.OutcomeSuccess)
+
+	// Written, so the secret can stop living in memory as well as in its file.
+	if weOfferedThis {
+		s.offered.forget(inv.Fingerprint)
+	}
 
 	writeJSON(w, s.log, http.StatusOK, acceptResponse{
 		Version:      version.Number,

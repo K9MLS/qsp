@@ -92,6 +92,26 @@ type Invitation struct {
 	// in its own numbering.
 	Export []Talkgroup `json:"export,omitempty"`
 	Import []Talkgroup `json:"import,omitempty"`
+	// Reply marks an invitation as the second half of an exchange, so the
+	// side that receives it knows the peering is finished.
+	//
+	// # Why this is in the artefact rather than in memory
+	//
+	// A peering has two halves: one side offers, the other accepts and sends
+	// a reciprocal, the first accepts that and **it is over**. Recognising the
+	// end used to depend on the offering instance still holding its own
+	// passphrase in memory, and on the operator leaving the passphrase box
+	// empty so that the lookup ran at all. Type the passphrase — which that
+	// operator has, because they generated it, into a box that is right there
+	// — and the exchange built another reciprocal, forever. A restart between
+	// the two halves emptied the store and made it unavoidable rather than
+	// optional.
+	//
+	// The token itself is durable and the memory is not, so the token carries
+	// it. `omitempty` keeps an offer byte-identical to the format that shipped
+	// before this field existed, so an older QSP still reads new offers; it
+	// refuses a new reciprocal, cleanly, rather than misreading one.
+	Reply bool `json:"reply,omitempty"`
 	// Fingerprint identifies the passphrase without carrying it.
 	Fingerprint string `json:"fingerprint"`
 	// Issued is when this was generated, in UTC.
@@ -328,6 +348,9 @@ func Decode(token string) (Invitation, error) {
 // one way and reports healthy.
 func Reciprocal(accepted Invitation, mine Invitation) (Invitation, error) {
 	mine.Fingerprint = accepted.Fingerprint
+	// **This is what ends the exchange**, and it is set here rather than by
+	// the caller so that every reciprocal carries it and no caller can forget.
+	mine.Reply = true
 	if mine.Issued.IsZero() {
 		mine.Issued = accepted.Issued
 	}

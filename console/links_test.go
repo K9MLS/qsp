@@ -238,3 +238,86 @@ func TestBothWritePathsMentionTheRestart(t *testing.T) {
 			"and the declaration are four", n)
 	}
 }
+
+// TestEveryCopyableBlockIsOneObject.
+//
+// A label, a small outlined button floating to its right, and a separate box
+// underneath that happened to be what the button acted on: three things that
+// read as three things. The first operator to use this page drag-selected a
+// scrolling one-line box of base64 and hoped they caught both ends.
+//
+// The control belongs inside the block's outline, which is what says *this
+// copies this* without a sentence explaining it.
+func TestEveryCopyableBlockIsOneObject(t *testing.T) {
+	html := readFile(t, "static/links.html")
+
+	// Nothing generated is left in the old shape.
+	if strings.Contains(html, `class="copyable"`) {
+		t.Error("a copy control still sits outside the block it copies")
+	}
+	// Every copy button names a block, and every named block exists.
+	ids := regexp.MustCompile(`data-copy="([^"]+)"`).FindAllStringSubmatch(html, -1)
+	if len(ids) < 3 {
+		t.Fatalf("found %d copy controls; the invitation, the passphrase and the "+
+			"reciprocal are three", len(ids))
+	}
+	for _, m := range ids {
+		if !strings.Contains(html, `id="`+m[1]+`"`) {
+			t.Errorf("a copy button names %q and no such block exists", m[1])
+		}
+	}
+}
+
+// TestTheCopyControlSaysWhatHappened.
+//
+// Colour alone does not carry a state: a tick that turns green is nothing to
+// an operator who cannot tell the two greens apart. The word changes too, and
+// the space for the longer word is reserved so the button does not move out
+// from under the pointer that pressed it.
+func TestTheCopyControlSaysWhatHappened(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+	css := stripComments(readFile(t, "static/console.css"))
+
+	if !strings.Contains(js, "copyblock__word") {
+		t.Error("the copy control changes no text, so success is carried by colour alone")
+	}
+	if !strings.Contains(js, `"data-copied"`) {
+		t.Error("nothing marks the copied state for the stylesheet")
+	}
+	// **Scoped to the rule, not the file.** Searching the whole stylesheet for
+	// "min-width" finds a dozen unrelated rules and passes whether or not this
+	// one has it — which it did, against a stylesheet where the reservation had
+	// been deleted.
+	rule := regexp.MustCompile(`(?s)\.copyblock__word\s*\{(.*?)\}`).FindStringSubmatch(css)
+	if rule == nil {
+		t.Fatal(".copyblock__word has no rule at all")
+	}
+	if !strings.Contains(rule[1], "min-width") {
+		t.Error("the word has no reserved width; the button resizes when it changes")
+	}
+}
+
+// TestNoControlSitsFlushAgainstTheFieldAboveIt.
+//
+// The accept panel put a label, a textarea, a label, an input and a button
+// next to each other as plain siblings, outside .picker — the only thing on
+// this page that gave anything a gap. They rendered touching.
+func TestNoControlSitsFlushAgainstTheFieldAboveIt(t *testing.T) {
+	html := readFile(t, "static/links.html")
+	css := stripComments(readFile(t, "static/console.css"))
+
+	if !strings.Contains(html, `class="fieldstack"`) {
+		t.Fatal("the loose fields are still bare siblings with nothing spacing them")
+	}
+	if !strings.Contains(css, ".fieldstack") {
+		t.Error(".fieldstack is used and not styled")
+	}
+	// The submit needs more air than the gap between a label and its control,
+	// or it reads as part of the field above it.
+	if !strings.Contains(css, ".fieldstack__action") {
+		t.Error("the action in a field stack has no separation from the last field")
+	}
+	if !strings.Contains(html, "fieldstack__action") {
+		t.Error(".fieldstack__action is styled and used by nothing")
+	}
+}

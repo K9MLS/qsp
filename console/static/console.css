@@ -1748,3 +1748,160 @@ label.picker__label {
   font-size: 9px;
   color: var(--color-foreground-subtle);
 }
+
+/* ---- A block of generated text, with the control that copies it -------- */
+
+/* **The first operator to use the peering page had to drag-select a scrolling
+   one-line box of base64 and hope they caught both ends.** A `Copy` button was
+   added beside the caption and it still read as two unrelated things: a label,
+   a small outlined button floating to the right of it, and a separate box
+   underneath that happened to be what the button acted on.
+
+   So the label, the control and the text are one object with one outline. The
+   control sits inside that outline, which is what says *this button copies
+   this block* without a sentence explaining it. */
+.copyblock {
+  margin: var(--space-4) 0 var(--space-5);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-sunken);
+}
+
+.copyblock__head {
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+  justify-content: space-between;
+  /* Asymmetric: the control carries its own padding and would otherwise sit
+     too far from the edge it is aligned to. */
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.copyblock__label {
+  margin: 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+}
+
+/* 44px tall, like every other control here: --target-min was declared for a
+   release and referenced by nothing, next to a 20px button. */
+.copyblock__copy {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-foreground);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.copyblock__copy:hover {
+  background: var(--color-row-hover);
+}
+
+.copyblock__copy:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Copied is stated in the label as well as the icon. **Colour alone does not
+   carry it**, because a green tick is nothing to an operator who cannot
+   distinguish it from the grey one. */
+.copyblock__copy[data-copied="yes"] {
+  /* --color-healthy, not an invented --color-success. It already means "this
+     is fine" everywhere else on the console, and a second token for one idea
+     is how two palettes start. */
+  border-color: var(--color-healthy);
+  color: var(--color-healthy);
+}
+
+/* **Sized for the longer of the two words it holds.** "Copy" becomes "Copied"
+   on success, and a button that grows by two characters moves itself out from
+   under the pointer that just pressed it. */
+.copyblock__word {
+  min-width: 4.5em;
+  text-align: left;
+}
+
+.copyblock__icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+/* The tick is hidden until the copy lands, and the clipboard hidden after. Two
+   icons in the markup rather than a swapped path, so nothing has to rebuild an
+   SVG in JavaScript. */
+.copyblock__copy .copyblock__icon--done,
+.copyblock__copy[data-copied="yes"] .copyblock__icon--idle {
+  display: none;
+}
+
+.copyblock__copy[data-copied="yes"] .copyblock__icon--done {
+  display: inline;
+}
+
+/* **Wrapped, not scrolled.** A configuration file scrolls because wrapping a
+   rule invites somebody to paste it as two lines. An invitation is three
+   hundred characters of base64 with no internal structure, so wrapping it
+   costs nothing and lets an operator see they have the whole thing. */
+.copyblock__text {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .copyblock__copy {
+    transition: none;
+  }
+}
+
+/* ---- Fields that stand on their own ----------------------------------- */
+
+/* **These had no vertical rhythm at all.** The accept panel puts a label, a
+   textarea, a label, an input and a button next to each other as plain
+   siblings — outside .picker, which is the only thing on this page that gave
+   anything a gap — so the controls sat flush against their labels and the
+   button jammed against the field above it. */
+.fieldstack {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-5) 0;
+}
+
+.fieldstack .picker__input--wide {
+  margin: 0;
+}
+
+/* A label belonging to the control under it, rather than floating between two. */
+.fieldstack .picker__label {
+  margin-top: var(--space-3);
+}
+
+.fieldstack > :first-child {
+  margin-top: 0;
+}
+
+/* The action a stack of fields leads to. --space-5 rather than --space-2:
+   a submit that touches the last field reads as part of it. */
+.fieldstack__action {
+  margin-top: var(--space-3);
+  justify-self: start;
+}

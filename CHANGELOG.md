@@ -28,6 +28,47 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Two links could share a listen address, and QSP would not start.** Upstream
+  *names* were checked for duplicates and their listen addresses were not.
+  Accepting two peerings without restarting in between — taking the page's own
+  suggested `0.0.0.0:62045` both times — wrote two links on one port.
+
+  **Every gate missed it.** The accept handler's bind probe could not catch it,
+  because an accepted link opens no socket until a restart, so the first was
+  not bound when the second was checked. `-check` could not, because it binds
+  each address and closes it before trying the next. Startup caught it by
+  refusing to start, and systemd crash-looped to its start limit — which is
+  0261's failure reached by a different route.
+
+  The rule now lives in `Validate`, the one gate that startup, `-check` and
+  every console save all pass through. It covers `dmr`, `ipsc`, `server` and
+  every enabled OpenBridge upstream, and treats `0.0.0.0` as colliding with any
+  specific address on that port, because it is every interface on this machine.
+  `cmd/qsp` no longer keeps its own copy of the listener list.
+
+- **The peering exchange still could not terminate**, and 0259 had appeared to
+  fix it. Recognising the end depended on an in-memory store *and* on the
+  operator leaving the passphrase box empty so the lookup ran at all — while
+  the offering operator holds that passphrase, because their own server
+  generated it, beside a box asking for one. Filling it in produced another
+  reciprocal, forever. A restart between the two halves made it unavoidable
+  rather than merely available.
+
+  [ADR-0050](docs/adr/ADR-0050-a-reciprocal-says-so.md): a reciprocal says so in
+  the token. `omitempty` keeps an offer byte-identical to the previous format.
+
+- **A refused acceptance consumed the held passphrase.** It was taken before
+  the invitation, the name or anything else was checked, so a duplicate link
+  name was enough to make the retry unable to fill it in. Peeked now, and
+  forgotten once the peering is written.
+
+- **A link name became a file path, unvalidated.** The passphrase is written to
+  `name + ".pass"` beside the peer password file and that path is deleted when
+  the link is removed, with the name taken straight from a form and checked for
+  nothing but emptiness and uniqueness. Constrained in `Validate`, so a
+  hand-edited document cannot do it either, and in the accept handler, because
+  the file is written before the configuration is saved.
+
 - **No peering had ever been audited.** `peering.offered`, `peering.accepted`
   and `peering.removed` were all emitted and none was declared, so `Record`
   refused every one at run time and the caller logged a warning nobody read.
@@ -68,6 +109,25 @@ All notable changes to QSP. Dates are UTC.
   All three now say so, from `config.NeedsRestart` rather than a hardcoded
   sentence, and the page carries one shared wording so the two write paths
   cannot drift apart.
+
+### Changed
+
+- **The Links page's copy blocks are one object each.** A label, a small
+  outlined button floating to its right, and a separate box underneath that
+  happened to be what the button acted on: three things that read as three
+  things. The control sits inside the block's outline now, which is what says
+  *this copies this* without a sentence explaining it. Copying confirms in the
+  word as well as the icon, because colour alone carries nothing to somebody
+  who cannot tell the two greens apart, and the space for the longer word is
+  reserved so the button does not move out from under the pointer that pressed
+  it. The token wraps rather than scrolling: an invitation has no internal
+  structure, so wrapping costs nothing and lets an operator see they have all
+  of it.
+
+- **The accept form's loose fields have vertical rhythm.** A label, a textarea,
+  a label, an input and a button sat next to each other as plain siblings,
+  outside `.picker` — the only thing on that page giving anything a gap — and
+  rendered touching.
 
 ### Added
 
