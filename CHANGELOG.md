@@ -6,6 +6,35 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Accepting a QSP link writes one upstream and no bridge.** `/api/links/accept`
+  branches on the token's kind, so there is still one box an operator pastes
+  into — asking which sort of token they hold would be asking them to read
+  base64 — and the two kinds write entirely different configuration.
+
+  The OpenBridge path creates a bridge because a link with nothing routing to it
+  opens, authenticates and carries silence. That is true there and false here: a
+  linked QSP server is a peer, so repeat reaches it directly. A bridge joins
+  endpoints, an endpoint carries a timeslot, and that is how the accept form
+  came to ask an operator a question the protocol had already answered.
+
+  So a link accept writes a name, an address, a DMR ID, a password file and a
+  callsign. No bridge, no listen address, no network ID, no talkgroup lists, no
+  timeslot. **And no reciprocal**: the offering side wrote the password and the
+  access-list entry when it made the invitation, so accepting one ends the
+  exchange rather than starting a second leg.
+
+  The password is never optional here, which removes the empty-box dead end that
+  stopped the first OpenBridge peering: the offering side is a different machine,
+  so there is no outstanding offer on this one to look the secret up from.
+
+- **A test that could not fail, caught before it shipped.** The first version of
+  the no-bridge test built its own `config.Upstream` and asserted that the
+  struct it had just written had no bridge in it. It passed, and it was
+  worthless — the fourth time this project has written one. The configuration a
+  link accept writes is now built by `linkConfig`, which the handler and the
+  test both call: adding a bridge to it, or carrying a network ID over, each
+  turn the test red.
+
 - **The offering side of a QSP link, `POST /api/links/offer-link`.** A link is a
   peer registration, so the listening side is the one with something to
   allocate: a DMR ID in its registration list, and a password against that ID.

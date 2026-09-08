@@ -265,6 +265,20 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// **One box, and the token says which form it is.** An operator holding a
+	// token cannot be asked which kind it is without being asked to read
+	// base64, and the two write entirely different configuration: an
+	// OpenBridge peering with a bridge and a timeslot, or a single upstream
+	// block. See acceptLink.
+	switch kind, err := peering.KindOf(req.Token); {
+	case err != nil:
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	case kind == peering.KindLink:
+		s.acceptLink(w, r, req)
+		return
+	}
+
 	inv, err := peering.Decode(req.Token)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
