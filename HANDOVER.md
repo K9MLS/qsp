@@ -4,8 +4,12 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.117**, patches 0261–0275. Everything through 0273 is deployed to
-production and the test server; 0274 and 0275 are on Fedora only.
+Version **0.1.118**, patches 0261–0276. Everything through 0273 is deployed to
+production and the test server; 0274 to 0276 are on Fedora only.
+
+**0276 changes the container build**, so the test server needs a rebuild rather
+than just a restart, and `/qsp --version` should read a real version afterwards
+for the first time.
 
 ## What happened
 
@@ -60,19 +64,14 @@ Then, in order:
    two linked servers is still silent: the traffic dies at the far end's
    ingress and the link looks dead, which is this morning's failure wearing a
    different label.
-3. **Reconnection.** ADR-0051 specifies 5 s to 120 s capped, with jitter,
-   forever. Not written. At ten servers a link that stays down until somebody
-   notices is a hole nobody owns.
-4. **The container version.** The Dockerfile hardcodes
-   `-X main.version=development`, so `/qsp --version` cannot say what it is and
-   §7's deploy check has never worked there. It should come from `VERSION` and
-   the commit.
-5. **The double close on 62045**, which makes a clean stop exit 1
-   intermittently and fills the journal with failure lines for correct
-   restarts.
-6. Remove `Export`, `Import` and the bridge-for-links machinery.
-7. OpenBridge narrowed to foreign networks; the disabled link on the test
+3. Remove `Export`, `Import` and the bridge-for-links machinery.
+4. OpenBridge narrowed to foreign networks; the disabled link on the test
    server removed.
+
+Done in 0276 and never run on a machine: reconnection jitter and the two-minute
+cap, the container version, and the double close on 62045. **The double close
+is the one to watch for** — restart production and confirm the journal no
+longer says `Failed with result 'exit-code'` for a clean stop.
 
 ## Two debts taken deliberately
 

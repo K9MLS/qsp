@@ -521,3 +521,83 @@ func TestSetReportsEveryStatus(t *testing.T) {
 		t.Errorf("statuses are not in name order: %s, %s", statuses[0].Name, statuses[1].Name)
 	}
 }
+
+// TestClosingTwiceIsNotAnError is why systemd recorded a failure for every
+// ordinary stop.
+//
+// Two things close an OpenBridge link: the goroutine serve starts on the
+// context, and the Set closing at shutdown. Whichever lost the race got
+// "use of closed network connection", the Set returned it as its own error,
+// and cmd/qsp turned that into "shutdown was not clean" and exit 1. The
+// journal then carried `Failed with result 'exit-code'` for a stop that was
+// entirely correct — which is the line somebody chases for an hour during a
+// real fault.
+//
+// It was intermittent, and it is a race between two goroutines rather than on
+// memory, so the race detector was never going to see it.
+func TestClosingTwiceIsNotAnError(t *testing.T) {
+	l, err := upstream.New(logging.Discard(), upstream.Config{
+		Name:          "far",
+		ListenAddress: "127.0.0.1:0",
+		TargetAddress: "127.0.0.1:62045",
+		NetworkID:     3132910,
+		Passphrase:    []byte("a-passphrase-long-enough-to-be-accepted"),
+		Receive:       func(string, hbp.Data) {},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	if err := l.Close(); err != nil {
+		t.Fatalf("the first close reported %v", err)
+	}
+	// Cancelling makes serve's goroutine close it too, exactly as a shutdown
+	// does. Neither order may produce an error.
+	cancel()
+	for i := range 5 {
+		if err := l.Close(); err != nil {
+			t.Fatalf("close %d reported %v; a clean stop would exit 1", i+2, err)
+		}
+	}
+}
+
+// TestConcurrentClosesAgreeOnOneAnswer, because the two closers are goroutines
+// and the fault only ever appeared when they overlapped.
+func TestConcurrentClosesAgreeOnOneAnswer(t *testing.T) {
+	l, err := upstream.New(logging.Discard(), upstream.Config{
+		Name:          "far",
+		ListenAddress: "127.0.0.1:0",
+		TargetAddress: "127.0.0.1:62045",
+		NetworkID:     3132910,
+		Passphrase:    []byte("a-passphrase-long-enough-to-be-accepted"),
+		Receive:       func(string, hbp.Data) {},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	errs := make([]error, 8)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = l.Close()
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("concurrent close %d reported %v", i, err)
+		}
+	}
+}

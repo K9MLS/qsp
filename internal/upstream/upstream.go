@@ -64,6 +64,21 @@ type Link struct {
 
 	running atomic.Bool
 
+	// closeOnce makes Close idempotent, and closeErr is what every caller
+	// after the first is told. Two things close this link: the goroutine
+	// serve starts on the context, and the Set closing at shutdown. Whichever
+	// lost the race got "use of closed network connection", the Set returned
+	// it as its own error, and cmd/qsp reported "shutdown was not clean" and
+	// exited 1 — so systemd recorded `Failed with result 'exit-code'` for
+	// every ordinary stop, which is exactly the line somebody chases for an
+	// hour during a real fault.
+	//
+	// **Guarded on the close rather than on running**, because serve clears
+	// running on its way out: keying idempotence to that flag would let a
+	// later Close return nil without ever closing the socket.
+	closeOnce sync.Once
+	closeErr  error
+
 	mu sync.Mutex
 	// lastReceived is when a frame last verified. Zero means none ever has,
 	// which is reported differently from "none lately": a link that has never
@@ -162,13 +177,17 @@ func (l *Link) Address() string {
 	return l.conn.LocalAddr().String()
 }
 
-// Close stops the link.
+// Close stops the link. It is safe to call more than once, and from more than
+// one goroutine; see closeOnce.
 func (l *Link) Close() error {
 	if l.conn == nil {
 		return nil
 	}
-	l.running.Store(false)
-	return l.conn.Close()
+	l.closeOnce.Do(func() {
+		l.running.Store(false)
+		l.closeErr = l.conn.Close()
+	})
+	return l.closeErr
 }
 
 // Send signs a frame and writes it to the far end.

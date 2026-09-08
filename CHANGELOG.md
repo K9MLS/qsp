@@ -67,6 +67,55 @@ All notable changes to QSP. Dates are UTC.
   `TestAFrameFromALinkIsNotRelayedYet` was written to fail when this landed. It
   did, and it has been replaced rather than deleted.
 
+### Fixed
+
+- **A clean stop exited 1, intermittently, and systemd recorded it as a
+  failure.** Two things close an OpenBridge link — the goroutine `serve` starts
+  on the context, and the `Set` closing at shutdown — and whichever lost the
+  race got `use of closed network connection`. The `Set` returned it as its own
+  error and `cmd/qsp` turned that into `shutdown was not clean` and exit 1, so
+  the journal carried `Failed with result 'exit-code'` for stops that were
+  entirely correct. That is the line somebody chases for an hour during a real
+  fault.
+
+  `Close` is now idempotent, guarded on the close itself rather than on the
+  `running` flag — `serve` clears that flag on its way out, so keying
+  idempotence to it would let a later `Close` return nil without ever closing
+  the socket. A race between two goroutines rather than on memory, so the
+  detector was never going to see it.
+
+- **The container could not say what it was.** `/qsp --version` read
+  `development (development build)` on every image ever built: the Dockerfile
+  took the version as a build argument and the compose override that was meant
+  to supply it passed the literal string `development`, directly beneath a
+  comment claiming it kept the version honest. Two statements individually true
+  were together a lie, which §8a records as this project's most expensive shape.
+
+  So §7's rule — check the running binary after every deploy — had no working
+  implementation on that machine, and an afternoon went on a container that had
+  not been rebuilt. The version is now read from the `VERSION` file already in
+  the build context: derived from the tree, with no argument to forget and
+  nothing to keep in sync. `TestTheContainerCanSayWhatItIs` fails if a literal
+  comes back.
+
+### Changed
+
+- **A link's retry is jittered, and the backoff caps at two minutes rather than
+  five** (ADR-0051). Ten links that lost one hub would otherwise all return on
+  the same tick, and keep returning together for as long as the far end stayed
+  down — a synchronised burst against a server that is probably restarting.
+
+  **The first version clamped the jittered delay up to `MinBackoff`**, meaning
+  to keep a first retry from being instant, and thereby removed the jitter from
+  the only case that matters: ten links that lost a hub all sit at the minimum
+  together. A test asserting that forty runs produce more than one delay caught
+  it. Four fifths of five seconds is four seconds and needs no floor.
+
+  The cap decides how long a network stays holed after a server returns from
+  maintenance. Five minutes of silence following a four-hour outage is four
+  hours and five minutes to anybody listening; the saving over two minutes is
+  24 packets an hour against a host that is not there.
+
 ### Not yet built, and named so it cannot close quietly
 
 - **Relaying has never been run with three servers.** Every test above is a

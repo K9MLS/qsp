@@ -540,3 +540,83 @@ func TestTheSlotSurvivesTheWire(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRetryIsJittered, because ten links that lost one hub must not all
+// come back on the same tick (ADR-0051).
+//
+// A synchronised burst arrives at the worst possible moment: the far end is
+// probably restarting, which is why every link lost it at once. The delay is
+// spread over the last fifth of its nominal value — subtracted rather than
+// added, so it never exceeds the cap.
+//
+// The range is asserted rather than the value. This is the one place in the
+// package that is not a pure function of its inputs, and the test says so.
+func TestTheRetryIsJittered(t *testing.T) {
+	const nominal = 40 * time.Second
+	seen := map[time.Duration]bool{}
+
+	for run := 0; run < 40; run++ {
+		h := newHarness(t, func(c *homebrew.Config) {
+			c.MinBackoff = nominal
+			c.MaxBackoff = nominal
+		})
+		h.l.Start()
+		h.l.Handle(hbp.Nak{RepeaterID: linkID}.Marshal())
+
+		var waited time.Duration
+		for step := 0; step < 200; step++ {
+			h.c.advance(time.Second)
+			waited += time.Second
+			if out := h.l.Tick(); len(out.Send) > 0 {
+				break
+			}
+		}
+		seen[waited] = true
+
+		// Never longer than the nominal delay: the cap is a cap.
+		if waited > nominal {
+			t.Fatalf("a jittered retry waited %s, longer than the %s bound", waited, nominal)
+		}
+		// And never so short that the backoff stops meaning anything. A fifth
+		// of 40s is 8s, and the measurement is in whole seconds.
+		if waited < 31*time.Second {
+			t.Fatalf("a jittered retry waited %s, more than a fifth below %s", waited, nominal)
+		}
+	}
+
+	// **The point of the exercise.** If every run produced the same delay
+	// there is no jitter, and the assertions above would pass anyway.
+	if len(seen) < 2 {
+		t.Errorf("40 runs produced %d distinct delays; the retry is not jittered", len(seen))
+	}
+}
+
+// TestTheFirstRetryIsJitteredToo is the case the jitter exists for.
+//
+// Ten links that lost one hub all sit at the minimum together, so this is
+// exactly where they must be spread. An earlier version clamped the result up
+// to MinBackoff, meaning to keep a first retry from being instant, and thereby
+// removed the jitter from the only case that matters. Four fifths of five
+// seconds is four seconds and needs no floor.
+func TestTheFirstRetryIsJitteredToo(t *testing.T) {
+	h := newHarness(t, func(c *homebrew.Config) {
+		c.MinBackoff = 5 * time.Second
+		c.MaxBackoff = time.Minute
+	})
+	h.l.Start()
+	h.l.Handle(hbp.Nak{RepeaterID: linkID}.Marshal())
+
+	var waited time.Duration
+	for step := 0; step < 200; step++ {
+		h.c.advance(time.Second)
+		waited += time.Second
+		if out := h.l.Tick(); len(out.Send) > 0 {
+			break
+		}
+	}
+	// Never instant, and never longer than the nominal minimum.
+	if waited < 4*time.Second || waited > 5*time.Second {
+		t.Errorf("the first retry came after %s, outside four fifths of the %s minimum",
+			waited, 5*time.Second)
+	}
+}

@@ -387,3 +387,48 @@ func TestUnbuiltSubsystemsSayWhichPhaseBringsThem(t *testing.T) {
 		}
 	}
 }
+
+// TestTheContainerCanSayWhatItIs.
+//
+// §7's rule is to check the running binary after every deploy, because
+// `systemctl is-active` reports that something started and not what. In the
+// container that check had no working implementation: the Dockerfile took the
+// version as a build argument, the compose override that was meant to supply
+// it passed the literal string "development", and `/qsp --version` therefore
+// read `development (development build)` on every image ever built.
+//
+// The comment beside that literal claimed it kept the version honest. **Two
+// statements individually true were together a lie**, which §8a records as this
+// project's most expensive shape.
+//
+// The version is now read from the VERSION file that is already in the build
+// context, so it is derived from the tree rather than asserted beside it. This
+// test fails if anybody puts a literal back.
+func TestTheContainerCanSayWhatItIs(t *testing.T) {
+	const dockerfile = "../../deploy/docker/Dockerfile"
+	b, err := os.ReadFile(dockerfile)
+	if err != nil {
+		t.Fatalf("%s: %v", dockerfile, err)
+	}
+	src := string(b)
+
+	if !strings.Contains(src, "main.version=$(cat VERSION)") {
+		t.Errorf("%s does not derive the version from the VERSION file; "+
+			"a container that cannot say what it is makes the deploy check useless", dockerfile)
+	}
+	// A default of "development" was how the old argument looked correct while
+	// producing an image that could not identify itself.
+	if strings.Contains(src, "ARG VERSION") {
+		t.Errorf("%s takes the version as a build argument again; "+
+			"the argument is what went unsupplied for the life of the container install", dockerfile)
+	}
+
+	const override = "../../deploy/docker/docker-compose.build.yml"
+	o, err := os.ReadFile(override)
+	if err != nil {
+		t.Fatalf("%s: %v", override, err)
+	}
+	if strings.Contains(string(o), "VERSION: development") {
+		t.Errorf("%s passes a literal version again", override)
+	}
+}

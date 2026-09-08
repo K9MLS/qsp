@@ -18,8 +18,8 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
-      args:
-        # Passing the repository's VERSION here keeps `qsp -version` inside the
-        # container honest about which tree it came from.
-        VERSION: development
+      # No version argument. The Dockerfile reads VERSION from the source it
+      # has already copied in, because the argument that used to be here passed
+      # the literal string "development" and made every container unable to say
+      # what it was.
     image: qsp:local

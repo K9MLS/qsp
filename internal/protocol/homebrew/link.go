@@ -20,11 +20,18 @@
 // and the link's state. They perform no I/O and own no sockets, which is what
 // makes reconnection, backoff and every timeout testable without a network. A
 // transport drives them, exactly as one drives peers.Master.
+//
+// **One exception, stated rather than hidden**: the retry delay is jittered,
+// so the length of a backoff is random within a fifth of its nominal value.
+// Ten links that lost one hub must not all return on the same tick. Every
+// other output remains a function of the inputs, and a test asserts the range
+// rather than the value.
 package homebrew
 
 import (
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"strconv"
 	"time"
 
@@ -43,14 +50,21 @@ const (
 	// QSP's own master extends to its peers.
 	DefaultTimeout = 60 * time.Second
 
-	// DefaultMinBackoff and DefaultMaxBackoff bound reconnection.
+	// DefaultMinBackoff and DefaultMaxBackoff bound reconnection (ADR-0051).
 	//
 	// The first retry is quick, because the common failure is a restart at the
 	// far end and waiting a minute for that is needless dead air. It then backs
 	// off, because a link retrying every second against a master that is down
 	// for a day is a small denial of service on somebody else.
+	//
+	// **Two minutes rather than five.** A server goes down for maintenance and
+	// comes back hours later, and the cap decides how long the network stays
+	// holed after it does. Five minutes of silence following a four-hour
+	// outage is four hours and five minutes to anybody listening; the saving
+	// over two minutes is 24 packets an hour against a host that is not there.
+	// At ten servers a link nobody is watching has to close itself quickly.
 	DefaultMinBackoff = 5 * time.Second
-	DefaultMaxBackoff = 5 * time.Minute
+	DefaultMaxBackoff = 2 * time.Minute
 )
 
 // State is where the link is in the handshake.
@@ -234,8 +248,9 @@ func (l *Link) enter(s State, now time.Time) {
 // else's server.
 func (l *Link) fail(now time.Time, why string) Outcome {
 	l.enter(StateBackoff, now)
-	l.retryAt = now.Add(l.backoff)
-	note := fmt.Sprintf("%s: %s; retrying in %s", l.cfg.Name, why, l.backoff)
+	wait := l.jittered(l.backoff)
+	l.retryAt = now.Add(wait)
+	note := fmt.Sprintf("%s: %s; retrying in %s", l.cfg.Name, why, wait.Round(time.Millisecond))
 	if l.backoff < l.cfg.MaxBackoff {
 		l.backoff *= 2
 		if l.backoff > l.cfg.MaxBackoff {
@@ -243,6 +258,35 @@ func (l *Link) fail(now time.Time, why string) Outcome {
 		}
 	}
 	return Outcome{Changed: true, Note: note}
+}
+
+// jittered spreads a retry over the last fifth of its delay.
+//
+// **Ten links that lost one hub would otherwise return on the same tick**, and
+// keep returning together for as long as the far end stays down — a
+// synchronised burst against a server that is probably restarting, which is
+// the worst moment to arrive all at once. ADR-0051 asks for jitter for that
+// reason.
+//
+// Subtracted rather than added, so the delay never exceeds the cap.
+//
+// **The first retry is jittered too**, which is the one that matters: ten
+// links lose a hub simultaneously and all sit at the minimum, so clamping the
+// result up to MinBackoff — which an earlier version did, meaning to keep a
+// first retry from being instant — removed the jitter from precisely the case
+// it exists for. A test caught it by asserting that forty runs produce more
+// than one delay. Four fifths of five seconds is four seconds, which is not
+// instant and needs no floor.
+//
+// Randomness is the one thing in this package that is not a pure function of
+// its inputs, so it is confined to this method and the amount is small enough
+// that a test asserts the range rather than the value.
+func (l *Link) jittered(d time.Duration) time.Duration {
+	spread := d / 5
+	if spread <= 0 {
+		return d
+	}
+	return d - time.Duration(rand.Int64N(int64(spread)))
 }
 
 // Handle processes one datagram from the far end.

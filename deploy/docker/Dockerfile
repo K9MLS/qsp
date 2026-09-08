@@ -18,14 +18,23 @@ RUN go mod download
 
 COPY . .
 
-# VERSION is the file at the repository root, which internal/buildinfo pins a
-# test against. Passing it here means `qsp --version` inside the container
-# agrees with the tree it was built from — §7 requires that, because systemctl
-# reports that something started and not what.
-ARG VERSION=development
+# **The version is read from the tree, not passed in.**
+#
+# This was an ARG with a default of "development", and the compose override
+# that was supposed to supply the real value passed the literal string
+# "development" — directly beneath a comment claiming it kept the version
+# honest. So every container ever built reported `development (development
+# build)`, and §7's rule to check the running binary after every deploy had no
+# working implementation on that machine. An afternoon went on a container that
+# had not been rebuilt, diagnosed with a version string that could not have
+# said so.
+#
+# VERSION is copied in with the source above, so reading it here needs no
+# argument, no override, and nothing to keep in sync. A value derived from the
+# tree cannot drift from it.
 RUN CGO_ENABLED=0 go build \
       -trimpath \
-      -ldflags="-s -w -X main.version=${VERSION}" \
+      -ldflags="-s -w -X main.version=$(cat VERSION)" \
       -o /out/qsp \
       ./cmd/qsp
 
