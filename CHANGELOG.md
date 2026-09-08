@@ -4,6 +4,51 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An inbound link's counters were a dash because nothing counted them.** A
+  link this server dialled runs through an upstream transport, which counts what
+  it sends and receives; a link that dialled *in* is a peer registration, and
+  the peer table knew only that it was connected and when it was last heard.
+  0284 made the page print a dash rather than a zero, which was honest — but a
+  dash is a placeholder, and the two ends of one link could not be compared at
+  all.
+
+  The master now counts per peer: received after the access checks, so it means
+  traffic this server took rather than datagrams that arrived; sent on a write
+  that succeeded, because a frame that failed to send is not one the far end
+  got; and refused on every refused frame rather than once per transmission,
+  since a link refusing four hundred and a link refusing one are different
+  situations. The page chooses between a number and a dash by asking whether
+  anything counted, not by which direction the link was dialled — that was a
+  proxy for the same question and stopped being one.
+
+- **`LAST HEARD` measured two different things under one heading.** Production
+  read `0s ago` and the test server `44s ago` for the same link at the same
+  moment: one was timing keepalives, which never grow old on a live
+  registration, and the other traffic. Both true, and the pair reads as one end
+  having gone deaf. A peer now records when a frame was last accepted from it,
+  distinct from the keepalive clock.
+
+- **A link was headed with the wrong server's name.** ADR-0052 rule 2 says both
+  consoles show a link with the same name, and the page satisfied it literally
+  and got it wrong: the heading was the local label, which is whatever the
+  *dialling* administrator called their own configuration block — so the
+  listening server displayed a link to somebody else under its own name. The
+  heading is the far end's announced display name; the local label follows it,
+  quieter, so the operator who typed it can still find it.
+
+- **A link's far-end address can be changed from the console.** One wrong
+  character used to mean removing the link and agreeing a fresh peering, with a
+  new password and a new access-list entry on the other operator's server. It
+  happened tonight over four characters of port number. Only the address: a
+  link's name is a file path, its DMR ID is what the far end's access list
+  allows, and its password was agreed with somebody else, so changing those is a
+  new peering rather than a correction. The three addresses that produce a link
+  reporting itself healthy while carrying nothing are refused, and the poll is
+  suspended while the box is being edited — a page that redraws every five
+  seconds cannot otherwise hold a text field.
+
 ### Documentation
 
 - **Handover, standing brief and §8a brought up to the end of 2026-09-08.** The

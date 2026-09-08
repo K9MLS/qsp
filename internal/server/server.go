@@ -211,6 +211,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		// with a broken link on the page unless they edited JSON on the server.
 		{"DELETE /api/links/{name}", s.requireSession(s.handleRemoveLink)},
 		{"DELETE /api/links/inbound/{id}", s.requireSession(s.handleRefuseInbound)},
+		{"PUT /api/links/{name}/address", s.requireSession(s.handleLinkAddress)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},

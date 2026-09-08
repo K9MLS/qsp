@@ -1194,6 +1194,15 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 			Ready:    peer.State.CanPassTraffic(),
 			IdleFor:  peer.Idle(now).Truncate(time.Second).String(),
 		}
+		// Counted per peer since 0294, so an inbound link can report what it is
+		// carrying rather than a dash. Taken by address because the view
+		// distinguishes an unmeasured protocol from a quiet one.
+		received, sent, refused := peer.Received, peer.Sent, peer.Refused
+		v.Received, v.Sent, v.Refused = &received, &sent, &refused
+		if !peer.LastTraffic.IsZero() {
+			idle := now.Sub(peer.LastTraffic).Seconds()
+			v.TrafficIdle = &idle
+		}
 		if v.Callsign != "" {
 			// A Homebrew peer states this at login, which is the strongest of
 			// the three claims and the only one QSP does not construct.
@@ -1757,6 +1766,7 @@ func (l *links) LinkStatuses() []server.LinkStatus {
 			Listening:    u.ListenAddress,
 			NetworkID:    u.NetworkID,
 			Open:         st.Open,
+			Measured:     true,
 			Sent:         st.Stats.Sent,
 			Received:     st.Stats.Received,
 			Rejected:     st.Stats.Rejected,

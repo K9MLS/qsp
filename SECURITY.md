@@ -239,6 +239,15 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
+`/api/links/{name}/address`, on PUT, changes where one link reaches the far end
+and nothing else. A link's name is a file path, its DMR ID is what the far end's
+access list allows, and its password was agreed with somebody else — changing
+any of those is a new peering rather than a correction, and doing it under the
+word "edit" would look like one and behave like the other. The three addresses
+that produce a link reporting itself healthy while carrying nothing are refused:
+a scheme on the front, a bind address, and anything that is not host:port. An
+inbound link has no address on this side and is answered as such.
+
 `/api/links/inbound/{id}`, on DELETE, stops this server accepting registrations
 from one DMR ID. **It is not a removal**: a link that dialled in is in nobody's
 configuration here, so the far end is untouched and will keep dialling. What is

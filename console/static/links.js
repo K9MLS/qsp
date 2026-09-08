@@ -17,6 +17,11 @@
 
   var POLL_MS = 5000;
 
+  /* **A page that redraws every five seconds cannot hold a text box.** The
+   * address field is edited in place, and a poll landing mid-keystroke would
+   * replace what the operator had typed with what the server still has. */
+  var editing = false;
+
   function show(el) { if (el) { el.hidden = false; } }
   function hide(el) { if (el) { el.hidden = true; } }
 
@@ -94,7 +99,22 @@
       html +=
         '<div class="link">' +
         '<div class="link__head">' +
-        '<span class="link__name">' + escapeText(l.name) + "</span>" +
+        /* **The far end's name, not this server's own.** ADR-0052 rule 2 says
+         * both consoles show a link with the same name, and this satisfied it
+         * literally and got it wrong: the heading was the local label, which is
+         * whatever the *dialling* administrator called their configuration
+         * block. So an administrator on the listening server read a link to
+         * somebody else under their own server's name.
+         *
+         * Three names, not two: a local label names a configuration block on
+         * the machine that holds one, a display name is what a server announces
+         * about itself, and an identifier is what the network uses. The heading
+         * is the display name; the local label follows it when there is one, so
+         * the operator who typed it can still find it. */
+        '<span class="link__name">' + escapeText(l.network || l.name) + "</span>" +
+        (l.network && l.name && l.network !== l.name
+          ? '<span class="link__local">' + escapeText(l.name) + "</span>"
+          : "") +
         '<span class="pill pill--' + st.kind + '">' + st.label + "</span>" +
         /* **A page that creates a link has to remove one.** Accepting a
          * peering writes an upstream, a bridge and a passphrase file, and
@@ -126,7 +146,14 @@
             'data-remove="' + escapeText(l.name) + '">Remove</button>') +
         "</div>" +
         '<dl class="link__facts">' +
-        fact("Far end", l.far_end || "not configured") +
+        (l.inbound
+          ? fact("Far end", l.far_end || "not configured")
+          : '<div class="link__fact"><dt>Far end</dt><dd>' +
+            '<input class="link__address" type="text" value="' +
+            escapeText(l.far_end || "") + '" data-address="' + escapeText(l.name) + '">' +
+            '<button class="button button--quiet link__save" type="button" ' +
+            'data-save="' + escapeText(l.name) + '">Save</button>' +
+            "</dd></div>") +
         fact("Protocol", l.protocol || "unknown") +
         /* Whatever the protocol calls it; the server decides, because the page
            * guessed and printed "no network ID" beside a working qsp link. */
@@ -142,9 +169,15 @@
          * outbound link's transport does. Printing 0 reads as "this link has
          * carried nothing", which is the sentence this page exists to stop
          * saying wrongly — it said it beside a link that was carrying. */
-        fact("Sent", l.inbound ? "—" : String(l.sent)) +
-        fact("Received", l.inbound ? "—" : String(l.received)) +
-        fact("Rejected", l.inbound ? "—" : String(l.rejected)) +
+        /* **Measured, not inbound.** This asked which direction the link was
+         * dialled in, which was a proxy for "does anything count it" and
+         * stopped being one when the peer table began counting per peer. A
+         * protocol that still does not count sets no flag and gets the dash,
+         * which is the honest answer; an inbound link now reports what it is
+         * carrying, so both ends of one link can be compared. */
+        fact("Sent", l.measured ? String(l.sent) : "—") +
+        fact("Received", l.measured ? String(l.received) : "—") +
+        fact("Rejected", l.measured ? String(l.rejected) : "—") +
         fact("Last heard", l.ever_received ? idle(l.idle_seconds || 0) + " ago" : "never") +
         "</dl>" +
         '<p class="link__summary">' + escapeText(l.summary) + "</p>" +
@@ -160,6 +193,7 @@
     list.innerHTML = html;
 
     wireRefuse();
+    wireAddress();
 
     Array.prototype.forEach.call(list.querySelectorAll("[data-remove]"), function (button) {
       button.addEventListener("click", function () {
@@ -229,6 +263,49 @@
     act();
   }
 
+  /* **One wrong character used to mean removing the link and agreeing it
+   * again.** The page could create a link and remove one and could not change
+   * the field most likely to be wrong. On 2026-09-08 an offer proposed the
+   * OpenBridge port, the accept form wrote it, and the only way back was a
+   * fresh invitation, password and access-list entry on the other server — for
+   * four characters.
+   *
+   * Only on an outbound link: a link that dialled in has no address on this
+   * side to change. */
+  function wireAddress() {
+    Array.prototype.forEach.call(list.querySelectorAll("[data-save]"), function (button) {
+      var box = list.querySelector('[data-address="' + button.getAttribute("data-save") + '"]');
+      if (!box) { return; }
+      /* The field is edited in place, so polling must not overwrite what is
+         being typed. */
+      box.addEventListener("focus", function () { editing = true; });
+      box.addEventListener("blur", function () { editing = false; });
+      button.addEventListener("click", function () {
+        var name = button.getAttribute("data-save");
+        button.disabled = true;
+        fetch("/api/links/" + encodeURIComponent(name) + "/address", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ address: box.value.trim() })
+        }).then(function (r) {
+          return r.json().then(function (b) {
+            if (!r.ok) { throw new Error(b.error || "could not change the address"); }
+            return b;
+          });
+        }).then(function (b) {
+          editing = false;
+          fail("links-note", "The link " + name + " now reaches the far end at " +
+            b.address + "." + restartNote(b, "it keeps using the old address"));
+          load();
+        }).catch(function (e) {
+          button.disabled = false;
+          fail("links-note", e.message);
+        });
+      });
+    });
+  }
+
   function wireRefuse() {
     Array.prototype.forEach.call(list.querySelectorAll("[data-refuse]"), function (button) {
       button.dataset.idle = "Stop accepting";
@@ -292,6 +369,7 @@
   }
 
   function load() {
+    if (editing) { return; }
     fetch("/api/links", { headers: { Accept: "application/json" }, credentials: "same-origin" })
       .then(function (r) {
         if (r.status === 401) {

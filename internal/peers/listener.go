@@ -840,6 +840,9 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		}
 		l.forwarded.Add(1)
 		l.sent.Add(1)
+		// Per peer as well as per instance. The totals answer "is this server
+		// busy"; only this answers "is this link carrying".
+		l.cfg.Master.CountSent(d.Peer)
 	}
 
 	for _, u := range res.Upstreams {

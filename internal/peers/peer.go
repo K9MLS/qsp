@@ -87,6 +87,41 @@ type Peer struct {
 	// ConfiguredAt is when it completed registration, in UTC. Zero until then.
 	ConfiguredAt time.Time
 
+	// Received, Sent and Refused count frames each way for this peer.
+	//
+	// # Why these exist
+	//
+	// **The Links page printed a dash where an outbound link printed numbers.**
+	// A link this server dialled runs through an upstream transport, which
+	// counts what it sends and receives; a link that dialled *in* is a peer
+	// registration, and the peer table knew only that it was connected and when
+	// it was last heard. 0284 made the page print a dash rather than a zero,
+	// because not measured is not zero — but a dash is a placeholder, and the
+	// two ends of one link could not be compared at all.
+	//
+	// Counted here rather than in the listener's totals because the question is
+	// about one peer. `l.forwarded` and `l.sent` are the whole instance's
+	// traffic and cannot answer "is this link carrying".
+	//
+	// Received counts frames accepted from this peer, after the access checks,
+	// so it means what an operator reads it as: traffic this server took from
+	// them. Refused counts the ones the subscriber list turned back, which is
+	// the difference between a quiet link and a rejected one.
+	Received uint64
+	Sent     uint64
+	Refused  uint64
+
+	// LastTraffic is when a frame was last accepted from this peer, in UTC.
+	//
+	// **Not LastHeard, which counts keepalives.** A peer sends a ping every few
+	// seconds whether or not anybody is talking, so LastHeard answers "is this
+	// registration alive" and never grows old on a working link. The Links page
+	// used it under a column headed Last heard while an outbound link used its
+	// last traffic, so the same link at the same moment read 0s on one console
+	// and 44s on the other — two true statements that together say one end has
+	// gone deaf.
+	LastTraffic time.Time
+
 	// refused remembers the transmission most recently refused by the
 	// subscriber access list, so the refusal is logged once rather than once
 	// per frame. Not exported: it is bookkeeping, not something an observer of

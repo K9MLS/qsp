@@ -626,6 +626,13 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 		m.attach(p.ID, msg.TargetID, msg.Timeslot, now)
 	}
 
+	// **Counted after the access checks**, so Received means traffic this
+	// server took from the peer rather than datagrams that arrived. A refused
+	// frame is counted as refused, which is what makes a quiet link
+	// distinguishable from a rejected one on the Links page.
+	p.Received++
+	p.LastTraffic = now
+
 	frame := msg
 	return Outcome{Data: &frame, From: p.ID}
 }
@@ -670,6 +677,12 @@ func (m *Master) SetAccess(l access.Lists) {
 
 func (m *Master) refuseSubscriber(p *Peer, msg hbp.Data, now time.Time) Outcome {
 	current := refusedStreamID{source: msg.SourceID, stream: msg.StreamID, slot: msg.Timeslot}
+
+	// **Every refused frame, not one per transmission.** The log is quietened
+	// to one line per stream deliberately; the count is not, because a link
+	// refusing four hundred frames and a link refusing one are different
+	// situations and the page has to be able to tell them apart.
+	p.Refused++
 
 	if p.refused.id == current {
 		p.refused.frames++
@@ -860,4 +873,24 @@ func putRepeaterID(dst *[4]byte, id hbp.RepeaterID) {
 	dst[1] = byte(uint32(id) >> 16)
 	dst[2] = byte(uint32(id) >> 8)
 	dst[3] = byte(uint32(id))
+}
+
+// CountSent records that a frame was written to a peer.
+//
+// **The listener writes and the master counts.** The write happens in the
+// listener, which holds the socket; the count belongs with the peer, which is
+// what the Links page asks about. Splitting them means the listener does not
+// need a lock on the registry to send, and the count is taken only for a write
+// that actually succeeded — a frame that failed to send is not one the far end
+// received, and reporting it would make a broken link look like a carrying one.
+//
+// A peer that has gone between the routing decision and the write is not an
+// error here; there is simply nothing to count.
+func (m *Master) CountSent(id hbp.RepeaterID) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if p, ok := m.peers[id]; ok {
+		p.Sent++
+	}
 }

@@ -75,6 +75,21 @@ type PeerView struct {
 	State string `json:"state"`
 	// Ready reports whether it may pass traffic.
 	Ready bool `json:"ready"`
+	// Received, Sent and Refused count frames each way for this peer.
+	//
+	// **Pointers, because not measured is not zero.** The Links page printed a
+	// dash for an inbound link's counters when nothing counted them, and a plain
+	// uint64 cannot tell "this link has carried nothing" from "nobody is
+	// counting" — which is the sentence that page exists to stop saying wrongly.
+	// A protocol that does not count leaves these nil and the page still prints
+	// a dash.
+	// TrafficIdle is how long since a frame was accepted from this peer, in
+	// seconds. Nil when it has never carried one, and distinct from IdleFor,
+	// which measures keepalives and never grows old on a live registration.
+	TrafficIdle *float64 `json:"traffic_idle,omitempty"`
+	Received    *uint64  `json:"received,omitempty"`
+	Sent        *uint64  `json:"sent,omitempty"`
+	Refused     *uint64  `json:"refused,omitempty"`
 	// ConnectedFor is how long since it completed registration. Zero if it
 	// never has.
 	ConnectedFor string `json:"connected_for,omitempty"`

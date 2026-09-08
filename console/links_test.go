@@ -451,3 +451,71 @@ func TestTheLinkAddressWarnsAboutTheHairpin(t *testing.T) {
 			"which has produced a silently dead link twice")
 	}
 }
+
+// **Not measured is not zero, and inbound was a proxy for not measured.** The
+// page decided between a number and a dash by asking which direction the link
+// was dialled, which was true until the peer table began counting per peer.
+// Both ends of one link now report the same kind of thing, which is what makes
+// them comparable at all.
+func TestTheCountersFollowWhetherAnythingCountsThem(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	for _, field := range []string{"l.sent", "l.received", "l.rejected"} {
+		at := strings.Index(js, field)
+		if at < 0 {
+			t.Fatalf("the page does not show %s at all", field)
+		}
+		line := lineAround(js, at)
+		if strings.Contains(line, "l.inbound") {
+			t.Errorf("%s is chosen by the link's direction rather than by whether it is measured: %s",
+				field, strings.TrimSpace(line))
+		}
+		if !strings.Contains(line, "l.measured") {
+			t.Errorf("%s does not ask whether anything counted it: %s", field, strings.TrimSpace(line))
+		}
+	}
+}
+
+// **ADR-0052 rule 2 as amended.** The heading was the local label — whatever
+// the dialling administrator called their own configuration block — so the
+// listening server displayed a link to somebody else under its own name.
+func TestALinkIsHeadedWithTheFarEndsName(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	at := strings.Index(js, "link__name")
+	if at < 0 {
+		t.Fatal("a link has no heading")
+	}
+	line := lineAround(js, at)
+	if !strings.Contains(line, "l.network") {
+		t.Errorf("a link is headed with the local label rather than the far end's "+
+			"announced name: %s", strings.TrimSpace(line))
+	}
+}
+
+// **One wrong character meant removing the link and agreeing it again.** Every
+// operation has to be completable from the console.
+func TestALinksAddressCanBeChangedFromThePage(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "/address") {
+		t.Fatal("a link's far-end address cannot be changed from the page, so a wrong " +
+			"port means removing the link and agreeing a fresh peering")
+	}
+	// A page that redraws every five seconds cannot hold a text box: a poll
+	// landing mid-keystroke replaces what was typed with what the server has.
+	if !strings.Contains(js, "editing") {
+		t.Error("the poll is not suspended while the address is being edited")
+	}
+}
+
+// lineAround returns the source line containing an offset, so an assertion is
+// about the expression that decides something rather than about the file.
+func lineAround(s string, at int) string {
+	start := strings.LastIndex(s[:at], "\n") + 1
+	end := strings.Index(s[at:], "\n")
+	if end < 0 {
+		return s[start:]
+	}
+	return s[start : at+end]
+}

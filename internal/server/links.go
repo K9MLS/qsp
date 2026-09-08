@@ -78,6 +78,13 @@ type LinkStatus struct {
 	// trickle is almost always a passphrase the two ends disagree about, which
 	// is otherwise indistinguishable from silence.
 	Rejected uint64 `json:"rejected"`
+	// Measured says the counters above mean something.
+	//
+	// **Not measured is not zero.** An inbound link had no per-peer counters
+	// until 0294 and the page printed a dash; a protocol that still does not
+	// count must be able to say so rather than reporting a confident zero
+	// beside a link that is carrying.
+	Measured bool `json:"measured,omitempty"`
 	// EverReceived and IdleSeconds describe the quiet. Idle is meaningless
 	// when nothing has ever arrived, which is why the two are separate.
 	EverReceived bool `json:"ever_received"`
@@ -257,6 +264,30 @@ func inboundLinks(peers []PeerView, already []LinkStatus) []LinkStatus {
 			Open:       p.Ready,
 			Network:    p.Network,
 			Software:   p.Software,
+		}
+		// **Counted since 0294, so this is a number rather than a dash.** The
+		// peer table used to know only that a link was connected and when it
+		// was last heard, so the two ends of one link could not be compared:
+		// the side that dialled printed frame counts and the side that listened
+		// printed nothing. Still absent-able — a protocol that does not count
+		// leaves these nil and the page prints a dash, because not measured is
+		// not zero.
+		if p.Received != nil {
+			l.Received, l.Measured = *p.Received, true
+		}
+		if p.Sent != nil {
+			l.Sent, l.Measured = *p.Sent, true
+		}
+		if p.Refused != nil {
+			l.Rejected, l.Measured = *p.Refused, true
+		}
+		// **Last heard means traffic on both ends now.** It read keepalives
+		// here and traffic on an outbound link, under one column heading, so
+		// the same link at the same moment reported 0s on one console and 44s
+		// on the other — which reads as one end having gone deaf.
+		if p.TrafficIdle != nil {
+			l.EverReceived = true
+			l.IdleSeconds = int(*p.TrafficIdle)
 		}
 		if p.Ready {
 			l.Summary = "connected; this link dialled in, so it is not in this server's configuration"

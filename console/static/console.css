@@ -1473,6 +1473,30 @@ select.field__input {
   font-weight: var(--weight-semibold);
 }
 
+/* The local label, beside the far end's announced name.
+   Quieter, because it is what this administrator called their own
+   configuration block and the far end has never heard of it. */
+/* The far-end address, editable in place. Sized to hold a hostname and a port
+   without scrolling, which is what an operator is checking when they look. */
+.link__address {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--color-foreground);
+  background: var(--color-muted);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.link__local {
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+  font-family: var(--font-mono);
+}
+
 /* A grid rather than a table: seven facts about one link read better stacked
    on a narrow window than squeezed into seven columns. */
 .link__facts {
