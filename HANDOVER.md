@@ -7,7 +7,45 @@ this session. §8b through §8l are superseded and say so.
 Version **0.1.107**, patches 0261–0265. Every one of them is on Fedora.
 **0264 and 0265 are on neither server**, and 0264 matters most — see below.
 
-## Start here: every peering the accept form creates is dead inbound
+## Start here: sendToIPSC drops frames that arrive over a link
+
+**A frame from an OpenBridge link never reaches a Motorola repeater on a server
+whose only local station is that repeater.** This is the last thing between QSP
+and audio in both directions, and it is a code fix.
+
+`sendToIPSC` in `internal/peers/listener.go` returns early when routing set a
+reason:
+
+```go
+if res.Reason != "" && !res.NoHomebrewDestination {
+    return
+}
+```
+
+Its own comment describes the case it is meant to survive — *"a network of
+Motorola repeaters and no hotspots has nowhere on the Homebrew side to deliver
+and the frame should still reach the other repeaters"* — but the escape hatch is
+`NoHomebrewDestination`, and a frame arriving **from an upstream** does not get
+it. Routing reports the generic `every destination refused the frame`, and the
+repeater never sees it.
+
+Observed on 2026-09-08, test server, one repeater and no hotspots:
+
+```
+call started  subsystem=network peer_id=3132910 talkgroup=2 timeslot=1 stream_id=225593410
+transmission not carried  subsystem=network peer_id=0 reason="every destination refused the frame"
+```
+
+The repeater's own transmission 3 seconds later carried normally, because that
+direction does not pass through this gate.
+
+**The work:** read `routing.Result` and find where `NoHomebrewDestination` is
+set; decide whether an upstream-sourced frame with no local Homebrew peers is
+the same case; build the test from the log lines above. Do not widen the
+condition without knowing what `Reason` values reach it — a frame refused by
+access control must still be refused.
+
+## Then: every peering the accept form creates has the wrong timeslot
 
 **OpenBridge forces timeslot 1.** `internal/protocol/openbridge/openbridge.go`
 says so: *"The timeslot is forced to 1. Proper OpenBridge passes all traffic on
@@ -30,6 +68,9 @@ and is not one.
 Corrected by hand on both servers on 2026-09-08: the endpoint naming an upstream
 is timeslot 1, the local peer endpoint keeps the operator's slot. **After that
 change, a Motorola repeater was heard by a hotspot user across the link.**
+
+**This was necessary and was not the whole story.** It is why a link-sourced
+frame reaches routing at all; `sendToIPSC` above is why it goes no further.
 
 **The fix belongs in `handleAcceptPeering`** in `internal/server/peering.go`,
 where the bridge is built: an endpoint naming an OpenBridge upstream takes

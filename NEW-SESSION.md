@@ -24,9 +24,14 @@ is a real Motorola master sending voice — 347 packets, 288 of them voice, from
 the XPR8300's own RF — and four tests already read it. Compare what QSP sends
 against it and diff. See §8m and `HANDOVER.md`.
 
-A repeater registering with a containerised instance is now on record, and the
-repeater-to-network direction carries across an OpenBridge link between two QSP
-instances.
+A repeater registering with a containerised instance is now on record, and
+**repeater to hotspot carries across an OpenBridge link between two QSP
+instances** — a Motorola repeater heard by a hotspot user, which had never
+worked before 2026-09-08.
+
+The other direction stops in `sendToIPSC`, which drops a link-sourced frame
+before the repeater sees it. `HANDOVER.md` opens on that; it comes before the
+burst-shape work.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:

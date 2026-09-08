@@ -6,7 +6,15 @@ All notable changes to QSP. Dates are UTC.
 
 ### Known defects, not yet fixed
 
-- **Every peering the accept form creates is dead inbound.** OpenBridge forces
+- **`sendToIPSC` drops frames that arrive over a link.** On a server whose only
+  local station is a Motorola repeater, a frame from an OpenBridge link is
+  judged `every destination refused the frame` and returns before IPSC sees it.
+  Its own comment describes the case it means to survive — no hotspots, deliver
+  to the repeaters anyway — but the escape hatch is `NoHomebrewDestination` and
+  an upstream-sourced frame does not get it. **This is the last thing between
+  QSP and audio in both directions.**
+
+- **Every peering the accept form creates has the wrong timeslot.** OpenBridge forces
   timeslot 1 — `internal/protocol/openbridge/openbridge.go` says so in a comment
   — so every frame crossing the link arrives as TS1. The accept handler writes a
   bridge whose *upstream* endpoint carries the timeslot the operator chose, 2 by

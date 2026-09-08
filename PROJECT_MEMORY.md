@@ -3008,3 +3008,10 @@ had said so in a comment the whole time.
 The general form, which is the fourth instance of it this session: **a protocol
 constraint stated in one package and not enforced where configuration is
 written.** The accept form asks a question the protocol has already answered.
+
+**A fix that is necessary is not therefore sufficient.** The OpenBridge timeslot
+correction above made link-sourced frames reach routing, and it was written up
+as the cause of the silence. It was not: `sendToIPSC` then dropped them anyway.
+Two faults on one path, and fixing the first made the second visible rather than
+making the symptom go away. **When a change is necessary but the symptom
+persists, do not restate the change as the answer — look for the next gate.**
