@@ -62,3 +62,4 @@ conclusion.
 | [0050](ADR-0050-a-reciprocal-says-so.md) | A reciprocal says so in the token, so an exchange can end after a restart | Accepted |
 | [0051](ADR-0051-a-qsp-link-is-a-peer.md) | A link between two QSP servers is a peer, not a bridge | Accepted — confirmed on air |
 | [0052](ADR-0052-qsp-is-federated.md) | QSP is a federated network | Accepted |
+| [0053](ADR-0053-three-names-for-a-server.md) | A server has three names, and they do different jobs | Accepted |

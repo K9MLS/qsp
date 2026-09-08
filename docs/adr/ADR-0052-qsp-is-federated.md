@@ -86,6 +86,11 @@ and appears nowhere else. Only the dialling side has a config block, which is
 why a local label can never be the shared name — half a linked pair does not
 have one.
 
+**Decided in [ADR-0053](ADR-0053-three-names-for-a-server.md):** a server has
+three names — a self-generated opaque identifier the software compares, a
+changeable display name a human reads, and the DMR ID, which stays the per-link
+login it already is. The paragraph below is the question as it stood.
+
 **What the identifier should be is deliberately left open**, and it is the one
 choice here that cannot be changed once servers are running, because it is what
 everybody calls everybody else. A DMR ID is unique, already issued, and every
@@ -184,7 +189,7 @@ regardless of which side dialled.
 
 ## What this does not decide
 
-What a server's identifier should be. Whether subscription is expressed as
+*(The identifier is decided in ADR-0053.)* Whether subscription is expressed as
 talkgroups, as a pattern, or as something else. How a partition reconciles.
 Whether a server may refuse to relay for a neighbour, and what it owes one that
 depends on it. Each is a decision this frame makes askable rather than one it

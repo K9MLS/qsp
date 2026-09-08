@@ -4,6 +4,45 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **ADR-0053: a server has three names, and they do different jobs.** Answers
+  the question ADR-0052 left open, and it was stuck because it was the wrong
+  question. "Is a DMR ID good enough as an identity?" assumes one number should
+  do every naming job a server has, and a DMR ID is a *login*: a station
+  presents it at registration, the far end looks up a password for it, and a
+  hotspot's ID does the same thing in the same packets.
+
+  A credential wants to be per link, revocable and freely reissued. A name wants
+  to be one per server, permanent, and never reissued to anybody else. So:
+
+  - an **identifier** generated at first run, 128 opaque bits, never changed,
+    never parsed, and shown only where identity is the actual question;
+  - a **display name** the operator chooses and may change — `KD9EJA-01` after
+    the packet and APRS convention, or `qsp-server-tx` — which both consoles
+    head a link with, and which no code may parse;
+  - the **DMR ID**, unchanged, as the per-link login 0288 already built.
+
+  Three facts from running the thing settled it: `config.Validate` refuses two
+  links sharing a `repeater_id`, so ten neighbours means ten IDs from a pool
+  sized for people; a DMR ID is issued to an operator and a server outlives the
+  person who registered it; and `3132912` answers no question an administrator
+  actually asks when they look at a page.
+
+  **The part that cannot be fixed later** is that the identifier is opaque from
+  the first day, because the next generation of it is probably a public-key
+  fingerprint — ADR-0052 rule 4 already records that anything a neighbour
+  announces can be false, and a random number proves nothing about who generated
+  it. Opaque now makes that a generation change; anything that parses it makes
+  it a redesign.
+
+  Callsigns are rejected as the identifier and kept as the display name, because
+  they are reassigned: a silent key's call is reissued and vanity calls change
+  hands. A registry of any kind is rejected, including one QSP runs, because it
+  would make QSP something to be admitted to.
+
+  Nothing is built yet. The record exists to be argued with before code.
+
 ### Fixed
 
 - **An inbound link's counters were a dash because nothing counted them.** A
