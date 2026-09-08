@@ -169,6 +169,18 @@ func (c Config) validateHomebrewUpstream(v *validator, field string, u Upstream,
 		v.add(field+".repeater_id",
 			fmt.Sprintf("%d is also used by a locally configured peer", u.RepeaterID),
 			"give the link its own DMR ID; one ID cannot mean two stations")
+	} else if c.IPSC.Enabled && u.RepeaterID == c.IPSC.MasterID {
+		// **The silent one.** A master announcing a station's own ID is
+		// refused by that station, which retries forever with no indication of
+		// cause — it has cost this project time twice, and on 2026-09-08 two
+		// servers on one LAN were both announcing 3132911 while a link between
+		// them was being configured by hand. The rule already exists for
+		// ipsc.allowed_peers; a link is the same station wearing a different
+		// hat.
+		v.add(field+".repeater_id",
+			fmt.Sprintf("%d is also ipsc.master_id", u.RepeaterID),
+			"give the link its own DMR ID; a station refuses to register with a master "+
+				"carrying its own ID, and retries silently rather than reporting it")
 	}
 
 	if strings.TrimSpace(u.PasswordFile) == "" {

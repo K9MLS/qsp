@@ -4,7 +4,7 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.118**, patches 0261–0276. Everything through 0273 is deployed to
+Version **0.1.119**, patches 0261–0277. Everything through 0273 is deployed to
 production and the test server; 0274 to 0276 are on Fedora only.
 
 **0276 changes the container build**, so the test server needs a rebuild rather
@@ -59,11 +59,16 @@ Then, in order:
    timeslot box. It should write a `qsp` link and ask for neither. Until then
    every peering an administrator agrees through the console produces the
    configuration ADR-0051 was written against.
-2. **The ID-collision refusal and the arrived-frames console line.** Both
-   servers announce IPSC master ID 3132911 today. And a slot mismatch between
-   two linked servers is still silent: the traffic dies at the far end's
-   ingress and the link looks dead, which is this morning's failure wearing a
-   different label.
+2. **The arrived-frames console line.** A slot mismatch between two linked
+   servers is still silent: the traffic dies at the far end's ingress and the
+   link looks dead, which is this morning's failure wearing a different label.
+   Not a configuration knob — a mirror. One line per link saying what actually
+   arrived against what this server carries.
+
+   **The ID-collision refusal is done (0277)**, and it will refuse a
+   configuration both servers could have grown into: they announce IPSC master
+   ID 3132911 today, and a `qsp` link carrying that ID is now refused at
+   startup with the reason named.
 3. Remove `Export`, `Import` and the bridge-for-links machinery.
 4. OpenBridge narrowed to foreign networks; the disabled link on the test
    server removed.

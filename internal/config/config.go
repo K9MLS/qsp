@@ -1360,6 +1360,26 @@ func (c Config) Validate() error {
 		upstreamNames := make(map[string]bool, len(c.DMR.Upstreams))
 		// Static attachments name local peers; a homebrew upstream must not
 		// claim an ID one of them already uses.
+		// Two links sharing a DMR ID is the same fault as a link sharing one
+		// with a peer, and neither end reports it: the second registration
+		// replaces the first at the far end, so one link goes quiet and both
+		// report healthy.
+		linkIDs := map[uint32]int{}
+		for i, u := range c.DMR.Upstreams {
+			if !u.Enabled || !u.HomebrewProtocol() || u.RepeaterID == 0 {
+				continue
+			}
+			if first, seen := linkIDs[u.RepeaterID]; seen {
+				v.add(fmt.Sprintf("dmr.upstreams[%d].repeater_id", i),
+					fmt.Sprintf("%d is also used by dmr.upstreams[%d] (%q)",
+						u.RepeaterID, first, c.DMR.Upstreams[first].Name),
+					"give each link its own DMR ID; the far end registers by ID, so the "+
+						"second link replaces the first and one of them goes quiet")
+				continue
+			}
+			linkIDs[u.RepeaterID] = i
+		}
+
 		localPeerIDs := make(map[uint32]bool, len(c.DMR.Subscription.Static))
 		for _, a := range c.DMR.Subscription.Static {
 			localPeerIDs[a.Peer] = true

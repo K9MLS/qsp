@@ -762,3 +762,82 @@ func TestQSPIsAProtocolQSPSpeaks(t *testing.T) {
 		t.Errorf("the advice does not offer \"qsp\":\n%s", msg)
 	}
 }
+
+// qspConfig wraps a set of links in a configuration that is otherwise valid.
+func qspConfig(us ...Upstream) Config {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "peer.pass"
+	c.DMR.Upstreams = us
+	c.DMR.Bridges = nil
+	return c
+}
+
+// TestALinkMayNotCarryTheMastersOwnID is the fault that reports nothing.
+//
+// A station refuses to register with a master announcing the station's own ID,
+// and retries forever with no indication of cause. It has cost this project
+// time twice. On 2026-09-08 both K9MLS servers were announcing IPSC master ID
+// 3132911 at once while a link between them was being configured by hand, and
+// nothing anywhere would have said so.
+//
+// The rule already existed for `ipsc.allowed_peers`. A link is the same station
+// wearing a different hat.
+func TestALinkMayNotCarryTheMastersOwnID(t *testing.T) {
+	u := qspLink()
+	u.RepeaterID = 3132911
+
+	c := qspConfig(u)
+	c.IPSC.Enabled = true
+	c.IPSC.MasterID = 3132911
+	c.IPSC.ListenAddress = "0.0.0.0:50000"
+	cc := uint8(1)
+	c.IPSC.ColourCode = &cc
+
+	msg := upstreamProblems(t, c)
+	if !strings.Contains(msg, "repeater_id") || !strings.Contains(msg, "master_id") {
+		t.Errorf("a link carrying the master's own ID was accepted:\n%s", msg)
+	}
+	// The advice has to say why nothing will report it, because the operator's
+	// symptom is silence.
+	if !strings.Contains(msg, "retries silently") {
+		t.Errorf("the refusal does not say the failure is silent:\n%s", msg)
+	}
+}
+
+// TestTwoLinksMayNotShareAnID, because neither end reports that either.
+//
+// The far end registers by ID, so a second link with the same one replaces the
+// first: one link goes quiet and both sides report healthy. At ten servers that
+// is a hole nobody owns.
+func TestTwoLinksMayNotShareAnID(t *testing.T) {
+	a, b := qspLink(), qspLink()
+	b.Name = "paul"
+	b.Address = "paul.example.org:62031"
+	b.PasswordFile = "/var/lib/qsp/paul.pass"
+	// Same ID as a.
+	b.RepeaterID = a.RepeaterID
+
+	msg := upstreamProblems(t, qspConfig(a, b))
+	if !strings.Contains(msg, "repeater_id") {
+		t.Errorf("two links sharing a DMR ID were accepted:\n%s", msg)
+	}
+	if !strings.Contains(msg, "blake") {
+		t.Errorf("the refusal does not name the other link:\n%s", msg)
+	}
+}
+
+// TestTwoLinksWithTheirOwnIDsAreFine, so the rule refuses a collision and not
+// a network with several links in it — which is what ADR-0051 is for.
+func TestTwoLinksWithTheirOwnIDsAreFine(t *testing.T) {
+	a, b := qspLink(), qspLink()
+	b.Name = "paul"
+	b.Address = "paul.example.org:62031"
+	b.PasswordFile = "/var/lib/qsp/paul.pass"
+	b.RepeaterID = a.RepeaterID + 1
+
+	if msg := upstreamProblems(t, qspConfig(a, b)); msg != "" {
+		t.Errorf("two links with distinct IDs were rejected:\n%s", msg)
+	}
+}

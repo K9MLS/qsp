@@ -67,6 +67,20 @@ All notable changes to QSP. Dates are UTC.
   `TestAFrameFromALinkIsNotRelayedYet` was written to fail when this landed. It
   did, and it has been replaced rather than deleted.
 
+### Added
+
+- **A link may not carry the master's own DMR ID, and two links may not share
+  one.** Both faults report nothing at all. A station refuses to register with
+  a master announcing the station's own ID and retries forever with no
+  indication of cause — it has cost this project time twice. And the far end
+  registers a link by ID, so a second link with the same one replaces the
+  first: one goes quiet and both sides report healthy.
+
+  The rule already existed for `ipsc.allowed_peers`. A link is the same station
+  wearing a different hat. On 2026-09-08 both K9MLS servers were announcing IPSC
+  master ID 3132911 while a link between them was being configured by hand, and
+  nothing anywhere would have said so.
+
 ### Fixed
 
 - **A clean stop exited 1, intermittently, and systemd recorded it as a
