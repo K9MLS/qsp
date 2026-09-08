@@ -1,0 +1,33 @@
+# What does not belong in the container build context.
+#
+# **.git stays.** Go reads the repository to stamp the commit into the binary,
+# and without it `/qsp --version` reports the release with no commit — which is
+# half of what §7's deploy check needs, and was the state of every container
+# image built before 0278.
+#
+# Everything here is either a local secret, a local artefact, or something the
+# build cannot use. Keeping them out is not only about size: `.env` holds an
+# operator's own settings and has no business being copied into a build, even
+# one whose final stage is `scratch` and keeps nothing from it.
+
+# Local environment and configuration. The .example files are tracked and are
+# the ones a reader should see.
+deploy/docker/.env
+qsp.json
+*.db
+*.db-shm
+*.db-wal
+
+# Build output from a workstation. The image builds its own.
+/qsp
+/qsp-*
+/dist/
+*.exe
+*.test
+*.out
+
+# Editors.
+.vscode/
+.idea/
+*.swp
+.DS_Store

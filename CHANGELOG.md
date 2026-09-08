@@ -69,6 +69,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Every container build reported `+dirty`, so the flag stopped meaning
+  anything.** `deploy/docker/.env.example` is tracked and `.env` is not, and
+  `.env` was not ignored either — so on any host that had followed the
+  container instructions it sat untracked forever. Go marks a build dirty for
+  untracked files as well as modified ones.
+
+  The flag exists to tell an operator that a binary contains changes not in its
+  commit, which is exactly what they need when a deploy behaves unexpectedly.
+  Always on, it tells them nothing. Ignored in git and kept out of the build
+  context, with a test on both — and the same test asserts `.git` stays in the
+  context, because excluding it is the easiest way to silently undo the commit
+  stamp 0278 added.
+
 - **A disabled link was described as awaiting a restart, and advised to
   restart.** `reconcileLinks` never read `Enabled`, so a link deliberately
   turned off in the configuration was reported as *"configured and not open;

@@ -439,3 +439,40 @@ func TestTheContainerCanSayWhatItIs(t *testing.T) {
 		t.Errorf("%s passes a literal version again", override)
 	}
 }
+
+// TestTheLocalEnvFileIsIgnored, so "+dirty" keeps meaning something.
+//
+// `deploy/docker/.env.example` is tracked and `.env` is not — and it was not
+// ignored either, so on any host that had followed the container instructions
+// it sat untracked forever. Go marks a build `+dirty` for untracked files as
+// well as modified ones, so every image built there reported a dirty commit.
+//
+// **A flag that is always on carries no information.** It exists to tell an
+// operator that a binary contains changes not in its commit, which is exactly
+// what they need to know when a deploy behaves unexpectedly.
+func TestTheLocalEnvFileIsIgnored(t *testing.T) {
+	for _, f := range []string{"../../.gitignore", "../../.dockerignore"} {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("%s: %v", f, err)
+		}
+		if !strings.Contains(string(b), "deploy/docker/.env") {
+			t.Errorf("%s does not ignore deploy/docker/.env", f)
+		}
+	}
+
+	// **.git must stay in the build context.** Go stamps the commit from the
+	// repository it compiles in, and excluding it would silently return the
+	// container to reporting a release with no commit — which is what 0278
+	// fixed and what this file would be the easiest place to undo.
+	b, err := os.ReadFile("../../.dockerignore")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(strings.TrimPrefix(line, "!")) == ".git" &&
+			!strings.HasPrefix(strings.TrimSpace(line), "#") {
+			t.Error(".dockerignore excludes .git, so the binary cannot name its own commit")
+		}
+	}
+}
