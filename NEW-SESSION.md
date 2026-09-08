@@ -76,7 +76,7 @@ to it.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0272**. Commits use my
+`git am` on my Fedora machine. Number them from **0285**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
 
 **Check that number against `git log` before using it.** It said 0194 for

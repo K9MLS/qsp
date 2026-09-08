@@ -1,104 +1,92 @@
 # Handover, 2026-09-08 night
 
-Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
-which decides how linking works from here and is confirmed on air. §8o is this
-session.
+Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
+which is the frame everything about linking now sits inside, then **ADR-0051**,
+which is confirmed on air. **§8o** is this session.
 
-Version **0.1.126**, patches 0261–0284. Everything through 0273 is deployed to
-production and the test server; 0274 to 0276 are on Fedora only.
+Version **0.1.126**, patches 0261–0284. **Everything through 0283 is deployed
+to production and the test server; 0284 is on Fedora only** and needs both
+machines — production for the Links page, the test server for a software string
+that fits its field.
 
-**0276 changes the container build**, so the test server needs a rebuild rather
-than just a restart, and `/qsp --version` should read a real version afterwards
-for the first time.
+## What this session did
 
-## What happened
-
-**Audio crossed a QSP-to-QSP link in both directions**, 2026-09-08 16:16 UTC.
-A hotspot user in Denton, heard on a Motorola repeater, through a link that is
-a peer rather than a bridge.
+**Two QSP servers hear each other, both directions, and the timeslot survives.**
+A hotspot user in Denton heard on a Motorola repeater through a link that is a
+peer rather than a bridge, 16:16 UTC:
 
 ```
 peer connected  peer_id=3132912 callsign=K9MLS from=192.168.1.27:58483
-call started    peer_id=3132910 talkgroup=2 timeslot=2 stream_id=2948633907
-call started    subsystem=ipsc radio_id=999999 destination=2 timeslot=2 slot_bit=true
+call started    peer_id=3132910 talkgroup=2 timeslot=2
 call ended      frames=34 converted=32 delivered=32 duration=1.982s
 ```
 
-**`timeslot=2` is the whole thing.** Every previous run read TS1, because
-OpenBridge forces it and two instances of the same software were using
-OpenBridge to reach each other. The repeater had been keying on the slot nobody
-monitors.
+`timeslot=2` is the result. Every previous run read TS1, because OpenBridge
+forces it and two instances of the same software were using OpenBridge to reach
+each other, so the repeater had been keying on the slot nobody monitors.
 
-`bridges=0`, `qsp_links=1`. The dialling side's entire configuration is one
-upstream block: name, address, DMR ID, password file, callsign. No listen
-address, no export list, no import list, no timeslot, no port forward.
+The dialling side's whole configuration is one upstream block — name, address,
+DMR ID, password file, callsign. `bridges=0`. No listen address, no export
+list, no import list, no timeslot, no port forward.
 
-## Start here: a server says what it is
+**ADR-0052 is the frame that should have come first.** QSP is a federation of
+sovereign servers. Three decisions taken the same day made the sender
+responsible for what the receiver gets, and each was found by an operator
+clicking through a console rather than by a test.
 
-**An administrator cannot see half their own links.** Production and the test
-server carry audio in both directions, and production's Links page reads *No
-links are configured* — because the test server dials in, and the listening end
-cannot tell a linked network from a hotspot. Same handshake, same port, same
-peer table. It appears on the Peers page as 3132912 beside three hotspots.
+## Start here
 
-ADR-0051 called that asymmetry invisible in use. It is not, and it was found
-within four minutes of clicking through the console. **ADR-0052 is the frame
-that decision should have been made inside**: QSP is a federation of sovereign
-servers, and three choices made the same day made the sender responsible for
-what the receiver gets.
+**A third server.** Relaying and deduplication are the largest untested claim in
+the tree: every test is a unit test, and with two servers there is nothing to
+relay to, so nothing on air says anything about either. A second container on
+the test server on different ports is the cheapest third instance. Link it so a
+frame reaches one server by two paths, key the Pi-Star, and confirm a radio
+hears **one** copy and the journal shows the second path refused with
+`already being carried from ...`.
 
-The work, in ADR-0052's order:
+**Then settle what a server's identifier is**, before writing any more of
+ADR-0052. It is the one choice that cannot be changed once servers are running,
+because it is what everybody calls everybody else. Today it is a DMR ID because
+that is what the protocol carries — and a DMR ID is issued to an *operator*,
+while a server outlives the person who registered it and a club running three
+instances needs three from a pool sized for members. BrandMeister numbered
+networks separately for that reason.
 
-1. **Done in 0283, and never seen in a browser.** Both consoles should now show
-   the link, with the same name at each end. Load production's Links page: it
-   should list an inbound link named as the test server names it, rather than
-   "No links are configured". If it does not, the announcement is arriving and
-   nothing reads it, or it is not arriving — the peer's SoftwareID and
-   PackageID on the Peers API will say which.
-2. **The Links page shows inbound links beside outbound ones**, with the same
-   states, counts and last-heard, and the same name at both ends. An
-   administrator asks one question and should not have to know which end
-   dialled.
-3. **A hop count**, bounding relay before deduplication catches it.
-4. **The link's own state while retrying** — retrying, last attempt, last
-   connected. Reconnection works and is silent to the console.
+**Then the accept form.** It still writes an OpenBridge link with a bridge and a
+timeslot box, so every peering agreed through the console produces the
+configuration ADR-0051 exists to prevent. It is the largest single piece left:
+the invitation format carries `Export`, `Import` and `NetworkID`, all
+meaningless now, so the invitation, the offering side, the reciprocal builder
+and the console JavaScript change together. **Start it with a full context
+budget.** A `qsp` link is written by hand meanwhile; the JSON is below.
 
-Then the accept form, which still writes an OpenBridge link with a bridge and a
-timeslot box, and then removing `Export`, `Import` and the bridge-for-links
-machinery.
+Then, in ADR-0052's order: a hop count bounding relay before dedup catches it;
+the link's own state while retrying, which works and is silent to the console;
+subscription instead of flooding, its own record; and the network view
+propagated hop by hop, its own record.
 
-**Before writing any of it, settle what a server's identifier is.** ADR-0052
-leaves it open on purpose: it is the one choice that cannot be changed once
-servers are running, because it is what everybody calls everybody else. A DMR ID
-is unique and already issued, and it is issued to an *operator* — a server
-outlives the person who registered it, and a club running three instances needs
-three from a pool sized for members.
-
-## Not run anywhere, and it is the largest claim outstanding
-
-**Relaying and deduplication have never seen a third server.** Every test is a
-unit test. With two servers there is nothing to relay to, so today's on-air
-evidence says nothing about either. A third instance — a second container on the
-test server on different ports is the cheapest — linked so a frame reaches one
-server by two paths. A radio should hear one copy, and the journal should show
-the second path refused with `already being carried from ...`.
+Last, remove `Export`, `Import` and the bridge-for-links machinery, and narrow
+OpenBridge to foreign networks.
 
 ## Two debts taken deliberately
 
 **The link authenticates with the shared hotspot password.** Production has no
 per-peer list, so `/var/lib/qsp/peer.pass` is what all three hotspots and now
 the link use. ADR-0035 exists precisely so a member can be removed without
-changing everybody's password, and this gives that up. It was taken to get the
-on-air proof today and should be paid back when the accept form is built.
+changing everybody's password, and this gives that up. Taken to get the on-air
+proof and should be paid back when the accept form is built. **The password was
+also pasted into a chat**, so it is worth changing when the hotspots can be
+reconfigured.
 
-**The OpenBridge link between the two servers is disabled, not removed.** Both
-running at once would carry every frame twice, and the deduplication that would
-make that harmless is not built.
+**Both servers announce IPSC master ID 3132911.** They do not collide today
+because no repeater talks to both. 0277 refuses a *link* carrying that ID, which
+is the near neighbour that would have bitten.
 
-### Writing a qsp link by hand, to test it
+## Writing a qsp link by hand
 
-Both servers need one. On the dialling side — the test server, which has no
-forwarded port — the link names the other server's peer port:
+Only the dialling side is configured — the side with no forwarded port. The
+listening side needs nothing but the password in place for that ID; the link
+arrives as a peer registration on 62031, the port the hotspots already use.
 
 ```json
 {
@@ -113,18 +101,10 @@ forwarded port — the link names the other server's peer port:
 ```
 
 No `listen_address`, no `network_id`, no `export`, no `import`, and **no
-bridge**. `repeater_id` must differ from every peer the far end already has and
-from the far end's own ID: 3132910 is an operator ID and 3132911 is announced
-by both servers' IPSC masters today. The password file holds whatever the far
-end has in `dmr.password_file` for that ID.
-
-Only the dialling side gets a `qsp` upstream. The listening side needs nothing
-configured at all — the link arrives as a peer registration on 62031, which is
-the port the three hotspots already use.
-
-Two unexplained bytes, recorded rather than guessed at: byte 5 reads 1–3 in the
-reference and a constant 4 from QSP, and the last byte of the 54-byte header is
-`0x3b` in the reference and `0x00` from QSP. Neither is named in `voice.go`.
+bridge**. `repeater_id` must differ from the far end's own ID and from every
+peer it already has: 3132910 is an operator ID and 3132911 is both IPSC
+masters. Edit by content, never by line number, and run `sudo qsp -config ...
+-check` before restarting.
 
 ## Deploying, which is three machines and three mechanisms
 
@@ -214,47 +194,41 @@ anywhere in the console. You can create a link and remove one; changing one
 character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 0265 closed, and it is worth closing the same way.
 
-## Deployed
-
-0261 through 0271 are on Fedora, production and the test server. The Links page
-lying over working links (0264) and the IPSC console surface (0265) are both
-live. Production runs under systemd; the test server runs `qsp:local` built from
-the override compose file.
-
-## What was built, and what each one is worth
-
-| Patch | What |
-|---|---|
-| 0261 | The accept form's one address box fed two opposite fields; `-check` binds |
-| 0262 | The page and the remover read different sources; no peering was ever audited |
-| 0263 | Four rules enforced somewhere other than where they were written |
-| 0264 | The reconcile could not run in the one case it was written for |
-| 0265 | IPSC had no console surface at all |
-
-**ADR-0050** records the wire-format change: a reciprocal says so in the token,
-so an exchange can end after a restart.
-
 ## What is proven on a running system
 
 - A QSP server logs into another QSP server as a peer, and audio crosses both
-  ways with the talkgroup and timeslot intact.
-- A frame from a link reaches a Motorola repeater (0271), and a frame from the
-  repeater reaches the network.
-- An IPSC repeater registers with a containerised instance.
-- The peering exchange completes across two instances, both directions, and
-  reaches the audit trail.
-- `config.Validate` refuses a bridge endpoint naming an OpenBridge link on any
-  slot but 1 — which caught the shipped `deploy/pair` examples on its first run.
+  ways with the talkgroup and timeslot intact — with OpenBridge disabled on
+  both sides, so the peer link is carrying it alone.
+- The link reconnects on its own: twelve seconds after production restarted,
+  with KB9TYC, AD0MI and the Pi-Star all back.
+- A frame from a link reaches a Motorola repeater (0271), and the repeater's
+  audio reaches the network.
+- A clean stop no longer exits 1: `Deactivated successfully`, no
+  `shutdown was not clean`.
+- Both servers report release and commit. The container reads
+  `0.1.125 (v0.1.94-...-398c7d91dffb)` with no `+dirty`.
+- A disabled link reads Disabled on both, and a `qsp` link announces its DMR ID.
+- Production lists the link that dialled in, with the name the test server gave
+  it, and the three hotspots stay peers.
+- `config.Validate` refuses an OpenBridge endpoint on any slot but 1 — which
+  caught the shipped `deploy/pair` examples on its first run.
 
 ## Not proven
 
-- **Anything with more than two servers.** Relaying, deduplication, and a
-  third instance are all untested. Ten servers is the design target and one
-  link is the evidence.
-- A `qsp` link across the internet rather than a LAN. Both ends of this one are
-  on 192.168.1.x.
-- A link surviving a far-end restart. Reconnection is specified in ADR-0051 —
-  5 s to 120 s capped, forever — and not written.
+- **Relaying and deduplication, on any machine.** Every test is a unit test and
+  a third server has never existed. This is the largest outstanding claim.
+- A `qsp` link across the internet rather than a LAN. Both ends are on
+  192.168.1.x.
+- 0284's five fixes, which are on Fedora only.
 - The IPSC panel from 0265, never loaded in a browser.
-- Published image tag and CI publishing, still not set up. `docker compose up`
-  without the build override tries `ghcr.io/k9mls/qsp:<version>` and is denied.
+- Published image tag and CI publishing. `docker compose up` without the build
+  override tries `ghcr.io/k9mls/qsp:<version>` and is denied.
+
+## Loose threads, recorded rather than guessed at
+
+- **Production logs `colour_code=11` and the test server `colour_code=4`.**
+  Different repeaters would explain it; nobody has checked.
+- Two bytes of the IPSC voice burst are unexplained: byte 5 reads 1–3 in
+  `testdata/ipsc/ipsc-master-voice.pcap` and a constant 4 from QSP, and the last
+  byte of the 54-byte header is `0x3b` there and `0x00` from QSP. Neither is
+  named in `voice.go`.

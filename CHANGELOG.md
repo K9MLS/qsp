@@ -4,6 +4,19 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover rewritten for a fresh session, and the standing brief's patch
+  number corrected.** A handover appended to across a day grows a stale head:
+  this morning's opened with a version five patches behind the tree and a
+  diagnosis that turned out to be wrong, and both were read as current. The
+  head now states what is deployed where, and the sections describing work
+  already finished are removed rather than left to be read as pending.
+
+  `NEW-SESSION.md` said to number patches from 0272 and the tree is at 0284. It
+  said 0194 this morning, which is the same drift, and the line already carries
+  a note to check `git log` rather than trust it.
+
 ### Fixed
 
 Five defects read off production's live `/api/peers` and Links page, none of
