@@ -59,6 +59,26 @@
   var loaded = null;
 
   function show(el) { if (el) { el.hidden = false; } }
+
+  /* **A confirmation you cannot see is not one.** The saved notice sits at the
+   * top of this page and the Save button at the bottom of it, so pressing Save
+   * changed nothing in view: the version number, the change count and the
+   * restart instruction all rendered several screens above, which is
+   * indistinguishable from a button that does nothing.
+   *
+   * Honours prefers-reduced-motion, and is guarded because scrollIntoView with
+   * options is absent in older browsers — a missing scroll is better than a
+   * broken save handler. */
+  function scrollIntoView(el) {
+    if (!el || !el.scrollIntoView) { return; }
+    var still = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    try {
+      el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "center" });
+    } catch (e) {
+      el.scrollIntoView();
+    }
+  }
   function hide(el) { if (el) { el.hidden = true; } }
 
   function escapeText(value) {
@@ -397,11 +417,17 @@
            * they will reasonably want to know whether it can wait. */
           var restart = res.body.needs_restart || [];
           if (restart.length) {
+            /* **It says how, not only that.** An operator reading "restart
+             * required" has to go and find out what the command is, and the
+             * two ways QSP is installed need different ones. */
             restartNote.textContent =
-              "Restart QSP for these to take effect: " + restart.join(", ") + ".";
+              "Restart QSP for these to take effect: " + restart.join(", ") +
+              ". On a service install that is \u0022sudo systemctl restart qsp\u0022; " +
+              "in a container, recreate it.";
             show(restartNote);
           }
           show(savedBox);
+          scrollIntoView(savedBox);
           return;
         }
 

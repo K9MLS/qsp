@@ -156,6 +156,19 @@ All notable changes to QSP. Dates are UTC.
   reimplemented and still would not be found by a screen reader looking for a
   control. The state is written as well as coloured.
 
+### Fixed
+
+- **Saving on the Network page appeared to do nothing.** The saved notice is the
+  first element on that page and the Save button is the last, so on a long page
+  the change count, the version number and the restart instruction all rendered
+  several screens above where the operator was looking — indistinguishable from
+  a button that does nothing, and reported as exactly that. The notice is
+  brought into view now, honouring `prefers-reduced-motion`.
+
+- **"Restart required" never said how.** It named the settings and left an
+  operator to find the command, and QSP's two installs need different ones. It
+  gives the service command and says a container is recreated.
+
 ### Changed
 
 - **The Links page's copy blocks are one object each.** A label, a small

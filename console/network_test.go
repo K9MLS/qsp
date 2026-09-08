@@ -109,3 +109,65 @@ func TestTheToggleIsARealCheckbox(t *testing.T) {
 		t.Error("the toggle's state is carried by colour alone")
 	}
 }
+
+// TestTheSaveNoticeIsBroughtIntoView.
+//
+// **A confirmation you cannot see is not one.** The saved notice is the first
+// thing in the page and the Save button is the last, so pressing Save changed
+// nothing in view: the change count, the version number and the restart
+// instruction all rendered several screens above where the operator was
+// looking. That is indistinguishable from a button that does nothing, and it
+// was reported as exactly that.
+func TestTheSaveNoticeIsBroughtIntoView(t *testing.T) {
+	html := readFile(t, "static/network.html")
+	js := stripComments(readFile(t, "static/network.js"))
+
+	// The shape of the problem: the notice precedes the actions in the source,
+	// so on a long page it is off-screen when the button is pressed.
+	notice := strings.Index(html, `id="saved"`)
+	actions := strings.Index(html, `id="save"`)
+	if notice < 0 || actions < 0 {
+		t.Fatal("the saved notice or the save button is missing")
+	}
+	if notice > actions {
+		t.Skip("the notice now follows the button; scrolling may no longer be needed")
+	}
+	// **The call, not the name.** Searching for "scrollIntoView" finds the
+	// helper's own declaration and passes with the call deleted — which it did.
+	if !strings.Contains(js, "scrollIntoView(savedBox)") {
+		t.Error("saving scrolls nothing into view, so the confirmation renders " +
+			"off-screen above the button that produced it")
+	}
+	// Motion an operator may have asked their system not to produce.
+	if !strings.Contains(js, "prefers-reduced-motion") {
+		t.Error("the scroll ignores prefers-reduced-motion")
+	}
+}
+
+// TestTheRestartNoticeSaysHow.
+//
+// "Restart required" tells an operator to interrupt their network without
+// saying what to run, and QSP's two installs need different commands. The page
+// promised the save would say so and the save said only which settings.
+func TestTheRestartNoticeSaysHow(t *testing.T) {
+	js := stripComments(readFile(t, "static/network.js"))
+
+	i := strings.Index(js, "Restart QSP for these to take effect")
+	if i < 0 {
+		t.Fatal("nothing tells an operator a restart is needed")
+	}
+	sentence := js[i:min(i+400, len(js))]
+	for _, want := range []string{"systemctl restart qsp", "container"} {
+		if !strings.Contains(sentence, want) {
+			t.Errorf("the restart notice never mentions %q, so it says to restart "+
+				"without saying how", want)
+		}
+	}
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
