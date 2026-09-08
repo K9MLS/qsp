@@ -7,7 +7,37 @@ this session. §8b through §8l are superseded and say so.
 Version **0.1.107**, patches 0261–0265. Every one of them is on Fedora.
 **0264 and 0265 are on neither server**, and 0264 matters most — see below.
 
-## Start here: a repeater keys up on network audio and transmits silence
+## Start here: every peering the accept form creates is dead inbound
+
+**OpenBridge forces timeslot 1.** `internal/protocol/openbridge/openbridge.go`
+says so: *"The timeslot is forced to 1. Proper OpenBridge passes all traffic on
+TS1."* Every frame crossing an OpenBridge link arrives as TS1, by protocol.
+
+The accept handler writes a bridge whose **upstream** endpoint carries the
+timeslot the operator chose — 2 by default, from the form. So nothing arriving
+from that link can ever match it, in either direction:
+
+- Pi-Star to production on TS2, across the link as TS1, refused by the far
+  end's TS2 bridge.
+- Repeater to the test server on TS2, across the link as TS1, refused by
+  production's TS2 bridge.
+
+Both ends were configured, both links reported healthy, and **no audio crossed
+in either direction for a day**. The counters said `Sent 50 / Received 0` on one
+side and `Received 28 / Sent 0` on the other, which reads like a network fault
+and is not one.
+
+Corrected by hand on both servers on 2026-09-08: the endpoint naming an upstream
+is timeslot 1, the local peer endpoint keeps the operator's slot. **After that
+change, a Motorola repeater was heard by a hotspot user across the link.**
+
+**The fix belongs in `handleAcceptPeering`** in `internal/server/peering.go`,
+where the bridge is built: an endpoint naming an OpenBridge upstream takes
+timeslot 1 regardless of what the form asked for, and `config.Validate` should
+refuse any other value so a hand-edited document cannot recreate it. Neither is
+built.
+
+## Then: a repeater keys up on network audio and transmits silence
 
 **This is measurable, and a caveat said otherwise for five days.**
 

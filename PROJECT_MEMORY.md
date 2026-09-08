@@ -2996,3 +2996,15 @@ nearest in time.
 assertion searched a whole file for a function name and found the function's own
 declaration, passing against a file with the call deleted. Scope an assertion to
 the thing it is about — the call site, the rule body, the string literal.
+
+**OpenBridge forces timeslot 1, and the peering form did not know.** Every
+bridge the accept handler wrote put the operator's chosen timeslot on the
+*upstream* endpoint, so nothing arriving from the link ever matched it. Two
+instances peered, both healthy, no audio either way for a day. The signature is
+one instance reading TS2 for a transmission the other reads as TS1, and counters
+that move on one side only. `internal/protocol/openbridge/openbridge.go`
+had said so in a comment the whole time.
+
+The general form, which is the fourth instance of it this session: **a protocol
+constraint stated in one package and not enforced where configuration is
+written.** The accept form asks a question the protocol has already answered.

@@ -4,6 +4,24 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Known defects, not yet fixed
+
+- **Every peering the accept form creates is dead inbound.** OpenBridge forces
+  timeslot 1 — `internal/protocol/openbridge/openbridge.go` says so in a comment
+  — so every frame crossing the link arrives as TS1. The accept handler writes a
+  bridge whose *upstream* endpoint carries the timeslot the operator chose, 2 by
+  default, and nothing arriving from that link can ever match it.
+
+  Both ends configured, both links healthy, **no audio in either direction for a
+  day.** The signature is one instance reading TS2 for a transmission the other
+  reads as TS1, and counters that move on one side only.
+
+  Corrected by hand on both servers, after which a Motorola repeater was heard
+  by a hotspot user across the link. The fix belongs in `handleAcceptPeering`:
+  an endpoint naming an OpenBridge upstream takes timeslot 1 whatever the form
+  asked, and `config.Validate` should refuse any other value.
+
+
 ### Fixed
 
 - **The IPSC relay denied a capture that had existed for five days.** It logged
