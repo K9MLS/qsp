@@ -73,8 +73,15 @@ func (p *Peer) Position() Position {
 	// sends exactly "0.000000" and "00.000000", which is how this was
 	// confirmed rather than guessed.
 	if lat == 0 && lon == 0 {
+		// **The advice does not know what it is talking to.** It says "set it
+		// on the hotspot", which is right for the three that send this and
+		// wrong for a QSP server in a rack that correctly has no position —
+		// and a linked server announced 0, 0 and was told to configure a
+		// hotspot it does not have. Naming the station rather than a device it
+		// might not be is the fix that does not require this code to guess.
 		pos.Refused = "announced 0, 0, which is what an unconfigured position field looks " +
-			"like rather than a place; set the latitude and longitude on the hotspot"
+			"like rather than a place; set the latitude and longitude where this station " +
+			"is configured, or leave them unset"
 		return pos
 	}
 

@@ -202,8 +202,16 @@ func TestNullIslandSaysSo(t *testing.T) {
 	if pos.Refused == "" {
 		t.Fatal("0,0 was refused without saying so")
 	}
-	if !strings.Contains(pos.Refused, "hotspot") {
+	// **Where to fix it, without assuming what it is.** This asserted the word
+	// "hotspot", which was right for the three that send this and wrong for a
+	// linked QSP server in a rack: one announced 0, 0 and was advised to
+	// configure a hotspot it does not have. The advice has to be actionable
+	// and must not name a device this code cannot know it is talking to.
+	if !strings.Contains(pos.Refused, "configured") {
 		t.Errorf("the refusal should say where to fix it: %q", pos.Refused)
+	}
+	if strings.Contains(pos.Refused, "hotspot") {
+		t.Errorf("the refusal assumes the station is a hotspot: %q", pos.Refused)
 	}
 	// The place name is still worth having.
 	if pos.Location != "Denton, EM13kd" {

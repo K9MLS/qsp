@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
@@ -798,5 +799,28 @@ func TestALinkAnnouncesItsNetworkNotItsStation(t *testing.T) {
 	// operator reading a blank field cannot tell it from a fault.
 	if got := linkDescription("  ", ident); got != "Denton backyard" {
 		t.Errorf("with no network name a link announced %q, want the description", got)
+	}
+}
+
+// TestTheSoftwareIDFitsItsField, because a truncated commit is worse than none.
+//
+// SoftwareID is 40 bytes on the wire. "QSP " plus the full build version is
+// 44, so a linked server announced
+// `QSP 0.1.125 (v0.1.94-0.20260908175846-39` — a hash cut mid-word, which
+// looks like a commit and matches nothing. Seen on production's peers API on
+// 2026-09-08, where anybody checking which build a linked server was running
+// would have read it as an identifier.
+func TestTheSoftwareIDFitsItsField(t *testing.T) {
+	id := softwareID()
+	if len(id) > 40 {
+		t.Errorf("SoftwareID is %d bytes and the field is 40: %q", len(id), id)
+	}
+	if !strings.HasPrefix(id, "QSP ") {
+		t.Errorf("SoftwareID does not say what this is: %q", id)
+	}
+	// The release is what an operator quotes, so it has to survive whatever
+	// trimming happens.
+	if !strings.Contains(id, buildinfo.Version) {
+		t.Errorf("SoftwareID %q does not carry the release %q", id, buildinfo.Version)
 	}
 }

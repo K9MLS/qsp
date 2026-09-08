@@ -104,8 +104,15 @@
          *
          * Two clicks, because removing a link takes a network down and a
          * single button beside a status row is one slip away from doing it. */
-        '<button class="button button--quiet link__remove" type="button" ' +
-        'data-remove="' + escapeText(l.name) + '">Remove</button>' +
+        /* **No Remove on a link that dialled in.** It is in nobody's
+         * configuration here — this server received a registration, not a
+         * document — so there is nothing on this side to delete, and offering
+         * the button invites a click that either does nothing or matches
+         * something else by name. Removing it is the far end's to do. */
+        (l.inbound
+          ? ""
+          : '<button class="button button--quiet link__remove" type="button" ' +
+            'data-remove="' + escapeText(l.name) + '">Remove</button>') +
         "</div>" +
         '<dl class="link__facts">' +
         fact("Far end", l.far_end || "not configured") +
@@ -118,9 +125,15 @@
         /* Both directions, always. One is not evidence of the other: a link
          * that has sent thousands and received none is working perfectly on a
          * quiet network, or is unauthenticated at the far end. */
-        fact("Sent", String(l.sent)) +
-        fact("Received", String(l.received)) +
-        fact("Rejected", String(l.rejected)) +
+        /* **Not measured is not zero.** A link that dialled in is known
+         * through the peer table, which records that it is connected and when
+         * it was last heard and does not count frames each way the way an
+         * outbound link's transport does. Printing 0 reads as "this link has
+         * carried nothing", which is the sentence this page exists to stop
+         * saying wrongly — it said it beside a link that was carrying. */
+        fact("Sent", l.inbound ? "—" : String(l.sent)) +
+        fact("Received", l.inbound ? "—" : String(l.received)) +
+        fact("Rejected", l.inbound ? "—" : String(l.rejected)) +
         fact("Last heard", l.ever_received ? idle(l.idle_seconds || 0) + " ago" : "never") +
         "</dl>" +
         '<p class="link__summary">' + escapeText(l.summary) + "</p>" +

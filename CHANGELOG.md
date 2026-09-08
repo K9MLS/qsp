@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+Five defects read off production's live `/api/peers` and Links page, none of
+which any test would have found.
+
+- **A truncated commit is worse than none.** `SoftwareID` is 40 bytes and
+  `"QSP " + buildVersion()` is 44, so a linked server announced
+  `QSP 0.1.125 (v0.1.94-0.20260908175846-39` — a hash cut mid-word that looks
+  like a commit and matches nothing. Anybody checking which build a linked
+  server ran would have read it as an identifier. It now sends the release and
+  a seven-character hash, which fit.
+
+- **A link showed `Sent 0 / Received 0` while carrying.** The peer table knows
+  an inbound link is connected and when it was last heard; it does not count
+  frames each way the way an outbound link's transport does. Not measured is
+  not zero, and the page now prints a dash. This was claimed as already handled
+  when the entry was added — the Go side leaves the fields unset and the page
+  drew them anyway.
+
+- **Remove was offered on a link this server cannot remove.** An inbound link
+  is in nobody's configuration here, so there is nothing on this side to
+  delete, and the button invited a click that would either do nothing or match
+  something else by name. Removing it is the far end's to do.
+
+- **A server has no colour code, and `0` is a real one.** The hotspots announce
+  01, 11 and 04; a QSP server has no radio and sent 0, which the console
+  displayed as though somebody had chosen it. Same shape as `ipsc.colour_code`,
+  where 0 being legal meant an unconfigured value validated and built every
+  burst wrong.
+
+- **The position advice assumed a hotspot.** A linked server in a rack
+  correctly announced no position and was told to set the latitude and
+  longitude *on the hotspot*. The advice names where the station is configured
+  now, and the test that pinned the word "hotspot" was asserting the same
+  assumption.
+
 ### Added
 
 - **A QSP link announces its name and its network to the far end** (ADR-0052,

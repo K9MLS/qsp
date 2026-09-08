@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
+	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/calls"
 	"github.com/k9mls/qsp/internal/callsigns"
 	"github.com/k9mls/qsp/internal/config"
@@ -1209,6 +1211,14 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 			if name, ok := LinkNameFromPackageID(peer.Config.PackageID); ok {
 				v.LinkName = name
 				v.Network = peer.Config.Description
+				// **A server has no colour code, and "0" is a real one.** The
+				// hotspots announce 01, 11 and 04; a QSP server has no radio
+				// and sent 0, which the console displayed as though somebody
+				// had chosen it. §7 forbids a field that means "not
+				// applicable" and looks like "not set", and this is the same
+				// shape as ipsc.colour_code, where 0 being legal meant an
+				// unconfigured value validated and built every burst wrong.
+				v.ColorCode = ""
 			}
 		}
 		v.Attachments = attachmentViews(p.listener, peer.ID, now)
@@ -1512,6 +1522,47 @@ func buildOpenBridgeLink(log *slog.Logger, u config.Upstream, receive func(strin
 	})
 }
 
+// softwareID is what this instance tells a far end it runs, within the 40
+// bytes the field has.
+//
+// **A truncated commit is worse than none.** "QSP " plus the full build
+// version is 44 characters, so the far end received
+// `QSP 0.1.125 (v0.1.94-0.20260908175846-39` — a hash cut mid-word, which
+// looks like a commit and matches nothing. Seen on production's peers API on
+// 2026-09-08, and it would have been read as a real identifier by anybody
+// checking which build a linked server was running.
+//
+// The release and a short hash fit and are both usable: the release is what an
+// operator quotes, and seven characters of hash is what git itself abbreviates
+// to.
+func softwareID() string {
+	const width = 40
+	id := "QSP " + buildinfo.Version
+	if commit := shortCommit(); commit != "" {
+		id += " " + commit
+	}
+	if len(id) > width {
+		id = id[:width]
+	}
+	return id
+}
+
+// shortCommit abbreviates the commit this binary was built from, or returns
+// empty when it cannot be known — a container built without git, or a build
+// from an unversioned tree.
+func shortCommit() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return ""
+	}
+	for _, s := range info.Settings {
+		if s.Key == "vcs.revision" && len(s.Value) >= 7 {
+			return s.Value[:7]
+		}
+	}
+	return ""
+}
+
 // qspLinkPackageID prefixes the link name a QSP server announces to the far
 // end, so the far end can recognise the field as a name rather than a version.
 //
@@ -1607,7 +1658,7 @@ func buildPeerLink(log *slog.Logger, u config.Upstream, id config.Identity, netw
 			Description: linkDescription(network, ident),
 			URL:         ident.URL,
 			Timeslots:   ident.Timeslots,
-			SoftwareID:  "QSP " + buildVersion(),
+			SoftwareID:  softwareID(),
 			// **The name travels with the link** (ADR-0052). The far end has
 			// no name of its own for a link that dialled in — it receives a
 			// registration, not a configuration — so without this the two
