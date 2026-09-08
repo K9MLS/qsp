@@ -4,10 +4,12 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 which is the frame everything about linking now sits inside, then **ADR-0051**,
 which is confirmed on air. **§8o** is this session.
 
-Version **0.1.126**, patches 0261–0284. **Everything through 0283 is deployed
-to production and the test server; 0284 is on Fedora only** and needs both
-machines — production for the Links page, the test server for a software string
-that fits its field.
+Version **0.1.128**, patches 0261–0286. **Everything through 0285 is deployed to
+production and the test server**, and both were confirmed by the running process
+rather than by a file on disk — production's journal reads
+`0.1.127 (v0.1.94-0.20260908181510-465377ac131a)`, and the container's binary
+carries a string that no build before 0284 had. 0286 is documentation and needs
+no deploy.
 
 ## What this session did
 
@@ -38,11 +40,44 @@ clicking through a console rather than by a test.
 
 **A third server.** Relaying and deduplication are the largest untested claim in
 the tree: every test is a unit test, and with two servers there is nothing to
-relay to, so nothing on air says anything about either. A second container on
-the test server on different ports is the cheapest third instance. Link it so a
-frame reaches one server by two paths, key the Pi-Star, and confirm a radio
-hears **one** copy and the journal shows the second path refused with
-`already being carried from ...`.
+relay to, so nothing on air says anything about either.
+
+The wiring was read before the plan was made, so this is a test of something
+rather than of nothing. `QSPLinks` is populated in `cmd/qsp/app.go` and read in
+`internal/routing/core.go`; the relay branch lets a frame from one QSP link
+reach the others; deduplication sits inside `route` itself rather than on an
+ingress path, so all three ingress paths reach it — the shape that failed for
+`sendToIPSC` is right here; and nothing rewrites `StreamID` or `SourceID` on
+relay, so the key survives a hop.
+
+**The topology has to be right or the run is green for the wrong reason.**
+`qspLinks` comes from configuration, so only *outbound* links count, and
+production has none — it is dialled into by everybody. So: production listens,
+the test server dials production, and **the third dials both**. Key the Pi-Star
+on production; the third server gets a direct copy and a relayed one, and it is
+the third server's journal that must say `already being carried from ...`. A
+third that dials production alone relays nothing.
+
+**Run the third as a plain binary on Fedora**, not as a second container. The
+container is `network_mode: host` deliberately, so a second one on the test
+server collides on every listen address and needs its own volume, name, `.env`
+and a config it cannot write before first run. Fedora already has the
+cross-compiled binary after every build, is on the LAN at 192.168.1.77 so the
+LAN-address rule holds, and dials out only — Fedora running no sshd does not
+matter. `deploy/pair/alpha.json` is the template: strip the bridge and the
+OpenBridge upstream, two `qsp` upstreams, SQLite under `/tmp`, spare ports.
+
+**And it will fail silently if the ID is not allowed at both ends.**
+`repeater_id` 3132913 — 3132910 is the operator ID, 3132911 is both IPSC
+masters, 3132912 is the test server's link — and that ID must be in the
+registration access list on production *and* on the test server, or it retries
+forever with nothing in the log saying why.
+
+**First, though, the three of 0284 that the Links page cannot show.** Production's
+Peers page, the row announcing 3132912: a software string that fits 40 bytes, no
+colour code where none was announced, and position advice that names the station
+rather than a hotspot it does not have. Five minutes, and they are the reason
+0284 exists.
 
 **Then settle what a server's identifier is**, before writing any more of
 ADR-0052. It is the one choice that cannot be changed once servers are running,
@@ -124,49 +159,36 @@ and there are three. Commands for the wrong machine were sent three times.
   `ghcr.io/k9mls/qsp:<version>`, gets `denied` because that tag has never been
   published, and silently leaves the old container running.
 
+### Checking a deploy, which took four wrong answers to get right
+
 **`qsp --version` cannot tell you what is running on either server.** On
 production it runs the binary on disk, which `install` has already replaced, so
 it answers the same before and after a restart. In the container it reads
-`development`. Until both are fixed, ask the process:
+`development`, because the Dockerfile hardcodes it.
+
+**On production, the check is the `starting` log line.** `cmd/qsp/main.go`
+emits it at startup with the same string `--version` prints, and unlike
+`--version` it was emitted by the process that is running rather than by a fresh
+execution of a file. Take the newest, not the oldest — `grep -m3` stops at the
+first three matches and `journalctl` prints oldest first, which answered with
+last night's version:
 
 ```
-sudo md5sum /proc/$(systemctl show -p MainPID --value qsp)/exe /usr/local/bin/qsp
-docker cp qsp:/qsp /tmp/qsp-container && grep -c "<a string only the new build has>" /tmp/qsp-container
+sudo journalctl -u qsp -n 5000 --no-pager | grep -i starting | tail -3
 ```
 
+**In the container, the check is a string only the new build has.** Pick one the
+patch introduced; the first attempt matched text that had existed for weeks and
+reported success for a container without the patch. `git log -S` on the
+candidate string says whether it is unique to the commit.
 
-**Both directions between an OpenBridge link and a Motorola repeater are
-built, tested and never run on air.** Everything below this line is a claim
-about code, not about a radio.
+```
+docker cp qsp:/qsp /tmp/qsp-container
+grep -ac "<a string only this build has>" /tmp/qsp-container
+```
 
-0271 fixed the two things that stood between QSP and audio in both directions,
-and the diagnosis in the previous handover was wrong about the first one.
-
-**`DeliverFromUpstream` never called `sendToIPSC` at all.** The gate named in
-that handover — `res.Reason != "" && !res.NoHomebrewDestination` — was a real
-second defect and would have turned the frame back, but it was never reached.
-Three ingress paths, two call sites: `forward` and `DeliverFromIPSC` both end
-in `sendToIPSC` and this one did not. §8a's "declared and read by nothing",
-now ten times. It read as a routing refusal because the result carried a
-reason at the same moment, and the reason was true of something else.
-
-The second defect was that reason. `route` wrote `every destination refused the
-frame` whenever nothing was delivered, including when nothing had judged the
-frame — the link target skipped by the loop rule, the repeat target resolved to
-no peers because there are no hotspots. `Drop.NotAJudgement` now separates a
-rule about links from a verdict on a transmission, and false is the blocking
-answer on both types so an unclassified drop keeps a refused frame off the
-repeaters.
-
-Each half was proved to fail on its own: with the call site removed the test
-fails, and with the call site wired and the classification reverted it fails
-differently.
-
-**The work:** deploy, check `qsp --version` reads 0.1.113, and key up on the
-Pi-Star. A hotspot user on production should be heard on the test server's
-repeater. The reverse already works.
-
-
+**Do not use an md5 of `/proc/PID/exe` against the file.** It is withdrawn; see
+the loose threads below.
 
 ## Resolved: the repeater that transmitted silence
 
@@ -212,6 +234,11 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   it, and the three hotspots stay peers.
 - `config.Validate` refuses an OpenBridge endpoint on any slot but 1 — which
   caught the shipped `deploy/pair` examples on its first run.
+- **Two of 0284's five, read off the Links page on both servers.** Production's
+  inbound row prints a dash for Sent, Received and Rejected while the test
+  server's outbound row prints `40 / 82 / 0`, so not-measured no longer reads as
+  zero; and Remove is absent on production, where the link is in nobody's
+  configuration, and present on the test server, where it is a config block.
 
 ## Not proven
 
@@ -219,7 +246,10 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   a third server has never existed. This is the largest outstanding claim.
 - A `qsp` link across the internet rather than a LAN. Both ends are on
   192.168.1.x.
-- 0284's five fixes, which are on Fedora only.
+- The other three of 0284: the software string, the absent colour code, and the
+  position advice. All three are peer properties and do not appear on the Links
+  page; production's Peers page or `/api/peers` shows them, for the row
+  announcing 3132912.
 - The IPSC panel from 0265, never loaded in a browser.
 - Published image tag and CI publishing. `docker compose up` without the build
   override tries `ghcr.io/k9mls/qsp:<version>` and is denied.
@@ -232,3 +262,30 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   `testdata/ipsc/ipsc-master-voice.pcap` and a constant 4 from QSP, and the last
   byte of the 54-byte header is `0x3b` there and `0x00` from QSP. Neither is
   named in `voice.go`.
+- **An md5 of `/proc/PID/exe` disagreed with an md5 of the file it links to.**
+  Same inode, same size, same mtime, `cmp` says identical, and `grep` finds the
+  new build's string in both — yet the pair printed two different digests, the
+  same wrong one twice, across two PIDs, each time in the command immediately
+  after a start or restart. Minutes later the same command on the same PID
+  agreed. No mechanism is offered; a reproducibly wrong answer is worse than a
+  flaky one, because it is acted on. The capture, if it is ever worth taking,
+  changes one thing and diffs:
+
+  ```
+  sudo systemctl restart qsp; P=$(systemctl show -p MainPID --value qsp); sudo md5sum /proc/$P/exe /usr/local/bin/qsp; sleep 5; sudo md5sum /proc/$P/exe /usr/local/bin/qsp
+  ```
+
+- **Fedora has its own `/usr/local/bin/qsp`**, md5 `522578ec…`, which is neither
+  any current build nor anything on production. Nothing runs it. It sits at the
+  path the deploy documentation names, so a command meant for a server that
+  lands on Fedora is answered by a binary of unknown age. Worth deleting.
+- **The Links page heading is the wrong name.** Production heads the link
+  `production`, which is the local label the *test server* chose for its own
+  config block — so an administrator on .247 reads a link to the test server
+  under their own server's name. The far end's announced display name,
+  `QSP Test Server`, is already in the Network column. See ADR-0052 rule 2,
+  amended.
+- **`LAST HEARD` measures two different things.** Production reads `0s ago` and
+  the test server `44s ago` for the same link at the same moment: one is timing
+  keepalives, the other traffic, and the test server's own caption says *last
+  traffic*. Both true, and the pair reads as one end having gone deaf.

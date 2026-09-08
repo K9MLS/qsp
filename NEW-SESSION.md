@@ -16,8 +16,10 @@ calls, text messages and parrot all work on air.
 SLR5700, and KB9TYC's. **A hotspot user has heard a Motorola repeater across the
 bridge** — voice header, audio and terminator, a complete DMR transmission.
 
-The other direction, network to repeater, is built but **does not work yet**:
-on 2026-09-08 a repeater keyed up on network audio and transmitted silence.
+**And the other direction now works too.** A repeater keying on network audio
+transmitted silence on the morning of 2026-09-08; it was the timeslot, and
+0271 and ADR-0051 settled it. Audio crosses a QSP-to-QSP link in both
+directions with the talkgroup and the slot intact.
 
 **It is measurable, not inferential.** `testdata/ipsc/ipsc-master-voice.pcap`
 is a real Motorola master sending voice — 347 packets, 288 of them voice, from
@@ -29,9 +31,9 @@ A repeater registering with a containerised instance is now on record, and
 instances** — a Motorola repeater heard by a hotspot user, which had never
 worked before 2026-09-08.
 
-The other direction stops in `sendToIPSC`, which drops a link-sourced frame
-before the repeater sees it. `HANDOVER.md` opens on that; it comes before the
-burst-shape work.
+What has never been tried is a **third** server. Relaying and deduplication are
+built, unit-tested and unexercised, because two servers give nothing to relay
+to. `HANDOVER.md` opens on that.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -40,9 +42,9 @@ Attached is a git bundle of the whole repository. Please start by reading
 - **§6a**, what two members on a real network taught us
 - **§6b**, what a second day taught us — it supersedes parts of §6a, especially
   about talkgroup rewriting
-- **§8m**, where this session should start: what the linking system taught us
-  the night it was first used in anger, and what was settled and should not be
-  reopened
+- **§8o**, the most recent session: the evening two QSP servers heard each
+  other, and what was settled and should not be reopened. §8m is the night the
+  linking system was first used in anger and is still worth reading, after it
 - **§7**, working conventions — the section on working on my machines is all
   learned from things that went wrong
 - **§8a**, how this project finds its defects
@@ -76,13 +78,21 @@ to it.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0285**. Commits use my
-identity: `Mike <k9mls@outlook.com>`.
+`git am` on my Fedora machine. Commits use my identity:
+`Mike <k9mls@outlook.com>`.
 
-**Check that number against `git log` before using it.** It said 0194 for
-seventy-seven patches, because a standing brief is edited when its subject
-changes and this line has no subject. The version in `VERSION` and the last
-commit are ground truth; this sentence is a reminder.
+**Take the number from `git log`, not from this file.** The number used to be
+written here and was wrong every time it was read — 0194 for seventy-seven
+patches, then 0272 against a tree at 0284, then 0285 one patch after that was
+corrected. A standing brief is edited when its subject changes and a patch
+number has no subject, so it rots on every patch and rots silently. §7 says to
+derive a claim rather than assert it where the derivation exists, and here it
+does:
+
+```sh
+git log --oneline -1
+cat VERSION
+```
 
 Never commit `go.mod` or `go.sum` — stage with
 `git add -A -- ':!go.mod' ':!go.sum'`.
@@ -165,9 +175,13 @@ project was found that way and none by the test suite.
 
 Bigger patches rather than many small ones.
 
-**Check the running binary after every deploy.** `qsp --version` prints the
-commit it was built from, and `systemctl is-active` does not. An afternoon went
-on debugging a bridge that was never deployed.
+**Check the running binary after every deploy, and `qsp --version` is not that
+check.** It runs the binary on disk, which `install` has already replaced, so it
+answers the same before and after a restart; `systemctl is-active` says only
+that something started. Ask the process instead — the `starting` log line on
+production, a string unique to the new build in the container. `HANDOVER.md` has
+both commands. An afternoon went on debugging a bridge that was never deployed,
+and half an hour on a deploy that had worked.
 
 **Grep for the call site after wiring anything across two subsystems.** An
 exported method nobody calls compiles, passes vet, passes staticcheck and passes

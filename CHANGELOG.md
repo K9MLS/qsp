@@ -6,6 +6,56 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The deploy check named in four documents has never worked, and the one that
+  does was already written down.** `qsp --version` executes the binary on disk,
+  which `install` has already replaced, so it answers identically before and
+  after a restart; in the container it reads `development`. On production the
+  check is the `starting` log line, emitted by the process that is running —
+  read with `tail`, because `journalctl` prints oldest first and `grep -m3`
+  answered with the previous day's version. In the container it is a string the
+  build introduced, confirmed unique by `git log -S`.
+
+- **An md5 of `/proc/PID/exe` against the file it names is withdrawn.** It was
+  introduced this session to replace `qsp --version` and was wrong on its first
+  reading: `cmp` says identical, `stat -L` gives one inode, and the process had
+  been running the new build for four minutes before the first measurement. It
+  was wrong reproducibly — the same digest twice across two PIDs — and wrong in
+  the direction of the failure being looked for. Recorded unexplained with a
+  one-variable capture recipe rather than a mechanism.
+
+  §8a gains the general form: **when a measurement surprises you, ask how old
+  the instrument is.** Three theories were offered about the estate before the
+  newest thing in the room was doubted, and §7's rule against a third guess was
+  quoted immediately before the third guess.
+
+- **`NEW-SESSION.md` no longer carries a patch number.** It has been wrong every
+  time it was read — 0194 for seventy-seven patches, 0272 against a tree at
+  0284, then 0285 one patch after that correction shipped. A standing brief is
+  edited when its subject changes and a patch number has no subject. §7 requires
+  a claim to be derived where a derivation exists, and `git log --oneline -1`
+  is one.
+
+- **The brief also said network-to-repeater does not work**, and pointed at
+  `sendToIPSC` and at §8m. All three were fixed hours before the file was last
+  edited, and it is the first thing a new session reads.
+
+- **The handover's stale section, which is the defect the handover was rewritten
+  to remove.** A block describing both bridge directions as never run on air,
+  ending with an instruction to check for version 0.1.113, survived the rewrite
+  and sat two sections above a list recording the same work as proven.
+
+- **ADR-0052 rules 2 and 3 amended, both from looking at the console.** Rule 2
+  said both consoles show a link with the same name, and production satisfied it
+  by heading the link `production` — the local label the test server chose for
+  its own configuration block, displayed on the server that name refers to.
+  There are three names, not two: a local label, an announced display name and
+  an identifier. Both consoles head a link with the far end's display name.
+
+  Rule 3 said a server says what it is, and only the server that dials does:
+  identity rides on registration and registration goes one way, so the listening
+  end knows its neighbour and the dialling end knows an address. That is the
+  asymmetry 0051 called invisible, one layer up and pointing the other way.
+
 - **Handover rewritten for a fresh session, and the standing brief's patch
   number corrected.** A handover appended to across a day grows a stale head:
   this morning's opened with a version five patches behind the tree and a

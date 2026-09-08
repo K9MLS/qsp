@@ -69,6 +69,23 @@ administrator reads. **Both consoles of a linked pair show the same link with
 the same name**, because two administrators discussing a link that each side
 names differently is a support conversation nobody can have.
 
+**Amended 2026-09-08, after the console satisfied that sentence and got it
+wrong.** There are three names here, not two, and the rule above collapsed the
+second and third. A **local label** is what an administrator calls a
+configuration block on their own server; a **display name** is what a server
+announces about itself; an **identifier** is what the network uses. Production's
+Links page headed its link `production` — the local label the *test server* had
+chosen for its own config block, carried faithfully across and rendered on the
+server that label refers to, so an administrator on .247 read a link to the test
+server under their own server's name. The far end's display name,
+`QSP Test Server`, was two columns along.
+
+So, precisely: **both consoles head a link with the far end's announced display
+name.** A local label names a configuration block on the machine that holds one
+and appears nowhere else. Only the dialling side has a config block, which is
+why a local label can never be the shared name — half a linked pair does not
+have one.
+
 **What the identifier should be is deliberately left open**, and it is the one
 choice here that cannot be changed once servers are running, because it is what
 everybody calls everybody else. A DMR ID is unique, already issued, and every
@@ -91,6 +108,20 @@ both ends, and every later capability — the network view, subscription,
 version-dependent behaviour — has something to build on. **Nothing else here is
 possible until servers can identify themselves**, which is why it is first in
 the order of work.
+
+**Amended 2026-09-08: only the server that dials says what it is.** Identity
+rides on registration, and registration goes one way. Production's Links page
+shows Direction and Network for the test server; the test server's page has
+neither column, because nothing comes back. So the listening end knows its
+neighbour and the dialling end knows only an address — which is the same
+asymmetry 0051 called invisible and this record was written after, one layer up
+and pointing the other way.
+
+A server must therefore **answer with its own identity when another registers
+with it**. Until it does, rule 2's "both consoles show the same name" is not
+merely unimplemented but unimplementable on the dialling side, which has nothing
+to display. This is part of item 1 in the order of work below, not a separate
+one: *a server says what it is* is not satisfied by saying it in one direction.
 
 ### 4. What a server knows about the network is its own view
 
@@ -140,9 +171,11 @@ regardless of which side dialled.
 
 ## Order of work
 
-1. **A server says what it is**, and the Links page shows inbound links beside
-   outbound ones. This is the defect an administrator hit tonight and the
-   foundation for everything else.
+1. **A server says what it is, in both directions**, and the Links page shows
+   inbound links beside outbound ones, each headed with the far end's display
+   name. The inbound half is built; the reply to a registration is not, so the
+   dialling side still knows only an address. This is the defect an
+   administrator hit tonight and the foundation for everything else.
 2. **A hop count**, bounding relay before deduplication catches it.
 3. **The link's own state on the page** — retrying, last attempt, last
    connected — since reconnection is silent to the console today.

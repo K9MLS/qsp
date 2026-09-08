@@ -677,13 +677,26 @@ access list is what puts somebody off the network now, and the panel says so.
   later one, which turned a single failure into three this week.
 - **Read the operator's `git log` before assuming a patch state.** "Already
   exists in index" means the patch landed, not that it half-landed.
-- **Ask the running binary which commit it is.** `qsp --version` prints a
-  pseudo-version naming the commit it was built from, and the same string is in
-  the `starting` log line. An afternoon went on diagnosing a bridge that was not
-  deployed: the service was `active`, the deploy commands were right, and the
-  binary was three commits old because the patch file had never reached the
-  machine. `systemctl is-active` says something started; only the version says
-  *what*. Check it after every deploy, before keying a radio.
+- **Ask the running binary which commit it is — and `qsp --version` cannot.**
+  An afternoon went on diagnosing a bridge that was not deployed: the service
+  was `active`, the deploy commands were right, and the binary was three commits
+  old because the patch file had never reached the machine. `systemctl
+  is-active` says something started; only the version says *what*. But
+  `--version` executes the file on disk, which `install` has already replaced,
+  so it answers identically before and after a restart, and in the container it
+  reads `development` because the Dockerfile hardcodes it. **The check is the
+  `starting` log line**, emitted by the process that is running, with the same
+  string `--version` would print:
+
+  ```sh
+  sudo journalctl -u qsp -n 5000 --no-pager | grep -i starting | tail -3
+  ```
+
+  **`tail`, not `grep -m3`.** `journalctl` prints oldest first, so `-m3` stops
+  at the three oldest starts in the window and answers with a version from the
+  previous day — which it did, convincingly. In the container there is no
+  journal, so the check is a string the new build introduced, confirmed unique
+  by `git log -S` before it is trusted.
 - **A field that is validated is not a field that was set.** `ipsc.colour_code`
   was a `uint8` checked for range, and 0 is a legal colour code — so a
   configuration that never mentioned it validated, started, and built every
@@ -708,6 +721,19 @@ Every one of these was learned by getting it wrong on a live network this week.
   is evidence about the feedback path, not a reason for a cleverer fix. Make the
   system report its own state instead — the map was fixed within an hour of it
   printing what it had measured.
+- **`sudo` at the head of a pasted block eats the next line.** The password
+  prompt reads standard input, so the following command goes in as the password:
+  the block appears to run, one command silently does not, and the failure shows
+  up only as `Permission denied, please try again`. It cost a `scp` retry this
+  week and was the leading theory for half an hour of a deploy that had actually
+  worked. `sudo -v` on its own line first, then paste.
+- **A command in the wrong terminal can succeed and mean nothing.** A
+  `systemctl restart qsp` meant for the server ran on Fedora, where there is no
+  such unit, and `MainPID` came back `0` — so the next command read
+  `/proc/0/exe`. The error was legible only because the unit was missing.
+- **Fedora has a stray `/usr/local/bin/qsp`** of unknown age, at exactly the
+  path the deploy documentation names. Nothing runs it, and that is the hazard:
+  a server command that lands on Fedora is answered rather than refused.
 
 ---
 
@@ -2810,6 +2836,40 @@ grep -rn "\.FieldName\b" --include=*.go . | grep -v _test
 ```
 
 Zero hits outside the declaring package is the signal.
+
+### A new instrument is a claim, and it is the last thing anybody doubts
+
+**2026-09-08 evening.** A deploy was checked with a new check — an md5 of
+`/proc/PID/exe` against `/usr/local/bin/qsp`, proposed that same session to
+replace `qsp --version`. It reported a mismatch. It was wrong: `cmp` on the same
+pair says identical, `stat -L` gives one inode, and the process had been running
+the new build since before the first reading. Twenty-five minutes went on it.
+
+What matters is the order in which things were doubted. Three theories were
+offered about the estate — a `sudo` prompt eating the `systemctl stop`, a
+deleted inode, a mount namespace — and §7's rule against a third guess was
+quoted immediately before the third guess was made. **The instrument was
+doubted last, and it was the newest thing in the room.** Every other element had
+weeks of use behind it.
+
+So, alongside "what is declared and read by nothing?": **when a measurement
+surprises you, how old is the thing doing the measuring?** A check introduced
+this session has no track record, and the first thing it reports is also its
+first test. It should be the first suspect, not the last.
+
+Two details worth keeping, because they are what made it convincing:
+
+- **It was reproducibly wrong**, not flaky — the same wrong digest twice, across
+  two PIDs. A flaky instrument advertises itself. A consistent one gets acted
+  on.
+- **It was wrong in the same direction as the expected failure.** A stale
+  deploy was exactly what was being looked for, and the instrument said stale.
+  An instrument that confirms the hypothesis you brought is not evidence for it.
+
+The check that settled it, `grep` for a string the build introduced, was already
+in §8o from the container work and was not thought of as available on
+production. **Ask what already works on one machine before inventing something
+for another.**
 
 ### A test that has never failed is a test you do not believe
 
