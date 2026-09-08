@@ -3078,3 +3078,63 @@ a day of healthy counters and silence. This is not general licence to add
 refusals to a running network — §7 records a service that would not start
 because two rules disagreed — and the distinction is whether the refused
 configuration could ever have worked.
+
+
+## 8o. The evening two QSP servers heard each other, 2026-09-08
+
+**Audio crossed a QSP-to-QSP link in both directions for the first time**, and
+the log line that proves the design is `timeslot=2`. Every previous run read
+TS1, because OpenBridge forces it and two instances of the same software were
+using OpenBridge to talk to each other.
+
+The whole configuration on the dialling side is one block: name, address, DMR
+ID, password file, callsign. `bridges=0`. No listen address, no export list, no
+import list, no timeslot, no port forward. If a link ever needs more than that
+again, something has been added that ADR-0051 says should not exist.
+
+**Three faults today had one cause, and the cause was a mechanism rather than a
+mistake.** The only way to get traffic to a link was to write a bridge; a
+bridge joins endpoints; an endpoint carries a timeslot. So the accept form
+asked an operator a question the protocol had already answered, and there was
+no right answer to give. Look for the missing mechanism when a form asks
+something nobody can answer.
+
+**A deploy check that always prints something is not a check.** `qsp --version`
+runs the binary on disk, which `install` has already replaced, so it answers
+identically before and after a restart; in the container it reads
+`development`, because the Dockerfile hardcodes `-X main.version=development`.
+The check §7 relies on has never worked on either server. What did work:
+
+```sh
+sudo md5sum /proc/$(systemctl show -p MainPID --value qsp)/exe /usr/local/bin/qsp
+docker cp qsp:/qsp /tmp/q && grep -c "<a string only this build has>" /tmp/q
+```
+
+**And the first grep string was wrong**, matching text that had existed for
+weeks and reporting success for a container that did not have the patch. Pick a
+string the new build introduced, not one it merely still contains.
+
+**`install` over a running binary raced its own restart.** The md5 of
+`/proc/PID/exe` differed from the file. `systemctl stop`, install, `start` was
+the fix, and `systemctl is-active` reported `active` throughout — on the old
+binary.
+
+**A build interrupted with ^C leaves the previous image**, and `up -d` then
+recreates from it and says `Started`. Twice. The compile stage takes two
+minutes; let it finish.
+
+**Commands for the wrong machine, three times in one afternoon.** The cause was
+not careless labelling: the documentation described one deploy and the estate
+has three, so commands were written from the handover's picture rather than
+from what is there. Fedora runs no sshd and nothing pulls from it; production
+is systemd; the test server is Docker Compose with a build override, and
+without that override `up -d` reaches for a registry tag that has never been
+published, is denied, and silently leaves the old container running.
+
+**A research question is worth asking before a design question.** "Should this
+be a new protocol on a new port?" was answered no by looking at what XLX, DPlus
+and the homebrew protocol actually do about NAT. XLX interlink and DExtra both
+cost a forward at each end and are known sore points; the homebrew peer dials
+out and needs none, which is why a Pi-Star works behind a domestic router with
+nothing configured. The answer was already in the tree — `UpstreamHomebrew`
+existed, built and never pointed at a real far end.

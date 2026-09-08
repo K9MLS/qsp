@@ -1,59 +1,76 @@
-# Handover, 2026-09-08 evening
+# Handover, 2026-09-08 night
 
-Read `NEW-SESSION.md` for the standing brief, then **§8a** of
-`PROJECT_MEMORY.md`, then **ADR-0051**, which decides how linking works from
-here. §8b through §8l are superseded and say so.
+Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
+which decides how linking works from here and is confirmed on air. §8o is this
+session.
 
-Version **0.1.115**, patches 0261–0273. Everything through 0271 is on Fedora,
-production and the test server. **0272 (the ADR) and 0273 are new.**
+Version **0.1.116**, patches 0261–0274. Everything through 0273 is on Fedora,
+production and the test server.
 
-## Start here: build ADR-0051
+## What happened
 
-**0271 landed and worked on air.** A frame from an OpenBridge link reached a
-Motorola repeater for the first time — `nowhere on the Homebrew side; carried to
-the Motorola repeaters only`, and the repeater keyed. Both directions between a
-link and a repeater are connected.
+**Audio crossed a QSP-to-QSP link in both directions**, 2026-09-08 16:16 UTC.
+A hotspot user in Denton, heard on a Motorola repeater, through a link that is
+a peer rather than a bridge.
 
-**The radio still heard nothing, and the cause is not the codec.** A capture of
-what QSP sends to the XPR8300 was diffed against
-`testdata/ipsc/ipsc-master-voice.pcap`. The framing is right: same length
-distribution in the same 4:1:1 ratio, same 60 ms cadence, same six-burst
-superframe, RTP sequence incrementing by 1 and timestamp by 480 per frame in
-both. Three bytes differ, and `voice.go` names every one:
+```
+peer connected  peer_id=3132912 callsign=K9MLS from=192.168.1.27:58483
+call started    peer_id=3132910 talkgroup=2 timeslot=2 stream_id=2948633907
+call started    subsystem=ipsc radio_id=999999 destination=2 timeslot=2 slot_bit=true
+call ended      frames=34 converted=32 delivered=32 duration=1.982s
+```
 
-| Offset | Constant | Reference | QSP |
-|---|---|---|---|
-| 17 | `FlagSlot = 0x20` | set | clear |
-| 30 | `FrameSlotBit = 0x80` | `0x8a` | `0x0a` |
-| 31 (54-byte) | `HeaderSlotBit = 0x80` | `0xc0` | `0x40` |
+**`timeslot=2` is the whole thing.** Every previous run read TS1, because
+OpenBridge forces it and two instances of the same software were using
+OpenBridge to reach each other. The repeater had been keying on the slot nobody
+monitors.
 
-Three independent fields, all the timeslot, all disagreeing the same way.
-**QSP transmitted to the repeater on the slot nobody was listening to**, because
-OpenBridge forced the frame to TS1 and the codeplug has TG 2 on TS 2.
+`bridges=0`, `qsp_links=1`. The dialling side's entire configuration is one
+upstream block: name, address, DMR ID, password file, callsign. No listen
+address, no export list, no import list, no timeslot, no port forward.
 
-So the burst shape is fine and ADR-0041's caveat, corrected in 0268, described
-the symptom and named the reference that settled it in an afternoon.
+## Start here
 
-**0273 built the first half of ADR-0051.** `protocol: "qsp"` exists: it dials
-out, needs no bridge, needs no port forward on the dialling side, and repeat
-reaches it as a peer so every talkgroup crosses with the slot intact.
-
-**It has never carried a frame between two machines.** Everything above is
-tests. The next session's first job is to write a `qsp` link into both
-configurations by hand, restart, and key a radio.
+**Deduplication on source radio ID and stream ID**, which is what makes relaying
+safe and lets ten servers connect as a hub rather than forty-five peerings.
+Until it exists the blunt never-relay rule holds and
+`TestAFrameFromALinkIsNotRelayedYet` says so out loud — **replace that test when
+dedup lands, do not delete it quietly.** Relaying without dedup is a broadcast
+storm on somebody else's network.
 
 Then, in order:
 
-1. **Deduplication on source radio ID and stream ID**, which is what makes
-   relaying safe and lets ten servers connect as a hub rather than
-   forty-five peerings. `TestAFrameFromALinkIsNotRelayedYet` fails when this
-   lands, deliberately — replace it, do not delete it.
-2. **The accept form.** It still writes an OpenBridge link with a bridge and a
-   timeslot box. It should write a `qsp` link and ask for neither.
-3. **The ID-collision refusal and the arrived-frames console line.** These are
-   what stop the next silent day.
-4. Remove `Export`, `Import` and the bridge-for-links machinery.
-5. OpenBridge narrowed to foreign networks; existing links re-peered.
+1. **The accept form.** It still writes an OpenBridge link with a bridge and a
+   timeslot box. It should write a `qsp` link and ask for neither. Until then
+   every peering an administrator agrees through the console produces the
+   configuration ADR-0051 was written against.
+2. **The ID-collision refusal and the arrived-frames console line.** Both
+   servers announce IPSC master ID 3132911 today. And a slot mismatch between
+   two linked servers is still silent: the traffic dies at the far end's
+   ingress and the link looks dead, which is this morning's failure wearing a
+   different label.
+3. **The container version.** The Dockerfile hardcodes
+   `-X main.version=development`, so `/qsp --version` cannot say what it is and
+   §7's deploy check has never worked there. It should come from `VERSION` and
+   the commit.
+4. **The double close on 62045**, which makes a clean stop exit 1
+   intermittently and fills the journal with failure lines for correct
+   restarts.
+5. Remove `Export`, `Import` and the bridge-for-links machinery.
+6. OpenBridge narrowed to foreign networks; the disabled link on the test
+   server removed.
+
+## Two debts taken deliberately
+
+**The link authenticates with the shared hotspot password.** Production has no
+per-peer list, so `/var/lib/qsp/peer.pass` is what all three hotspots and now
+the link use. ADR-0035 exists precisely so a member can be removed without
+changing everybody's password, and this gives that up. It was taken to get the
+on-air proof today and should be paid back when the accept form is built.
+
+**The OpenBridge link between the two servers is disabled, not removed.** Both
+running at once would carry every frame twice, and the deduplication that would
+make that harmless is not built.
 
 ### Writing a qsp link by hand, to test it
 
@@ -147,6 +164,7 @@ Pi-Star. A hotspot user on production should be heard on the test server's
 repeater. The reverse already works.
 
 
+
 ## Resolved: the repeater that transmitted silence
 
 **Answered by measurement, above.** It was the timeslot, not the burst shape.
@@ -193,40 +211,27 @@ the override compose file.
 **ADR-0050** records the wire-format change: a reciprocal says so in the token,
 so an exchange can end after a restart.
 
-## What is proven on a running system, and what is not
+## What is proven on a running system
 
-Proven by using it, this session:
+- A QSP server logs into another QSP server as a peer, and audio crosses both
+  ways with the talkgroup and timeslot intact.
+- A frame from a link reaches a Motorola repeater (0271), and a frame from the
+  repeater reaches the network.
+- An IPSC repeater registers with a containerised instance.
+- The peering exchange completes across two instances, both directions, and
+  reaches the audit trail.
+- `config.Validate` refuses a bridge endpoint naming an OpenBridge link on any
+  slot but 1 — which caught the shipped `deploy/pair` examples on its first run.
 
-- The peering exchange completes across two instances, both directions.
-- `-check` reports in-use for a live configuration and catches an address this
-  host does not have, with exit 1.
-- `peering.offered` and `peering.accepted` reach the audit trail, with no
-  "cannot record" warning. SECURITY.md's claim is true for the first time.
-- An IPSC repeater registers with a containerised instance: `peer registered
-  radio_id=999999 from=192.168.1.233:50001`. **Open item 5 is closed.**
-- OpenBridge carries traffic from production to the test server: 28 frames
-  received.
+## Not proven
 
-Not proven, and worth doing next:
-
-- Audio from a repeater reaching the network at all — the timeslot question
-  above.
-- The Links page showing a link honestly, since 0264 is undeployed.
-- The IPSC panel from 0265; it has never been loaded in a browser.
-- The port-collision refusal from 0263 and the endless-exchange fix, both of
-  which have tests and no live run.
-
-## Open, not started
-
-- **The test server's access list permits only `3132910`**, and the startup
-  advisory says that is an operator ID rather than a repeater one. It has not
-  bitten yet because IPSC has its own `allowed_peers`.
-- **`links.cfg` is captured at construction** in `cmd/qsp`, so a link's
-  displayed address comes from the startup configuration. A live setting read
-  at construction — §8a's recurring shape — latent rather than firing.
-- **`applyPending` does not reconcile upstreams.** A link opens and closes only
-  at a restart. That is a recorded decision and 0262 makes it honest, but live
-  reconciliation is worth an ADR: a restart drops every station, and telling a
-  club administrator that adding a link means dropping the network is the
-  a commercial DMR server-shaped answer.
-- Published image tag and CI publishing, still not set up.
+- **Anything with more than two servers.** Relaying, deduplication, and a
+  third instance are all untested. Ten servers is the design target and one
+  link is the evidence.
+- A `qsp` link across the internet rather than a LAN. Both ends of this one are
+  on 192.168.1.x.
+- A link surviving a far-end restart. Reconnection is specified in ADR-0051 —
+  5 s to 120 s capped, forever — and not written.
+- The IPSC panel from 0265, never loaded in a browser.
+- Published image tag and CI publishing, still not set up. `docker compose up`
+  without the build override tries `ghcr.io/k9mls/qsp:<version>` and is denied.

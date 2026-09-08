@@ -7,7 +7,20 @@ All notable changes to QSP. Dates are UTC.
 ### Added
 
 - **`protocol: "qsp"` links two QSP servers as peers** (ADR-0051), the first
-  half built. The link dials out over the homebrew peer conversation, so only
+  half built, **and carrying audio in both directions the same day.**
+
+  At 16:15:07 UTC a QSP server logged into another QSP server:
+  `peer connected peer_id=3132912 callsign=K9MLS from=192.168.1.27:58483`,
+  four milliseconds end to end. A minute later a hotspot user in Denton was
+  heard on a Motorola repeater across it — `call started peer_id=3132910
+  talkgroup=2 timeslot=2`, and **TS2 is the point**: every run over OpenBridge
+  had read TS1, the repeater had been keying on the slot nobody monitors, and
+  this time the radio opened squelch.
+
+  The configuration that did it is one upstream block with a name, an address,
+  a DMR ID, a password file and a callsign. `bridges=0`. No listen address, no
+  export list, no import list, no timeslot, and no port forward on the dialling
+  side. The link dials out over the homebrew peer conversation, so only
   the side that offered the peering needs a reachable address and the side that
   dials needs no port forward at all — the same reason a Pi-Star works behind a
   domestic router with nothing configured.

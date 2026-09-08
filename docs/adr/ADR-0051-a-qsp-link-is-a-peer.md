@@ -1,6 +1,17 @@
 # ADR-0051: a link between two QSP servers is a peer, not a bridge
 
-**Status:** accepted, 2026-09-08
+**Status:** accepted, 2026-09-08 — **confirmed on air the same day**
+
+A QSP server logged into another QSP server as a peer at 16:15:07 UTC:
+`peer connected peer_id=3132912 callsign=K9MLS from=192.168.1.27:58483`, four
+milliseconds from starting to connected, with no port forward on the dialling
+side and no bridge in the configuration.
+
+A minute later a hotspot user in Denton was heard on a Motorola repeater
+through it: `call started peer_id=3132910 talkgroup=2 timeslot=2`. **TS2, not
+TS1.** Every run over OpenBridge had read TS1. The repeater keyed on the slot
+the codeplug uses and the radio opened squelch — audio in both directions,
+which had never worked.
 
 Supersedes the QSP-to-QSP half of
 [ADR-0018](ADR-0018-openbridge.md). Amends

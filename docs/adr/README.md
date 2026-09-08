@@ -60,4 +60,4 @@ conclusion.
 | [0048](ADR-0048-container-install.md) | The container install, and what it has to get right for a stranger | Accepted — built and run; nine defects found |
 | [0049](ADR-0049-first-account-setup-token.md) | The first administrator account is created from a token in the log | Proposed |
 | [0050](ADR-0050-a-reciprocal-says-so.md) | A reciprocal says so in the token, so an exchange can end after a restart | Accepted |
-| [0051](ADR-0051-a-qsp-link-is-a-peer.md) | A link between two QSP servers is a peer, not a bridge | Accepted |
+| [0051](ADR-0051-a-qsp-link-is-a-peer.md) | A link between two QSP servers is a peer, not a bridge | Accepted — confirmed on air |
