@@ -141,8 +141,16 @@ func reachableBeyondHost(listen string) bool {
 //
 // An empty protocol is OpenBridge, so a document written before outbound peer
 // mode existed keeps meaning what it meant.
+//
+// **A QSP link answers true**, because this asks a question about the wire and
+// a QSP link is the same conversation: RPTL, RPTK, RPTC, then RPTPING for as
+// long as it lasts. It dials out, so it needs an address and a password file
+// and no listen address, exactly as a link to XLX does. What differs is above
+// the wire and is asked with QSPLink: the slot and talkgroup cross unchanged,
+// every talkgroup crosses, and no bridge is required.
 func (u Upstream) HomebrewProtocol() bool {
-	return strings.EqualFold(strings.TrimSpace(u.Protocol), UpstreamHomebrew)
+	p := strings.TrimSpace(u.Protocol)
+	return strings.EqualFold(p, UpstreamHomebrew) || strings.EqualFold(p, UpstreamQSP)
 }
 
 // validateHomebrewUpstream checks a link that logs into another master.

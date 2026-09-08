@@ -657,3 +657,108 @@ func TestAHomebrewLinkKeepsBothSlots(t *testing.T) {
 		t.Errorf("a homebrew link was refused for carrying TS2:\n%s", msg)
 	}
 }
+
+// qspLink is a peering with another QSP server (ADR-0051).
+//
+// It dials out, so it takes the same fields a homebrew link to XLX does: an
+// address, a DMR ID, a password file and a callsign. No listen address, and
+// nothing describing what crosses.
+func qspLink() Upstream {
+	u := validUpstream()
+	u.Name = "blake"
+	u.Protocol = UpstreamQSP
+	u.Address = "blake.example.org:62031"
+	u.ListenAddress = ""
+	u.PassphraseFile = ""
+	u.NetworkID = 0
+	u.Export = nil
+	u.Import = nil
+	u.RepeaterID = 3132911
+	u.PasswordFile = "/var/lib/qsp/blake.pass"
+	u.Identity = &UpstreamIdentity{Callsign: "K9MLS"}
+	return u
+}
+
+// TestAQSPLinkNeedsNoBridge is the configuration an administrator writes after
+// agreeing a peering, and it is the whole of it.
+//
+// A link with no bridge is normally the fault that cost an afternoon: the
+// socket opens, the far end authenticates, and no configuration on this side
+// could ever have put a frame on it. A QSP link is exempt because repeat
+// reaches it the way repeat reaches a hotspot. Demanding a bridge would
+// reintroduce the endpoint that carries a timeslot, which is the fault
+// ADR-0051 was written after.
+func TestAQSPLinkNeedsNoBridge(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "peer.pass"
+	c.DMR.Upstreams = []Upstream{qspLink()}
+	c.DMR.Bridges = nil
+
+	if msg := upstreamProblems(t, c); msg != "" {
+		t.Errorf("a QSP link with no bridge was rejected:\n%s", msg)
+	}
+}
+
+// TestAnOpenBridgeLinkStillNeedsABridge scopes the exemption.
+//
+// The rule it lifts is a real one and it stays for every other link: a link
+// nothing routes to opens, authenticates, reports healthy and carries nothing,
+// and the advice sends an operator to check somebody else's address.
+func TestAnOpenBridgeLinkStillNeedsABridge(t *testing.T) {
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "peer.pass"
+	c.DMR.Upstreams = []Upstream{validUpstream()}
+	c.DMR.Bridges = nil
+
+	if msg := upstreamProblems(t, c); !strings.Contains(msg, "no bridge sends anything") {
+		t.Errorf("an OpenBridge link with no bridge was accepted:\n%s", msg)
+	}
+}
+
+// TestAQSPLinkDialsOut, which is what makes it need no port forward.
+//
+// The homebrew peer conversation is client-initiated: this server logs into
+// the other one, and the router holds the mapping open for the replies. Only
+// the side that offered the peering needs a reachable address, and it already
+// has one because it serves hotspots. Answering false here would send the link
+// down the OpenBridge path, which listens instead of dialling.
+func TestAQSPLinkDialsOut(t *testing.T) {
+	if !qspLink().HomebrewProtocol() {
+		t.Error("a QSP link does not take the dial-out path, so it would need a port forward")
+	}
+	if !qspLink().QSPLink() {
+		t.Error("a QSP link does not report itself as one")
+	}
+	if (Upstream{Protocol: UpstreamHomebrew}).QSPLink() {
+		t.Error("a homebrew link to XLX reports itself as a QSP link")
+	}
+	// An empty protocol is OpenBridge, for documents written before any of
+	// this existed. It must not become a QSP link by default.
+	if (Upstream{}).QSPLink() {
+		t.Error("a link with no protocol defaults to being a QSP link")
+	}
+}
+
+// TestQSPIsAProtocolQSPSpeaks, because an unrecognised value is refused with
+// advice, and the advice has to name the one an administrator wants.
+func TestQSPIsAProtocolQSPSpeaks(t *testing.T) {
+	u := qspLink()
+	u.Protocol = "qsp-link"
+	c := Default()
+	c.DMR.Enabled = true
+	c.DMR.Access = &Access{}
+	c.DMR.PasswordFile = "peer.pass"
+	c.DMR.Upstreams = []Upstream{u}
+
+	msg := upstreamProblems(t, c)
+	if !strings.Contains(msg, "protocol") {
+		t.Fatalf("an unknown protocol was accepted:\n%s", msg)
+	}
+	if !strings.Contains(msg, "\"qsp\"") {
+		t.Errorf("the advice does not offer \"qsp\":\n%s", msg)
+	}
+}

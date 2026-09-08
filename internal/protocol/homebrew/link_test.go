@@ -496,3 +496,47 @@ func FuzzHandle(f *testing.F) {
 		l.Handle(datagram)
 	})
 }
+
+// TestTheSlotSurvivesTheWire is the difference between the two link kinds,
+// pinned where it can be seen (ADR-0051).
+//
+// `openbridge.Encode` sets `data.Timeslot = hbp.Timeslot1` on every frame,
+// deliberately and correctly: OpenBridge passes all traffic on TS1 because
+// BrandMeister needs a way to take many networks onto one slot. Two instances
+// of QSP have no such need, and using that pipe between them threw the slot
+// away — a Motorola repeater keyed on the slot nobody was listening to while
+// the codeplug had TG 2 on TS 2, and no audio crossed in either direction for
+// a day.
+//
+// The homebrew peer path replaces the repeater ID and nothing else. This test
+// is what stops somebody adding a coercion here later for symmetry.
+func TestTheSlotSurvivesTheWire(t *testing.T) {
+	for _, slot := range []hbp.Timeslot{hbp.Timeslot1, hbp.Timeslot2} {
+		h := newHarness(t)
+		h.connect()
+
+		payload := h.l.Send(hbp.Data{
+			RepeaterID: 3132910, SourceID: 3132910, TargetID: 2,
+			Timeslot: slot, CallType: hbp.CallGroup,
+			FrameType: hbp.FrameTypeVoiceSync, StreamID: 0x1234,
+		})
+		if payload == nil {
+			t.Fatalf("TS%d: a connected link refused to send", slot)
+		}
+		msg, ok := h.parse(payload).(hbp.Data)
+		if !ok {
+			t.Fatalf("TS%d: sent %s, want DMRD", slot, h.parse(payload).Kind())
+		}
+		if msg.Timeslot != slot {
+			t.Errorf("a frame on TS%d went onto the wire as TS%d", slot, msg.Timeslot)
+		}
+		if msg.TargetID != 2 {
+			t.Errorf("TS%d: talkgroup 2 went onto the wire as %d", slot, msg.TargetID)
+		}
+		// The one field the link does change, and why: the far end registered
+		// this ID and has never heard of the peer the frame came from.
+		if msg.RepeaterID != linkID {
+			t.Errorf("TS%d: the link announced %d, want its own %d", slot, msg.RepeaterID, linkID)
+		}
+	}
+}

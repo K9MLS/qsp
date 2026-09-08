@@ -3,6 +3,7 @@ package routing
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -240,6 +241,15 @@ type Core struct {
 	attached Subscriptions
 	timeout  time.Duration
 
+	// qspLinks names the links that reach another QSP server, lowercased.
+	//
+	// **They are destinations for repeat, not bridge endpoints** (ADR-0051).
+	// A linked QSP server is a peer: every talkgroup crosses, the talkgroup
+	// and timeslot cross unchanged, and each side's own access lists decide
+	// what it keeps. An OpenBridge link is not in here and still needs a
+	// bridge, because the far end is a foreign network rather than a peer.
+	qspLinks map[string]bool
+
 	// mu guards access, table and busy. Every other field is set once in
 	// NewCore and only read.
 	mu sync.Mutex
@@ -277,6 +287,13 @@ type CoreOptions struct {
 	// Timeout is how long a destination stays reserved after its last frame.
 	// Zero selects StreamTimeout.
 	Timeout time.Duration
+	// QSPLinks names the links that reach another QSP server (ADR-0051).
+	//
+	// Each one becomes a destination for repeat, exactly as a peer is. A
+	// link not named here keeps the old behaviour and is reached only by a
+	// bridge, so an OpenBridge link to a foreign network is unaffected and
+	// an empty list routes exactly as this package did before.
+	QSPLinks []string
 }
 
 // NewCore constructs a Core.
@@ -295,8 +312,43 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		subscribers: opts.Subscribers,
 		attached:    opts.Attached,
 		timeout:     opts.Timeout,
+		qspLinks:    linkSet(opts.QSPLinks),
 		busy:        make(map[Endpoint]*reservation),
 	}, nil
+}
+
+// linkSet lowercases link names into a set, matching how the configuration
+// compares them everywhere else.
+func linkSet(names []string) map[string]bool {
+	if len(names) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		if k := strings.ToLower(strings.TrimSpace(n)); k != "" {
+			out[k] = true
+		}
+	}
+	return out
+}
+
+// sortedQSPLinks returns the QSP link names in a stable order.
+//
+// ADR-0013 makes the routing decision a pure function of its inputs, and map
+// iteration order in Go is deliberately random — an unsorted range here would
+// make the Deliveries and Drops of one frame differ between two runs on
+// identical state, which is exactly the kind of difference that makes a defect
+// unreproducible. Called with the lock held.
+func (c *Core) sortedQSPLinks() []string {
+	if len(c.qspLinks) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(c.qspLinks))
+	for name := range c.qspLinks {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SetTable swaps in a new routing table atomically.
@@ -426,6 +478,26 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			},
 			repeat: true,
 		})
+		// **A linked QSP server is a peer, so repeat reaches it** (ADR-0051).
+		//
+		// Every talkgroup crosses and the timeslot crosses unchanged: the far
+		// end runs the same software and its own access lists decide what it
+		// keeps. This is the whole of "everything crosses by default" — there
+		// is no list here to get wrong, and no endpoint carrying a slot that
+		// can fail to match.
+		//
+		// The frame is offered in sorted order so a decision is reproducible,
+		// which ADR-0013 requires of the whole function.
+		for _, name := range c.sortedQSPLinks() {
+			targets = append(targets, routeTarget{
+				Endpoint: Endpoint{
+					Upstream:  name,
+					Talkgroup: frame.TargetID,
+					Timeslot:  frame.Timeslot,
+				},
+				repeat: true,
+			})
+		}
 	}
 
 	// A private call goes to one radio, wherever that radio is.

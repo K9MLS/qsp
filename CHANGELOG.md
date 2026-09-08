@@ -4,6 +4,44 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`protocol: "qsp"` links two QSP servers as peers** (ADR-0051), the first
+  half built. The link dials out over the homebrew peer conversation, so only
+  the side that offered the peering needs a reachable address and the side that
+  dials needs no port forward at all — the same reason a Pi-Star works behind a
+  domestic router with nothing configured.
+
+  It needs no bridge, no export list, no import list and no timeslot. Repeat
+  reaches it the way repeat reaches a hotspot, so every talkgroup crosses and
+  each side's own access lists decide what it keeps. `config.Validate` exempts
+  it from the rule that a link nothing routes to is a fault, because for this
+  kind of link that rule is false.
+
+  **The talkgroup and the timeslot cross unchanged.** `homebrew.Link.Send`
+  replaces the repeater ID and touches nothing else, and
+  `TestTheSlotSurvivesTheWire` pins that against the coercion
+  `openbridge.Encode` performs deliberately. §6b already gave talkgroups this
+  rule; the timeslot now has it.
+
+  An OpenBridge link is unaffected: it is not named in `QSPLinks`, it is still
+  reached only by a bridge, and an empty list routes exactly as before.
+
+### Not yet built, and named so it cannot close quietly
+
+- **Deduplication, and with it relaying between links.** ADR-0051 replaces the
+  blunt never-relay rule with deduplication on source radio ID and stream ID,
+  because ten servers meshed is forty-five peerings. Until that exists the
+  blunt rule still holds, and `TestAFrameFromALinkIsNotRelayedYet` says so out
+  loud rather than leaving a gap nobody can find again. Relaying without
+  deduplication is a broadcast storm on somebody else's network.
+
+- **The accept form still writes a bridge, and still asks for a timeslot.** The
+  console has not been changed yet, so a peering agreed through the page still
+  produces an OpenBridge link. A `qsp` link is written by hand for now.
+
+- **The ID-collision refusal and the arrived-frames console line.**
+
 ### Decided
 
 - **ADR-0051: a link between two QSP servers is a peer, not a bridge.** A day of

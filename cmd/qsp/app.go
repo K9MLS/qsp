@@ -243,6 +243,9 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 				Subscribers: master,
 				// Which talkgroups each peer wants; see ADR-0023.
 				Attached: master,
+				// Links to other QSP servers, which repeat reaches the way it
+				// reaches a hotspot; see ADR-0051.
+				QSPLinks: qspLinkNames(cfg),
 			})
 			if err != nil {
 				return nil, err
@@ -250,6 +253,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			log.Info("forwarding enabled; peers on a talkgroup hear each other",
 				slog.Int("bridges", len(cfg.DMR.Bridges)),
 				slog.Int("enabled_bridges", table.EnabledCount()),
+				slog.Int("qsp_links", len(qspLinkNames(cfg))),
 			)
 		} else {
 			log.Info("forwarding disabled; traffic is observed and not relayed")
@@ -1497,6 +1501,22 @@ func buildOpenBridgeLink(log *slog.Logger, u config.Upstream, receive func(strin
 		StaleAfter:    time.Duration(u.StaleAfter),
 		Receive:       receive,
 	})
+}
+
+// qspLinkNames lists the enabled links that reach another QSP server.
+//
+// **Derived from the configuration rather than asserted beside it.** A second
+// list of link names kept by hand is a second thing to keep true, and this
+// project's recurring defect is a value declared in one place and read from
+// another that has drifted.
+func qspLinkNames(cfg config.Config) []string {
+	var out []string
+	for _, u := range cfg.DMR.Upstreams {
+		if u.Enabled && u.QSPLink() {
+			out = append(out, u.Name)
+		}
+	}
+	return out
 }
 
 // buildPeerLink creates an outbound link that logs into another master.

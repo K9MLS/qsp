@@ -4,8 +4,8 @@ Read `NEW-SESSION.md` for the standing brief, then **§8a** of
 `PROJECT_MEMORY.md`, then **ADR-0051**, which decides how linking works from
 here. §8b through §8l are superseded and say so.
 
-Version **0.1.114**, patches 0261–0272. Everything through 0271 is on Fedora,
-production and the test server. **0272 is the ADR and is new.**
+Version **0.1.115**, patches 0261–0273. Everything through 0271 is on Fedora,
+production and the test server. **0272 (the ADR) and 0273 are new.**
 
 ## Start here: build ADR-0051
 
@@ -34,17 +34,53 @@ OpenBridge forced the frame to TS1 and the codeplug has TG 2 on TS 2.
 So the burst shape is fine and ADR-0041's caveat, corrected in 0268, described
 the symptom and named the reference that settled it in an afternoon.
 
-**The work is ADR-0051**, in this order:
+**0273 built the first half of ADR-0051.** `protocol: "qsp"` exists: it dials
+out, needs no bridge, needs no port forward on the dialling side, and repeat
+reaches it as a peer so every talkgroup crosses with the slot intact.
 
-1. Peer-mode QSP-to-QSP linking, end to end between the two servers. It is the
-   thing that makes the network work and most of it exists —
-   `UpstreamHomebrew`, `validateHomebrewUpstream`, ADR-0024, built and never
-   pointed at a real far end.
-2. The ID-collision refusal and the arrived-frames console line. These are what
-   stop the next silent day.
-3. Remove `Export`, `Import` and the bridge-for-links machinery, once nothing
-   depends on them.
-4. OpenBridge narrowed to foreign networks; existing links re-peered.
+**It has never carried a frame between two machines.** Everything above is
+tests. The next session's first job is to write a `qsp` link into both
+configurations by hand, restart, and key a radio.
+
+Then, in order:
+
+1. **Deduplication on source radio ID and stream ID**, which is what makes
+   relaying safe and lets ten servers connect as a hub rather than
+   forty-five peerings. `TestAFrameFromALinkIsNotRelayedYet` fails when this
+   lands, deliberately — replace it, do not delete it.
+2. **The accept form.** It still writes an OpenBridge link with a bridge and a
+   timeslot box. It should write a `qsp` link and ask for neither.
+3. **The ID-collision refusal and the arrived-frames console line.** These are
+   what stop the next silent day.
+4. Remove `Export`, `Import` and the bridge-for-links machinery.
+5. OpenBridge narrowed to foreign networks; existing links re-peered.
+
+### Writing a qsp link by hand, to test it
+
+Both servers need one. On the dialling side — the test server, which has no
+forwarded port — the link names the other server's peer port:
+
+```json
+{
+  "name": "production",
+  "protocol": "qsp",
+  "enabled": true,
+  "address": "192.168.1.247:62031",
+  "repeater_id": 3132912,
+  "password_file": "/var/lib/qsp/production.pass",
+  "identity": { "callsign": "K9MLS" }
+}
+```
+
+No `listen_address`, no `network_id`, no `export`, no `import`, and **no
+bridge**. `repeater_id` must differ from every peer the far end already has and
+from the far end's own ID: 3132910 is an operator ID and 3132911 is announced
+by both servers' IPSC masters today. The password file holds whatever the far
+end has in `dmr.password_file` for that ID.
+
+Only the dialling side gets a `qsp` upstream. The listening side needs nothing
+configured at all — the link arrives as a peer registration on 62031, which is
+the port the three hotspots already use.
 
 Two unexplained bytes, recorded rather than guessed at: byte 5 reads 1–3 in the
 reference and a constant 4 from QSP, and the last byte of the 54-byte header is

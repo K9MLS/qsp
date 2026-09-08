@@ -590,7 +590,34 @@ const (
 	UpstreamOpenBridge = "openbridge"
 	// UpstreamHomebrew logs into another master as a peer.
 	UpstreamHomebrew = "homebrew"
+	// UpstreamQSP links to another QSP server (ADR-0051).
+	//
+	// It is the homebrew peer conversation on the wire — this server logs
+	// into the other one, so only the side that offered the peering needs a
+	// reachable address and the side that dials needs no port forward at
+	// all. What differs is everything above the wire, which is why it is a
+	// protocol value rather than a flag on homebrew:
+	//
+	//   - The talkgroup and the timeslot cross unchanged. OpenBridge forces
+	//     TS1 because BrandMeister needs it to; two instances of the same
+	//     software have no reason to throw the slot away, and doing so is
+	//     what silenced a repeater for a day.
+	//   - Every talkgroup crosses. The far end is not a foreign network to
+	//     be metered but a peer, and each side's own access lists decide
+	//     what it keeps.
+	//   - It needs no bridge, so it is exempt from the rule that a link
+	//     nothing routes to is a fault.
+	UpstreamQSP = "qsp"
 )
+
+// QSPLink reports whether this link reaches another QSP server.
+//
+// **The zero value is not this.** An empty protocol means OpenBridge, for
+// documents written before outbound peer mode existed, so a link only reaches
+// another QSP when it says so.
+func (u Upstream) QSPLink() bool {
+	return strings.EqualFold(strings.TrimSpace(u.Protocol), UpstreamQSP)
+}
 
 // UpstreamTalkgroup is one talkgroup carried over a link, named as it exists
 // locally.
@@ -1284,6 +1311,15 @@ func (c Config) Validate() error {
 			if !u.Enabled {
 				continue
 			}
+			// **A QSP link needs no bridge and must not be asked for one.**
+			// It is a peer (ADR-0051): repeat reaches it the way repeat
+			// reaches a hotspot, and every talkgroup crosses. Demanding a
+			// bridge here would reintroduce the endpoint that has to carry a
+			// timeslot, which is the whole fault the record was written
+			// after.
+			if u.QSPLink() {
+				continue
+			}
 			if !reached[strings.ToLower(strings.TrimSpace(u.Name))] {
 				v.add(fmt.Sprintf("dmr.upstreams[%d]", i),
 					fmt.Sprintf("no bridge sends anything to %q", u.Name),
@@ -1333,11 +1369,12 @@ func (c Config) Validate() error {
 			field := fmt.Sprintf("dmr.upstreams[%d]", i)
 
 			switch strings.ToLower(strings.TrimSpace(u.Protocol)) {
-			case "", UpstreamOpenBridge, UpstreamHomebrew:
+			case "", UpstreamOpenBridge, UpstreamHomebrew, UpstreamQSP:
 			default:
 				v.add(field+".protocol", fmt.Sprintf("%q is not a protocol QSP speaks", u.Protocol),
-					"use \"openbridge\" to bridge two networks, or \"homebrew\" to log into "+
-						"another master as a peer")
+					"use \"qsp\" to link to another QSP server, \"openbridge\" to bridge to "+
+						"a network that speaks it, or \"homebrew\" to log into another master "+
+						"as a peer")
 			}
 
 			if err := ValidUpstreamName(u.Name); err != nil {
