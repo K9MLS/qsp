@@ -60,7 +60,7 @@
           {
             "upstream": "pair",
             "talkgroup": 2,
-            "timeslot": 2
+            "timeslot": 1
           }
         ]
       }

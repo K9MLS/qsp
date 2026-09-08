@@ -727,6 +727,19 @@ type Endpoint struct {
 	Timeslot int `json:"timeslot"`
 }
 
+// OpenBridgeTimeslot is the only timeslot an endpoint naming an OpenBridge link
+// may carry.
+//
+// OpenBridge passes all traffic on TS1 with the slot bit clear, and
+// openbridge.Encode forces it on every frame sent. An endpoint on TS2 therefore
+// matches nothing arriving and produces nothing that can leave — the link opens,
+// authenticates, reports healthy, and carries no audio in either direction.
+//
+// It is a constant rather than a literal in two places because the accept
+// handler writes it and Validate refuses anything else, and those two must not
+// be able to disagree.
+const OpenBridgeTimeslot = 1
+
 // Server configures the HTTP console listener.
 type Server struct {
 	// ListenAddress is the host:port the console binds to.
@@ -1192,9 +1205,17 @@ func (c Config) Validate() error {
 		names := make(map[string]bool, len(c.DMR.Bridges))
 		// Which links exist, and which a bridge actually reaches.
 		links := map[string]bool{}
+		// Which of them speak OpenBridge, because only those force TS1. A
+		// Homebrew link to XLX or DMR+ carries both slots and an endpoint on
+		// TS2 is perfectly ordinary there.
+		openBridgeLinks := map[string]bool{}
 		for _, u := range c.DMR.Upstreams {
 			if u.Enabled {
-				links[strings.ToLower(strings.TrimSpace(u.Name))] = true
+				key := strings.ToLower(strings.TrimSpace(u.Name))
+				links[key] = true
+				if !u.HomebrewProtocol() {
+					openBridgeLinks[key] = true
+				}
 			}
 		}
 		reached := map[string]bool{}
@@ -1235,6 +1256,21 @@ func (c Config) Validate() error {
 						"check the spelling against dmr.upstreams, and that the link is enabled")
 				default:
 					reached[link] = true
+					// **A bridge that cannot carry is worse than no bridge.**
+					// Refused rather than corrected, because silently moving
+					// an operator's slot would leave the document saying one
+					// thing and the network doing another — and because the
+					// configuration this refuses is one in which the link
+					// already carries nothing. A startup error naming the fix
+					// replaces a day of healthy counters and silence.
+					if openBridgeLinks[link] && e.Timeslot != OpenBridgeTimeslot {
+						v.add(ef+".timeslot",
+							fmt.Sprintf("is %d on an endpoint naming OpenBridge link %q", e.Timeslot, e.Upstream),
+							fmt.Sprintf("use %d. OpenBridge passes all traffic on TS1, so an endpoint "+
+								"on any other slot matches nothing in either direction; the other "+
+								"endpoint of this bridge keeps your own network's slot",
+								OpenBridgeTimeslot))
+					}
 				}
 			}
 		}

@@ -76,8 +76,13 @@ to it.
 ## How we work
 
 You develop in your container and deliver **numbered patch files** I apply with
-`git am` on my Fedora machine. Number them from **0194**. Commits use my
+`git am` on my Fedora machine. Number them from **0272**. Commits use my
 identity: `Mike <k9mls@outlook.com>`.
+
+**Check that number against `git log` before using it.** It said 0194 for
+seventy-seven patches, because a standing brief is edited when its subject
+changes and this line has no subject. The version in `VERSION` and the last
+commit are ground truth; this sentence is a reminder.
 
 Never commit `go.mod` or `go.sum` — stage with
 `git add -A -- ':!go.mod' ':!go.sum'`.

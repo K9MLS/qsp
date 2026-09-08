@@ -4,30 +4,63 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
-### Known defects, not yet fixed
+### Fixed
 
-- **`sendToIPSC` drops frames that arrive over a link.** On a server whose only
-  local station is a Motorola repeater, a frame from an OpenBridge link is
-  judged `every destination refused the frame` and returns before IPSC sees it.
-  Its own comment describes the case it means to survive — no hotspots, deliver
-  to the repeaters anyway — but the escape hatch is `NoHomebrewDestination` and
-  an upstream-sourced frame does not get it. **This is the last thing between
-  QSP and audio in both directions.**
+- **A frame arriving over a link never reached a Motorola repeater**, on a
+  server whose only local station is that repeater. Two defects wearing one
+  message, and the message named neither.
 
-- **Every peering the accept form creates has the wrong timeslot.** OpenBridge forces
-  timeslot 1 — `internal/protocol/openbridge/openbridge.go` says so in a comment
-  — so every frame crossing the link arrives as TS1. The accept handler writes a
-  bridge whose *upstream* endpoint carries the timeslot the operator chose, 2 by
-  default, and nothing arriving from that link can ever match it.
+  `DeliverFromUpstream` **never called `sendToIPSC` at all.** `forward` and
+  `DeliverFromIPSC` both end there; the third ingress path did not, so the
+  Motorola side was never offered a frame from a link. That is §8a's "declared
+  and read by nothing" for the tenth time, and it read as a routing refusal
+  because the result also carried a reason.
 
-  Both ends configured, both links healthy, **no audio in either direction for a
-  day.** The signature is one instance reading TS2 for a transmission the other
-  reads as TS1, and counters that move on one side only.
+  The reason was the second defect. `routing.Core` wrote `every destination
+  refused the frame` whenever nothing was delivered, including when nothing had
+  judged the frame: the link target was skipped by the loop rule and the repeat
+  target resolved to no peers, because there are no hotspots on that server.
+  Had the call site existed, `sendToIPSC` would have read that sentence and
+  turned the frame back.
 
-  Corrected by hand on both servers, after which a Motorola repeater was heard
-  by a hotspot user across the link. The fix belongs in `handleAcceptPeering`:
-  an endpoint naming an OpenBridge upstream takes timeslot 1 whatever the form
-  asked, and `config.Validate` should refuse any other value.
+  `Drop` now carries `NotAJudgement`, set only on the loop rule, and an empty
+  result reports `nothing on the Homebrew side to deliver to` with
+  `NoHomebrewDestination` when nothing judged it. **False stays the blocking
+  answer** on both types, so a drop site added later keeps a refused frame off
+  the repeaters until somebody classifies it. A talkgroup the access lists
+  forbid still reaches no repeater by any path.
+
+  The journal line for that case said "no hotspot has this radio", which was
+  true of the private call that first set the flag and false of a group call
+  arriving over a link. It now says where the frame went rather than guessing
+  why.
+
+- **Every peering the accept form created had the wrong timeslot, and so did
+  the shipped example.** OpenBridge passes all traffic on TS1 —
+  `openbridge.Encode` forces it — so every frame crossing a link arrives as
+  TS1. The accept handler wrote the operator's chosen slot, 2 by default, onto
+  the endpoint naming the link, and nothing arriving from that link could ever
+  match it.
+
+  Both ends configured, both links healthy, **no audio in either direction for
+  a day.** The counters read Sent 50 / Received 0 on one side and Received 28 /
+  Sent 0 on the other, which looks exactly like a network fault.
+
+  `handleAcceptPeering` now writes `config.OpenBridgeTimeslot` on the endpoint
+  naming the link and leaves the operator's slot on the local one, and
+  `config.Validate` refuses any other value on an endpoint naming an enabled
+  OpenBridge link — scoped to OpenBridge, since a homebrew link to XLX or DMR+
+  carries both slots.
+
+  **The rule caught `deploy/pair/alpha.json` and `deploy/pair/bravo.json` on
+  its first run.** The shipped pair example had the same defect, so anyone who
+  copied it got two instances that authenticated, reported healthy and carried
+  nothing. `TestThePairFacesItself` had passed over it for as long as the
+  example has existed.
+
+  Refused rather than silently corrected: the configuration this rejects is one
+  in which the link already carries nothing, so a startup error naming the fix
+  replaces a day of healthy counters and silence.
 
 
 ### Fixed

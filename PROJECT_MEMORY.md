@@ -2787,6 +2787,21 @@ anything:
 - The peering invitation took its network ID from an existing link, so the first
   peering an instance ever attempted could not be generated.
 
+**The tenth instance was not a field but a call site**, and it was found by
+reading the three ingress paths side by side rather than by grepping one name.
+`internal/peers/listener.go` has three: `forward`, `DeliverFromIPSC` and
+`DeliverFromUpstream`. The first two end in `sendToIPSC` and the third did not,
+so no frame arriving over a link was ever offered to a Motorola repeater. The
+method generalises: **when a function is called from some paths of a set and not
+all, list the set and check each one.**
+
+```sh
+grep -n "sendToIPSC" internal/peers/listener.go
+```
+
+Two call sites against three entry points is the signal, and it is as legible
+as zero hits.
+
 A field that is documented, defaulted, validated and included in a map of known
 values looks maintained. None of that means anything reads it.
 
@@ -3015,3 +3030,51 @@ as the cause of the silence. It was not: `sendToIPSC` then dropped them anyway.
 Two faults on one path, and fixing the first made the second visible rather than
 making the symptom go away. **When a change is necessary but the symptom
 persists, do not restate the change as the answer — look for the next gate.**
+
+
+## 8n. What the afternoon of 2026-09-08 taught us
+
+**A handover's diagnosis is a hypothesis, and it was wrong.** The morning
+handover opened on `sendToIPSC` returning early at a named line, with the code
+quoted and the log lines beside it. Every word of it was true about that
+function and it was not the fault: `DeliverFromUpstream` never called
+`sendToIPSC`, so the gate was never reached. The evidence had been read
+correctly and the conclusion did not follow, because the reason in the log was
+true of something else at the same moment.
+
+The general form: **a written diagnosis carries the authority of having been
+investigated, and inherits none of the verification.** Open the file the
+handover names and read the call sites before writing the fix it asks for. It
+cost ten minutes here and would have cost a patch that changed a condition
+nobody evaluates.
+
+**The version in a handover is a claim about the past.** The file said 0.1.107
+and patches 0261–0265; the tree was 0.1.112 with five more commits, two of them
+documentation-only patches that recorded the defects without fixing them. A
+handover appended to across a session grows a stale head. Read `VERSION` and
+`git log`, not the sentence.
+
+**A validation rule's first run is a survey.** The new
+`config.Validate` rule refusing TS2 on an OpenBridge endpoint was written for
+the accept form and immediately failed two shipped example configurations,
+`deploy/pair/alpha.json` and `deploy/pair/bravo.json`, which nobody had
+suspected. `TestThePairFacesItself` had exercised that pair for as long as it
+existed and asserted only that it loaded and faced itself, never that it could
+carry a frame. **When a new rule fires somewhere unexpected, that is a find, not
+a false positive** — read every hit before relaxing anything.
+
+**Prove each half of a two-defect fix separately.** Both faults sat on one path
+and either alone produced the same silence, so a test written after both were
+fixed would pass with either one reverted and nobody would know. Reverting them
+one at a time takes two commands and turns "the tests pass" into "each defect is
+covered".
+
+**Refuse rather than silently correct, when the configuration being refused is
+already broken.** `config.Validate` could have moved a TS2 link endpoint to TS1
+and started. It refuses instead: the document would otherwise say one thing
+while the network does another, and the configuration in question is one where
+the link carries nothing. A startup error naming the fix is strictly better than
+a day of healthy counters and silence. This is not general licence to add
+refusals to a running network — §7 records a service that would not start
+because two rules disagreed — and the distinction is whether the refused
+configuration could ever have worked.

@@ -573,7 +573,18 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 	// being relayed — the frame was carried and the record said nobody had
 	// spoken.
 	l.observe(0, frame)
-	l.deliver(0, l.cfg.Routing.RouteFromUpstream(link, frame, time.Now()))
+	res := l.cfg.Routing.RouteFromUpstream(link, frame, time.Now())
+	l.deliver(0, res)
+	// **The Motorola side was never offered a frame that arrived over a link.**
+	// forward and DeliverFromIPSC both end here; this one did not, so a server
+	// whose only station is a repeater took audio from the far end of an
+	// OpenBridge link, routed it, and stopped. Three ingress paths and two call
+	// sites is §8a's recurring shape, and it read as a routing refusal because
+	// the result also carried a reason.
+	//
+	// Origin 0 rather than a repeater ID: no Motorola peer sent this, so none
+	// should be excluded from receiving it.
+	l.sendToIPSC(0, frame, res)
 }
 
 // DeliverFromIPSC routes a burst converted from a Motorola repeater's audio.
@@ -877,7 +888,13 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		// concluded his text had been thrown away.
 		msg := "transmission not carried"
 		if res.NoHomebrewDestination {
-			msg = "no hotspot has this radio; carried to the Motorola repeaters only"
+			// **Not only the private-call case any more.** This said "no
+			// hotspot has this radio", which was true of the one case that
+			// set the flag on 2026-09-06 and false of a group call arriving
+			// over a link on a server with no hotspots at all. The reason
+			// field carries the specifics; this sentence says where the
+			// frame went.
+			msg = "nowhere on the Homebrew side; carried to the Motorola repeaters only"
 		}
 		l.log.Info(msg,
 			logging.PeerID(uint32(from)),

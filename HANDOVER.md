@@ -1,82 +1,68 @@
-# Handover, 2026-09-08 morning
+# Handover, 2026-09-08 afternoon
 
 Read `NEW-SESSION.md` for the standing brief, then **§8a** of
 `PROJECT_MEMORY.md`, which is the section that matters most, then **§8m** for
 this session. §8b through §8l are superseded and say so.
 
-Version **0.1.107**, patches 0261–0265. Every one of them is on Fedora.
-**0264 and 0265 are on neither server**, and 0264 matters most — see below.
+Version **0.1.113**, patches 0261–0271. 0261–0270 are on Fedora; **0271 is
+new** and on neither server. **0264 and 0265 are still on neither server**, and
+0264 matters — see below.
 
-## Start here: sendToIPSC drops frames that arrive over a link
+## Start here: deploy 0271 and key a radio
 
-**A frame from an OpenBridge link never reaches a Motorola repeater on a server
-whose only local station is that repeater.** This is the last thing between QSP
-and audio in both directions, and it is a code fix.
+**Both directions between an OpenBridge link and a Motorola repeater are
+built, tested and never run on air.** Everything below this line is a claim
+about code, not about a radio.
 
-`sendToIPSC` in `internal/peers/listener.go` returns early when routing set a
-reason:
+0271 fixed the two things that stood between QSP and audio in both directions,
+and the diagnosis in the previous handover was wrong about the first one.
 
-```go
-if res.Reason != "" && !res.NoHomebrewDestination {
-    return
-}
-```
+**`DeliverFromUpstream` never called `sendToIPSC` at all.** The gate named in
+that handover — `res.Reason != "" && !res.NoHomebrewDestination` — was a real
+second defect and would have turned the frame back, but it was never reached.
+Three ingress paths, two call sites: `forward` and `DeliverFromIPSC` both end
+in `sendToIPSC` and this one did not. §8a's "declared and read by nothing",
+now ten times. It read as a routing refusal because the result carried a
+reason at the same moment, and the reason was true of something else.
 
-Its own comment describes the case it is meant to survive — *"a network of
-Motorola repeaters and no hotspots has nowhere on the Homebrew side to deliver
-and the frame should still reach the other repeaters"* — but the escape hatch is
-`NoHomebrewDestination`, and a frame arriving **from an upstream** does not get
-it. Routing reports the generic `every destination refused the frame`, and the
-repeater never sees it.
+The second defect was that reason. `route` wrote `every destination refused the
+frame` whenever nothing was delivered, including when nothing had judged the
+frame — the link target skipped by the loop rule, the repeat target resolved to
+no peers because there are no hotspots. `Drop.NotAJudgement` now separates a
+rule about links from a verdict on a transmission, and false is the blocking
+answer on both types so an unclassified drop keeps a refused frame off the
+repeaters.
 
-Observed on 2026-09-08, test server, one repeater and no hotspots:
+Each half was proved to fail on its own: with the call site removed the test
+fails, and with the call site wired and the classification reverted it fails
+differently.
 
-```
-call started  subsystem=network peer_id=3132910 talkgroup=2 timeslot=1 stream_id=225593410
-transmission not carried  subsystem=network peer_id=0 reason="every destination refused the frame"
-```
+**The work:** deploy, check `qsp --version` reads 0.1.113, and key up on the
+Pi-Star. A hotspot user on production should be heard on the test server's
+repeater. The reverse already works.
 
-The repeater's own transmission 3 seconds later carried normally, because that
-direction does not pass through this gate.
+## Then: the accept form's timeslot, and what the new rule found
 
-**The work:** read `routing.Result` and find where `NoHomebrewDestination` is
-set; decide whether an upstream-sourced frame with no local Homebrew peers is
-the same case; build the test from the log lines above. Do not widen the
-condition without knowing what `Reason` values reach it — a frame refused by
-access control must still be refused.
+The accept handler wrote the operator's chosen slot onto the endpoint naming
+the link. OpenBridge passes all traffic on TS1, so nothing arriving from that
+link could ever match it — both ends configured, both healthy, no audio in
+either direction for a day, counters reading Sent 50 / Received 0 on one side
+and Received 28 / Sent 0 on the other.
 
-## Then: every peering the accept form creates has the wrong timeslot
+`handleAcceptPeering` now writes `config.OpenBridgeTimeslot` on the link
+endpoint and keeps the operator's slot on the local one. `config.Validate`
+refuses any other value on an endpoint naming an enabled **OpenBridge** link,
+scoped so a homebrew link to XLX or DMR+ keeps both slots.
 
-**OpenBridge forces timeslot 1.** `internal/protocol/openbridge/openbridge.go`
-says so: *"The timeslot is forced to 1. Proper OpenBridge passes all traffic on
-TS1."* Every frame crossing an OpenBridge link arrives as TS1, by protocol.
+**On its first run the rule refused `deploy/pair/alpha.json` and
+`deploy/pair/bravo.json`.** The shipped pair example carried the same defect,
+so anyone who copied it got two instances that authenticated, reported healthy
+and carried nothing. `TestThePairFacesItself` had passed over it for as long as
+the example has existed. Both corrected.
 
-The accept handler writes a bridge whose **upstream** endpoint carries the
-timeslot the operator chose — 2 by default, from the form. So nothing arriving
-from that link can ever match it, in either direction:
-
-- Pi-Star to production on TS2, across the link as TS1, refused by the far
-  end's TS2 bridge.
-- Repeater to the test server on TS2, across the link as TS1, refused by
-  production's TS2 bridge.
-
-Both ends were configured, both links reported healthy, and **no audio crossed
-in either direction for a day**. The counters said `Sent 50 / Received 0` on one
-side and `Received 28 / Sent 0` on the other, which reads like a network fault
-and is not one.
-
-Corrected by hand on both servers on 2026-09-08: the endpoint naming an upstream
-is timeslot 1, the local peer endpoint keeps the operator's slot. **After that
-change, a Motorola repeater was heard by a hotspot user across the link.**
-
-**This was necessary and was not the whole story.** It is why a link-sourced
-frame reaches routing at all; `sendToIPSC` above is why it goes no further.
-
-**The fix belongs in `handleAcceptPeering`** in `internal/server/peering.go`,
-where the bridge is built: an endpoint naming an OpenBridge upstream takes
-timeslot 1 regardless of what the form asked for, and `config.Validate` should
-refuse any other value so a hand-edited document cannot recreate it. Neither is
-built.
+**A hand-edited `qsp.json` on either server will now refuse to start if its
+link endpoint is on TS2.** Both were corrected by hand on 2026-09-08, so
+neither should trip, but check before restarting rather than after.
 
 ## Then: a repeater keys up on network audio and transmits silence
 

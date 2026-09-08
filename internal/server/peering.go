@@ -401,12 +401,28 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	})
 	// A bridge, because a link with nothing routing to it opens, authenticates
 	// and carries nothing — which is the failure this whole page exists after.
+	//
+	// **The endpoint naming the link is timeslot 1, whatever the form asked.**
+	// OpenBridge passes all traffic on TS1 — openbridge.Encode forces it — so
+	// every frame crossing the link arrives as TS1 at the far end and leaves as
+	// TS1 from here. An endpoint on TS2 therefore matches nothing in either
+	// direction: it is not a preference the operator can hold, it is a bridge
+	// that cannot carry.
+	//
+	// This form defaulted to 2, and both ends of a peering were configured,
+	// both links reported healthy, and no audio crossed in either direction for
+	// a day. The counters read Sent 50 / Received 0 on one side and Received 28
+	// / Sent 0 on the other, which looks exactly like a network fault.
+	//
+	// The local endpoint keeps the operator's slot: that one is a real choice
+	// about this network's own peers. config.Validate refuses any other value
+	// on the link endpoint, so a hand-edited document cannot recreate it.
 	cfg.DMR.Bridges = append(cfg.DMR.Bridges, config.Bridge{
 		Name:    name + "-link",
 		Enabled: true,
 		Endpoints: []config.Endpoint{
 			{Talkgroup: tg, Timeslot: slot},
-			{Upstream: name, Talkgroup: tg, Timeslot: slot},
+			{Upstream: name, Talkgroup: tg, Timeslot: config.OpenBridgeTimeslot},
 		},
 	})
 

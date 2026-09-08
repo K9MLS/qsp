@@ -67,6 +67,16 @@ type Drop struct {
 	To Endpoint
 	// Reason is operator-facing.
 	Reason string
+	// NotAJudgement says this drop decided nothing about whether the frame
+	// deserves to be carried. The loop rule is the only one: a frame from a
+	// link is not sent back to a link because that is a rule about links,
+	// not a verdict on the transmission, and the Motorola repeaters should
+	// still hear it.
+	//
+	// **False is the blocking answer**, matching Result.NoHomebrewDestination,
+	// so a drop site added later and not classified keeps today's behaviour
+	// rather than quietly leaking a refused frame to the repeaters.
+	NotAJudgement bool
 }
 
 // Result is the outcome of routing one frame.
@@ -520,6 +530,7 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 					To: target.Endpoint,
 					Reason: fmt.Sprintf("arrived from upstream %s; a frame from a link is never "+
 						"sent to a link", origin.Upstream),
+					NotAJudgement: true,
 				})
 				continue
 			}
@@ -666,7 +677,33 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	}
 
 	if len(res.Deliveries) == 0 && len(res.Upstreams) == 0 && res.Reason == "" {
-		res.Reason = "every destination refused the frame"
+		// **Nothing delivered is not the same as everything refused**, and
+		// writing one sentence for both cost a day of silence. A frame from a
+		// link, on a server whose only station is a Motorola repeater, reaches
+		// here having been judged by nobody: the link target was skipped by the
+		// loop rule, and the repeat target resolved to no Homebrew peers
+		// because there are no hotspots. That was reported as
+		// "every destination refused the frame" and the repeater never heard
+		// it — while a group call between two repeaters on the same server
+		// worked, because that path does not arrive from a link.
+		//
+		// A destination that judged the frame still blocks: a banned radio or
+		// a held slot must reach nobody by any path. Only a drop that decided
+		// nothing is passed over, so an unclassified drop keeps the frame off
+		// the Motorola side.
+		judged := false
+		for _, d := range res.Drops {
+			if !d.NotAJudgement {
+				judged = true
+				break
+			}
+		}
+		if judged {
+			res.Reason = "every destination refused the frame"
+		} else {
+			res.Reason = "nothing on the Homebrew side to deliver to"
+			res.NoHomebrewDestination = true
+		}
 	}
 	return res
 }

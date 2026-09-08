@@ -675,3 +675,169 @@ func deniedTalkgroup(t *testing.T, tg uint32) access.Lists {
 	}
 	return access.Lists{Talkgroup1: l, Talkgroup2: l}
 }
+
+// noHomebrewPeers is a peer table with nothing in it.
+//
+// It is the test server as it actually stood on 2026-09-08: one Motorola
+// repeater on the IPSC listener, no hotspots, and an OpenBridge link to
+// another QSP instance. Every hotspot-shaped assumption in routing resolves to
+// nothing here, which is why a configuration nobody had run before found a
+// defect that three stations and two repeaters had not.
+type noHomebrewPeers struct{}
+
+func (noHomebrewPeers) Ready(hbp.RepeaterID) bool    { return false }
+func (noHomebrewPeers) ReadyPeers() []hbp.RepeaterID { return nil }
+
+// linkOnlyListener builds a listener with a link, no Homebrew peers, and a
+// counter on the Motorola side.
+func linkOnlyListener(t *testing.T, bridges []routing.Bridge, lists access.Lists) (*peers.Listener, *int) {
+	t.Helper()
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(bridges)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: noHomebrewPeers{}, Access: lists,
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	toIPSC := new(int)
+	l, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+		Calls: calls.NewTracker(calls.Options{}),
+		IPSC:  func(uint32, hbp.Data) { *toIPSC++ },
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	return l, toIPSC
+}
+
+// pairBridge is the bridge the accept form writes: this network's own
+// talkgroup on one endpoint and the link on the other, both TS1 because
+// OpenBridge carries nothing else.
+func pairBridge(tg uint32) routing.Bridge {
+	return routing.Bridge{
+		Name:    "pair-link",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: routing.AnyPeer, Talkgroup: tg, Timeslot: hbp.Timeslot1},
+			{Upstream: "pair", Talkgroup: tg, Timeslot: hbp.Timeslot1},
+		},
+	}
+}
+
+// TestAFrameFromALinkReachesTheRepeater is the transmission that was heard
+// nowhere.
+//
+// A hotspot user keyed up on one QSP instance, the frame crossed an OpenBridge
+// link to a second instance whose only station is a Motorola repeater, and the
+// repeater never transmitted. The journal said:
+//
+//	call started  subsystem=network peer_id=3132910 talkgroup=2 timeslot=1 stream_id=225593410
+//	transmission not carried  subsystem=network peer_id=0 reason="every destination refused the frame"
+//
+// **Two defects wearing one message.** DeliverFromUpstream never offered the
+// frame to the Motorola side at all — forward and DeliverFromIPSC both end in
+// sendToIPSC and this third path did not — and had it done so, sendToIPSC
+// would have turned it back, because routing reported a refusal for a frame
+// nothing refused: there were simply no Homebrew peers to resolve.
+//
+// The repeater's own transmission three seconds later carried normally, which
+// is what made this look like a link fault rather than a routing one.
+func TestAFrameFromALinkReachesTheRepeater(t *testing.T) {
+	l, toIPSC := linkOnlyListener(t, []routing.Bridge{pairBridge(2)}, access.Lists{})
+
+	// TS1 because OpenBridge forces it; this is the frame as it arrives.
+	l.DeliverFromUpstream("pair", hbp.Data{
+		RepeaterID: 3132910, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 225593410,
+	})
+	if *toIPSC == 0 {
+		t.Error("a frame from an OpenBridge link reached no Motorola repeater; " +
+			"a member keys up on one instance and the repeater on the other stays silent")
+	}
+}
+
+// TestAJudgedFrameFromALinkReachesNoRepeater is why the test above is not
+// simply ignoring routing's verdict.
+//
+// The escape hatch has to be narrow: a frame nothing judged goes to the
+// repeaters, and a frame something refused goes nowhere by any path. A
+// talkgroup the access lists forbid is the case that distinguishes them,
+// because it is refused by a judgement rather than by an empty peer table.
+func TestAJudgedFrameFromALinkReachesNoRepeater(t *testing.T) {
+	l, toIPSC := linkOnlyListener(t, []routing.Bridge{pairBridge(99)}, deniedTalkgroup(t, 99))
+
+	l.DeliverFromUpstream("pair", hbp.Data{
+		RepeaterID: 3132910, SourceID: 3132910, TargetID: 99,
+		Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 225593411,
+	})
+	if *toIPSC != 0 {
+		t.Errorf("a talkgroup the access lists forbid reached %d repeaters over a link", *toIPSC)
+	}
+}
+
+// TestTheLoopRuleIsNotAJudgement covers the second network a club adds.
+//
+// With one link the routing table excludes the endpoint the frame arrived on,
+// so no drop is recorded at all and the frame is unjudged by being untouched.
+// With two, the frame is offered to the other link and the loop rule refuses
+// it — a rule about links, not a verdict on the transmission. Classifying that
+// drop as a refusal would silence every repeater on any server carrying more
+// than one link, which is the shape this network is growing into.
+func TestTheLoopRuleIsNotAJudgement(t *testing.T) {
+	bridge := routing.Bridge{
+		Name:    "two-links",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: routing.AnyPeer, Talkgroup: 2, Timeslot: hbp.Timeslot1},
+			{Upstream: "pair", Talkgroup: 2, Timeslot: hbp.Timeslot1},
+			{Upstream: "other", Talkgroup: 2, Timeslot: hbp.Timeslot1},
+		},
+	}
+	table, err := routing.NewTable([]routing.Bridge{bridge})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: noHomebrewPeers{}})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	res := core.RouteFromUpstream("pair", hbp.Data{
+		RepeaterID: 3132910, SourceID: 3132910, TargetID: 2,
+		Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
+		FrameType: hbp.FrameTypeVoiceSync, StreamID: 225593412,
+	}, time.Now())
+
+	if len(res.Drops) == 0 {
+		t.Fatal("the loop rule recorded no drop, so this test is not exercising it")
+	}
+	for _, d := range res.Drops {
+		if !d.NotAJudgement {
+			t.Errorf("the loop rule is classified as a judgement: %q", d.Reason)
+		}
+	}
+	if !res.NoHomebrewDestination {
+		t.Errorf("a frame only the loop rule touched is reported as refused: %q", res.Reason)
+	}
+	if res.Reason == "every destination refused the frame" {
+		t.Error("the reason claims a refusal nobody made; that sentence cost a day of silence")
+	}
+}

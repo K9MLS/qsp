@@ -45,12 +45,18 @@ func bridgesReaching(us ...Upstream) []Bridge {
 		if !u.Enabled {
 			continue
 		}
+		// An endpoint naming an OpenBridge link is TS1, because that is what
+		// the protocol carries. A homebrew link keeps the ordinary slot.
+		linkSlot := OpenBridgeTimeslot
+		if u.HomebrewProtocol() {
+			linkSlot = 2
+		}
 		out = append(out, Bridge{
 			Name:    "to-" + u.Name,
 			Enabled: true,
 			Endpoints: []Endpoint{
 				{Talkgroup: 9, Timeslot: 2},
-				{Upstream: u.Name, Talkgroup: 9, Timeslot: 2},
+				{Upstream: u.Name, Talkgroup: 9, Timeslot: linkSlot},
 			},
 		})
 	}
@@ -584,5 +590,70 @@ func TestOpenBridgeNeedsNoCallsign(t *testing.T) {
 
 	if err := c.Validate(); err != nil {
 		t.Fatalf("an OpenBridge link was refused for having no callsign: %v", err)
+	}
+}
+
+// TestAnOpenBridgeEndpointMustBeTimeslot1 is the day no audio crossed.
+//
+// OpenBridge passes all traffic on TS1 — openbridge.Encode forces it on every
+// frame sent — so an endpoint naming an OpenBridge link on TS2 matches nothing
+// arriving and produces nothing that can leave. Both ends of a peering were
+// configured, both links reported healthy, and the counters read Sent 50 /
+// Received 0 on one side and Received 28 / Sent 0 on the other, which looks
+// exactly like a network fault and is not one.
+//
+// Refused rather than quietly corrected. The configuration this rejects is one
+// in which the link already carries nothing, so a startup error naming the fix
+// replaces a day of healthy counters and silence.
+func TestAnOpenBridgeEndpointMustBeTimeslot1(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Bridges[0].Endpoints[1].Timeslot = 2
+
+	msg := upstreamProblems(t, c)
+	if !strings.Contains(msg, "endpoints[1].timeslot") {
+		t.Errorf("a bridge endpoint naming an OpenBridge link on TS2 was accepted:\n%s", msg)
+	}
+	// The advice has to name the slot, because the operator reading it is
+	// looking at a link that authenticated and carried nothing.
+	if !strings.Contains(msg, "TS1") {
+		t.Errorf("the refusal does not say which slot to use:\n%s", msg)
+	}
+}
+
+// TestTheLocalEndpointKeepsItsOwnSlot, because only the link is forced.
+//
+// A club's talkgroup lives on TS2 by convention and that is a real choice about
+// this network's own peers. Forcing both endpoints would move every member's
+// traffic to slot 1 to satisfy a rule about somebody else's link.
+func TestTheLocalEndpointKeepsItsOwnSlot(t *testing.T) {
+	c := withUpstreams(validUpstream())
+	c.DMR.Bridges[0].Endpoints[0].Timeslot = 2
+	c.DMR.Bridges[0].Endpoints[1].Timeslot = OpenBridgeTimeslot
+
+	if msg := upstreamProblems(t, c); msg != "" {
+		t.Errorf("a local endpoint on TS2 beside an OpenBridge link on TS1 was rejected:\n%s", msg)
+	}
+}
+
+// TestAHomebrewLinkKeepsBothSlots.
+//
+// The rule is OpenBridge's, not every link's. A homebrew link logs into another
+// master as a peer and carries both timeslots exactly as a repeater does, so an
+// endpoint on TS2 is ordinary there. Scoping this wrongly would refuse every
+// XLX and DMR+ configuration on the network.
+func TestAHomebrewLinkKeepsBothSlots(t *testing.T) {
+	u := validUpstream()
+	u.Protocol = UpstreamHomebrew
+	u.ListenAddress = ""
+	u.PassphraseFile = ""
+	u.RepeaterID = 3132911
+	u.PasswordFile = "/var/lib/qsp/xlx.pass"
+	u.Identity = &UpstreamIdentity{Callsign: "K9MLS"}
+
+	c := withUpstreams(u)
+	c.DMR.Bridges[0].Endpoints[1].Timeslot = 2
+
+	if msg := upstreamProblems(t, c); strings.Contains(msg, "endpoints[1].timeslot") {
+		t.Errorf("a homebrew link was refused for carrying TS2:\n%s", msg)
 	}
 }

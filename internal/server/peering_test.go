@@ -558,3 +558,59 @@ func TestALinkNameCannotEscapeTheDataDirectoryFromTheForm(t *testing.T) {
 		t.Error("a passphrase file was written outside the data directory")
 	}
 }
+
+// TestTheLinkEndpointIsAlwaysTimeslot1 is the day both ends were configured,
+// both links reported healthy, and no audio crossed in either direction.
+//
+// The form has a timeslot box, it defaults to 2 because a club talkgroup lives
+// on TS2, and the handler wrote that value onto **both** endpoints of the
+// bridge — including the one naming the link. OpenBridge passes all traffic on
+// TS1, so every frame crossing the link arrives as TS1 and is refused by a TS2
+// bridge at the far end. The counters read Sent 50 / Received 0 on one side and
+// Received 28 / Sent 0 on the other.
+//
+// The slot on the link endpoint is not an operator preference. It is a
+// property of the protocol, and asking the question invites the wrong answer.
+func TestTheLinkEndpointIsAlwaysTimeslot1(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, cm, _ := acceptHarness(t)
+
+	// Timeslot 2, exactly as the form sends it by default.
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"pair","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	if rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body); rec.Code != http.StatusOK {
+		t.Fatalf("accept failed with %d: %s", rec.Code, rec.Body.String())
+	}
+
+	saved := cm.current
+	if len(saved.DMR.Bridges) != 1 {
+		t.Fatalf("the accept wrote %d bridge(s), want 1", len(saved.DMR.Bridges))
+	}
+	var link, local *config.Endpoint
+	for i := range saved.DMR.Bridges[0].Endpoints {
+		e := &saved.DMR.Bridges[0].Endpoints[i]
+		if e.Upstream != "" {
+			link = e
+		} else {
+			local = e
+		}
+	}
+	if link == nil || local == nil {
+		t.Fatalf("the bridge has no link and local endpoint pair: %+v", saved.DMR.Bridges[0].Endpoints)
+	}
+	if link.Timeslot != config.OpenBridgeTimeslot {
+		t.Errorf("the endpoint naming the link is on TS%d; nothing arriving from an "+
+			"OpenBridge link can ever match it", link.Timeslot)
+	}
+	// The other half of the rule: the operator's own network keeps its slot.
+	if local.Timeslot != 2 {
+		t.Errorf("the local endpoint was moved to TS%d; the club's talkgroup is on TS2 "+
+			"and that is a real choice", local.Timeslot)
+	}
+	// And what it wrote has to survive its own validator.
+	if err := saved.Validate(); err != nil {
+		t.Errorf("the accept handler wrote a configuration Validate refuses: %v", err)
+	}
+}
