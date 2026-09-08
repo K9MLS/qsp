@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -38,6 +39,24 @@ type LinkStatus struct {
 	Listening string `json:"listening,omitempty"`
 	// NetworkID is what this instance announces on this link.
 	NetworkID uint32 `json:"network_id,omitempty"`
+	// Announces is what this instance calls itself to the far end, whatever
+	// the protocol calls that field.
+	//
+	// **Derived here rather than chosen in the page**, because the page had to
+	// guess and guessed wrong: it printed the network ID or, absent one, the
+	// words "no network ID". A qsp link has no network ID and never will — it
+	// announces a DMR ID, like the repeater it presents itself as — so a
+	// working link reported a missing field as though it were a fault.
+	Announces string `json:"announces,omitempty"`
+	// Enabled reports whether the configuration asks for this link at all.
+	//
+	// **A disabled link is not a link awaiting a restart**, and this page said
+	// it was: reconcileLinks never read Enabled, so a link turned off in the
+	// configuration was described as "configured and not open; QSP has not
+	// been restarted since this link was added" and advised "restart QSP to
+	// open this link". Both sentences are false, and following the advice
+	// means restarting a live network to discover it changed nothing.
+	Enabled bool `json:"enabled"`
 	// Open reports whether the socket is bound.
 	Open bool `json:"open"`
 	// Sent and Received are frames each way.
@@ -183,6 +202,26 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 //
 // So this does not close or open anything. It says which of the three states
 // each link is in, and what a restart would do about it.
+// announces reports what this instance calls itself to the far end of a link.
+//
+// OpenBridge identifies the sending *server* by a network ID in every frame. A
+// homebrew or qsp link registers as a station and is known by its DMR ID
+// instead. They are different fields answering the same operator question, and
+// leaving the page to choose between them produced "no network ID" beside a
+// link that was carrying traffic.
+func announces(u config.Upstream) string {
+	if u.HomebrewProtocol() {
+		if u.RepeaterID == 0 {
+			return ""
+		}
+		return fmt.Sprintf("%d", u.RepeaterID)
+	}
+	if u.NetworkID == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d", u.NetworkID)
+}
+
 func reconcileLinks(running []LinkStatus, cfg config.Config) []LinkStatus {
 	configured := make(map[string]config.Upstream, len(cfg.DMR.Upstreams))
 	order := make([]string, 0, len(cfg.DMR.Upstreams))
@@ -198,8 +237,12 @@ func reconcileLinks(running []LinkStatus, cfg config.Config) []LinkStatus {
 	for _, l := range running {
 		key := strings.ToLower(strings.TrimSpace(l.Name))
 		seen[key] = true
-		if _, ok := configured[key]; ok {
+		if u, ok := configured[key]; ok {
 			l.Configured = true
+			l.Enabled = u.Enabled
+			// Filled from the configuration, because the running link reports
+			// only the field its own protocol has. See announces.
+			l.Announces = announces(u)
 			out = append(out, l)
 			continue
 		}
@@ -225,20 +268,33 @@ func reconcileLinks(running []LinkStatus, cfg config.Config) []LinkStatus {
 			continue
 		}
 		u := configured[key]
-		out = append(out, LinkStatus{
-			Name:           u.Name,
-			Protocol:       u.Protocol,
-			FarEnd:         u.Address,
-			Listening:      u.ListenAddress,
-			NetworkID:      u.NetworkID,
-			Open:           false,
-			Configured:     true,
-			PendingRestart: "restarting QSP will open it",
-			Summary: "configured and not open; QSP has not been restarted " +
-				"since this link was added",
-			Advice: "restart QSP to open this link — until then it carries " +
-				"nothing in either direction",
-		})
+		l := LinkStatus{
+			Name:       u.Name,
+			Protocol:   u.Protocol,
+			FarEnd:     u.Address,
+			Listening:  u.ListenAddress,
+			NetworkID:  u.NetworkID,
+			Announces:  announces(u),
+			Enabled:    u.Enabled,
+			Open:       false,
+			Configured: true,
+		}
+		if !u.Enabled {
+			// Turned off deliberately. A restart does nothing here, and saying
+			// otherwise sends an operator to restart a live network for a
+			// change that will not happen.
+			l.Summary = "disabled in the configuration, so no socket is opened for it"
+			l.Advice = "set enabled to true in dmr.upstreams and restart, or remove the " +
+				"link; a restart on its own will not open a link that is turned off"
+			out = append(out, l)
+			continue
+		}
+		l.PendingRestart = "restarting QSP will open it"
+		l.Summary = "configured and not open; QSP has not been restarted " +
+			"since this link was added"
+		l.Advice = "restart QSP to open this link — until then it carries " +
+			"nothing in either direction"
+		out = append(out, l)
 	}
 	return out
 }

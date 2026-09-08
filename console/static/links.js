@@ -49,6 +49,12 @@
      * has one. Two removed links showed here as healthy for three hours while
      * the remover correctly answered 404 for both. */
     if (!link.configured) { return { label: "Removed", kind: "warn" }; }
+    /* **Disabled is not awaiting a restart.** This page said it was, because
+     * the reconcile never read the enabled flag: a link turned off in the
+     * configuration was labelled "Awaiting restart" and advised to restart QSP
+     * to open it. Restarting a live network to discover nothing changed is an
+     * expensive way to read a boolean. */
+    if (!link.enabled) { return { label: "Disabled", kind: "warn" }; }
     if (!link.open && link.pending_restart) {
       return { label: "Awaiting restart", kind: "warn" };
     }
@@ -96,7 +102,9 @@
         '<dl class="link__facts">' +
         fact("Far end", l.far_end || "not configured") +
         fact("Protocol", l.protocol || "unknown") +
-        fact("Announces", l.network_id ? String(l.network_id) : "no network ID") +
+        /* Whatever the protocol calls it; the server decides, because the page
+           * guessed and printed "no network ID" beside a working qsp link. */
+          fact("Announces", l.announces || "not announced") +
         /* Both directions, always. One is not evidence of the other: a link
          * that has sent thousands and received none is working perfectly on a
          * quiet network, or is unauthenticated at the far end. */

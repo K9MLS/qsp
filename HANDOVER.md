@@ -4,7 +4,7 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.120**, patches 0261–0278. Everything through 0273 is deployed to
+Version **0.1.121**, patches 0261–0279. Everything through 0273 is deployed to
 production and the test server; 0274 to 0276 are on Fedora only.
 
 **0276 changes the container build**, so the test server needs a rebuild rather

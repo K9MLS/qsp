@@ -67,6 +67,28 @@ All notable changes to QSP. Dates are UTC.
   `TestAFrameFromALinkIsNotRelayedYet` was written to fail when this landed. It
   did, and it has been replaced rather than deleted.
 
+### Fixed
+
+- **A disabled link was described as awaiting a restart, and advised to
+  restart.** `reconcileLinks` never read `Enabled`, so a link deliberately
+  turned off in the configuration was reported as *"configured and not open;
+  QSP has not been restarted since this link was added"* with the advice
+  *"restart QSP to open this link"*. Both sentences are false. Following the
+  advice means restarting a live network — dropping every station on it — to
+  discover that nothing changed.
+
+  Seen on the test server on 2026-09-08, on a link turned off half an hour
+  earlier. **And the test that should have caught it made the same mistake**:
+  its fixture omitted `Enabled`, so it described a disabled link while
+  asserting a restart would open one.
+
+- **A working `qsp` link displayed "no network ID" as though it were a fault.**
+  The page printed the network ID, or those words when there was none — and a
+  qsp link has no network ID and never will. It registers as a station and is
+  known by its DMR ID. Same operator question, different field, and the page is
+  not the place to choose between them: the server now reports what the link
+  announces, whatever its protocol calls that.
+
 ### Added
 
 - **A link may not carry the master's own DMR ID, and two links may not share

@@ -50,8 +50,12 @@ func TestARemovedLinkStopsLookingHealthy(t *testing.T) {
 // unable to see it at all, which is the silence this page exists to end.
 func TestAnAcceptedLinkIsListedBeforeItIsOpen(t *testing.T) {
 	var cfg config.Config
+	// **Enabled, and it was not.** This fixture omitted the flag, so it
+	// described a link turned off in the configuration while asserting that a
+	// restart would open one — the same mistake reconcileLinks was making, in
+	// the test that was supposed to catch it.
 	cfg.DMR.Upstreams = []config.Upstream{{
-		Name: "cameron", Protocol: "openbridge",
+		Name: "cameron", Protocol: "openbridge", Enabled: true,
 		Address: "kb9tyc.example.com:62045", ListenAddress: "0.0.0.0:62045",
 		NetworkID: 3127045,
 	}}
@@ -196,5 +200,83 @@ func TestAnInstanceWithNoLinksSaysSoAboutTheConfiguration(t *testing.T) {
 	}
 	if strings.Contains(body.Reason, "build") {
 		t.Errorf("the reason blames the build for a configuration fact: %q", body.Reason)
+	}
+}
+
+// TestADisabledLinkIsNotAwaitingARestart is what an operator saw after turning
+// a link off.
+//
+// reconcileLinks never read Enabled, so a disabled link was described as
+// "configured and not open; QSP has not been restarted since this link was
+// added" and advised to "restart QSP to open this link". Both sentences are
+// false, and following the advice means restarting a live network — dropping
+// every station on it — to discover that nothing changed.
+//
+// Observed on the test server on 2026-09-08, on a link that had been disabled
+// deliberately half an hour earlier.
+func TestADisabledLinkIsNotAwaitingARestart(t *testing.T) {
+	var cfg config.Config
+	cfg.DMR.Upstreams = []config.Upstream{{
+		Name: "QSP Test Server", Protocol: "openbridge", Enabled: false,
+		Address: "192.168.1.247:62045", ListenAddress: "0.0.0.0:62045",
+		NetworkID: 9999999,
+	}}
+
+	out := reconcileLinks(nil, cfg)
+	if len(out) != 1 {
+		t.Fatalf("got %d links, want the disabled one listed", len(out))
+	}
+	l := out[0]
+	if l.Enabled {
+		t.Error("a disabled link reports itself as enabled")
+	}
+	if l.PendingRestart != "" {
+		t.Errorf("a disabled link claims a restart would change it: %q", l.PendingRestart)
+	}
+	if !strings.Contains(l.Summary, "disabled") {
+		t.Errorf("the summary does not say it is disabled: %q", l.Summary)
+	}
+	if !strings.Contains(l.Advice, "enabled") {
+		t.Errorf("the advice does not say how to turn it back on: %q", l.Advice)
+	}
+	// Still listed. A link an operator turned off and cannot see is the same
+	// silence this page exists to end.
+	if !l.Configured {
+		t.Error("a disabled link is reported as unconfigured, which means removed")
+	}
+}
+
+// TestAQSPLinkAnnouncesItsDMRID, because it has no network ID and never will.
+//
+// The page printed the network ID or, absent one, the words "no network ID" —
+// so a qsp link carrying traffic displayed a missing field as though it were a
+// fault. OpenBridge identifies the sending server by a network ID; a link that
+// registers as a station is known by its DMR ID. Same question, different
+// field, and the page is not the place to choose between them.
+func TestAQSPLinkAnnouncesItsDMRID(t *testing.T) {
+	var cfg config.Config
+	cfg.DMR.Upstreams = []config.Upstream{
+		{Name: "production", Protocol: config.UpstreamQSP, Enabled: true,
+			Address: "192.168.1.247:62031", RepeaterID: 3132912},
+		{Name: "cameron", Protocol: config.UpstreamOpenBridge, Enabled: true,
+			Address: "kb9tyc.example.com:62045", ListenAddress: "0.0.0.0:62045",
+			NetworkID: 3127045},
+	}
+
+	out := reconcileLinks(nil, cfg)
+	if len(out) != 2 {
+		t.Fatalf("got %d links, want 2", len(out))
+	}
+	for _, l := range out {
+		switch l.Name {
+		case "production":
+			if l.Announces != "3132912" {
+				t.Errorf("a qsp link announces %q, want its DMR ID 3132912", l.Announces)
+			}
+		case "cameron":
+			if l.Announces != "3127045" {
+				t.Errorf("an OpenBridge link announces %q, want its network ID 3127045", l.Announces)
+			}
+		}
 	}
 }
