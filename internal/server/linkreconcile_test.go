@@ -1,6 +1,8 @@
 package server
 
 import (
+	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 
@@ -119,5 +121,80 @@ func TestTheNamesAreMatchedTheWayTheRemoverMatchesThem(t *testing.T) {
 	}
 	if !out[0].Configured || out[0].PendingRestart != "" {
 		t.Errorf("a configured link was reported as removed: %+v", out[0])
+	}
+}
+
+// TestAnAcceptedLinkAppearsOnAnInstanceThatBootedWithNone is the defect a live
+// peering found, in code written to prevent exactly this.
+//
+// cmd/qsp decides the link source is nil at startup, from the startup
+// configuration: `len(cfg.DMR.Upstreams) == 0` means no source for the life of
+// the process. handleLinks returned on that before reading the configuration at
+// all, so a peering accepted afterwards could never appear, whatever the
+// document said — and the page reported "this build has no links configured",
+// which was true when written and false the moment a link was added.
+//
+// **That is every fresh install accepting its first peering.** The exchange
+// completed across two servers, both audit events were written, the
+// configuration was applied, and the operator saw an empty page.
+func TestAnAcceptedLinkAppearsOnAnInstanceThatBootedWithNone(t *testing.T) {
+	cm := newStubConfig()
+	cfg := cm.current
+	cfg.DMR.Upstreams = []config.Upstream{{
+		Name: "bcara", Protocol: "openbridge", Enabled: true,
+		Address: "qsp.hopto.me:62045", ListenAddress: "0.0.0.0:62045",
+		NetworkID: 3132910,
+	}}
+	cm.current = cfg
+
+	srv, a := newConfigServer(t, cm, &recordingAudit{})
+	// Booted with no upstreams, so cmd/qsp handed the server a nil source.
+	srv.opts.Links = nil
+
+	rec := authed(t, srv, a, http.MethodGet, "/api/links", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("the links page failed with %d", rec.Code)
+	}
+	var body linksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if len(body.Links) != 1 {
+		t.Fatalf("an accepted link is in the configuration and %d are shown: %s",
+			len(body.Links), rec.Body.String())
+	}
+	if !body.Links[0].Configured || body.Links[0].Open {
+		t.Errorf("the link is misreported: %+v", body.Links[0])
+	}
+	if body.Links[0].PendingRestart == "" {
+		t.Error("nothing tells the operator a restart will open it")
+	}
+	// The old message claimed something about the build that the document
+	// contradicts.
+	if body.Reason != "" {
+		t.Errorf("a page listing a link also says %q", body.Reason)
+	}
+}
+
+// TestAnInstanceWithNoLinksSaysSoAboutTheConfiguration keeps the empty case
+// honest, rather than trading one wrong sentence for no sentence.
+func TestAnInstanceWithNoLinksSaysSoAboutTheConfiguration(t *testing.T) {
+	cm := newStubConfig()
+	srv, a := newConfigServer(t, cm, &recordingAudit{})
+	srv.opts.Links = nil
+
+	rec := authed(t, srv, a, http.MethodGet, "/api/links", "")
+	var body linksResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if len(body.Links) != 0 {
+		t.Fatalf("links appeared from an empty configuration: %s", rec.Body.String())
+	}
+	if body.Reason == "" {
+		t.Error("an empty links page explains nothing")
+	}
+	if strings.Contains(body.Reason, "build") {
+		t.Errorf("the reason blames the build for a configuration fact: %q", body.Reason)
 	}
 }

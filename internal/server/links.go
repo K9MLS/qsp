@@ -120,23 +120,44 @@ type linkIdentity struct {
 func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 	body := linksResponse{Links: []LinkStatus{}, GeneratedAt: time.Now().UTC()}
 
-	if s.opts.Links == nil {
-		body.Reason = "this build has no links configured"
+	// **The running set is optional and the configuration is not.**
+	//
+	// This used to return here when s.opts.Links was nil, before anything read
+	// the configuration — and cmd/qsp decides that nil at startup, from the
+	// startup configuration: an instance that booted with no upstreams has no
+	// link source for the life of the process. So a peering accepted after
+	// boot could never appear on this page, whatever the document said, and
+	// the page reported "this build has no links configured" — true when it
+	// was written, false the moment a link was added.
+	//
+	// That is the case the reconcile exists for, and it was the one case the
+	// reconcile could not reach. It is also every fresh install accepting its
+	// first peering, which is the most important use this page has.
+	var running []LinkStatus
+	if s.opts.Links != nil {
+		running = s.opts.Links.LinkStatuses()
+	}
+
+	if s.opts.Config == nil {
+		body.Links = running
+		if body.Links == nil {
+			body.Links = []LinkStatus{}
+		}
 		writeJSON(w, s.log, http.StatusOK, body)
 		return
 	}
-	body.Links = s.opts.Links.LinkStatuses()
-	if body.Links == nil {
-		body.Links = []LinkStatus{}
+
+	cfg := s.opts.Config.Current()
+	body.Links = reconcileLinks(running, cfg)
+	body.Identity = linkIdentity{
+		Callsign:  linkCallsign(cfg),
+		NetworkID: firstNetworkID(cfg),
+		Address:   defaultLinkAddress(cfg),
 	}
-	if s.opts.Config != nil {
-		cfg := s.opts.Config.Current()
-		body.Links = reconcileLinks(body.Links, cfg)
-		body.Identity = linkIdentity{
-			Callsign:  linkCallsign(cfg),
-			NetworkID: firstNetworkID(cfg),
-			Address:   defaultLinkAddress(cfg),
-		}
+	// Said only when it is true, and phrased as a fact about the configuration
+	// rather than about the build.
+	if len(body.Links) == 0 {
+		body.Reason = "no links are configured"
 	}
 	writeJSON(w, s.log, http.StatusOK, body)
 }

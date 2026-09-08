@@ -28,6 +28,23 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A peering completed successfully and the page stayed empty.** Found by
+  running one across two servers: the exchange finished, both audit events were
+  written, the configuration was applied, and the operator saw nothing.
+
+  `handleLinks` returned early when the running link set was nil, **before
+  reading the configuration at all** — and `cmd/qsp` decides that nil at
+  startup, from the startup configuration: an instance that booted with no
+  upstreams has no link source for the life of the process. So the reconcile
+  added in 0262, whose entire purpose is showing a link that is configured and
+  not yet open, could not run in the one case it was written for. **That case is
+  every fresh install accepting its first peering.**
+
+  The page also reported "this build has no links configured", which was true
+  when it was written and false the moment a link was added. The configuration
+  is read whether or not a link set exists now, and the empty case says
+  something about the configuration rather than about the build.
+
 - **Two links could share a listen address, and QSP would not start.** Upstream
   *names* were checked for duplicates and their listen addresses were not.
   Accepting two peerings without restarting in between — taking the page's own
