@@ -4,6 +4,34 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A QSP link announces its name and its network to the far end** (ADR-0052,
+  rule 3, first half). The far end of a link that dialled in has no name of its
+  own for it — it receives a registration, not a configuration — so without the
+  name travelling, the two administrators of one link call it different things.
+
+  `SoftwareID` already said "QSP" and the version. `PackageID` now carries the
+  link's name behind a `QSP-LINK:` prefix: 40 bytes on the wire,
+  conventionally a build identifier that QSP has no separate use for, so this
+  needs no new field and no protocol change. Another implementation's build
+  string is not read as a name, which matters because MMDVMHost fills that field
+  with one and a hotspot must not appear on the Links page as a linked network.
+
+  `Description` carries the network's name rather than the station's, because
+  the thing that dialled in is a network: an administrator reading "BCARA"
+  learns something true, and reading a repeater description does not.
+
+### Not yet built
+
+- **The Links page still does not show inbound links.** The announcement is
+  half of ADR-0052's rule 3; reading it on the far end is the other half, and
+  needs `PeerView` to carry the announced software and name, the links handler
+  to build inbound entries from the peer table, and the page to render them.
+  **Until then an administrator on the listening side still sees "No links are
+  configured" while a link carries audio** — the defect that prompted the
+  record.
+
 ### Decided
 
 - **ADR-0052: QSP is a federated network.** Each server is sovereign — it

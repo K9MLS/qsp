@@ -736,3 +736,67 @@ func TestRetentionIsByAgeAndCanBeNothing(t *testing.T) {
 		t.Errorf("%d calls survived a one-hour window", len(left))
 	}
 }
+
+// TestAQSPLinkAnnouncesItsName is the first half of ADR-0052's third rule.
+//
+// The far end of a link that dialled in has no name of its own for it: it
+// receives a registration, not a configuration. So without the name travelling,
+// the two administrators of one link call it different things — production's
+// console would show "K9MLS" or a bare DMR ID for a link the other side calls
+// "production", and a support conversation about it becomes impossible.
+//
+// PackageID carries it. It is 40 bytes, conventionally a build identifier, and
+// QSP has no separate use for one because SoftwareID already says what this is
+// and which version. A station that does not understand the prefix displays a
+// harmless string on a dashboard.
+func TestAQSPLinkAnnouncesItsName(t *testing.T) {
+	name, ok := LinkNameFromPackageID(qspLinkPackageID + "production")
+	if !ok {
+		t.Fatal("a link's own PackageID is not recognised as carrying a name")
+	}
+	if name != "production" {
+		t.Errorf("recovered %q, want production", name)
+	}
+}
+
+// TestAnotherImplementationsPackageIDIsNotAName, because the field is somebody
+// else's to use.
+//
+// PackageID conventionally carries a build identifier, and MMDVMHost and
+// friends fill it with one. Reading any value there as a link name would put a
+// hotspot's build string on the Links page as though it were a linked network.
+func TestAnotherImplementationsPackageIDIsNotAName(t *testing.T) {
+	for _, pkg := range []string{"", "20210101_MMDVMHost", "QSP", "qsp-link:x"} {
+		if name, ok := LinkNameFromPackageID(pkg); ok {
+			t.Errorf("PackageID %q was read as the link name %q", pkg, name)
+		}
+	}
+}
+
+// TestAnEmptyNameIsNotAName. A link with no name announces the prefix and
+// nothing after it, and the far end must not display an empty label as though
+// it were one.
+func TestAnEmptyNameIsNotAName(t *testing.T) {
+	if name, ok := LinkNameFromPackageID(qspLinkPackageID + "   "); ok {
+		t.Errorf("a blank name was accepted as %q", name)
+	}
+}
+
+// TestALinkAnnouncesItsNetworkNotItsStation.
+//
+// The thing dialling in is a network, so the description an administrator reads
+// beside it should name that network. A repeater description — "Denton
+// backyard, 70cm" — is true of the station and says nothing true about what
+// arrived.
+func TestALinkAnnouncesItsNetworkNotItsStation(t *testing.T) {
+	ident := config.UpstreamIdentity{Description: "Denton backyard"}
+
+	if got := linkDescription("BCARA", ident); got != "BCARA" {
+		t.Errorf("a link announced %q, want its network name", got)
+	}
+	// A network with no name falls back rather than announcing nothing: an
+	// operator reading a blank field cannot tell it from a fault.
+	if got := linkDescription("  ", ident); got != "Denton backyard" {
+		t.Errorf("with no network name a link announced %q, want the description", got)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"strconv"
+	"strings"
 	"time"
 
 	"os"
@@ -1468,7 +1469,7 @@ func buildUpstreams(log *slog.Logger, cfg config.Config, receive func(string, hb
 			err  error
 		)
 		if u.HomebrewProtocol() {
-			link, err = buildPeerLink(log, u, cfg.DMR.Identity, receive)
+			link, err = buildPeerLink(log, u, cfg.DMR.Identity, cfg.DMR.Join.NetworkName, receive)
 		} else {
 			link, err = buildOpenBridgeLink(log, u, receive)
 		}
@@ -1503,6 +1504,39 @@ func buildOpenBridgeLink(log *slog.Logger, u config.Upstream, receive func(strin
 	})
 }
 
+// qspLinkPackageID prefixes the link name a QSP server announces to the far
+// end, so the far end can recognise the field as a name rather than a version.
+//
+// PackageID is 40 bytes on the wire and conventionally carries a build
+// identifier, which QSP has no separate use for: SoftwareID already says what
+// this is and which version. Reusing it needs no new field and no protocol
+// change, and a station that does not understand it displays a harmless string
+// on a dashboard.
+const qspLinkPackageID = "QSP-LINK:"
+
+// LinkNameFromPackageID recovers the name a QSP server announced, and reports
+// whether the field carried one.
+func LinkNameFromPackageID(pkg string) (string, bool) {
+	if !strings.HasPrefix(pkg, qspLinkPackageID) {
+		return "", false
+	}
+	name := strings.TrimSpace(strings.TrimPrefix(pkg, qspLinkPackageID))
+	return name, name != ""
+}
+
+// linkDescription is what the far end shows beside an inbound link.
+//
+// The network's name rather than the station's, because the thing that dialled
+// in is a network: an administrator reading "BCARA" learns something, and
+// reading a repeater description learns nothing that is true. Falls back to the
+// operator's own description when no network name is set.
+func linkDescription(network string, ident config.UpstreamIdentity) string {
+	if n := strings.TrimSpace(network); n != "" {
+		return n
+	}
+	return ident.Description
+}
+
 // qspLinkNames lists the enabled links that reach another QSP server.
 //
 // **Derived from the configuration rather than asserted beside it.** A second
@@ -1526,7 +1560,7 @@ func qspLinkNames(cfg config.Config) []string {
 // building the capability did not change it. QSP does not detect the far end,
 // because carrying one network's hostnames in the codebase is what §0 refused
 // for talkgroup lists and for the same reasons.
-func buildPeerLink(log *slog.Logger, u config.Upstream, id config.Identity, receive func(string, hbp.Data)) (upstream.Connection, error) {
+func buildPeerLink(log *slog.Logger, u config.Upstream, id config.Identity, network string, receive func(string, hbp.Data)) (upstream.Connection, error) {
 	password, err := config.LoadPeerPassword(os.ReadFile, u.PasswordFile)
 	if err != nil {
 		return nil, fmt.Errorf("upstream %q: %w", u.Name, err)
@@ -1562,10 +1596,16 @@ func buildPeerLink(log *slog.Logger, u config.Upstream, id config.Identity, rece
 			Longitude:   ident.Longitude,
 			Height:      ident.Height,
 			Location:    ident.Location,
-			Description: ident.Description,
+			Description: linkDescription(network, ident),
 			URL:         ident.URL,
 			Timeslots:   ident.Timeslots,
 			SoftwareID:  "QSP " + buildVersion(),
+			// **The name travels with the link** (ADR-0052). The far end has
+			// no name of its own for a link that dialled in — it receives a
+			// registration, not a configuration — so without this the two
+			// administrators of one link call it different things, which is a
+			// support conversation nobody can have.
+			PackageID: qspLinkPackageID + u.Name,
 		},
 	})
 	if err != nil {
