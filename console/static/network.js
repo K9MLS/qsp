@@ -45,6 +45,16 @@
   var parrotTalkgroup = document.getElementById("parrot-talkgroup");
   var parrotTimeslot = document.getElementById("parrot-timeslot");
   var parrotState = document.getElementById("parrot-state");
+  var ipscEnabled = document.getElementById("ipsc-enabled");
+  var ipscListen = document.getElementById("ipsc-listen");
+  var ipscMaster = document.getElementById("ipsc-master");
+  var ipscCC = document.getElementById("ipsc-cc");
+  var ipscTimeout = document.getElementById("ipsc-timeout");
+  var ipscPeers = document.getElementById("ipsc-peers");
+  var ipscSlot2 = document.getElementById("ipsc-slot2");
+  var ipscState = document.getElementById("ipsc-state");
+  var ipscEnabledState = document.getElementById("ipsc-enabled-state");
+  var ipscSlot2State = document.getElementById("ipsc-slot2-state");
 
   var loaded = null;
 
@@ -108,6 +118,26 @@
     }
   }
 
+  /* **The panel is shown whether or not IPSC is on**, so the summary has to
+   * distinguish three states rather than two: off, on with no repeaters
+   * permitted, and on with a list. Hiding the section when disabled is what
+   * left an operator with no way to enable it at all — this was editable only
+   * by hand in qsp.json. */
+  function refreshIPSCState() {
+    ipscEnabledState.textContent = ipscEnabled.checked ? "On" : "Off";
+    ipscSlot2State.textContent = ipscSlot2.checked ? "Yes" : "No";
+    if (!ipscEnabled.checked) {
+      ipscState.textContent = "off";
+      return;
+    }
+    var peers = ipscPeers.value.split(",").filter(function (p) {
+      return p.trim() !== "";
+    });
+    ipscState.textContent = peers.length
+      ? "on, " + peers.length + (peers.length === 1 ? " repeater" : " repeaters")
+      : "on, any repeater";
+  }
+
   function refreshParrotState() {
     parrotState.textContent = parrotEnabled.checked
       ? "on, talkgroup " + (parrotTalkgroup.value || "?")
@@ -156,6 +186,19 @@
     var calls = (cfg.dmr && cfg.dmr.calls) || {};
     setIfOffered(retain, calls.retain);
     refreshRetainState();
+
+    var ipsc = cfg.ipsc || {};
+    ipscEnabled.checked = !!ipsc.enabled;
+    ipscListen.value = ipsc.listen_address || "";
+    ipscMaster.value = ipsc.master_id || "";
+    /* colour_code is a pointer in the document: absent and zero are different
+     * things, and 0 is a valid colour code. */
+    ipscCC.value = (ipsc.colour_code === null || ipsc.colour_code === undefined)
+      ? "" : String(ipsc.colour_code);
+    ipscTimeout.value = ipsc.peer_timeout_seconds || "";
+    ipscPeers.value = (ipsc.allowed_peers || []).join(", ");
+    ipscSlot2.checked = !!ipsc.slot_bit_is_timeslot2;
+    refreshIPSCState();
 
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
@@ -255,6 +298,24 @@
         }
         return out;
       });
+
+    next.ipsc = next.ipsc || {};
+    next.ipsc.enabled = ipscEnabled.checked;
+    next.ipsc.listen_address = ipscListen.value.trim();
+    next.ipsc.master_id = parseInt(ipscMaster.value, 10) || 0;
+    next.ipsc.peer_timeout_seconds = parseInt(ipscTimeout.value, 10) || 0;
+    next.ipsc.slot_bit_is_timeslot2 = ipscSlot2.checked;
+    next.ipsc.colour_code = ipscCC.value.trim() === ""
+      ? null : parseInt(ipscCC.value, 10);
+    next.ipsc.allowed_peers = ipscPeers.value.split(",")
+      .map(function (p) { return parseInt(p.trim(), 10); })
+      .filter(function (p) { return !isNaN(p) && p > 0; });
+    /* Supplied here rather than left at zero, which validation refuses. An
+     * operator turning this on should not have to know a default. */
+    if (next.ipsc.enabled) {
+      if (!next.ipsc.listen_address) { next.ipsc.listen_address = "0.0.0.0:50000"; }
+      if (!next.ipsc.peer_timeout_seconds) { next.ipsc.peer_timeout_seconds = 90; }
+    }
 
     next.dmr.parrot = next.dmr.parrot || {};
     next.dmr.parrot.enabled = parrotEnabled.checked;
@@ -375,6 +436,9 @@
   subEnabled.addEventListener("change", refreshSubState);
   subTimeout.addEventListener("change", refreshSubState);
   retain.addEventListener("change", refreshRetainState);
+  ipscEnabled.addEventListener("change", refreshIPSCState);
+  ipscSlot2.addEventListener("change", refreshIPSCState);
+  ipscPeers.addEventListener("input", refreshIPSCState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

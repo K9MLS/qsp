@@ -374,6 +374,82 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Motorola repeaters</h2>
+            <button class="hint" type="button" aria-controls="hint-ipsc" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="ipsc-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-ipsc">
+          <p class="hint__text"><strong>The master ID must not be a repeater's own ID.</strong> A repeater will not register with a master announcing the ID it uses itself, and it retries silently with nothing on either side saying why. QSP refuses a configuration that does it. The colour code must match the repeater's, and the slot bit setting decides which timeslot a transmission is understood to be on &mdash; if audio arrives and is not carried, that setting is the first thing to change.</p>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            IP Site Connect carries Motorola repeaters, which speak a different
+            protocol from hotspots and are configured separately. This was
+            editable only by hand in <code>qsp.json</code> until now.
+          </p>
+
+          <label class="toggle">
+            <input class="toggle__input" id="ipsc-enabled" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="ipsc-enabled-state">Off</span>
+            <span>Accept Motorola repeaters</span>
+          </label>
+
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Listen on</span>
+              <input class="picker__input" id="ipsc-listen" type="text"
+                     placeholder="0.0.0.0:50000">
+              <p class="field__note">The local address this server binds for
+                IP Site Connect. 0.0.0.0 is every interface on this machine.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Master ID</span>
+              <input class="picker__input" id="ipsc-master" type="text"
+                     inputmode="numeric" placeholder="3132911">
+              <p class="field__note">The ID this server announces. It must not
+                be an ID any repeater uses.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Colour code</span>
+              <input class="picker__input" id="ipsc-cc" type="text"
+                     inputmode="numeric" placeholder="1">
+              <p class="field__note">0 to 15, matching the repeater.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Peer timeout</span>
+              <input class="picker__input" id="ipsc-timeout" type="text"
+                     inputmode="numeric" placeholder="90">
+              <p class="field__note">Seconds without a keepalive before a
+                repeater is treated as gone.</p>
+            </label>
+          </div>
+
+          <label class="picker__field">
+            <span class="picker__label">Repeater IDs allowed</span>
+            <input class="picker__input picker__input--wide" id="ipsc-peers" type="text"
+                   placeholder="999999, 315544">
+            <p class="field__note">Separated by commas. Leave empty to accept
+              any repeater that reaches this port.</p>
+          </label>
+
+          <label class="toggle">
+            <input class="toggle__input" id="ipsc-slot2" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="ipsc-slot2-state">Off</span>
+            <span>A set slot bit means timeslot 2</span>
+          </label>
+
+          <p class="acl__hint">
+            Changing any of these needs a restart of QSP; the save will say so.
+          </p>
+        </div>
+      </section>
+
       <div class="page__actions">
         <button class="button" id="save" type="button">Save changes</button>
         <button class="button button--quiet" id="revert" type="button">Discard changes</button>

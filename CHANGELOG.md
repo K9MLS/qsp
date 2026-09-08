@@ -127,6 +127,27 @@ All notable changes to QSP. Dates are UTC.
   sentence, and the page carries one shared wording so the two write paths
   cannot drift apart.
 
+### Added
+
+- **Motorola repeaters can be configured from the console.** There was no IPSC
+  surface anywhere in it — not hidden when disabled, absent — so IP Site
+  Connect was editable only by hand-editing `qsp.json`, which is the activity
+  that took production down. Every other subsystem has a page.
+
+  The Network page now carries a **Motorola repeaters** panel, shown whether or
+  not IPSC is enabled, because a section that appears only once a subsystem is
+  on cannot be the place you turn it on. It sets the listen address, master ID,
+  colour code, peer timeout, the repeater IDs allowed, and whether a set slot
+  bit means timeslot 2 — the setting to reach for first when audio arrives and
+  is not carried. Its summary distinguishes off, on with any repeater, and on
+  with a list, which are three situations that all rendered as nothing before.
+
+  Enabling is a toggle built on a real checkbox: the input carries the state,
+  the keyboard behaviour and the accessible name, and the track is paint. A div
+  with a click handler would need role, tabindex, aria-checked and key handling
+  reimplemented and still would not be found by a screen reader looking for a
+  control. The state is written as well as coloured.
+
 ### Changed
 
 - **The Links page's copy blocks are one object each.** A label, a small
