@@ -4,7 +4,7 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.124**, patches 0261–0282. Everything through 0273 is deployed to
+Version **0.1.125**, patches 0261–0283. Everything through 0273 is deployed to
 production and the test server; 0274 to 0276 are on Fedora only.
 
 **0276 changes the container build**, so the test server needs a rebuild rather
@@ -49,13 +49,12 @@ what the receiver gets.
 
 The work, in ADR-0052's order:
 
-1. **Reading the announcement on the far end.** 0282 built the sending half: a
-   qsp link now announces "QSP <version>" in SoftwareID, its own name in
-   PackageID behind a QSP-LINK: prefix, and its network name in Description.
-   Nothing reads any of it yet. Needed: PeerView carries the announced software
-   and name, the links handler builds inbound entries from the peer table, and
-   the page renders them beside the outbound ones. **Until then the listening
-   side still shows "No links are configured" while a link carries audio.**
+1. **Done in 0283, and never seen in a browser.** Both consoles should now show
+   the link, with the same name at each end. Load production's Links page: it
+   should list an inbound link named as the test server names it, rather than
+   "No links are configured". If it does not, the announcement is arriving and
+   nothing reads it, or it is not arriving — the peer's SoftwareID and
+   PackageID on the Peers API will say which.
 2. **The Links page shows inbound links beside outbound ones**, with the same
    states, counts and last-heard, and the same name at both ends. An
    administrator asks one question and should not have to know which end

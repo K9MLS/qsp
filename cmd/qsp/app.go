@@ -1202,6 +1202,14 @@ func (p peerViews) PeerViews(now time.Time) []server.PeerView {
 		}
 		if peer.Config != nil {
 			v.ColorCode = peer.Config.ColorCode
+			// What it says it runs, verbatim. A linked QSP network and a
+			// hotspot arrive by the same handshake on the same port, and this
+			// is the only thing that tells them apart (ADR-0052).
+			v.Software = peer.Config.SoftwareID
+			if name, ok := LinkNameFromPackageID(peer.Config.PackageID); ok {
+				v.LinkName = name
+				v.Network = peer.Config.Description
+			}
 		}
 		v.Attachments = attachmentViews(p.listener, peer.ID, now)
 		// What the peer says about where it is. Unverified, and reported only

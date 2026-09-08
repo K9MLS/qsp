@@ -48,6 +48,13 @@ type LinkStatus struct {
 	// announces a DMR ID, like the repeater it presents itself as — so a
 	// working link reported a missing field as though it were a fault.
 	Announces string `json:"announces,omitempty"`
+	// Inbound says the far end dialled this server rather than the other way
+	// round, so this link is in nobody's configuration here.
+	Inbound bool `json:"inbound,omitempty"`
+	// Network is the far end's network name, when it announced one.
+	Network string `json:"network,omitempty"`
+	// Software is what the far end says it runs, verbatim and unverified.
+	Software string `json:"software,omitempty"`
 	// Enabled reports whether the configuration asks for this link at all.
 	//
 	// **A disabled link is not a link awaiting a restart**, and this page said
@@ -168,6 +175,15 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 
 	cfg := s.opts.Config.Current()
 	body.Links = reconcileLinks(running, cfg)
+	// **A link that dialled in is still a link** (ADR-0052). It arrives as a
+	// peer registration rather than as configuration, so nothing in the
+	// document describes it and the reconcile above cannot see it — which is
+	// why the listening end of a working link read "No links are configured"
+	// while it carried audio. An administrator asks one question and should
+	// not have to know which end dialled to know where to look.
+	if s.opts.Peers != nil {
+		body.Links = append(body.Links, inboundLinks(s.opts.Peers.PeerViews(time.Now()), body.Links)...)
+	}
 	body.Identity = linkIdentity{
 		Callsign:  linkCallsign(cfg),
 		NetworkID: firstNetworkID(cfg),
@@ -202,6 +218,59 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 //
 // So this does not close or open anything. It says which of the three states
 // each link is in, and what a restart would do about it.
+// inboundLinks describes the QSP servers that have registered with this one.
+//
+// Recognised by what they announced: a QSP server says so in SoftwareID and
+// gives its link's name in PackageID, and nothing else does. A hotspot stays a
+// peer, which is what it is.
+//
+// **Counts are deliberately absent.** The peer table knows a link is connected
+// and when it was last heard; it does not count frames each way the way an
+// outbound link's transport does. Showing a zero would say the link has carried
+// nothing, which is the lie this page exists to stop telling — so the fields
+// are left empty and the page shows nothing rather than something false.
+func inboundLinks(peers []PeerView, already []LinkStatus) []LinkStatus {
+	seen := make(map[string]bool, len(already))
+	for _, l := range already {
+		seen[strings.ToLower(strings.TrimSpace(l.Name))] = true
+	}
+
+	var out []LinkStatus
+	for _, p := range peers {
+		if p.LinkName == "" {
+			continue
+		}
+		// A name this server also uses for a link of its own. Two links to one
+		// far end is a configuration to report rather than a row to duplicate,
+		// and the outbound entry carries more, so it wins.
+		if seen[strings.ToLower(strings.TrimSpace(p.LinkName))] {
+			continue
+		}
+		l := LinkStatus{
+			Name:       p.LinkName,
+			Protocol:   config.UpstreamQSP,
+			FarEnd:     p.Address,
+			Announces:  fmt.Sprintf("%d", p.ID),
+			Inbound:    true,
+			Enabled:    true,
+			Configured: true,
+			Open:       p.Ready,
+			Network:    p.Network,
+			Software:   p.Software,
+		}
+		if p.Ready {
+			l.Summary = "connected; this link dialled in, so it is not in this server's configuration"
+			l.EverReceived = true
+		} else {
+			l.Summary = "registering; this link dialled in and has not finished logging in"
+			l.Advice = "if it does not settle, the far end is retrying — check its journal rather " +
+				"than this server's configuration, which has nothing to say about a link it did not dial"
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
 // announces reports what this instance calls itself to the far end of a link.
 //
 // OpenBridge identifies the sending *server* by a network ID in every frame. A

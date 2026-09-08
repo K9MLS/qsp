@@ -49,6 +49,14 @@
      * has one. Two removed links showed here as healthy for three hours while
      * the remover correctly answered 404 for both. */
     if (!link.configured) { return { label: "Removed", kind: "warn" }; }
+    /* A link that dialled in is in nobody's configuration here, so the
+     * questions below — is it disabled, would a restart open it — are about a
+     * document that does not describe it. It is connected or it is not. */
+    if (link.inbound) {
+      return link.open
+        ? { label: "Carrying", kind: "good" }
+        : { label: "Registering", kind: "warn" };
+    }
     /* **Disabled is not awaiting a restart.** This page said it was, because
      * the reconcile never read the enabled flag: a link turned off in the
      * configuration was labelled "Awaiting restart" and advised to restart QSP
@@ -105,6 +113,8 @@
         /* Whatever the protocol calls it; the server decides, because the page
            * guessed and printed "no network ID" beside a working qsp link. */
           fact("Announces", l.announces || "not announced") +
+          (l.inbound ? fact("Direction", "dialled in") : "") +
+          (l.network ? fact("Network", l.network) : "") +
         /* Both directions, always. One is not evidence of the other: a link
          * that has sent thousands and received none is working perfectly on a
          * quiet network, or is unauthenticated at the far end. */

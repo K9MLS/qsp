@@ -22,15 +22,23 @@ All notable changes to QSP. Dates are UTC.
   the thing that dialled in is a network: an administrator reading "BCARA"
   learns something true, and reading a repeater description does not.
 
-### Not yet built
+- **The Links page shows links that dialled in**, so an administrator sees
+  their whole network from either end. Production and the test server were
+  carrying audio in both directions while production's page read *No links are
+  configured*: the test server dials in, arriving as a peer registration rather
+  than as configuration, and nothing in the document describes it. Same
+  handshake, same port, same peer table as a hotspot.
 
-- **The Links page still does not show inbound links.** The announcement is
-  half of ADR-0052's rule 3; reading it on the far end is the other half, and
-  needs `PeerView` to carry the announced software and name, the links handler
-  to build inbound entries from the peer table, and the page to render them.
-  **Until then an administrator on the listening side still sees "No links are
-  configured" while a link carries audio** — the defect that prompted the
-  record.
+  A QSP server is recognised by what it announced — SoftwareID and the link name
+  in PackageID — and a hotspot stays a peer, which is what it is. An inbound
+  link shows the name the far end's administrator gave it, so **the same link
+  has one name at both ends**, along with its network and the ID it registered
+  with.
+
+  **Frame counts are deliberately blank on an inbound link.** The peer table
+  knows it is connected and when it was last heard; it does not count frames
+  each way the way an outbound link's transport does. A zero would say the link
+  has carried nothing, which is the lie this page exists to stop telling.
 
 ### Decided
 

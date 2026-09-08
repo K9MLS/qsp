@@ -104,6 +104,23 @@ type PeerView struct {
 	// peer receives everything and a list would imply a limit that does not
 	// exist.
 	Attachments []AttachmentView `json:"attachments,omitempty"`
+	// Software is what the peer said it runs, verbatim and unverified.
+	//
+	// **It is how a linked network is told from a hotspot** (ADR-0052). Both
+	// arrive by the same handshake on the same port, so without this the
+	// listening end of a link cannot know that peer 3132912 is a whole network
+	// with its own peers rather than one operator's radio — and its Links page
+	// showed nothing while a link carried audio.
+	Software string `json:"software,omitempty"`
+	// LinkName is the name the far end's administrator gave this link, when it
+	// announced one. Empty for anything that is not a QSP link.
+	//
+	// **The same link has one name at both ends** because of this. The far end
+	// of a link that dialled in receives a registration rather than a
+	// configuration, so it has no name of its own to give.
+	LinkName string `json:"link_name,omitempty"`
+	// Network is the name of the network on the other side of a link.
+	Network string `json:"network,omitempty"`
 	// PositionRefused explains coordinates that arrived and were not used.
 	//
 	// A peer that announced nothing and one that announced 0,0 both produce no

@@ -280,3 +280,73 @@ func TestAQSPLinkAnnouncesItsDMRID(t *testing.T) {
 		}
 	}
 }
+
+// TestALinkThatDialledInIsListed is the defect an administrator found in four
+// minutes.
+//
+// Production and the test server were carrying audio in both directions and
+// production's Links page read "No links are configured" — because the test
+// server dials in, arriving as a peer registration rather than as
+// configuration. Same handshake, same port, same peer table as a hotspot. So
+// half of a linked pair looked unlinked to its own administrator, and ADR-0051
+// had called that asymmetry invisible in use.
+func TestALinkThatDialledInIsListed(t *testing.T) {
+	peers := []PeerView{
+		{ID: 3132912, Callsign: "K9MLS", Address: "192.168.1.27:42048", Ready: true,
+			Software: "QSP 0.1.124", LinkName: "denton", Network: "BCARA"},
+		// A hotspot, which stays a peer because that is what it is.
+		{ID: 3127045, Callsign: "AD0MI", Address: "198.51.100.60:62032", Ready: true,
+			Software: "MMDVM_MMDVMHost"},
+	}
+
+	out := inboundLinks(peers, nil)
+	if len(out) != 1 {
+		t.Fatalf("got %d inbound links, want the QSP server and not the hotspot", len(out))
+	}
+	l := out[0]
+	if l.Name != "denton" {
+		t.Errorf("the link is called %q; the name the far end gave it should travel", l.Name)
+	}
+	if !l.Inbound {
+		t.Error("an inbound link does not say it dialled in, so the page will ask whether a restart would open it")
+	}
+	if l.Announces != "3132912" {
+		t.Errorf("announces %q, want the ID it registered with", l.Announces)
+	}
+	if l.Network != "BCARA" {
+		t.Errorf("network %q, want the far end's network name", l.Network)
+	}
+	if !l.Open {
+		t.Error("a registered link is reported as not open")
+	}
+}
+
+// TestAHotspotIsNotALink. Both arrive by the same handshake on the same port,
+// and the only thing that distinguishes them is what they announced. Reading it
+// too loosely would put three members' hotspots on the Links page as networks.
+func TestAHotspotIsNotALink(t *testing.T) {
+	peers := []PeerView{
+		{ID: 3132910, Callsign: "K9MLS", Software: "MMDVM_MMDVMHost", Ready: true},
+		{ID: 3155413, Callsign: "KB9TYC", Ready: true},
+		// Announces QSP but no link name: a QSP instance acting as something
+		// other than a link, which is not this page's business either.
+		{ID: 3155414, Callsign: "KD9EJA", Software: "QSP 0.1.124", Ready: true},
+	}
+	if out := inboundLinks(peers, nil); len(out) != 0 {
+		t.Errorf("%d peers were listed as links", len(out))
+	}
+}
+
+// TestAnOutboundLinkWinsOverAnInboundOneOfTheSameName.
+//
+// Two links to one far end is a configuration worth reporting, not a row worth
+// duplicating, and the outbound entry carries frame counts the peer table does
+// not have.
+func TestAnOutboundLinkWinsOverAnInboundOneOfTheSameName(t *testing.T) {
+	already := []LinkStatus{{Name: "denton", Configured: true, Enabled: true}}
+	peers := []PeerView{{ID: 3132912, Ready: true, Software: "QSP 0.1.124", LinkName: "Denton"}}
+
+	if out := inboundLinks(peers, already); len(out) != 0 {
+		t.Errorf("an inbound link duplicated an outbound one of the same name: %+v", out)
+	}
+}
