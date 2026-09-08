@@ -98,6 +98,20 @@ All notable changes to QSP. Dates are UTC.
   the socket. A race between two goroutines rather than on memory, so the
   detector was never going to see it.
 
+- **The container reported `0.1.119 (development build)`, which was the fix
+  half-done.** The release number arrived from the `VERSION` file as intended;
+  the suffix did not, because Go stamps the commit from the repository it
+  compiles in and silently omits it when git is missing — and the builder image
+  has none. So the first fix was reported as complete on the strength of the
+  half that had changed.
+
+  The builder installs git, and the fallback text no longer says "development
+  build" beside a real release number: it says `commit unknown`. The suffix
+  answers one question, and when the answer is unknown it should say so rather
+  than assert something else. An operator can now tell "I cannot check the
+  commit here" from "this is somebody's working tree", which are different
+  problems.
+
 - **The container could not say what it was.** `/qsp --version` read
   `development (development build)` on every image ever built: the Dockerfile
   took the version as a build argument and the compose override that was meant

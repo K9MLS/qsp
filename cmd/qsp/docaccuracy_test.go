@@ -422,6 +422,13 @@ func TestTheContainerCanSayWhatItIs(t *testing.T) {
 		t.Errorf("%s takes the version as a build argument again; "+
 			"the argument is what went unsupplied for the life of the container install", dockerfile)
 	}
+	// **The second half.** Fixing the release left `0.1.119 (development
+	// build)`, because Go omits the VCS stamp when git is missing and the
+	// builder image has none by default. Without it an operator can read the
+	// release but not the commit, which is the half §7 actually needs.
+	if !strings.Contains(src, "apk add --no-cache git") {
+		t.Errorf("%s builds without git, so the binary cannot name its own commit", dockerfile)
+	}
 
 	const override = "../../deploy/docker/docker-compose.build.yml"
 	o, err := os.ReadFile(override)

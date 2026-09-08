@@ -229,5 +229,17 @@ func buildVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return release + " (" + info.Main.Version + ")"
 	}
-	return release + " (development build)"
+	// **"development build" was a lie next to a real release number.**
+	//
+	// The container reported `development (development build)` because both
+	// halves were unknown: the release came from an ldflags argument nobody
+	// supplied, and the commit from a VCS stamp Go cannot produce without git.
+	// Fixing the release alone left `0.1.119 (development build)`, which reads
+	// as an unreleased build of a released version and is worse than either.
+	//
+	// The suffix answers one question — which commit is this — so when the
+	// answer is unknown it should say that and nothing else. An operator can
+	// then tell "I cannot check the commit here" apart from "this is somebody's
+	// working tree", which are different problems with different responses.
+	return release + " (commit unknown)"
 }

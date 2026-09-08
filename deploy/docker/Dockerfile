@@ -11,6 +11,17 @@ FROM golang:1.27-alpine AS build
 
 WORKDIR /src
 
+# **git, so the binary can name its own commit.**
+#
+# Go stamps the revision into the build info from the repository it compiles
+# in, and silently omits it when git is missing — which is why the container
+# reported "(development build)" while the same source built on a workstation
+# reported a pseudo-version naming the commit. §7's rule is to check the
+# running binary after every deploy, and an image that cannot say which commit
+# it came from cannot be checked. It is dropped again with the build stage, so
+# the final image is still scratch.
+RUN apk add --no-cache git
+
 # Dependency layer first, so editing source does not re-download the module
 # cache. There is one dependency today; this stays correct when there are more.
 COPY go.mod go.sum ./
