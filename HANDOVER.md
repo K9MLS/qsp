@@ -1,147 +1,106 @@
-# Handover, 2026-09-07 night
+# Handover, 2026-09-08 morning
 
-Read `NEW-SESSION.md` for the standing brief and **§8k** of `PROJECT_MEMORY.md`,
-then **§8a**, which is the section that matters most. §8b through §8j are
-superseded and say so.
+Read `NEW-SESSION.md` for the standing brief, then **§8a** of
+`PROJECT_MEMORY.md`, which is the section that matters most, then **§8m** for
+this session. §8b through §8l are superseded and say so.
 
-## Start here: two defects that took production down tonight
+Version **0.1.107**, patches 0261–0265. Every one of them is on Fedora.
+**0264 and 0265 are on neither server**, and 0264 matters most — see below.
 
-**Neither is built.** They are the price of the last hour and they come before
-anything else.
+## Start here: one thing that is not finished
 
-### 1. "We listen on" is written unvalidated, and it stopped QSP starting
+**The Motorola repeater's audio does not reach the network, and the cause is
+identified but unconfirmed.**
 
-The Links page accepted `qsp.hopto.me:62045` in the accept form's **We listen
-on** field and wrote it into an upstream. That name resolves to the router's
-public address, which this machine does not have, so:
-
-```
-upstream "Test Server": cannot listen on qsp.hopto.me:62045:
-listen udp 198.51.100.238:62045: bind: cannot assign requested address
-```
-
-QSP refused to start — correctly, rather than dropping a link an operator
-configured — and **systemd crash-looped until it hit its start limit.**
-
-The field beside it *is* validated: 0259 refuses `0.0.0.0` in **They send to**,
-because a bind address is not somewhere a far end can reach. The two fields are
-exact opposites and only one was checked. Same form, same afternoon.
-
-**What to build:** validate the listen address where the accept handler writes
-it — it must be an address this host can bind, so `0.0.0.0:62045` or a LAN
-address, never a public name. `peering.ErrBindAddress` is the model for the
-message.
-
-### 2. `-check` passed a configuration the process then died on
+Every transmission on the test server logs this, three lines, unchanged:
 
 ```
-sudo qsp -config /var/lib/qsp/qsp.json -check
-/var/lib/qsp/qsp.json is valid
+call started  subsystem=ipsc  radio_id=999999 destination=2 timeslot=1 slot_bit=true
+call started  subsystem=network peer_id=3132910 talkgroup=2 timeslot=1
+transmission not carried  reason="every destination refused the frame"
 ```
 
-and the service then failed at bind time. **A gate that gives false assurance is
-worse than no gate**, and the operator used it exactly as intended.
+The audio arrives on **timeslot 1**. Both endpoints of the bridge the peering
+created are on **timeslot 2**. Nothing matches, so every destination refuses it.
+The IPSC side is decoding correctly — `frames=106 converted=104 delivered=104` —
+and the link is healthy; this is a routing mismatch, not a codec or a link
+fault.
 
-**What to build:** `-check` should attempt the binds it can — listeners and
-upstream listen addresses — and report what would fail. It cannot prove a port
-is reachable from outside; it can prove an address is one this host has.
+`slot_bit=true` with `ipsc.slot_bit_is_timeslot2: false` is what produced
+`timeslot=1`. **Two candidates, different fixes**, and the codeplug decides
+which:
 
-### 3. Deploy 0260, which is committed and never went out
+- The repeater really transmits on TS1 → the bridge is wrong; change it to
+  timeslot 1.
+- The repeater transmits on TS2 and QSP is misreading the slot bit →
+  `slot_bit_is_timeslot2` should be `true`. That setting exists for exactly
+  this ambiguity, and 0265 makes it a toggle on the Network page.
 
-`A link can be removed` is at HEAD and is not on either server. It turns
-tonight's recovery — hand-editing JSON twice on a live production server — into
-two clicks.
+Change one setting, capture again, diff. Do not change both.
 
-## What happened tonight, in order
+**Production is degraded because of this**, and correctly so: its link reports
+`Sent 50, Received 0, Last heard never`. It carries one way and has never heard
+anything, because the far end's audio is refused at the bridge. The health
+report is right. It clears when audio flows, or when the link is removed.
 
-The operator tried to peer the test server to production **through the console**,
-which is the right way and the way it will have to work in public. It failed
-five times and each failure was a defect:
+## Deploy 0264 before anything else
 
-1. **The offer form had no callsign box**, while the invitation is refused
-   without one. The error named a field that did not exist and then advised
-   checking two fields that were already correct. Fixed in 0257.
-2. **The address field accepted `https://` on a UDP host and port.** Fixed in
-   0257.
-3. **The reciprocal demanded a passphrase that does not exist.** Only one
-   passphrase exists in a peering and the offering side generated it, so the
-   operator had nothing to type into a box the form insisted on. Fixed in 0258.
-4. **The exchange could not terminate.** `handleAcceptPeering` built a
-   reciprocal unconditionally, so accepting a reply produced another reply,
-   forever. **No instruction could have got the operator out** — three messages
-   were spent telling them where to paste while the page manufactured an
-   infinite regress. Fixed in 0259.
-5. **A link could not be removed**, from anywhere. Fixed in 0260, not deployed.
+**The Links page has been lying on both servers.** `handleLinks` returned early
+when the running link set was nil — and `cmd/qsp` decides that nil *at startup*,
+from the startup configuration, so an instance that booted with no upstreams can
+never display a link accepted afterwards. Both servers showed *No links are
+configured* over the top of working links for a whole morning.
 
-Then the link that all of that produced took production down.
+That is every fresh install accepting its first peering. It is fixed in 0264 and
+that patch is not deployed.
 
-## The rule this page broke, and it is general
+## What was built, and what each one is worth
 
-**Anything a page creates, it must be able to remove.** Nothing in this project
-checked that, on any page. The Links page shipped without it and an operator
-found out by needing it, on a live network, at the worst moment.
+| Patch | What |
+|---|---|
+| 0261 | The accept form's one address box fed two opposite fields; `-check` binds |
+| 0262 | The page and the remover read different sources; no peering was ever audited |
+| 0263 | Four rules enforced somewhere other than where they were written |
+| 0264 | The reconcile could not run in the one case it was written for |
+| 0265 | IPSC had no console surface at all |
 
-Worth auditing the other console pages for the same shape before adding
-anything to them.
+**ADR-0050** records the wire-format change: a reciprocal says so in the token,
+so an exchange can end after a restart.
 
-## The failure that produced all five
+## What is proven on a running system, and what is not
 
-**Five separate things were designed from scratch today and found to be already
-built**: `/api/peers` address redaction, IPSC `CallViews` returning nil, the
-console's `data` pill, the hint disclosure button, and **the entire Links page**,
-which was proposed as new work while it was on screen.
+Proven by using it, this session:
 
-Every one was a single `grep` away. §8a carries the rule now — *check whether
-the thing exists before designing it* — and the deeper version is this: **the
-peering flow was reviewed by reading it and not by using it.** Every one of
-tonight's five defects surfaced within ten minutes of an operator actually
-clicking through, and none had surfaced in the code review that preceded it.
+- The peering exchange completes across two instances, both directions.
+- `-check` reports in-use for a live configuration and catches an address this
+  host does not have, with exit 1.
+- `peering.offered` and `peering.accepted` reach the audit trail, with no
+  "cannot record" warning. SECURITY.md's claim is true for the first time.
+- An IPSC repeater registers with a containerised instance: `peer registered
+  radio_id=999999 from=192.168.1.233:50001`. **Open item 5 is closed.**
+- OpenBridge carries traffic from production to the test server: 28 frames
+  received.
 
-## What is finished and working
+Not proven, and worth doing next:
 
-**Private text over IP Site Connect**, confirmed on air. The trellis codec is
-proved against 54 real MMDVMHost bursts (54 of 54 decode; 0 of 54 with the
-tables that shipped in 0242), both Rate 1/2 and Rate 3/4 have fixtures, and one
-text is now one row in Last heard.
+- Audio from a repeater reaching the network at all — the timeslot question
+  above.
+- The Links page showing a link honestly, since 0264 is undeployed.
+- The IPSC panel from 0265; it has never been loaded in a browser.
+- The port-collision refusal from 0263 and the endless-exchange fix, both of
+  which have tests and no live run.
 
-**The container install**, run on a clean Ubuntu VM. Nine defects found and
-fixed, including a database that landed outside the volume — silent data loss on
-every rebuild — and `adduser` failing because a `scratch` image has no `stty`.
+## Open, not started
 
-## Open, in order
-
-1. The listen-address validation, above.
-2. `-check` attempting binds, above.
-3. Deploy 0260.
-4. **[ADR-0049](docs/adr/ADR-0049-first-account-setup-token.md)**: the first
-   administrator account should be created from the home page rather than a
-   terminal command. Decisions recorded, nothing built.
-5. **No peer has ever registered with a containerised instance.** The handshake,
-   the access list and the NAT-rebind path are all untested in a container.
-6. Text over IPSC produces no call record entry of its own; the tracker covers
-   it, and §8k has the detail.
-7. The remaining UI pages have never been reviewed by using them.
-
-## Traps
-
-**`qsp --version` is not `systemctl is-active`, and neither is the other.** Both
-were confused tonight: a version check was offered where a service check was
-needed, and a running binary reported a version while the service was dead.
-
-**`systemctl restart` on a rate-limited service stops it and then refuses to
-start it.** Strictly worse than doing nothing. `systemctl reset-failed` first,
-every time, once a service has crash-looped.
-
-**A measurement filed as an exception is a defect already found.**
-
-**A test that reads prose instead of code passes for the wrong reason.** Three
-today: one searched a file for a field name and found it in a comment, one
-searched for `stty` and found the comment explaining its removal, one searched
-for a colour token and found the note explaining why it was not invented. Strip
-comments before searching.
-
-**Never count test failures.** The container baseline is seven, by name, in §7.
-
-**`staticcheck` does run in the container**, contrary to §7.
-
-**A failed `git am` leaves a rebase directory behind.** `git am --abort` first.
+- **The test server's access list permits only `3132910`**, and the startup
+  advisory says that is an operator ID rather than a repeater one. It has not
+  bitten yet because IPSC has its own `allowed_peers`.
+- **`links.cfg` is captured at construction** in `cmd/qsp`, so a link's
+  displayed address comes from the startup configuration. A live setting read
+  at construction — §8a's recurring shape — latent rather than firing.
+- **`applyPending` does not reconcile upstreams.** A link opens and closes only
+  at a restart. That is a recorded decision and 0262 makes it honest, but live
+  reconciliation is worth an ADR: a restart drops every station, and telling a
+  club administrator that adding a link means dropping the network is the
+  a commercial DMR server-shaped answer.
+- Published image tag and CI publishing, still not set up.

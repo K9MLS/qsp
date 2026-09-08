@@ -2861,3 +2861,95 @@ sudo install -m755 /tmp/qsp /usr/local/bin/qsp && sudo systemctl restart qsp
 address rather than `qsp.hopto.me`. Its logs are in `/var/log/pi-star/`, not the
 journal: `DMRGateway-<date>.log` for sessions and `MMDVM-<date>.log` for what
 actually reaches the radio. KB9TYC is at `198.51.100.172` in Wisconsin, Wisconsin.
+
+## §8m — 2026-09-08, the night the linking system was used
+
+Supersedes nothing; extends §8a, which remains the section that matters most.
+
+### The number that settles the argument
+
+**Nine defects came from running the system. Three came from reading it.**
+
+The reading was not casual: an hour of directed bug hunting, over one
+subsystem, with the specific questions §8a recommends. It found four real
+defects. In the same session, using the page and reading a log found five more —
+including one sitting four lines from code three patches had been built on.
+
+The clearest single case. 0262 added `reconcileLinks` so that a link which is
+configured but not yet open appears on the page. It was written after a live
+failure, tested nine ways, gated, reviewed and shipped. **It sat four lines
+below an early return that fires in exactly the case it was written for**, and:
+
+- the bug hunt went past it,
+- three later patches were built on top of it,
+- the suite was green throughout,
+- and one peering, run by hand, produced it in ten minutes.
+
+Do the bug hunt. It is worth an hour. **Then use the thing**, because the hunt
+does not replace it and never has.
+
+### The shape every defect had
+
+All seven this session were **a rule enforced somewhere other than where it was
+written**:
+
+- One box fed the bind address and the reply address, which are opposites.
+- The page read the running set; the remover read the configuration.
+- Upstream names were checked for duplicates; their listen addresses were not.
+- The exchange ended in memory, and only if a box was left blank.
+- A name was a display string in one place and a file path in another.
+- Actions were declared in one file and emitted as free-form strings from
+  another.
+- `NeedsRestart` knew, and the page never asked.
+
+**The question that finds these: where else is this fact stated?** If the answer
+is "two places", one of them is already wrong or will be. The fixes all took the
+same form — put the rule in the single gate everything passes through, and
+delete the second copy. `config.Validate` is that gate for configuration;
+`cmd/qsp` had grown its own listener list and no longer has one.
+
+### Breaking a test to prove it is harder than it looks
+
+Eleven breaks were attempted across the session. **Five were wrong**, and every
+one of them looked like a weak test rather than a bad break:
+
+- Two did not compile, and `grep -E "^--- FAIL"` rendered the build error as
+  silence — which reads exactly like a passing test. **A break harness must
+  detect a build failure explicitly.**
+- One patched the first match of a string that appeared in two functions, so it
+  edited a different handler entirely.
+- One patched only one side of a comparison whose other side already matched.
+- One deleted a line, orphaning a variable, and did not compile either.
+
+And three tests, written this session, **passed against broken code**:
+
+- `err != nil` on a configuration that was invalid for unrelated reasons.
+- `strings.Contains(css, "min-width")` over a whole stylesheet holding a dozen
+  other rules.
+- A field name searched file-wide, found in the render function, while the save
+  had it deleted.
+
+**Scope an assertion to the thing it is about.** File-wide string searches pass
+for the wrong reason, and this project now has six recorded instances.
+
+### Running the system: what it actually told us
+
+- Two audit lines and no warning proved SECURITY.md's claim true for the first
+  time. The claim had been in the document for weeks and never in the code.
+- `-check` on a live server reporting three addresses in use and one bindable
+  proved the classification is right in both directions at once.
+- `frames=106 converted=104 delivered=104` alongside `every destination refused
+  the frame` separated a working codec from a broken route in one line.
+- A 121-byte response repeating every five seconds was the whole diagnosis of
+  the reconcile defect, and matched a broken build byte for byte.
+
+**Read the numbers on both sides of a link.** `Sent 50 / Received 0` on one end
+and `Received 28 / Sent 0` on the other located a one-way failure immediately
+and pointed at the bridge rather than the link.
+
+### On being asked for perfection
+
+The instruction was to hunt bugs rather than run the system, and it was the
+right instruction to give — four defects. It was also not sufficient, and
+saying so at the time was worth more than agreeing. Both happened, and the
+session is better for having done both in that order.

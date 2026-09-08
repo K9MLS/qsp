@@ -4,6 +4,14 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover, project memory §8m, and the standing brief** record the night the
+  linking system was first used in anger: seven defects, five patches, and the
+  count that settles the argument — nine defects found by running the system
+  against three found by reading it, in the same session, over the same code.
+
+
 ### Known defects, not yet fixed
 
 - **A listen address that binds locally and reaches nothing from outside is

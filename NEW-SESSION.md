@@ -19,7 +19,10 @@ bridge** — voice header, audio and terminator, a complete DMR transmission.
 The other direction, network to repeater, is built but **does not work yet**.
 See §8f and `HANDOVER.md`: the frames QSP sends do not match the shape a
 repeater sends, and that is measurable against fixtures already in the
-repository.
+repository. **A repeater keying into a containerised instance is now on
+record**, and its audio reaches QSP correctly and is refused at the bridge on a
+timeslot mismatch — `HANDOVER.md` has the three log lines and the two
+candidates.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -28,8 +31,9 @@ Attached is a git bundle of the whole repository. Please start by reading
 - **§6a**, what two members on a real network taught us
 - **§6b**, what a second day taught us — it supersedes parts of §6a, especially
   about talkgroup rewriting
-- **§8f**, where this session should start, and what was settled and should not
-  be reopened
+- **§8m**, where this session should start: what the linking system taught us
+  the night it was first used in anger, and what was settled and should not be
+  reopened
 - **§7**, working conventions — the section on working on my machines is all
   learned from things that went wrong
 - **§8a**, how this project finds its defects
