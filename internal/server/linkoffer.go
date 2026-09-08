@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -133,7 +134,7 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 	}
 	address := strings.TrimSpace(req.Address)
 	if address == "" {
-		address = defaultLinkAddress(cfg)
+		address = defaultQSPLinkAddress(cfg)
 	}
 
 	inv := peering.LinkInvitation{
@@ -308,4 +309,28 @@ func writePeerPassword(dir string, id uint32, password string) (string, error) {
 		return "", fmt.Errorf("cannot write the password: %w", err)
 	}
 	return path, nil
+}
+
+// defaultQSPLinkAddress is where the far end dials to reach this server.
+//
+// **Not `defaultLinkAddress`, which is the OpenBridge one.** That helper
+// hardcodes 62045, the port a peering is sent to by prior agreement, and the
+// link path reused it — so the offer form proposed an address no QSP link can
+// reach and the accept form wrote it. The far end of a link registers on the
+// peer listener, which is the port this server's hotspots already use, so the
+// port is read from `dmr.listen_address` rather than named twice.
+//
+// The host still comes from `dmr.join.address`, which is the one a member's
+// hotspot is told to point at, and is still a guess — this server cannot know
+// what the far end can reach. The page says it is a guess.
+func defaultQSPLinkAddress(cfg config.Config) string {
+	host := strings.TrimSpace(cfg.DMR.Join.Address)
+	if host == "" {
+		return ""
+	}
+	port := "62031"
+	if _, p, err := net.SplitHostPort(strings.TrimSpace(cfg.DMR.ListenAddress)); err == nil && p != "" {
+		port = p
+	}
+	return net.JoinHostPort(host, port)
 }

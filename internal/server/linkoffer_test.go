@@ -203,3 +203,35 @@ func TestALinkPasswordIsNotLeftReadable(t *testing.T) {
 		t.Errorf("the password directory is %v, want 0700", perm)
 	}
 }
+
+// **The offer form proposed an address no QSP link can reach**, and the accept
+// form wrote it: the link path reused the OpenBridge helper, which hardcodes
+// 62045 — the port a peering is sent to by prior agreement. A link registers on
+// the peer listener, which is the port this server's hotspots already use.
+//
+// Found on 2026-09-08 by offering a link between two live servers and reading
+// the far end off the page afterwards.
+func TestAQSPLinkIsOfferedThePortItActuallyDials(t *testing.T) {
+	cfg := config.Config{}
+	cfg.DMR.Join.Address = "qsp.example.com"
+	cfg.DMR.ListenAddress = "0.0.0.0:62031"
+
+	if got, want := defaultQSPLinkAddress(cfg), "qsp.example.com:62031"; got != want {
+		t.Errorf("a link is offered %q, want %q", got, want)
+	}
+	if got := defaultQSPLinkAddress(cfg); got == defaultLinkAddress(cfg) {
+		t.Error("a QSP link is offered the OpenBridge port")
+	}
+
+	// A server listening somewhere else is offered that port, rather than the
+	// one this code would otherwise assume twice.
+	cfg.DMR.ListenAddress = "0.0.0.0:62055"
+	if got, want := defaultQSPLinkAddress(cfg), "qsp.example.com:62055"; got != want {
+		t.Errorf("a server on a nonstandard port offers %q, want %q", got, want)
+	}
+
+	// Nothing to guess from is an empty box rather than a wrong address.
+	if got := defaultQSPLinkAddress(config.Config{}); got != "" {
+		t.Errorf("a server with no join address guessed %q", got)
+	}
+}

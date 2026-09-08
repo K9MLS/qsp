@@ -438,3 +438,16 @@ func TestAnInboundLinkCanBeRefused(t *testing.T) {
 		t.Error("the page does not say when a refused link still has a way in")
 	}
 }
+
+// The form has now suggested a public hostname to an operator whose far end was
+// on the same LAN twice: once for the first link between two servers, and once
+// for the first link written through this page. A note is cheaper than
+// remembering.
+func TestTheLinkAddressWarnsAboutTheHairpin(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "leaves the LAN and does not come back") {
+		t.Error("the address box does not warn that a public name will not hairpin, " +
+			"which has produced a silently dead link twice")
+	}
+}

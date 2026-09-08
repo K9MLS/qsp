@@ -4,6 +4,29 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The offer form proposed an address no QSP link can reach.** `defaultLinkAddress`
+  hardcodes 62045 — the port an OpenBridge peering is sent to by prior
+  agreement — and the link path reused it, so the offer suggested it, the accept
+  form wrote it, and the link sat reporting *awaiting restart* over an address
+  nothing dials. A link registers on the peer listener, so the port now comes
+  from `dmr.listen_address` rather than being named a second time.
+
+  Found by offering a link between two live servers and reading the far end off
+  the page afterwards. No test would have caught it: both ends were valid
+  host:port and the configuration was correct in every way except being
+  unreachable.
+
+- **And the address box now warns about the hairpin.** The same offer suggested
+  a public hostname to an operator whose far end was on the same LAN, which is
+  the third instance of this fault in the project: a public name leaves the LAN
+  for the router's own address and does not come back, so frames are sent and
+  never arrive with no rejection anywhere, because nothing received them. §7
+  records it for the Pi-Star and the handover records it for the first link
+  between these two servers. The form is what suggested the name both times, so
+  the note goes where the box is.
+
 ### Added
 
 - **A link that dialled in can be refused, and until now it could not.** 0284

@@ -433,8 +433,13 @@
        this server's peers already use, and an OpenBridge peering is sent to on
        a port agreed in advance. */
     text(el("offer-address-label"), kind === "qsp" ? "They dial" : "They send to");
+    /* **Two servers on one LAN address each other by LAN address.** A public
+     * name leaves the LAN for the router's own address and does not come back,
+     * so frames are sent and never arrive, with no rejection anywhere because
+     * nothing received them. It has cost this project a morning once and an
+     * offer once, and the form is what suggested the name both times. */
     text(el("offer-address-note"), kind === "qsp"
-      ? "Where their server reaches this one. Your public name or address, and the UDP port your peers already use."
+      ? "Where their server dials this one — a guess, filled in from this network's own address. If their server is on this LAN, use this machine's LAN address: a public name leaves the LAN and does not come back."
       : "Where their server sends. Your public name or address, and a UDP port you have open.");
     var addr = el("offer-address");
     if (addr) {
