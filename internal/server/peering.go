@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/bindcheck"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/peering"
 )
@@ -84,8 +86,32 @@ type acceptRequest struct {
 	// Talkgroup and Timeslot are the local numbers to carry over it.
 	Talkgroup uint32 `json:"talkgroup"`
 	Timeslot  int    `json:"timeslot"`
-	// Listen is the address this side receives on.
+	// Listen is the local address this side binds to receive on.
+	//
+	// **It must be an address this host holds**, so 0.0.0.0 or a LAN address,
+	// never a public name.
 	Listen string `json:"listen"`
+	// Address is where the far end should send: a public name or address and a
+	// UDP port that reaches this instance from the internet.
+	//
+	// # Why this is a second box
+	//
+	// Listen used to serve both roles, and they are exact opposites. Every
+	// value an operator could type was wrong in one of three ways:
+	//
+	//   - 0.0.0.0:62045, which is what the page suggested, binds correctly and
+	//     is refused by Invitation.Validate as somewhere to send to. The error
+	//     was discarded, so the reciprocal came back empty with nothing said.
+	//   - A public name produces a valid reciprocal and an address this host
+	//     cannot bind. QSP then refuses to start — correctly — and systemd
+	//     crash-loops to its start limit. **This is what happened.**
+	//   - A LAN address binds, validates, and tells a far end across the
+	//     internet to send somewhere it cannot reach: a link that reports
+	//     itself configured and carries silence.
+	//
+	// The offer form has had these as two fields all along. The accept form
+	// had one.
+	Address string `json:"address"`
 	// NetworkID is what this instance announces on the link.
 	NetworkID uint32 `json:"network_id"`
 	// Confirm must be true. A peering is agreed, and a request that could be
@@ -284,15 +310,6 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// **The passphrase is written to a file rather than into the
-	// configuration.** Configuration is versioned, kept in a database, and
-	// shown in a console; a secret in it is a secret in all three.
-	path, err := s.writePassphrase(cfg, name, passphrase)
-	if err != nil {
-		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
 	slot := req.Timeslot
 	if slot != 1 && slot != 2 {
 		slot = 2
@@ -302,12 +319,45 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		tg = inv.Import[0].Talkgroup
 	}
 
+	// **Everything that can refuse this peering refuses it here**, above the
+	// first line that writes anything.
+	//
+	// The passphrase file was written before any address was looked at, so a
+	// refusal below it left a .pass file behind for a link that was never
+	// created. A refusal leaves nothing behind.
+	listen := strings.TrimSpace(req.Listen)
+	if err := bindcheck.Address("udp", listen); err != nil {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": listenProblem(listen, err),
+		})
+		return
+	}
+
+	// The reciprocal is built now rather than after the configuration is
+	// saved, for the same reason. It used to be built last and its error
+	// discarded; reporting that error from where it stood would have put a
+	// message on screen and a link on disk.
+	reply, err := s.reciprocalFor(cfg, inv, req, tg, slot, closingOurOffer)
+	if err != nil {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// **The passphrase is written to a file rather than into the
+	// configuration.** Configuration is versioned, kept in a database, and
+	// shown in a console; a secret in it is a secret in all three.
+	path, err := s.writePassphrase(cfg, name, passphrase)
+	if err != nil {
+		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
 	cfg.DMR.Upstreams = append(cfg.DMR.Upstreams, config.Upstream{
 		Name:           name,
 		Protocol:       config.UpstreamOpenBridge,
 		Enabled:        true,
 		Address:        inv.Address,
-		ListenAddress:  strings.TrimSpace(req.Listen),
+		ListenAddress:  listen,
 		NetworkID:      req.NetworkID,
 		PassphraseFile: path,
 		Export:         []config.UpstreamTalkgroup{{Talkgroup: tg, Timeslot: slot}},
@@ -338,42 +388,6 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	}
 	s.recordPeering(r, "peering.accepted", inv.Callsign, inv.Address, audit.OutcomeSuccess)
 
-	// **A reciprocal only when there is somebody to send one to**, and that is
-	// the half of the exchange this is not.
-	//
-	// This used to build one unconditionally, so accepting a reply produced
-	// another reply, which looked like another thing to send back, forever. An
-	// operator following the page's own instructions could not reach the end
-	// of a peering — and no instruction from anybody would have got them out,
-	// because the page kept handing them one more token.
-	//
-	// `closingOurOffer` is the evidence: this instance was holding the
-	// passphrase, which only happens for a reply to an offer it made itself.
-	reply := ""
-	if !closingOurOffer {
-		// The reply carries the agreed passphrase's fingerprint, never a new
-		// secret: OpenBridge authenticates every datagram against one shared
-		// passphrase, and a second would produce a link that works one way
-		// while both ends report healthy.
-		mine := peering.Invitation{
-			Network: cfg.DMR.Join.NetworkName,
-			// **The instance's callsign, not the link's name.** This sent
-			// strings.ToUpper(name), so a link an operator called "Test
-			// Server" announced itself to the far end as TEST SERVER. The
-			// callsign is what the other administrator is shown to decide
-			// whether they know who is asking.
-			Callsign:  linkCallsign(cfg),
-			Address:   strings.TrimSpace(req.Listen),
-			NetworkID: req.NetworkID,
-			Export:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
-			Import:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
-			Issued:    time.Now().UTC(),
-		}
-		if back, err := peering.Reciprocal(inv, mine); err == nil {
-			reply, _ = peering.Encode(back)
-		}
-	}
-
 	writeJSON(w, s.log, http.StatusOK, acceptResponse{
 		Version:    version.Number,
 		Callsign:   inv.Callsign,
@@ -381,6 +395,85 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		Reciprocal: reply,
 		Complete:   closingOurOffer,
 	})
+}
+
+// listenProblem explains a listen address this host cannot bind, in the terms
+// of the box it was typed into.
+//
+// The operating system's own sentence is kept, because "cannot assign requested
+// address" is the precise fact and an operator who searches for it finds the
+// same thing QSP's journal said. What is added is which of the two boxes this
+// is and what belongs in it.
+func listenProblem(listen string, err error) string {
+	switch {
+	case errors.Is(err, bindcheck.ErrNoAddress):
+		return `"We listen on" is where this server binds and cannot be empty — ` +
+			`0.0.0.0:62045 means every interface on this machine`
+	case errors.Is(err, bindcheck.ErrInUse):
+		return fmt.Sprintf("something is already listening on %s — "+
+			"another link may already use that port", listen)
+	default:
+		return fmt.Sprintf("this server cannot listen on %s: %v — "+
+			`"We listen on" is an address this machine holds, so 0.0.0.0:62045 `+
+			`or a local address. The public name goes in "They send to us at"`,
+			listen, err)
+	}
+}
+
+// reciprocalFor builds the invitation to send back, or reports why it cannot.
+//
+// **A reciprocal only when there is somebody to send one to**, and closing our
+// own offer is the half of the exchange that is not. This used to build one
+// unconditionally, so accepting a reply produced another reply, which looked
+// like another thing to send back, forever. `closingOurOffer` is the evidence:
+// this instance was holding the passphrase, which only happens for a reply to
+// an offer it made itself.
+//
+// **Both errors below were discarded.** `peering.Reciprocal` validates, and it
+// refused 0.0.0.0 — the value the accept form suggested — while the caller
+// tested only for `err == nil` and left `reply` empty. The console then showed
+// an empty box under "send this back" and said nothing, which is how an
+// operator learns that a validation exists only by never seeing it fire.
+func (s *Server) reciprocalFor(cfg config.Config, inv peering.Invitation,
+	req acceptRequest, tg uint32, slot int, closingOurOffer bool) (string, error) {
+	if closingOurOffer {
+		return "", nil
+	}
+
+	address := strings.TrimSpace(req.Address)
+	if address == "" {
+		return "", errors.New(`"They send to us at" is where the other network sends: ` +
+			`a public name or address and a UDP port they can reach, like qsp.example.com:62045`)
+	}
+
+	// The reply carries the agreed passphrase's fingerprint, never a new
+	// secret: OpenBridge authenticates every datagram against one shared
+	// passphrase, and a second would produce a link that works one way while
+	// both ends report healthy.
+	mine := peering.Invitation{
+		Network: cfg.DMR.Join.NetworkName,
+		// **The instance's callsign, not the link's name.** This sent
+		// strings.ToUpper(name), so a link an operator called "Test Server"
+		// announced itself to the far end as TEST SERVER. The callsign is what
+		// the other administrator is shown to decide whether they know who is
+		// asking.
+		Callsign:  linkCallsign(cfg),
+		Address:   address,
+		NetworkID: req.NetworkID,
+		Export:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
+		Import:    []peering.Talkgroup{{Talkgroup: tg, Timeslot: slot}},
+		Issued:    time.Now().UTC(),
+	}
+
+	back, err := peering.Reciprocal(inv, mine)
+	if err != nil {
+		return "", err
+	}
+	token, err := peering.Encode(back)
+	if err != nil {
+		return "", err
+	}
+	return token, nil
 }
 
 // writePassphrase stores the agreed secret beside the peer password file, at

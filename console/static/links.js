@@ -354,6 +354,7 @@
       talkgroup: num("accept-tg"),
       timeslot: 2,
       listen: val("accept-listen"),
+      address: val("accept-address"),
       network_id: num("accept-netid"),
       confirm: confirm
     };

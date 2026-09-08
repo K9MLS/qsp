@@ -188,6 +188,7 @@ internal/health             health-check framework
 internal/logging            structured logging and canonical attribute keys
 internal/audit              administrative audit trail
 internal/auth               credential primitives
+internal/bindcheck          can this host bind this address? (-check, and peering)
 internal/server             HTTP transport, SSE
 migrations                  embedded SQL
 ```

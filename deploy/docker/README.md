@@ -174,7 +174,9 @@ The traffic panel says which.
 
 **It refuses to start.** Read the message; it names the file and the setting.
 `docker compose exec qsp /qsp -config /var/lib/qsp/qsp.json -check` validates
-the configuration without starting anything.
+the configuration without starting anything, and attempts each listen address
+it would bind. An address already in use is expected while QSP is running; an
+address this host does not hold is the fault, and is reported as one.
 
 ### Reading and editing the configuration
 

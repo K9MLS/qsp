@@ -1,11 +1,14 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/peering"
@@ -189,4 +192,178 @@ func removeLinkFrom(cfg config.Config, name string) (config.Config, []string) {
 	}
 	cfg.DMR.Bridges = bridges
 	return cfg, orphaned
+}
+
+// acceptHarness builds a server whose configuration can be written and whose
+// passphrase files land somewhere disposable.
+func acceptHarness(t *testing.T) (*Server, *stubAuth, *stubConfig, string) {
+	t.Helper()
+	dir := t.TempDir()
+	cm := newStubConfig()
+	cfg := cm.current
+	cfg.DMR.PasswordFile = filepath.Join(dir, "peers.pass")
+	cfg.DMR.Join.NetworkName = "Test Network"
+	cfg.DMR.Identity.Callsign = "K9MLS"
+	cm.current = cfg
+	srv, a := newConfigServer(t, cm, &recordingAudit{})
+	return srv, a, cm, dir
+}
+
+// anInvitation is what the other administrator sends.
+func anInvitation(t *testing.T, passphrase string) string {
+	t.Helper()
+	token, err := peering.Encode(peering.Invitation{
+		Network:     "Their Network",
+		Callsign:    "KD9EJA",
+		Address:     "their.example.com:62045",
+		NetworkID:   3155373,
+		Export:      []peering.Talkgroup{{Talkgroup: 2, Timeslot: 2}},
+		Import:      []peering.Talkgroup{{Talkgroup: 2, Timeslot: 2}},
+		Fingerprint: peering.FingerprintOf(passphrase),
+		Issued:      time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("could not build an invitation: %v", err)
+	}
+	return token
+}
+
+// TestAPublicNameInTheListenFieldIsRefused is the defect that took production
+// down, at the place it was written.
+//
+// The accept form took qsp.hopto.me:62045 in "We listen on" and wrote it into
+// an upstream. That name resolves to the router, which this host is not, so QSP
+// refused to start — correctly — and systemd crash-looped to its start limit.
+// Recovery took two rounds of hand-edited JSON on a live server.
+//
+// 192.0.2.1 is TEST-NET-1: reserved, never assigned to an interface, and needs
+// no DNS.
+func TestAPublicNameInTheListenFieldIsRefused(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, cm, dir := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"192.0.2.1:62045","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("an unbindable listen address was accepted with %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "cannot listen on") {
+		t.Errorf("the refusal does not say what is wrong: %s", rec.Body.String())
+	}
+
+	// **A refusal leaves nothing behind.** The passphrase file was written
+	// before any address was looked at, so a refusal after it left a .pass for
+	// a link that was never created.
+	if len(cm.saved) != 0 {
+		t.Errorf("a configuration was written for a peering that was refused")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".pass") {
+			t.Errorf("a refused peering left %s behind", e.Name())
+		}
+	}
+}
+
+// TestTheListenFieldIsNotTheReplyAddress is the conflation underneath the
+// crash, rather than the crash.
+//
+// One box fed two opposite fields: the local bind address and the address the
+// far end is told to send to. **Every value was wrong in one of three ways** —
+// 0.0.0.0 binds and is refused by Invitation.Validate, a public name validates
+// and cannot be bound, a LAN address does both and reaches nothing from
+// outside. The two roles are two boxes.
+func TestTheListenFieldIsNotTheReplyAddress(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, _, _ := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a correct peering was refused with %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got acceptResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v", err)
+	}
+	if got.Reciprocal == "" {
+		t.Fatal("no reciprocal to send back; the console shows an empty box and says nothing")
+	}
+	back, err := peering.Decode(got.Reciprocal)
+	if err != nil {
+		t.Fatalf("the reciprocal does not decode: %v", err)
+	}
+	if back.Address != "qsp.example.com:62045" {
+		t.Errorf("the reciprocal tells the far end to send to %q, want the public address", back.Address)
+	}
+}
+
+// TestAReciprocalThatCannotBeBuiltIsReported.
+//
+// peering.Reciprocal validates, and it refused 0.0.0.0 — the value the page
+// suggested for the one box that fed both roles. The caller tested only for
+// err == nil, so the reply came back empty and the page rendered an empty box
+// under "send this back" with no message. **A validation that exists and fires
+// and is never seen is not a validation.**
+func TestAReciprocalThatCannotBeBuiltIsReported(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, cm, _ := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"0.0.0.0:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code == http.StatusOK {
+		t.Fatalf("a bind address was accepted as somewhere the far end can reach: %s", rec.Body.String())
+	}
+	if len(cm.saved) != 0 {
+		t.Error("a link was written for a peering whose reciprocal could not be built")
+	}
+}
+
+// TestAMissingReplyAddressIsRefused. Left empty it produced an invitation with
+// no address, which is a link the far end never reaches.
+func TestAMissingReplyAddressIsRefused(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, _, _ := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("a peering with nowhere to reply to was accepted with %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "They send to us at") {
+		t.Errorf("the refusal does not name the box to fill: %s", rec.Body.String())
+	}
+}
+
+// TestAnEmptyListenAddressIsRefused. An upstream with no listen address binds
+// every interface on a port the kernel chooses, which no far end was told
+// about.
+func TestAnEmptyListenAddressIsRefused(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, _, _ := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("an empty listen address was accepted with %d", rec.Code)
+	}
 }

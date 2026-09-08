@@ -208,8 +208,16 @@
               <span class="picker__label">We listen on</span>
               <input class="picker__input" id="accept-listen" type="text"
                      placeholder="0.0.0.0:62045">
-              <p class="field__note">Where this server receives. The port must
-                reach you from the internet.</p>
+              <p class="field__note">The local address this server binds.
+                0.0.0.0 is every interface on this machine. Not a public
+                name &mdash; this host has to hold the address.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">They send to us at</span>
+              <input class="picker__input" id="accept-address" type="text"
+                     placeholder="qsp.example.com:62045">
+              <p class="field__note">Where their server sends. Your public name
+                or address, and a UDP port you have open.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">We announce</span>

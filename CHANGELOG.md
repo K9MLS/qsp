@@ -6,17 +6,12 @@ All notable changes to QSP. Dates are UTC.
 
 ### Known defects, not yet fixed
 
-- **"We listen on" is written without validation, and QSP will not start with a
-  bad one.** The accept form takes any string; `qsp.hopto.me:62045` resolves to
-  a router's public address, which the host cannot bind, so the service exits
-  and systemd crash-loops to its start limit. Recovery is hand-edited JSON.
-
-  The field beside it is validated — 0259 refuses `0.0.0.0` in "They send to" —
-  and the two are exact opposites. Same form, same afternoon.
-
-- **`-check` passes configurations the process then dies on.** It reported
-  `is valid` for the above. A gate that gives false assurance is worse than no
-  gate; it should attempt the binds it can.
+- **A listen address that binds locally and reaches nothing from outside is
+  still accepted, and cannot be caught here.** A LAN address passes every check
+  in 0261 — this host holds it, so the bind succeeds — and a far end across the
+  internet sends into it forever. Nothing running on one machine can observe a
+  port forward, a firewall rule or a NAT translation. Catching it needs the far
+  end to answer, which belongs with the peering exchange rather than `-check`.
 
 ### Notes
 
@@ -32,6 +27,63 @@ All notable changes to QSP. Dates are UTC.
   radio side and never to the half an operator touches.
 
 ### Added
+
+- **"We listen on" and "They send to us at" are two boxes on the accept form,
+  because they are exact opposites.** One box fed both: the local address to
+  bind, and the address written into the reciprocal for the far end to send to.
+  **Every value an operator could type was wrong, in one of three ways.**
+
+  `0.0.0.0:62045` — *the placeholder the page itself suggested* — binds
+  correctly and is refused by `Invitation.Validate` as somewhere to send to.
+  That error was discarded, so the reciprocal came back empty and the console
+  rendered an empty box under "send this back" with nothing said.
+
+  A public name produces a valid reciprocal and an address this host cannot
+  bind. QSP then refuses to start — correctly, rather than dropping a link an
+  operator configured — and systemd crash-loops to its start limit. **This is
+  what happened**, and recovery took two rounds of hand-edited JSON on a live
+  production server.
+
+  A LAN address does both and reaches nothing from outside: a link that reports
+  itself configured and carries silence.
+
+  The offer form beside it has had these as two fields all along. The note under
+  the listen box also stopped saying the port "must reach you from the
+  internet", which is a sentence about reachability under a field that is a bind
+  address, and is what pointed an operator at a public name.
+
+- **`internal/bindcheck`, and `-check` attempts the binds it can.** It reported
+  `/var/lib/qsp/qsp.json is valid` for a document the process died on seconds
+  later, at bind time. **A gate that gives false assurance is worse than no
+  gate**, and the operator used it exactly as intended.
+
+  It now tries every address QSP would bind — `server`, `dmr`, `ipsc` and each
+  enabled OpenBridge upstream — and says what would fail. **An address already
+  in use is not a failure**: `-check` is run against a live configuration while
+  the service holding those ports is running, so reporting three faults on a
+  healthy server would teach an operator to stop reading the output, and then it
+  is not a gate. `EADDRINUSE` is also positive evidence that this host holds the
+  address. The fault is `EADDRNOTAVAIL`, which is the one that took production
+  down. Failures are listed by name, never counted.
+
+  It still cannot prove a port is reachable from outside, and nothing in its
+  output implies it can.
+
+- **The accept handler reports why a reciprocal could not be built.**
+  `peering.Reciprocal` validates and `peering.Encode` validates, and both errors
+  were dropped by a caller that tested only for `err == nil`. A validation that
+  exists, fires, and is never seen is not a validation.
+
+### Fixed
+
+- **A refused peering leaves nothing behind.** The passphrase file was written
+  before any address was looked at, so any refusal below that line left a
+  `.pass` for a link that was never created. Everything that can refuse the
+  peering now refuses it above the first line that writes anything.
+
+- **The reciprocal is built before the configuration is saved**, not after. Left
+  where it was, the moment its error stopped being discarded would have produced
+  a message on screen and a link on disk.
 
 - **A link can be removed.** Accepting a peering wrote an upstream, a bridge and
   a passphrase file, and **nothing in the API or the console could undo any of

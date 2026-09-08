@@ -94,10 +94,26 @@ func realMain() error {
 
 	// **-check exists because a configuration edit was verified by restarting
 	// the service.** An invalid file then takes the network down and reports
-	// itself in a journal, and systemd gives up after five attempts. Validation
-	// happens here already; the only thing missing was a way to ask for it
-	// without binding a socket, opening a database, or dropping a member.
+	// itself in a journal, and systemd gives up after five attempts.
+	//
+	// # Why it binds now, having been written not to
+	//
+	// It used to open no socket at all, deliberately. Then it printed
+	// "/var/lib/qsp/qsp.json is valid" for a document the process died on
+	// seconds later, at bind time, on an upstream listen address this host
+	// does not have — and systemd crash-looped to its start limit. **A gate
+	// that gives false assurance is worse than no gate**, and the operator had
+	// used it exactly as intended.
+	//
+	// So it attempts the binds, and is careful about what it claims: a bind
+	// proves an address is one this host holds, and proves nothing whatever
+	// about a port forward, a firewall or a NAT translation. The database and
+	// the member list are still untouched.
 	if *check {
+		if err := checkBinds(os.Stdout, cfg); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return errCheckFailed
+		}
 		fmt.Printf("%s is valid\n", configName(*configPath))
 		return nil
 	}

@@ -163,3 +163,39 @@ func TestTheDestructiveStyleReusesItsToken(t *testing.T) {
 		t.Error("a second token was invented for the colour --color-destructive already names")
 	}
 }
+
+// TestTheAcceptFormSeparatesTheTwoOppositeAddresses is the defect that took
+// production down, at the level of the page that produced it.
+//
+// The accept form had one box, "We listen on", and the handler read it twice:
+// once as the local address to bind and once as the address the far end is told
+// to send to. **Those are exact opposites**, and every value an operator could
+// type was wrong in one of three ways — 0.0.0.0 binds and is refused as
+// somewhere to send to, a public name is accepted as somewhere to send to and
+// cannot be bound, a LAN address does both and reaches nothing from outside.
+// The offer form beside it has had these as two fields all along.
+func TestTheAcceptFormSeparatesTheTwoOppositeAddresses(t *testing.T) {
+	html := readFile(t, "static/links.html")
+	js := stripComments(readFile(t, "static/links.js"))
+
+	for _, field := range []struct{ role, id string }{
+		{"the address this server binds", "accept-listen"},
+		{"the address the far end sends to", "accept-address"},
+	} {
+		if !strings.Contains(html, `id="`+field.id+`"`) {
+			t.Errorf("the accept form has no box for %s", field.role)
+		}
+		if !strings.Contains(js, field.id) {
+			t.Errorf("the box for %s is on the page and never read", field.role)
+		}
+	}
+
+	// Both have to reach the API, under the names the handler decodes. A box
+	// read into a variable that is never sent is the same defect one step
+	// further along.
+	for _, key := range []string{"listen:", "address:"} {
+		if !strings.Contains(js, key) {
+			t.Errorf("the accept request never sends %q", key)
+		}
+	}
+}
