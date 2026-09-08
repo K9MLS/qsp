@@ -2953,3 +2953,46 @@ The instruction was to hunt bugs rather than run the system, and it was the
 right instruction to give — four defects. It was also not sufficient, and
 saying so at the time was worth more than agreeing. Both happened, and the
 session is better for having done both in that order.
+
+### §8m addendum — what 2026-09-08 midday settled
+
+**A stale caveat is worse than no caveat.** The IPSC relay announced on every
+start that no capture of a master sending voice existed. It had existed since
+2026-09-03 — `testdata/ipsc/ipsc-master-voice.pcap`, 347 packets, 288 of them
+voice, from the XPR8300's own RF, read by four tests. That sentence was quoted
+twice as evidence the transmit direction could not be checked, and it sent an
+hour in the wrong direction while the reference sat in the tree.
+
+The rule this gives: **a document that names something as missing must fail when
+that thing arrives.** `TestNoCaveatDeniesAFixtureThatExists` reads app.go's
+string literals through the AST — not the file, because the comment explaining
+the fix quotes the old caveat and made the first version of the test fail
+against corrected code.
+
+**Two servers on one LAN must address each other by LAN address.** Production's
+link pointed at `192.168.1.27` and the test server's at `qsp.hopto.me`. The LAN
+direction carried; the public-name direction left the network for the router and
+never came back. Frames were sent, nothing arrived, and **nothing was rejected
+anywhere** — a NAT hairpin produces no error on either side, only two counters
+that disagree. §7 had already recorded this for the Pi-Star and it was not
+generalised.
+
+`Sent 50 / Received 0` on one end beside `Received 28 / Sent 0` on the other is
+the signature. Read both ends' counters before theorising about routing.
+
+**The XPR8300 needs `ipsc.slot_bit_is_timeslot2: true`** with TG2 on TS2 in the
+codeplug. Audio arrived reporting `timeslot=1` against a TS2 bridge and every
+destination refused it. Diagnosed by reading `timeslot=` on the IPSC line and
+the network line of the same transmission — two log lines, not reasoning about
+slot bits.
+
+**Matching the wrong stream ID reads as proof.** A transmission was declared to
+have crossed the link because a stream ID appeared on both servers 5 ms apart.
+It was a different transmission; the repeater's stream appeared in no journal on
+production at all. **Grep for the stream ID the source logged**, not the one
+nearest in time.
+
+**A fifth wrong-reason test**, bringing the session's total to five: an
+assertion searched a whole file for a function name and found the function's own
+declaration, passing against a file with the call deleted. Scope an assertion to
+the thing it is about — the call site, the rule body, the string literal.

@@ -7,41 +7,54 @@ this session. §8b through §8l are superseded and say so.
 Version **0.1.107**, patches 0261–0265. Every one of them is on Fedora.
 **0264 and 0265 are on neither server**, and 0264 matters most — see below.
 
-## Start here: one thing that is not finished
+## Start here: a repeater keys up on network audio and transmits silence
 
-**The Motorola repeater's audio does not reach the network, and the cause is
-identified but unconfirmed.**
+**This is measurable, and a caveat said otherwise for five days.**
 
-Every transmission on the test server logs this, three lines, unchanged:
+The IPSC relay logged, on every start, *"built from inference; no capture of a
+master sending voice exists (ADR-0041)"*. That stopped being true on
+2026-09-03. `testdata/ipsc/ipsc-master-voice.pcap` is 347 packets of an
+XPR8300's own RF, 288 of them voice, captured by K9MLS, and **four tests
+already read it** — `internal/ipscbridge/master_test.go`,
+`internal/ipsclink/parrot_test.go`, `internal/dmrfec/slottype_test.go` and
+`internal/ipscbridge/encode_test.go`.
 
-```
-call started  subsystem=ipsc  radio_id=999999 destination=2 timeslot=1 slot_bit=true
-call started  subsystem=network peer_id=3132910 talkgroup=2 timeslot=1
-transmission not carried  reason="every destination refused the frame"
-```
+On 2026-09-08 that stale line was read twice as evidence the direction could not
+be verified, while the reference to verify it against was in the tree. It cost
+an hour. 0268 corrects it and adds a test that fails if a caveat denies a
+fixture the repository contains.
 
-The audio arrives on **timeslot 1**. Both endpoints of the bridge the peering
-created are on **timeslot 2**. Nothing matches, so every destination refuses it.
-The IPSC side is decoding correctly — `frames=106 converted=104 delivered=104` —
-and the link is healthy; this is a routing mismatch, not a codec or a link
-fault.
+**The work:** compare the voice bursts QSP sends against that capture and diff.
+Not a new investigation — the method §7 records as having worked repeatedly, on
+a reference that already exists.
 
-`slot_bit=true` with `ipsc.slot_bit_is_timeslot2: false` is what produced
-`timeslot=1`. **Two candidates, different fixes**, and the codeplug decides
-which:
+Everything else in the path is now proven on air:
 
-- The repeater really transmits on TS1 → the bridge is wrong; change it to
-  timeslot 1.
-- The repeater transmits on TS2 and QSP is misreading the slot bit →
-  `slot_bit_is_timeslot2` should be `true`. That setting exists for exactly
-  this ambiguity, and 0265 makes it a toggle on the Network page.
+- The repeater registers with a containerised instance.
+- Its audio is decoded and routed: `frames=46 converted=44 delivered=44`.
+- It crosses an OpenBridge link between two QSP instances, both ways.
+- A hotspot user can key up and **see the repeater transmit** — the header
+  arrives and the repeater acts on it. Only the audio inside is wrong.
 
-Change one setting, capture again, diff. Do not change both.
+## Two things that cost the morning, both now understood
 
-**Production is degraded because of this**, and correctly so: its link reports
-`Sent 50, Received 0, Last heard never`. It carries one way and has never heard
-anything, because the far end's audio is refused at the bridge. The health
-report is right. It clears when audio flows, or when the link is removed.
+**The slot bit.** IPSC audio arrived reporting `timeslot=1` against a bridge on
+timeslot 2 and every destination refused it. The XPR8300's codeplug has TG2 on
+**TS2**, so QSP was misreading the bit: `ipsc.slot_bit_is_timeslot2` must be
+**true** for that repeater. Set it from the Network page (0265), not the file.
+
+**NAT hairpin on the link's far end.** Production's link targeted
+`192.168.1.27:62045` and the test server's targeted `qsp.hopto.me:62045`. One
+direction crossed the LAN and worked; the other left the LAN for the router's
+public address and never came back, so frames were sent and never arrived, with
+no rejection anywhere because nothing received them. §7 already recorded this
+hazard for the Pi-Star, which points at `192.168.1.247` directly for the same
+reason. **Two QSP instances on one LAN must address each other by LAN address.**
+
+**And a console gap it exposed:** a link's far-end address cannot be edited
+anywhere in the console. You can create a link and remove one; changing one
+character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
+0265 closed, and it is worth closing the same way.
 
 ## Deploy 0264 before anything else
 

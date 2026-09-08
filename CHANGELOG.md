@@ -4,6 +4,21 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The IPSC relay denied a capture that had existed for five days.** It logged
+  on every start that no capture of a Motorola master sending voice existed.
+  `testdata/ipsc/ipsc-master-voice.pcap` was captured on 2026-09-03 — 347
+  packets, 288 of them voice, from an XPR8300's own RF — and four tests read it.
+
+  A stale caveat is worse than none. When a repeater keyed up on network audio
+  and transmitted silence, that sentence was read twice as evidence the
+  direction could not be verified, while the reference to verify it against was
+  in the repository. The caveat now says what the symptom is and names the
+  capture to measure against, and `TestNoCaveatDeniesAFixtureThatExists` fails
+  if a claim of absence outlives the thing it denies.
+
+
 ### Documentation
 
 - **Handover, project memory §8m, and the standing brief** record the night the

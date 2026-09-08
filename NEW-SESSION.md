@@ -16,13 +16,17 @@ calls, text messages and parrot all work on air.
 SLR5700, and KB9TYC's. **A hotspot user has heard a Motorola repeater across the
 bridge** — voice header, audio and terminator, a complete DMR transmission.
 
-The other direction, network to repeater, is built but **does not work yet**.
-See §8f and `HANDOVER.md`: the frames QSP sends do not match the shape a
-repeater sends, and that is measurable against fixtures already in the
-repository. **A repeater keying into a containerised instance is now on
-record**, and its audio reaches QSP correctly and is refused at the bridge on a
-timeslot mismatch — `HANDOVER.md` has the three log lines and the two
-candidates.
+The other direction, network to repeater, is built but **does not work yet**:
+on 2026-09-08 a repeater keyed up on network audio and transmitted silence.
+
+**It is measurable, not inferential.** `testdata/ipsc/ipsc-master-voice.pcap`
+is a real Motorola master sending voice — 347 packets, 288 of them voice, from
+the XPR8300's own RF — and four tests already read it. Compare what QSP sends
+against it and diff. See §8m and `HANDOVER.md`.
+
+A repeater registering with a containerised instance is now on record, and the
+repeater-to-network direction carries across an OpenBridge link between two QSP
+instances.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:

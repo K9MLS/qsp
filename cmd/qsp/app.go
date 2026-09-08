@@ -478,8 +478,21 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	switch {
 	case a.dmr != nil && a.ipsc != nil:
 		a.dmr.SetIPSCSink(a.ipsc.SendVoice)
+		// **This caveat used to say no capture of a master sending voice
+		// existed, and that stopped being true on 2026-09-03.**
+		// testdata/ipsc/ipsc-master-voice.pcap is 347 packets of an XPR8300's
+		// own RF, 288 of them voice, and four tests read it — including
+		// internal/ipscbridge/master_test.go.
+		//
+		// A stale caveat is worse than none. On 2026-09-08 a repeater keyed up
+		// and transmitted silence, and this line was read twice as evidence
+		// that the direction was unverifiable, when the reference to verify it
+		// against had been in the repository for five days. The remaining fault
+		// is measurable, and saying otherwise sent an hour in the wrong
+		// direction.
 		log.Info("relaying network audio to IPSC repeaters",
-			slog.String("caveat", "built from inference; no capture of a master sending voice exists (ADR-0041)"))
+			slog.String("caveat", "a repeater may key up and transmit silence; "+
+				"compare what QSP sends against testdata/ipsc/ipsc-master-voice.pcap (ADR-0041)"))
 	case a.ipsc != nil:
 		log.Warn("IPSC repeaters will not hear the network: no DMR listener to relay from",
 			slog.String("remedy", "enable dmr"))
