@@ -4,8 +4,8 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0051**,
 which decides how linking works from here and is confirmed on air. §8o is this
 session.
 
-Version **0.1.116**, patches 0261–0274. Everything through 0273 is on Fedora,
-production and the test server.
+Version **0.1.117**, patches 0261–0275. Everything through 0273 is deployed to
+production and the test server; 0274 and 0275 are on Fedora only.
 
 ## What happened
 
@@ -29,14 +29,25 @@ monitors.
 upstream block: name, address, DMR ID, password file, callsign. No listen
 address, no export list, no import list, no timeslot, no port forward.
 
-## Start here
+## Start here: run relaying with three servers
 
-**Deduplication on source radio ID and stream ID**, which is what makes relaying
-safe and lets ten servers connect as a hub rather than forty-five peerings.
-Until it exists the blunt never-relay rule holds and
-`TestAFrameFromALinkIsNotRelayedYet` says so out loud — **replace that test when
-dedup lands, do not delete it quietly.** Relaying without dedup is a broadcast
-storm on somebody else's network.
+**0275 built deduplication and turned relaying on, and no third server has ever
+existed.** Every test is a unit test. This is the same shape as the two
+diagnoses that were wrong earlier today — correct reasoning, never run.
+
+A transmission is now carried by the first path it arrives by, keyed on source
+radio ID and stream ID, and a QSP link may relay to the other QSP links. What
+that buys is a club joining the network through one neighbour instead of
+peering with everybody, and what makes it safe is that a copy coming back
+around is recognised and dropped.
+
+**The test:** a third QSP instance, linked so that a frame can reach one server
+by two paths. The container on the test server can be duplicated, or a third VM
+stood up. Then key the Pi-Star and confirm a radio hears one copy, not two, and
+that the journal shows the second path refused with
+`already being carried from ...`.
+
+Until that has been run, relaying is a claim.
 
 Then, in order:
 
@@ -49,15 +60,18 @@ Then, in order:
    two linked servers is still silent: the traffic dies at the far end's
    ingress and the link looks dead, which is this morning's failure wearing a
    different label.
-3. **The container version.** The Dockerfile hardcodes
+3. **Reconnection.** ADR-0051 specifies 5 s to 120 s capped, with jitter,
+   forever. Not written. At ten servers a link that stays down until somebody
+   notices is a hole nobody owns.
+4. **The container version.** The Dockerfile hardcodes
    `-X main.version=development`, so `/qsp --version` cannot say what it is and
    §7's deploy check has never worked there. It should come from `VERSION` and
    the commit.
-4. **The double close on 62045**, which makes a clean stop exit 1
+5. **The double close on 62045**, which makes a clean stop exit 1
    intermittently and fills the journal with failure lines for correct
    restarts.
-5. Remove `Export`, `Import` and the bridge-for-links machinery.
-6. OpenBridge narrowed to foreign networks; the disabled link on the test
+6. Remove `Export`, `Import` and the bridge-for-links machinery.
+7. OpenBridge narrowed to foreign networks; the disabled link on the test
    server removed.
 
 ## Two debts taken deliberately

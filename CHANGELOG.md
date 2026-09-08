@@ -40,14 +40,37 @@ All notable changes to QSP. Dates are UTC.
   An OpenBridge link is unaffected: it is not named in `QSPLinks`, it is still
   reached only by a bridge, and an empty list routes exactly as before.
 
+- **A transmission is carried by the first path it arrives by, and QSP links
+  relay** (ADR-0051). The two are one change: relaying is what lets a club join
+  a network through one neighbour instead of peering with everybody — ten
+  servers meshed is forty-five peerings and an eleventh means ten more — and
+  deduplication is the only reason relaying is safe.
+
+  `Core` remembers which path brought each transmission, keyed on source radio
+  ID **and** stream ID because every network on a mesh picks stream IDs
+  independently. A copy arriving by a second path is dropped at ingress, so two
+  routes of different lengths produce one copy rather than an echo and a loop
+  terminates at its first repetition. A duplicate reaches nothing at all,
+  including the Motorola side: delivering it to the repeaters and not the
+  hotspots would be the worst of both.
+
+  Records age out on the same window the reservations use, swept during
+  routing rather than on a timer, so the package still needs no goroutine and
+  stays a pure function of its inputs and its clock (ADR-0013).
+
+  **A foreign network keeps the blunt rule.** BrandMeister disconnects bridges
+  caught re-bridging and its deduplication is not ours to rely on, so an
+  OpenBridge target still refuses anything that arrived over a link. Only QSP
+  links relay. And a link is still never sent its own frame, which is the half
+  of the loop rule that survives unchanged.
+
+  `TestAFrameFromALinkIsNotRelayedYet` was written to fail when this landed. It
+  did, and it has been replaced rather than deleted.
+
 ### Not yet built, and named so it cannot close quietly
 
-- **Deduplication, and with it relaying between links.** ADR-0051 replaces the
-  blunt never-relay rule with deduplication on source radio ID and stream ID,
-  because ten servers meshed is forty-five peerings. Until that exists the
-  blunt rule still holds, and `TestAFrameFromALinkIsNotRelayedYet` says so out
-  loud rather than leaving a gap nobody can find again. Relaying without
-  deduplication is a broadcast storm on somebody else's network.
+- **Relaying has never been run with three servers.** Every test above is a
+  unit test. The mesh this is for does not exist yet.
 
 - **The accept form still writes a bridge, and still asks for a timeslot.** The
   console has not been changed yet, so a peering agreed through the page still

@@ -1,6 +1,7 @@
 package routing_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -134,31 +135,170 @@ func TestAFrameFromAQSPLinkReachesThePeers(t *testing.T) {
 	}
 }
 
-// TestAFrameFromALinkIsNotRelayedYet records a deliberate gap rather than a
-// decision.
+// TestAFrameFromALinkIsRelayedToTheOthers is what lets a club join through one
+// neighbour (ADR-0051).
 //
-// ADR-0051 replaces the never-relay rule with deduplication on source radio ID
-// and stream ID, because ten servers meshed is forty-five peerings and relaying
-// is what makes a large network simple. **The deduplication is not built**, and
-// relaying without it is a broadcast storm on somebody else's network.
-//
-// So the blunt rule still holds for now, and this test says so out loud. When
-// deduplication lands, this test is replaced rather than deleted quietly — a
-// gap that closes without anyone noticing is a gap nobody can find again.
-func TestAFrameFromALinkIsNotRelayedYet(t *testing.T) {
-	c := qspCore(t, []string{"blake", "paul"}, 3132910)
+// A full mesh of ten servers is forty-five peerings, nine per administrator,
+// and an eleventh server means ten more coordinated with ten people. That is
+// not simple, it is the opposite. Relaying is what makes a large network
+// simple, and it replaced the blunt rule that a frame from a link is never
+// sent to a link — a rule that was correct only because nothing recognised a
+// duplicate.
+func TestAFrameFromALinkIsRelayedToTheOthers(t *testing.T) {
+	c := qspCore(t, []string{"blake", "paul", "pete"}, 3132910)
 
 	res := c.RouteFromUpstream("blake",
 		groupCall(0x5678, 2, hbp.Timeslot2, hbp.FrameTypeVoiceSync), time.Now())
 
+	got := map[string]bool{}
 	for _, u := range res.Upstreams {
-		t.Errorf("a frame from blake was relayed to %q with no deduplication in place", u.Upstream)
+		got[u.Upstream] = true
+		if u.Frame.Timeslot != hbp.Timeslot2 {
+			t.Errorf("%s was relayed TS%d for a frame that arrived on TS2", u.Upstream, u.Frame.Timeslot)
+		}
 	}
-	// And the drop that stopped it is a rule about links, not a verdict on the
-	// transmission, so a Motorola repeater still hears it.
-	for _, d := range res.Drops {
-		if d.To.Upstream != "" && !d.NotAJudgement {
-			t.Errorf("the loop rule for %q is classified as a judgement", d.To.Upstream)
+	for _, want := range []string{"paul", "pete"} {
+		if !got[want] {
+			t.Errorf("a frame from blake was not relayed to %q: %q", want, res.Reason)
+		}
+	}
+	if got["blake"] {
+		t.Error("a frame from blake was relayed back to blake")
+	}
+}
+
+// TestTheSameTransmissionByTwoPathsIsCarriedOnce is the guard that makes
+// relaying safe, and the reason it could not be enabled before.
+//
+// Three servers all linked to each other: a frame reaches this one directly
+// from blake and again by way of paul. Without deduplication that is an echo
+// on every radio, and around a ring it is a storm on somebody else's network.
+//
+// **First path wins.** The copy arriving second reaches nothing at all — not
+// the peers and not the Motorola side, which is why this refusal carries no
+// NoHomebrewDestination. Delivering a duplicate to the repeaters and not the
+// hotspots would be the worst of both.
+func TestTheSameTransmissionByTwoPathsIsCarriedOnce(t *testing.T) {
+	c := qspCore(t, []string{"blake", "paul"}, 3132910)
+	frame := groupCall(0x9abc, 2, hbp.Timeslot2, hbp.FrameTypeVoiceSync)
+	at := time.Now()
+
+	first := c.RouteFromUpstream("blake", frame, at)
+	if len(first.Deliveries) == 0 {
+		t.Fatalf("the first copy was not carried: %q", first.Reason)
+	}
+
+	second := c.RouteFromUpstream("paul", frame, at.Add(20*time.Millisecond))
+	if len(second.Deliveries) != 0 || len(second.Upstreams) != 0 {
+		t.Errorf("the same transmission by a second path was carried again: %d peers, %d links",
+			len(second.Deliveries), len(second.Upstreams))
+	}
+	if second.NoHomebrewDestination {
+		t.Error("a duplicate is reported as unjudged, so it would reach the Motorola repeaters")
+	}
+	if !strings.Contains(second.Reason, "blake") {
+		t.Errorf("the refusal does not name the path already carrying it: %q", second.Reason)
+	}
+}
+
+// TestTheRestOfATransmissionIsNotItsOwnDuplicate, which is every frame after
+// the first and therefore the overwhelmingly common case.
+//
+// Getting this wrong would drop all but the opening burst of every
+// transmission on the network, which is a fault that sounds like a broken
+// vocoder rather than like routing.
+func TestTheRestOfATransmissionIsNotItsOwnDuplicate(t *testing.T) {
+	c := qspCore(t, []string{"blake"}, 3132910)
+	at := time.Now()
+
+	for i := range 30 {
+		res := c.RouteFromUpstream("blake",
+			groupCall(0xbcde, 2, hbp.Timeslot2, hbp.FrameTypeVoiceSync),
+			at.Add(time.Duration(i)*60*time.Millisecond))
+		if len(res.Deliveries) == 0 {
+			t.Fatalf("frame %d of the same transmission was dropped: %q", i, res.Reason)
+		}
+	}
+}
+
+// TestAStreamIDIsReusableAfterTheTransmissionEnds.
+//
+// Two networks pick stream IDs independently and a club network runs for
+// months, so the pair will come round again. Holding it forever would refuse a
+// later transmission for resembling an older one, which on the air is a radio
+// that works in the morning and not in the afternoon.
+func TestAStreamIDIsReusableAfterTheTransmissionEnds(t *testing.T) {
+	c := qspCore(t, []string{"blake", "paul"}, 3132910)
+	frame := groupCall(0xcdef, 2, hbp.Timeslot2, hbp.FrameTypeVoiceSync)
+	at := time.Now()
+
+	if res := c.RouteFromUpstream("blake", frame, at); len(res.Deliveries) == 0 {
+		t.Fatalf("the first transmission was not carried: %q", res.Reason)
+	}
+	// Long enough that the earlier transmission has plainly ended.
+	later := at.Add(routing.StreamTimeout * 4)
+	res := c.RouteFromUpstream("paul", frame, later)
+	if len(res.Deliveries) == 0 {
+		t.Errorf("a later transmission reusing the identifiers was refused: %q", res.Reason)
+	}
+}
+
+// TestTwoRadiosMayShareAStreamID, because the key is the pair.
+//
+// Stream IDs are chosen independently by every network on a mesh, so a
+// collision between two people talking at once is a matter of time rather than
+// malice. Keying on the stream alone would silence one of them.
+func TestTwoRadiosMayShareAStreamID(t *testing.T) {
+	c := qspCore(t, []string{"blake"}, 3132910)
+	at := time.Now()
+
+	first := groupCall(0xdead, 2, hbp.Timeslot2, hbp.FrameTypeVoiceSync)
+	first.SourceID = 3132910
+	second := groupCall(0xdead, 2, hbp.Timeslot1, hbp.FrameTypeVoiceSync)
+	second.SourceID = 3155373
+
+	if res := c.RouteFromUpstream("blake", first, at); len(res.Deliveries) == 0 {
+		t.Fatalf("the first radio was not carried: %q", res.Reason)
+	}
+	res := c.RouteFromUpstream("blake", second, at.Add(10*time.Millisecond))
+	if len(res.Deliveries) == 0 {
+		t.Errorf("a second radio sharing a stream ID was refused as a duplicate: %q", res.Reason)
+	}
+}
+
+// TestAFrameFromALinkIsNeverSentToAForeignNetwork keeps the blunt rule where
+// it is still the right answer.
+//
+// BrandMeister disconnects bridges caught re-bridging, and its deduplication
+// is not ours to rely on: a copy we relay there is indistinguishable from a
+// new transmission. So an OpenBridge target still refuses anything that
+// arrived over a link, and only QSP links relay.
+func TestAFrameFromALinkIsNeverSentToAForeignNetwork(t *testing.T) {
+	// A bridge to a foreign network, and a QSP link beside it.
+	table, err := routing.NewTable([]routing.Bridge{{
+		Name:    "brandmeister",
+		Enabled: true,
+		Endpoints: []routing.Endpoint{
+			{Peer: routing.AnyPeer, Talkgroup: 2, Timeslot: hbp.Timeslot1},
+			{Upstream: "brandmeister", Talkgroup: 2, Timeslot: hbp.Timeslot1},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	c, err := routing.NewCore(routing.CoreOptions{
+		Table: table, Peers: peersReady(3132910), QSPLinks: []string{"blake"},
+	})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+
+	res := c.RouteFromUpstream("blake",
+		groupCall(0xfeed, 2, hbp.Timeslot1, hbp.FrameTypeVoiceSync), time.Now())
+
+	for _, u := range res.Upstreams {
+		if u.Upstream == "brandmeister" {
+			t.Error("a frame from a QSP link was relayed onto a foreign network")
 		}
 	}
 }

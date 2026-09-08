@@ -193,6 +193,47 @@ func contend(e Endpoint) Endpoint {
 }
 
 // sourceKey identifies one transmission at its origin.
+// streamKey identifies one transmission across every path it may arrive by.
+//
+// **Keyed on the radio as well as the stream**, because stream IDs are chosen
+// independently by every network on the mesh and a collision between two of
+// them is a matter of time rather than malice — sourceKey already says so
+// about its own upstream field. The pair is what makes a duplicate
+// recognisable and two different people keying up distinguishable.
+type streamKey struct {
+	source uint32
+	stream hbp.StreamID
+}
+
+// carrier records which path first brought a transmission here.
+//
+// This is ADR-0051's deduplication, and it is what lets a link relay at all. A
+// full mesh of ten servers is forty-five peerings and an eleventh means ten
+// more, so a club has to be able to reach the network through one neighbour —
+// and the moment a frame may leave by a link it arrived at by another, it can
+// come back around. Recognising the transmission is the answer; restricting
+// the topology was the old one.
+//
+// **First path wins, for the life of the transmission.** A frame of a stream
+// already being carried by a different origin is dropped on arrival, so two
+// paths of different lengths produce one copy rather than an echo, and a loop
+// terminates at its first repetition.
+type carrier struct {
+	// origin is the peer or link this transmission arrived by.
+	origin sourceKey
+	// lastSeen ages the record out, so a stream ID may be reused later.
+	lastSeen time.Time
+}
+
+// String names the path a transmission arrived by, for an operator reading a
+// drop reason. A link is named; a peer is its ID.
+func (s sourceKey) String() string {
+	if s.upstream != "" {
+		return "link " + s.upstream
+	}
+	return fmt.Sprintf("peer %d", s.peer)
+}
+
 type sourceKey struct {
 	peer   hbp.RepeaterID
 	stream hbp.StreamID
@@ -254,6 +295,10 @@ type Core struct {
 	// NewCore and only read.
 	mu sync.Mutex
 
+	// carrying maps a transmission to the path that brought it here, so a
+	// second copy arriving by another path is recognised. See carrier.
+	carrying map[streamKey]*carrier
+
 	// busy maps a destination endpoint to the transmission holding it.
 	//
 	// A destination can carry one transmission at a time. Without this, two
@@ -313,6 +358,7 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		attached:    opts.Attached,
 		timeout:     opts.Timeout,
 		qspLinks:    linkSet(opts.QSPLinks),
+		carrying:    make(map[streamKey]*carrier),
 		busy:        make(map[Endpoint]*reservation),
 	}, nil
 }
@@ -552,6 +598,23 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 		src.upstream = origin.Upstream
 	}
 
+	// **Deduplication, which is what lets a link relay** (ADR-0051).
+	//
+	// The first path a transmission arrives by carries it, and the same
+	// transmission arriving by any other path is dropped here. Two routes of
+	// different lengths therefore produce one copy rather than an echo, and a
+	// loop terminates at its first repetition instead of building into a storm
+	// on somebody else's network.
+	//
+	// Refused rather than unjudged: a duplicate must reach nothing, including
+	// the Motorola side, so this sets no NoHomebrewDestination. Delivering it
+	// to the repeaters and not the hotspots would be the worst of both.
+	if dup, holder := c.duplicate(frame, src, now); dup {
+		return Result{Reason: fmt.Sprintf(
+			"already being carried from %s; a transmission is carried by the first path it arrives by",
+			holder)}
+	}
+
 	// A transmission opens and closes with the same frame type: DMR marks both
 	// the voice header and the voice terminator as sync frames, and nothing in
 	// the frame distinguishes them. Only position within the stream does.
@@ -596,12 +659,36 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 
 	for _, target := range targets {
 		if target.Upstream != "" {
-			// The loop rule. See RouteFromUpstream.
-			if fromUpstream {
+			// **A link is never sent its own frame.** This half of the loop
+			// rule survives deduplication unchanged: sending a transmission
+			// back where it came from is an echo whatever else is true.
+			if fromUpstream && strings.EqualFold(target.Upstream, origin.Upstream) {
+				res.Drops = append(res.Drops, Drop{
+					To:            target.Endpoint,
+					Reason:        fmt.Sprintf("arrived from %s, which is where it came from", origin.Upstream),
+					NotAJudgement: true,
+				})
+				continue
+			}
+			// **The other half is now deduplication's job** (ADR-0051).
+			//
+			// A frame from a link may reach the other QSP links, so a club can
+			// join the network through one neighbour rather than peering with
+			// everybody: ten servers meshed is forty-five peerings and an
+			// eleventh means ten more. What made that unsafe was a loop
+			// building into a storm, and a transmission that comes back around
+			// is now recognised and dropped at the far end's ingress.
+			//
+			// **A foreign network keeps the blunt rule.** BrandMeister
+			// disconnects bridges caught re-bridging, and it has no way to
+			// recognise our duplicates for us — its deduplication is not ours
+			// to rely on. So an OpenBridge target still refuses anything that
+			// arrived over a link.
+			if fromUpstream && !c.qspLinks[strings.ToLower(target.Upstream)] {
 				res.Drops = append(res.Drops, Drop{
 					To: target.Endpoint,
 					Reason: fmt.Sprintf("arrived from upstream %s; a frame from a link is never "+
-						"sent to a link", origin.Upstream),
+						"sent to a network that does not speak QSP", origin.Upstream),
 					NotAJudgement: true,
 				})
 				continue
@@ -861,6 +948,47 @@ func (c *Core) holdsAnyFor(src sourceKey) bool {
 }
 
 // release frees every destination held by a transmission.
+// duplicate reports whether this transmission is already being carried by a
+// different path, and claims it for this one when it is not.
+//
+// Called with the lock held. It also ages out records whose transmission has
+// finished, so a stream ID may be reused later — the same window the
+// reservations use, because a transmission that has stopped holding a
+// destination has stopped.
+func (c *Core) duplicate(frame hbp.Data, src sourceKey, now time.Time) (bool, string) {
+	key := streamKey{source: frame.SourceID, stream: frame.StreamID}
+	held, ok := c.carrying[key]
+	switch {
+	case ok && held.origin == src:
+		// The same path, continuing. This is the overwhelmingly common case:
+		// every frame of a transmission after the first.
+		held.lastSeen = now
+		return false, ""
+	case ok && now.Sub(held.lastSeen) <= c.timeout:
+		return true, held.origin.String()
+	}
+	// Either nothing held it, or what did has fallen silent long enough that
+	// this is a new transmission reusing the identifiers.
+	c.carrying[key] = &carrier{origin: src, lastSeen: now}
+	c.expireCarried(now)
+	return false, ""
+}
+
+// expireCarried drops records for transmissions that have ended.
+//
+// **Swept here rather than on a timer**, so the package needs no goroutine of
+// its own and stays a pure function of its inputs and its clock (ADR-0013).
+// The map holds one entry per transmission in flight, which is a handful on a
+// club network and bounded by the number of talkgroups a mesh can carry at
+// once.
+func (c *Core) expireCarried(now time.Time) {
+	for key, held := range c.carrying {
+		if now.Sub(held.lastSeen) > c.timeout {
+			delete(c.carrying, key)
+		}
+	}
+}
+
 func (c *Core) release(src sourceKey) {
 	for key, held := range c.busy {
 		if held.source == src {
