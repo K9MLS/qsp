@@ -2871,6 +2871,29 @@ in §8o from the container work and was not thought of as available on
 production. **Ask what already works on one machine before inventing something
 for another.**
 
+### A design is true of a premise, and premises change
+
+**2026-09-08, twice in one evening.** Two defects came from reasoning that was
+correct when it was written and was not revisited when the thing making it
+correct changed.
+
+0284 removed the Remove button from inbound links, because an inbound link is in
+nobody's configuration — this server received a registration, not a document, so
+there was nothing to delete. Forty minutes later 0288 made the offering side
+allocate a DMR ID and a password for exactly those links. The button stayed off.
+A server could not refuse a neighbour from its own console, which ADR-0052 rule
+1 requires of a federation, and the operator found it by looking at the page.
+
+The same evening, `defaultLinkAddress` was reused on the QSP link path. It
+hardcodes the OpenBridge port, which was right for the only caller it had. The
+link path made that false, and the form then suggested an address no link can
+dial — valid `host:port`, correct configuration, unreachable.
+
+So the question to ask beside "what is declared and read by nothing?" is **what
+was this true of, and is that still the case?** A comment explaining why
+something is absent is the place to look: it names its own premise, which is
+what makes it checkable. Both of these said so in as many words.
+
 ### A test that has never failed is a test you do not believe
 
 Three tests written the same day asserted something adjacent to the thing that

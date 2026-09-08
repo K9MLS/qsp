@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover, standing brief and §8a brought up to the end of 2026-09-08.** The
+  head names what is deployed where — production 0.1.133, the test server
+  0.1.132, 0292 nowhere — and the third-server plan is replaced by what was
+  decided instead: AD0MI installing QSP on a cloud server, which tests relaying,
+  deduplication and a link across the internet at once, between servers owned by
+  two operators rather than three owned by one.
+
+- **§8a gains the shape both of tonight's defects had.** A design is true of a
+  premise, and premises change. 0284 removed a button because there was nothing
+  on this side to delete, and 0288 made that false forty minutes later;
+  `defaultLinkAddress` hardcoded the OpenBridge port, which was right for its
+  only caller until the link path became a second one. Neither is the usual
+  "declared and read by nothing" — both were read, and both were correct when
+  written. The question to ask beside it: **what was this true of, and is that
+  still the case?** A comment explaining an absence names its own premise, which
+  is what makes it checkable.
+
+- **`cat VERSION` after `git am`, before building.** A patch file never reached
+  Fedora tonight: `git am` said so, and the gates then passed, the build
+  succeeded and the deploy shipped the previous build, because every check after
+  the failure was answering about the wrong tree. One line says whether the tree
+  about to be compiled is the one intended.
+
+- The identifier argument is recorded as concrete rather than as a principle: a
+  server needs one DMR ID per link it dials, so a mesh of ten neighbours burns
+  ten IDs from a pool issued to people. `config.Validate` refuses two links
+  sharing one even when they point at different far ends, which is blunt rather
+  than wrong and should be left alone.
+
 ### Fixed
 
 - **The offer form proposed an address no QSP link can reach.** `defaultLinkAddress`

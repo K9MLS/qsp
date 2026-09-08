@@ -4,14 +4,44 @@ Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 which is the frame everything about linking now sits inside, then **ADR-0051**,
 which is confirmed on air. **§8o** is this session.
 
-Version **0.1.128**, patches 0261–0286. **Everything through 0285 is deployed to
-production and the test server**, and both were confirmed by the running process
-rather than by a file on disk — production's journal reads
-`0.1.127 (v0.1.94-0.20260908181510-465377ac131a)`, and the container's binary
-carries a string that no build before 0284 had. 0286 is documentation and needs
-no deploy.
+Version **0.1.134**, patches 0261–0292. **Production is on 0.1.133; the test
+server is on 0.1.132.** 0292 is built and not deployed anywhere. Check a deploy
+by asking the running process — the `starting` log line on production, a string
+unique to the build in the container — and check `cat VERSION` after every
+`git am`, because a patch file that never reached the machine passed every gate
+and shipped the previous build tonight.
 
-## What this session did
+## What the second half of 2026-09-08 did
+
+**The accept form is built, and a link can be agreed entirely from a console.**
+Six patches, 0287–0292. Until this, the only way to write a working QSP link was
+to hand-edit JSON on a server.
+
+- **0287** — `QSP-PEER-2.` invitations. One token, one direction. A QSP link is
+  a peer registration, so the *listening* side offers: it is the side with
+  something to allocate. No `Export`, `Import`, `NetworkID`, timeslot or
+  `Reply`, and one leg cannot loop, so the reciprocal, the held-passphrase store
+  and both defects they produced are gone from this path.
+- **0288** — the offering side. It writes a DMR ID into the registration list
+  and a password against that ID, both or neither, and settles
+  `dmr.peer_passwords` so a link carries its own credential.
+- **0289** — the accept path. One upstream, no bridge, no timeslot.
+- **0290** — the console. The offer form asks what is at the other end before
+  it asks anything else; the accept form reads the kind off the token.
+- **0291** — **Stop accepting** on inbound links. 0284 removed the button
+  reasoning there was nothing on this side to delete, which stopped being true
+  when 0288 began allocating. A server that cannot refuse a neighbour from its
+  own console is not sovereign.
+- **0292** — the offer proposed the OpenBridge port for a link. Found by using
+  the form on two live servers.
+
+**Two defects tonight came from a design that was right when it was written and
+was not revisited when its premise changed** — 0284's missing button, and the
+address helper reused on a path it did not suit. That is §8a's shape, and it now
+has a second form: not only two statements individually true, but one statement
+that was true and stopped being so.
+
+## What the first half did
 
 **Two QSP servers hear each other, both directions, and the timeslot survives.**
 A hotspot user in Denton heard on a Motorola repeater through a link that is a
@@ -38,72 +68,60 @@ clicking through a console rather than by a test.
 
 ## Start here
 
-**A third server.** Relaying and deduplication are the largest untested claim in
-the tree: every test is a unit test, and with two servers there is nothing to
-relay to, so nothing on air says anything about either.
+**Redo the link through the accept form.** Everything for it is built and
+deployed and it has never been used end to end with the right address. Offer
+from production — another QSP server, their DMR ID 3132914, dialling
+`192.168.1.247:62031` — accept on the test server as `production-form`, restart,
+and read both consoles. **This is the moment the shared-password debt is paid**:
+a link written by the form carries its own credential rather than
+`/var/lib/qsp/peer.pass`. Production's Peers page is where to confirm it.
 
-The wiring was read before the plan was made, so this is a test of something
-rather than of nothing. `QSPLinks` is populated in `cmd/qsp/app.go` and read in
-`internal/routing/core.go`; the relay branch lets a frame from one QSP link
-reach the others; deduplication sits inside `route` itself rather than on an
-ingress path, so all three ingress paths reach it — the shape that failed for
-`sendToIPSC` is right here; and nothing rewrites `StreamID` or `SourceID` on
-relay, so the key survives a hop.
+The form was used once before this and wrote an unreachable address, which 0292
+fixed; that is the only reason it has not been proved.
 
-**The topology has to be right or the run is green for the wrong reason.**
-`qspLinks` comes from configuration, so only *outbound* links count, and
-production has none — it is dialled into by everybody. So: production listens,
-the test server dials production, and **the third dials both**. Key the Pi-Star
-on production; the third server gets a direct copy and a relayed one, and it is
-the third server's journal that must say `already being carried from ...`. A
-third that dials production alone relays nothing.
+**Then settle what a server's identifier is**, before anything else in ADR-0052
+is written. The accept form now bakes the answer in every time somebody uses it,
+so this stops being theoretical the moment a second operator peers.
 
-**Run the third as a plain binary on Fedora**, not as a second container. The
-container is `network_mode: host` deliberately, so a second one on the test
-server collides on every listen address and needs its own volume, name, `.env`
-and a config it cannot write before first run. Fedora already has the
-cross-compiled binary after every build, is on the LAN at 192.168.1.77 so the
-LAN-address rule holds, and dials out only — Fedora running no sshd does not
-matter. `deploy/pair/alpha.json` is the template: strip the bridge and the
-OpenBridge upstream, two `qsp` upstreams, SQLite under `/tmp`, spare ports.
+**The argument is now concrete rather than a principle.** `config.Validate`
+refuses two links sharing a `repeater_id` even when they point at different far
+ends, so a server needs **one DMR ID per link it dials** — a server meshed to
+ten neighbours burns ten IDs from a pool issued to people, and it scales with
+the topology rather than with the number of servers. A third instance needed two
+IDs for two links on 2026-09-08 and that is what surfaced it. The check is blunt
+rather than wrong: its stated reason, that the second registration replaces the
+first at the far end, holds only when both links point at the same far end.
+Leave the check alone; it costs one ID and the misconfiguration it prevents is
+silent.
 
-**And it will fail silently if the ID is not allowed at both ends.**
-`repeater_id` 3132913 — 3132910 is the operator ID, 3132911 is both IPSC
-masters, 3132912 is the test server's link — and that ID must be in the
-registration access list on production *and* on the test server, or it retries
-forever with nothing in the log saying why.
+**Then reciprocal identity**, ADR-0052 rule 3 as amended. Only the server that
+dials says what it is, because identity rides on registration and registration
+goes one way — so a remote operator's console shows this server as an address
+while this one shows theirs properly. Rule 2's "both consoles show the same
+name" is not merely unimplemented on the dialling side but unimplementable
+there, because it has nothing to display.
 
-**First, though, the three of 0284 that the Links page cannot show.** Production's
-Peers page, the row announcing 3132912: a software string that fits 40 bytes, no
-colour code where none was announced, and position advice that names the station
-rather than a hotspot it does not have. Five minutes, and they are the reason
-0284 exists.
-
-**Then settle what a server's identifier is**, before writing any more of
-ADR-0052. It is the one choice that cannot be changed once servers are running,
-because it is what everybody calls everybody else. Today it is a DMR ID because
-that is what the protocol carries — and a DMR ID is issued to an *operator*,
-while a server outlives the person who registered it and a club running three
-instances needs three from a pool sized for members. BrandMeister numbered
-networks separately for that reason.
-
-**Then the accept form.** It still writes an OpenBridge link with a bridge and a
-timeslot box, so every peering agreed through the console produces the
-configuration ADR-0051 exists to prevent. It is the largest single piece left:
-the invitation format carries `Export`, `Import` and `NetworkID`, all
-meaningless now, so the invitation, the offering side, the reciprocal builder
-and the console JavaScript change together. **Start it with a full context
-budget.** A `qsp` link is written by hand meanwhile; the JSON is below.
-
-Then, in ADR-0052's order: a hop count bounding relay before dedup catches it;
-the link's own state while retrying, which works and is silent to the console;
-subscription instead of flooding, its own record; and the network view
-propagated hop by hop, its own record.
+**Relaying and deduplication are not being tested locally.** A third instance on
+one LAN was built and rejected: AD0MI is installing QSP on a cloud server, which
+proves relay, dedup *and* a link across the internet in one go, and a federation
+of servers owned by two operators is a truer test than three owned by one. The
+wiring was read and is real — `QSPLinks` populated in `cmd/qsp/app.go` and read
+in `internal/routing/core.go`, the relay branch lets a frame from one QSP link
+reach the others, deduplication sits inside `route` itself rather than on an
+ingress path so all three ingress paths reach it, and nothing rewrites
+`StreamID` or `SourceID` on a relay. The topology when that server exists:
+production listens, the test server dials production, and the third dials
+**both** — a third that dials one relays nothing and goes green for the wrong
+reason.
 
 Last, remove `Export`, `Import` and the bridge-for-links machinery, and narrow
 OpenBridge to foreign networks.
 
 ## Two debts taken deliberately
+
+**The mechanism for this debt is now built and unproved.** 0288 makes an offered
+link carry its own credential, so redoing the link through the form pays it. The
+paragraph below describes the hand-written link that is still running.
 
 **The link authenticates with the shared hotspot password.** Production has no
 per-peer list, so `/var/lib/qsp/peer.pass` is what all three hotspots and now
@@ -112,6 +130,10 @@ changing everybody's password, and this gives that up. Taken to get the on-air
 proof and should be paid back when the accept form is built. **The password was
 also pasted into a chat**, so it is worth changing when the hotspots can be
 reconfigured.
+
+**The test server's peer password was also pasted into a chat**, as production's
+was. Both are worth changing when the hotspots can be reconfigured, and the
+per-peer mechanism means a link no longer needs either.
 
 **Both servers announce IPSC master ID 3132911.** They do not collide today
 because no repeater talks to both. 0277 refuses a *link* carrying that ID, which
@@ -240,6 +262,13 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   zero; and Remove is absent on production, where the link is in nobody's
   configuration, and present on the test server, where it is a config block.
 
+- **Two of 0284's five, and 0291's control.** Production's inbound row prints a
+  dash rather than `0 / 0`, has no Remove, and now offers **Stop accepting**.
+- **A link written entirely from a console.** The accept form produced a `qsp`
+  upstream on the test server with no bridge and no timeslot — over an
+  unreachable address, which 0292 fixed and which is why this is listed here
+  rather than under what works.
+
 ## Not proven
 
 - **Relaying and deduplication, on any machine.** Every test is a unit test and
@@ -250,6 +279,14 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   position advice. All three are peer properties and do not appear on the Links
   page; production's Peers page or `/api/peers` shows them, for the row
   announcing 3132912.
+- **The accept form end to end.** Everything is built and deployed; it has never
+  produced a link that came up. This is where the next session starts.
+- **A refused inbound link.** 0291's Stop accepting has been seen on the page
+  and never clicked. The link it would be clicked on authenticates with the
+  shared password, so it will report that the ID is refused and that it had no
+  password of its own — which is the honest answer and worth seeing once.
+- **A per-peer link credential.** `dmr.peer_passwords` is settled by the offer
+  form and no link has used one yet.
 - The IPSC panel from 0265, never loaded in a browser.
 - Published image tag and CI publishing. `docker compose up` without the build
   override tries `ghcr.io/k9mls/qsp:<version>` and is denied.
@@ -279,6 +316,10 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   any current build nor anything on production. Nothing runs it. It sits at the
   path the deploy documentation names, so a command meant for a server that
   lands on Fedora is answered by a binary of unknown age. Worth deleting.
+- **`defaultLinkAddress` is still the OpenBridge helper**, now beside
+  `defaultQSPLinkAddress`. Two functions naming the same idea differently is the
+  shape that produced the wrong port; when OpenBridge is narrowed to foreign
+  networks, one of them should go.
 - **The Links page heading is the wrong name.** Production heads the link
   `production`, which is the local label the *test server* chose for its own
   config block — so an administrator on .247 reads a link to the test server

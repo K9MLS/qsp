@@ -31,9 +31,14 @@ A repeater registering with a containerised instance is now on record, and
 instances** — a Motorola repeater heard by a hotspot user, which had never
 worked before 2026-09-08.
 
-What has never been tried is a **third** server. Relaying and deduplication are
-built, unit-tested and unexercised, because two servers give nothing to relay
-to. `HANDOVER.md` opens on that.
+**A link can now be agreed entirely from a console** — offered, accepted and
+refused — which until 2026-09-08 needed hand-edited JSON on a server. It has not
+yet produced a link that came up, and `HANDOVER.md` opens on that.
+
+Relaying and deduplication are built, unit-tested and unexercised: two servers
+give nothing to relay to. A third instance on this LAN was built and rejected in
+favour of AD0MI installing QSP on a cloud server, which tests relay, dedup and a
+link across the internet at once.
 
 Attached is a git bundle of the whole repository. Please start by reading
 `PROJECT_MEMORY.md` — particularly:
@@ -93,6 +98,13 @@ does:
 git log --oneline -1
 cat VERSION
 ```
+
+**And run `cat VERSION` again after `git am`, before building.** On 2026-09-08 a
+patch file never reached the machine: `git am` said so, the gates then passed,
+the build succeeded and the deploy shipped the previous build. Every check after
+the failure was answering about the wrong tree. The version and the patch number
+move together, so one line says whether what is about to be compiled is what was
+meant.
 
 Never commit `go.mod` or `go.sum` — stage with
 `git add -A -- ':!go.mod' ':!go.sum'`.
