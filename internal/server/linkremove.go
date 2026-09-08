@@ -50,6 +50,9 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.opts.Config.Current()
+	// Kept so the restart notice is derived from config.NeedsRestart rather
+	// than asserted here.
+	before := cfg
 
 	var removed *config.Upstream
 	kept := make([]config.Upstream, 0, len(cfg.DMR.Upstreams))
@@ -91,11 +94,11 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	version, err := s.opts.Config.Save(r.Context(), cfg, author,
 		fmt.Sprintf("removed the link %q", removed.Name))
 	if err != nil {
-		s.recordPeering(r, "peering.removed", removed.Name, removed.Address, audit.OutcomeFailure)
+		s.recordPeering(r, audit.ActionPeeringRemoved, removed.Name, removed.Address, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordPeering(r, "peering.removed", removed.Name, removed.Address, audit.OutcomeSuccess)
+	s.recordPeering(r, audit.ActionPeeringRemoved, removed.Name, removed.Address, audit.OutcomeSuccess)
 
 	// **After the configuration is saved, never before.** A passphrase deleted
 	// under a link that is still configured leaves an instance that cannot
@@ -111,6 +114,11 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
 		"version": version.Number,
 		"name":    removed.Name,
+		// **Removing a link closes no socket.** Upstreams are built once at
+		// startup, so the link stays bound and pointed at the far end until a
+		// restart. Two removed links went on being listed as healthy for three
+		// hours, and nothing anywhere said why.
+		"needs_restart": config.NeedsRestart(before, cfg),
 		// Bridges that referred to this upstream and were written by somebody
 		// rather than by accept. Named so the operator can decide.
 		"orphaned_bridges": orphaned,

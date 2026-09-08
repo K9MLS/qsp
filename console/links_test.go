@@ -199,3 +199,42 @@ func TestTheAcceptFormSeparatesTheTwoOppositeAddresses(t *testing.T) {
 		}
 	}
 }
+
+// TestThePageReadsWhatTheAPINowReports is the "declared and read by nothing"
+// check, pointed at the console.
+//
+// `configured`, `pending_restart` and `needs_restart` are new fields on three
+// responses. A field the API sends and the page ignores compiles, vets, passes
+// staticcheck and passes every Go test, and this project has paid for that
+// nine times.
+func TestThePageReadsWhatTheAPINowReports(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	for _, field := range []struct{ name, why string }{
+		{"configured", "a link removed from the configuration would go on showing as healthy"},
+		{"pending_restart", "nothing would say the link and the running server disagree"},
+		{"needs_restart", "an operator would be left waiting on a link that has no socket yet"},
+	} {
+		if !strings.Contains(js, field.name) {
+			t.Errorf("the page never reads %q: %s", field.name, field.why)
+		}
+	}
+}
+
+// TestBothWritePathsMentionTheRestart.
+//
+// Accepting a peering opens no socket and removing one closes none, and the
+// operator is looking at the result of the write, not at the list. The
+// sentence comes from one function so the two paths cannot drift apart.
+func TestBothWritePathsMentionTheRestart(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "function restartNote") {
+		t.Fatal("no shared restart notice; two paths would each carry their own wording")
+	}
+	// Called from the list, from both halves of accept, and from remove.
+	if n := strings.Count(js, "restartNote("); n < 4 {
+		t.Errorf("restartNote is called %d times; the accept and remove results "+
+			"and the declaration are four", n)
+	}
+}

@@ -137,6 +137,16 @@ type acceptResponse struct {
 	// Complete reports that both halves are now configured and there is
 	// nothing further to send.
 	Complete bool `json:"complete"`
+	// NeedsRestart names the settings that were written and cannot take
+	// effect until QSP restarts.
+	//
+	// **A peering opens no socket.** Upstreams are built once at startup and
+	// a configuration apply does not touch them, so an accepted link carries
+	// nothing in either direction until a restart. `config.NeedsRestart` has
+	// named `dmr.upstreams` all along and this page never asked it, so the
+	// console reported a peering agreed and left an operator waiting on a
+	// link that did not exist yet.
+	NeedsRestart []string `json:"needs_restart,omitempty"`
 }
 
 // handleOfferPeering generates an invitation and the passphrase behind it.
@@ -229,7 +239,7 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.recordPeering(r, "peering.offered", inv.Callsign, address, audit.OutcomeSuccess)
+	s.recordPeering(r, audit.ActionPeeringOffered, inv.Callsign, address, audit.OutcomeSuccess)
 
 	writeJSON(w, s.log, http.StatusOK, offerResponse{
 		Token:       token,
@@ -287,7 +297,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		// Recorded even though nothing was written. An administrator who could
 		// not accept a peering is a fact worth having later, and the absence of
 		// a record would make it look as though nobody tried.
-		s.recordPeering(r, "peering.accepted", inv.Callsign, inv.Address, audit.OutcomeFailure)
+		s.recordPeering(r, audit.ActionPeeringAccepted, inv.Callsign, inv.Address, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -302,6 +312,10 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.opts.Config.Current()
+	// Kept so the restart notice is derived rather than asserted. A hardcoded
+	// "restart to apply" would be a second place to keep true, and
+	// config.NeedsRestart is the first.
+	before := cfg
 	for _, u := range cfg.DMR.Upstreams {
 		if strings.EqualFold(u.Name, name) {
 			writeJSON(w, s.log, http.StatusConflict,
@@ -382,18 +396,19 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 
 	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
 	if err != nil {
-		s.recordPeering(r, "peering.accepted", inv.Callsign, inv.Address, audit.OutcomeFailure)
+		s.recordPeering(r, audit.ActionPeeringAccepted, inv.Callsign, inv.Address, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordPeering(r, "peering.accepted", inv.Callsign, inv.Address, audit.OutcomeSuccess)
+	s.recordPeering(r, audit.ActionPeeringAccepted, inv.Callsign, inv.Address, audit.OutcomeSuccess)
 
 	writeJSON(w, s.log, http.StatusOK, acceptResponse{
-		Version:    version.Number,
-		Callsign:   inv.Callsign,
-		Network:    inv.Network,
-		Reciprocal: reply,
-		Complete:   closingOurOffer,
+		Version:      version.Number,
+		Callsign:     inv.Callsign,
+		Network:      inv.Network,
+		Reciprocal:   reply,
+		Complete:     closingOurOffer,
+		NeedsRestart: config.NeedsRestart(before, cfg),
 	})
 }
 
@@ -491,7 +506,7 @@ func (s *Server) writePassphrase(cfg config.Config, name, passphrase string) (st
 }
 
 // recordPeering writes the audit event ADR-0032 requires.
-func (s *Server) recordPeering(r *http.Request, action, callsign, address string, outcome audit.Outcome) {
+func (s *Server) recordPeering(r *http.Request, action audit.Action, callsign, address string, outcome audit.Outcome) {
 	if s.opts.Audit == nil {
 		return
 	}
@@ -502,7 +517,7 @@ func (s *Server) recordPeering(r *http.Request, action, callsign, address string
 	if err := s.opts.Audit.Record(r.Context(), audit.Event{
 		OccurredAt: time.Now().UTC(),
 		Actor:      actor,
-		Action:     audit.Action(action),
+		Action:     action,
 		Outcome:    outcome,
 		SourceIP:   clientIP(r, s.opts.BehindProxy),
 		Detail:     map[string]string{"callsign": callsign, "address": address},

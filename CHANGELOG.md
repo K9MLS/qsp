@@ -26,6 +26,49 @@ All notable changes to QSP. Dates are UTC.
   method — defects come from running the system — was applied all day to the
   radio side and never to the half an operator touches.
 
+### Fixed
+
+- **No peering had ever been audited.** `peering.offered`, `peering.accepted`
+  and `peering.removed` were all emitted and none was declared, so `Record`
+  refused every one at run time and the caller logged a warning nobody read.
+
+  **SECURITY.md stated as fact that accepting a peering writes an audit event
+  naming the far end's callsign and address whether it succeeds or fails**, and
+  that removing a link records one either way. ADR-0032 required it. The
+  documents were the only place any of it was true.
+
+  The cause was that `recordPeering` took the action as a plain `string`, so an
+  undeclared value compiled, vetted and passed staticcheck. It takes an
+  `audit.Action` now, and `TestEveryDeclaredActionIsKnown` parses the
+  declarations out of the source so the next one cannot be emitted without
+  being declared.
+
+- **The Links page reported two removed links as healthy for three hours.**
+  Sockets bound, counters shown, a "Nothing yet" pill indistinguishable from a
+  live link on a quiet network — while `DELETE /api/links/{name}` correctly
+  answered 404 for both, because they were not in the configuration any more.
+
+  `GET /api/links` read the running upstream set and `DELETE` read the
+  configuration document, and **nothing compared them**, so the honest handler
+  looked broken and the stale display looked authoritative. `/api/links` now
+  reports each link against the document: running and configured, configured
+  and not yet open, or open and no longer configured. A removed link's own
+  advice — check the far end's address and firewall — is replaced rather than
+  kept, because that is expensive and wrong advice for a link somebody deleted
+  on purpose.
+
+- **Nothing said a peering needs a restart.** Upstreams are built once at
+  startup and `applyPending` does not touch them, so **an accepted link opens
+  no socket and a removed one closes none** until QSP restarts. That is a
+  recorded decision — `config.NeedsRestart` names `dmr.upstreams` and says
+  links hold sockets and a handshake — but the accept response, the remove
+  response and the page all stayed silent about it, and an operator was left
+  waiting on a link that did not exist yet.
+
+  All three now say so, from `config.NeedsRestart` rather than a hardcoded
+  sentence, and the page carries one shared wording so the two write paths
+  cannot drift apart.
+
 ### Added
 
 - **"We listen on" and "They send to us at" are two boxes on the accept form,

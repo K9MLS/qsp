@@ -43,6 +43,15 @@
   /* A link's state, in the order an operator asks the questions: is the socket
    * up, has anything ever come back, and is it still coming. */
   function state(link) {
+    /* **Configured and running are different questions**, and the page used to
+     * ask only the second. Upstreams are built once at startup, so a link
+     * accepted since then has no socket and a link removed since then still
+     * has one. Two removed links showed here as healthy for three hours while
+     * the remover correctly answered 404 for both. */
+    if (!link.configured) { return { label: "Removed", kind: "warn" }; }
+    if (!link.open && link.pending_restart) {
+      return { label: "Awaiting restart", kind: "warn" };
+    }
     if (!link.open) { return { label: "Closed", kind: "bad" }; }
     if (link.rejected > 0 && link.received === 0) {
       return { label: "Rejecting", kind: "bad" };
@@ -97,6 +106,10 @@
         fact("Last heard", l.ever_received ? idle(l.idle_seconds || 0) + " ago" : "never") +
         "</dl>" +
         '<p class="link__summary">' + escapeText(l.summary) + "</p>" +
+        (l.pending_restart
+          ? '<p class="link__advice">This link and the running server disagree: ' +
+            escapeText(l.pending_restart) + ".</p>"
+          : "") +
         (l.advice
           ? '<p class="link__advice">' + escapeText(l.advice) + "</p>"
           : "") +
@@ -140,6 +153,9 @@
              * named instead. */
             fail("links-note", "Removed " + name + ". These bridges still route to it and were left alone: " +
               b.orphaned_bridges.join(", "));
+          } else {
+            fail("links-note", "Removed " + name + "." +
+              restartNote(b, "it stays open and pointed at the far end"));
           }
           load();
         }).catch(function (e) {
@@ -149,6 +165,17 @@
         });
       });
     });
+  }
+
+  /* **A peering opens and closes no sockets.** Upstreams are built once at
+   * startup, so an accepted link carries nothing and a removed one keeps its
+   * socket until QSP restarts. config.NeedsRestart has named dmr.upstreams all
+   * along; this page never asked it, and an operator was left waiting on a
+   * link that did not exist yet. */
+  function restartNote(body, what) {
+    if (!body.needs_restart || !body.needs_restart.length) { return ""; }
+    return " QSP has to be restarted before this takes effect — until then " +
+      what + ".";
   }
 
   function fact(label, value) {
@@ -332,7 +359,8 @@
           if (done) {
             text(done, "Peering with " + (b.callsign || "the other network") +
               " is complete. Both ends are configured — there is nothing " +
-              "further to send. It appears under Configured links above.");
+              "further to send. It appears under Configured links above." +
+              restartNote(b, "it carries nothing in either direction"));
             show(done);
           }
           return;
@@ -340,7 +368,8 @@
         hide(el("accept-confirm"));
         text(el("accept-reciprocal"), b.reciprocal || "");
         show(el("accept-result"));
-        text(el("accept-summary"), "");
+        text(el("accept-summary"),
+          "The link is written." + restartNote(b, "it carries nothing in either direction"));
         load();
       }).catch(function (e) { fail("accept-error", e.message); });
     });

@@ -43,6 +43,28 @@ const (
 	ActionServiceStarted Action = "service.started"
 	// ActionServiceStopped records graceful shutdown.
 	ActionServiceStopped Action = "service.stopped"
+
+	// ActionPeeringOffered records an invitation generated for another
+	// network, naming the callsign and address it was made out to.
+	//
+	// # Why these three arrived late
+	//
+	// **All three were emitted for weeks and recorded none of the time.**
+	// `recordPeering` took the action as a plain string, so "peering.offered"
+	// compiled, vetted, passed staticcheck and was rejected at run time by
+	// Record with a warning in the log that nobody was reading. SECURITY.md
+	// stated as fact that accepting a peering writes an audit event naming the
+	// far end whether it succeeds or fails, and ADR-0032 required it. Neither
+	// was true, and the document was the only place it was written down.
+	//
+	// The string parameter is gone with them; an action is an Action now, so
+	// the next one cannot be emitted without being declared here first.
+	ActionPeeringOffered Action = "peering.offered"
+	// ActionPeeringAccepted records a peering agreed and written into the
+	// configuration, or refused.
+	ActionPeeringAccepted Action = "peering.accepted"
+	// ActionPeeringRemoved records a link removed from the configuration.
+	ActionPeeringRemoved Action = "peering.removed"
 )
 
 var knownActions = map[Action]bool{
@@ -52,6 +74,9 @@ var knownActions = map[Action]bool{
 	ActionUserLogout:       true,
 	ActionServiceStarted:   true,
 	ActionServiceStopped:   true,
+	ActionPeeringOffered:   true,
+	ActionPeeringAccepted:  true,
+	ActionPeeringRemoved:   true,
 }
 
 // IsKnownAction reports whether a is a declared action.

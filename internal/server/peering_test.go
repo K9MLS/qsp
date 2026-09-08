@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/peering"
 )
@@ -365,5 +366,89 @@ func TestAnEmptyListenAddressIsRefused(t *testing.T) {
 	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("an empty listen address was accepted with %d", rec.Code)
+	}
+}
+
+// TestAcceptingAPeeringIsAudited is a claim SECURITY.md made and the code did
+// not keep.
+//
+// SECURITY.md states that accepting a peering writes an audit event naming the
+// far end's callsign and address whether it succeeds or fails, and ADR-0032
+// required it. `recordPeering` took the action as a plain string, so
+// "peering.accepted" compiled and vetted and was rejected by Record at run
+// time as undeclared, into a warning nobody read. **No peering has ever been
+// audited.**
+func TestAcceptingAPeeringIsAudited(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	dir := t.TempDir()
+	cm := newStubConfig()
+	cfg := cm.current
+	cfg.DMR.PasswordFile = filepath.Join(dir, "peers.pass")
+	cfg.DMR.Identity.Callsign = "K9MLS"
+	cm.current = cfg
+	rec := &recordingAudit{}
+	srv, a := newConfigServer(t, cm, rec)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	if got := authed(t, srv, a, http.MethodPost, "/api/links/accept", body); got.Code != http.StatusOK {
+		t.Fatalf("accept failed with %d: %s", got.Code, got.Body.String())
+	}
+
+	var found *audit.Event
+	for i := range rec.events {
+		if rec.events[i].Action == audit.ActionPeeringAccepted {
+			found = &rec.events[i]
+		}
+	}
+	if found == nil {
+		t.Fatal("accepting a peering recorded no audit event")
+	}
+	// **The action has to be one Record will keep.** An event with an
+	// undeclared action reaches a recorder and is refused, which is exactly
+	// how this went unnoticed: the call site was there and the trail was empty.
+	if !audit.IsKnownAction(found.Action) {
+		t.Errorf("the recorded action %q is undeclared, so the real recorder rejects it",
+			found.Action)
+	}
+	if found.Detail["callsign"] != "KD9EJA" {
+		t.Errorf("the event does not name the far end: %v", found.Detail)
+	}
+}
+
+// TestAnAcceptedPeeringSaysItNeedsARestart.
+//
+// **A peering opens no socket.** Upstreams are built once at startup and
+// applyPending does not touch them, so an accepted link carries nothing in
+// either direction until QSP restarts. config.NeedsRestart has named
+// dmr.upstreams all along; this handler never asked it, and an operator was
+// left waiting on a link that did not exist yet.
+func TestAnAcceptedPeeringSaysItNeedsARestart(t *testing.T) {
+	const passphrase = "a-passphrase-long-enough-to-be-accepted"
+	srv, a, _, _ := acceptHarness(t)
+
+	body := fmt.Sprintf(`{"token":%q,"passphrase":%q,"name":"test","talkgroup":2,
+		"timeslot":2,"listen":"0.0.0.0:0","address":"qsp.example.com:62045",
+		"network_id":3132910,"confirm":true}`, anInvitation(t, passphrase), passphrase)
+
+	rec := authed(t, srv, a, http.MethodPost, "/api/links/accept", body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("accept failed with %d: %s", rec.Code, rec.Body.String())
+	}
+	var got acceptResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("%v", err)
+	}
+	// Named, not counted.
+	var named bool
+	for _, f := range got.NeedsRestart {
+		if f == "dmr.upstreams" {
+			named = true
+		}
+	}
+	if !named {
+		t.Errorf("the response does not say a restart is needed: %v", got.NeedsRestart)
 	}
 }

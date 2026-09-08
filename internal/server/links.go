@@ -2,7 +2,10 @@ package server
 
 import (
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/k9mls/qsp/internal/config"
 )
 
 // LinkSource supplies what is known about the links to other networks.
@@ -57,6 +60,23 @@ type LinkStatus struct {
 	// differs between the protocols and wrong advice is worse than none.
 	Summary string `json:"summary"`
 	Advice  string `json:"advice,omitempty"`
+	// Configured reports whether the current configuration still holds this
+	// link. Open reports whether this process holds a socket for it.
+	//
+	// **They can disagree, and for three hours nothing said so.** Upstreams
+	// are built once at startup and `applyPending` does not touch them, so a
+	// link removed from the configuration keeps its socket and keeps
+	// appearing here, and a link just accepted has no socket at all. The page
+	// showed two removed links as healthy, with counters, indistinguishable
+	// from live ones, while `DELETE` correctly answered 404 for links that no
+	// longer existed. Two statements individually true.
+	Configured bool `json:"configured"`
+	// PendingRestart says what a restart would do to this link, and is empty
+	// when the configuration and the process already agree.
+	//
+	// `config.NeedsRestart` has always named `dmr.upstreams` as restart-only.
+	// Nothing on this page asked it.
+	PendingRestart string `json:"pending_restart,omitempty"`
 }
 
 // linksResponse is the shape returned by /api/links.
@@ -111,6 +131,7 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.opts.Config != nil {
 		cfg := s.opts.Config.Current()
+		body.Links = reconcileLinks(body.Links, cfg)
 		body.Identity = linkIdentity{
 			Callsign:  linkCallsign(cfg),
 			NetworkID: firstNetworkID(cfg),
@@ -118,4 +139,85 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, s.log, http.StatusOK, body)
+}
+
+// reconcileLinks reports what is running against what is configured.
+//
+// # The defect this exists after
+//
+// Two links were removed from the configuration, correctly, and went on being
+// listed as healthy for three hours: sockets bound, counters shown, a "Nothing
+// yet" pill indistinguishable from a live link on a quiet network. Meanwhile
+// `DELETE /api/links/{name}` answered 404 for both, which was also correct,
+// because they were not in the document any more. **The page and the remover
+// read different sources and nothing compared them**, so the honest handler
+// looked broken and the stale display looked authoritative.
+//
+// The cause is that upstreams are built once at startup: `applyPending` in
+// internal/peers reconfigures routing, access, triggers, schedule and
+// subscription, and does not touch links. That is a recorded decision rather
+// than an oversight — `config.NeedsRestart` names `dmr.upstreams` and says
+// links hold sockets and a handshake — but nothing told the operator, in the
+// response or on the page.
+//
+// So this does not close or open anything. It says which of the three states
+// each link is in, and what a restart would do about it.
+func reconcileLinks(running []LinkStatus, cfg config.Config) []LinkStatus {
+	configured := make(map[string]config.Upstream, len(cfg.DMR.Upstreams))
+	order := make([]string, 0, len(cfg.DMR.Upstreams))
+	for _, u := range cfg.DMR.Upstreams {
+		key := strings.ToLower(strings.TrimSpace(u.Name))
+		configured[key] = u
+		order = append(order, key)
+	}
+
+	out := make([]LinkStatus, 0, len(running)+len(configured))
+	seen := make(map[string]bool, len(running))
+
+	for _, l := range running {
+		key := strings.ToLower(strings.TrimSpace(l.Name))
+		seen[key] = true
+		if _, ok := configured[key]; ok {
+			l.Configured = true
+			out = append(out, l)
+			continue
+		}
+		// Open, and no longer in the document. **The summary and advice are
+		// replaced rather than kept**, because the link's own advice is about
+		// checking the far end's address and firewall, which is wrong and
+		// expensive advice for a link that was deliberately deleted.
+		l.Configured = false
+		l.PendingRestart = "restarting QSP will close it"
+		l.Summary = "removed from the configuration and still open; " +
+			"QSP has not been restarted since it was removed"
+		l.Advice = "nothing further is needed here — the link is gone from the " +
+			"configuration and its socket closes at the next restart"
+		out = append(out, l)
+	}
+
+	// Configured and not open: accepted since the last restart, so no socket
+	// exists and nothing can arrive on it. Listed rather than omitted, because
+	// a link an operator has just agreed to and cannot see is the same silence
+	// this page was built to end.
+	for _, key := range order {
+		if seen[key] {
+			continue
+		}
+		u := configured[key]
+		out = append(out, LinkStatus{
+			Name:           u.Name,
+			Protocol:       u.Protocol,
+			FarEnd:         u.Address,
+			Listening:      u.ListenAddress,
+			NetworkID:      u.NetworkID,
+			Open:           false,
+			Configured:     true,
+			PendingRestart: "restarting QSP will open it",
+			Summary: "configured and not open; QSP has not been restarted " +
+				"since this link was added",
+			Advice: "restart QSP to open this link — until then it carries " +
+				"nothing in either direction",
+		})
+	}
+	return out
 }
