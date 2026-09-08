@@ -331,9 +331,76 @@
     });
   });
 
+  /* **One page, two kinds of link, and they are not variations of each other.**
+   * A QSP server links as a peer: it dials this one, and the whole of its
+   * configuration is a name, an address, a DMR ID and a password. OpenBridge is
+   * symmetric, has no connection, and needs an address and a network ID at both
+   * ends before either carries anything.
+   *
+   * Showing every field for both is how this page came to ask an operator for a
+   * timeslot on a link that has no endpoint to match, and for a listen address
+   * on a link that never binds. So the fields follow the answer to the first
+   * question. */
+  function offerKind() {
+    var e = el("offer-kind");
+    return e ? e.value : "qsp";
+  }
+
+  function syncOfferFields() {
+    var kind = offerKind();
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-kind]"),
+      function (node) { node.hidden = node.getAttribute("data-kind") !== kind; }
+    );
+    /* The same box means different things: a QSP link is dialled on the port
+       this server's peers already use, and an OpenBridge peering is sent to on
+       a port agreed in advance. */
+    text(el("offer-address-label"), kind === "qsp" ? "They dial" : "They send to");
+    text(el("offer-address-note"), kind === "qsp"
+      ? "Where their server reaches this one. Your public name or address, and the UDP port your peers already use."
+      : "Where their server sends. Your public name or address, and a UDP port you have open.");
+    var addr = el("offer-address");
+    if (addr) {
+      addr.placeholder = kind === "qsp"
+        ? "qsp.example.com:62031"
+        : "qsp.example.com:62045";
+    }
+  }
+
+  var offerKindSelect = el("offer-kind");
+  if (offerKindSelect) {
+    offerKindSelect.addEventListener("change", syncOfferFields);
+    syncOfferFields();
+  }
+
+  function offerLink() {
+    hide(el("offer-error"));
+    hide(el("offer-result"));
+    post("/api/links/offer-link", {
+      address: val("offer-address"),
+      repeater_id: num("offer-repeater-id"),
+      callsign: val("offer-callsign")
+    }).then(function (b) {
+      text(el("offer-token"), b.token);
+      /* Shown once and never fetched again, exactly as the passphrase is. */
+      text(el("offer-pass"), b.password);
+      show(el("offer-result"));
+      /* **Offering a QSP link writes configuration**, which offering an
+       * OpenBridge peering does not: the ID is allowed to register and a
+       * password is written for it. An operator who is not told that will not
+       * know why their access list grew an entry. */
+      var note = "This server will now let DMR ID " + b.repeater_id +
+        " register, and has written a password for it alone." +
+        restartNote(b, "the far end cannot register yet");
+      fail("links-note", note);
+      load();
+    }).catch(function (e) { fail("offer-error", e.message); });
+  }
+
   var offerButton = el("offer");
   if (offerButton) {
     offerButton.addEventListener("click", function () {
+      if (offerKind() === "qsp") { offerLink(); return; }
       hide(el("offer-error"));
       hide(el("offer-result"));
       post("/api/links/offer", {
@@ -363,18 +430,50 @@
   /* Accepting is two steps on purpose. The first reads the invitation and
    * shows who is asking; the second writes configuration. A peering agreed by
    * one click is one nobody read. */
+  /* The token says which kind it is, so the operator is never asked. Reading
+   * base64 is not a question anybody should be set. */
+  function acceptKind() {
+    return val("accept-token").indexOf("QSP-PEER-2.") === 0 ? "qsp" : "openbridge";
+  }
+
+  function syncAcceptFields() {
+    var qsp = acceptKind() === "qsp";
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-accept-kind]"),
+      function (node) { node.hidden = qsp; }
+    );
+    /* **The password is never optional on a QSP link.** The other server
+     * listens and this one dials, so there is no offer held here to look it up
+     * from — which is the empty-box dead end that stopped the first peering
+     * anybody attempted, and it cannot arise on this path. */
+    text(el("accept-pass-note"), qsp
+      ? "Sent to you separately from the invitation. A QSP link always needs it."
+      : "Leave this empty when you are pasting a reply to an offer you made yourself — there is nothing to type, because your own server generated it.");
+  }
+
+  var acceptToken = el("accept-token");
+  if (acceptToken) {
+    acceptToken.addEventListener("input", syncAcceptFields);
+    syncAcceptFields();
+  }
+
   var acceptButton = el("accept");
   if (acceptButton) {
     acceptButton.addEventListener("click", function () {
       hide(el("accept-error"));
       hide(el("accept-result"));
+      syncAcceptFields();
       post("/api/links/accept", request(false))
         .then(function () { /* not reached: confirm is false */ })
         .catch(function (e) {
           if (e.message.indexOf("confirmed") >= 0) {
-            text(el("accept-summary"),
-              "This will add a link and a bridge, and write a passphrase file. " +
-              "Nothing is sent to the other network until you agree.");
+            text(el("accept-summary"), acceptKind() === "qsp"
+              ? "This will add one link to their server and write a password file. " +
+                "No bridge, no timeslot and no talkgroup list: everything crosses, " +
+                "and this server's own access lists decide what it keeps. Nothing " +
+                "is sent to them until you agree."
+              : "This will add a link and a bridge, and write a passphrase file. " +
+                "Nothing is sent to the other network until you agree.");
             show(el("accept-confirm"));
             return;
           }
@@ -397,9 +496,10 @@
           hide(el("accept-result"));
           var done = el("accept-done");
           if (done) {
-            text(done, "Peering with " + (b.callsign || "the other network") +
-              " is complete. Both ends are configured — there is nothing " +
-              "further to send. It appears under Configured links above." +
+            text(done, "The link to " + (b.network || b.callsign || "the other server") +
+              " is written. There is nothing to send back — they allowed this " +
+              "server when they made the invitation. It appears under Configured " +
+              "links above." +
               restartNote(b, "it carries nothing in either direction"));
             show(done);
           }

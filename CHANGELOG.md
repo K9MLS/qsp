@@ -6,6 +6,37 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The links page offers and accepts a QSP link.** The last piece: until now
+  none of this was reachable from a browser, and the only way to write a working
+  link was to hand-edit JSON on the server.
+
+  **The offer form asks what is at the other end before it asks anything else.**
+  It used to ask for a talkgroup, a timeslot, an address and a network ID on
+  every peering, because it only knew how to write an OpenBridge one. A QSP link
+  has none of those — the slot crosses unchanged so there is no endpoint to
+  match, this side dials so there is nothing to bind, and everything crosses so
+  there is no list. Three faults on 2026-09-08 came from that one mechanism.
+  Offering a QSP link asks for the far end's DMR ID instead, and says afterwards
+  that this server now lets that ID register and has written a password for it
+  alone — because an operator whose access list grows an entry is entitled to
+  know which act did it.
+
+  **The accept form reads the kind off the token.** An operator holding an
+  invitation cannot say which sort it is without reading base64, so the page
+  does not ask: a `QSP-PEER-2.` token hides the talkgroup, listen address,
+  public address and network ID, and the confirmation says what will actually be
+  written — one link, a password file, no bridge and no timeslot.
+
+  **And it says what happens next**, which was the complaint about this flow:
+  a completed QSP link reports that there is nothing to send back, and why —
+  the other end allowed this server when it made the invitation.
+
+  The two console tests are scoped to the individual field rather than searching
+  the whole document, because an assertion that searches a file finds its string
+  in some other field and passes; that has happened three times in this project.
+  Showing the timeslot on every kind, or the listen address on a QSP link, each
+  turn one of them red.
+
 - **Accepting a QSP link writes one upstream and no bridge.** `/api/links/accept`
   branches on the token's kind, so there is still one box an operator pastes
   into — asking which sort of token they hold would be asking them to read

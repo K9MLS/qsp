@@ -64,6 +64,9 @@ type offerLinkResponse struct {
 	Fingerprint string `json:"fingerprint"`
 	// Allowed reports that the registration list now names this ID.
 	Allowed bool `json:"allowed"`
+	// RepeaterID is the ID that was allowed, echoed so the page reports what
+	// this server wrote rather than what the operator typed.
+	RepeaterID uint32 `json:"repeater_id"`
 	// PasswordDirectory reports where per-peer passwords are now kept, when
 	// this offer was what settled it.
 	PasswordDirectory string `json:"password_directory,omitempty"`
@@ -188,6 +191,7 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 		Password:     password,
 		Fingerprint:  inv.Fingerprint,
 		Allowed:      true,
+		RepeaterID:   req.RepeaterID,
 		NeedsRestart: config.NeedsRestart(before, cfg),
 		Version:      version.Number,
 	}

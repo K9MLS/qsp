@@ -118,12 +118,30 @@
           </p>
           <div class="picker">
             <label class="picker__field">
+              <span class="picker__label">What is at the other end</span>
+              <select class="picker__input" id="offer-kind">
+                <option value="qsp" selected>Another QSP server</option>
+                <option value="openbridge">A network that speaks OpenBridge</option>
+              </select>
+              <p class="field__note">A QSP server links as a peer: it dials this
+                one, and only its own configuration changes. OpenBridge is for
+                reaching a network QSP did not build.</p>
+            </label>
+            <label class="picker__field" data-kind="qsp">
+              <span class="picker__label">Their DMR ID</span>
+              <input class="picker__input" id="offer-repeater-id" type="text" inputmode="numeric"
+                     placeholder="3132913">
+              <p class="field__note">The ID their server will present when it
+                dials this one. Offering the link allows it to register and
+                writes a password for it.</p>
+            </label>
+            <label class="picker__field" data-kind="openbridge" hidden>
               <span class="picker__label">Talkgroup</span>
               <input class="picker__input" id="offer-tg" type="text" inputmode="numeric"
                      value="2" placeholder="2">
               <p class="field__note">The talkgroup to carry both ways.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-kind="openbridge" hidden>
               <span class="picker__label">Timeslot</span>
               <select class="picker__input" id="offer-slot">
                 <option value="1">1</option>
@@ -131,13 +149,14 @@
               </select>
             </label>
             <label class="picker__field">
-              <span class="picker__label">They send to</span>
+              <span class="picker__label" id="offer-address-label">They dial</span>
               <input class="picker__input" id="offer-address" type="text"
-                     placeholder="qsp.example.com:62045">
-              <p class="field__note">Where their server sends. Your public name
-                or address, and a UDP port you have open.</p>
+                     placeholder="qsp.example.com:62031">
+              <p class="field__note" id="offer-address-note">Where their server
+                reaches this one. Your public name or address, and the UDP port
+                your peers already use.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-kind="openbridge" hidden>
               <span class="picker__label">We announce</span>
               <input class="picker__input" id="offer-netid" type="text" inputmode="numeric"
                      placeholder="3132910">
@@ -205,14 +224,14 @@
               <p class="field__note">What you will call this link. Yours alone;
                 the other end never sees it.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-accept-kind="openbridge">
               <span class="picker__label">Talkgroup</span>
               <input class="picker__input" id="accept-tg" type="text" inputmode="numeric"
                      value="2" placeholder="2">
               <p class="field__note">In your own numbering. Nothing is
                 renumbered.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-accept-kind="openbridge">
               <span class="picker__label">We listen on</span>
               <input class="picker__input" id="accept-listen" type="text"
                      placeholder="0.0.0.0:62045">
@@ -220,14 +239,14 @@
                 0.0.0.0 is every interface on this machine. Not a public
                 name &mdash; this host has to hold the address.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-accept-kind="openbridge">
               <span class="picker__label">They send to us at</span>
               <input class="picker__input" id="accept-address" type="text"
                      placeholder="qsp.example.com:62045">
               <p class="field__note">Where their server sends. Your public name
                 or address, and a UDP port you have open.</p>
             </label>
-            <label class="picker__field">
+            <label class="picker__field" data-accept-kind="openbridge">
               <span class="picker__label">We announce</span>
               <input class="picker__input" id="accept-netid" type="text" inputmode="numeric"
                      placeholder="3132910">
@@ -238,11 +257,11 @@
           <div class="fieldstack">
             <label class="picker__label" for="accept-token">Invitation</label>
             <textarea class="picker__input picker__input--wide" id="accept-token" rows="3"
-                      placeholder="QSP-PEER-1.…"></textarea>
-            <label class="picker__label" for="accept-pass">Passphrase</label>
+                      placeholder="QSP-PEER-2.…"></textarea>
+            <label class="picker__label" for="accept-pass">Password</label>
             <input class="picker__input picker__input--wide" id="accept-pass" type="password"
                    placeholder="sent to you separately">
-            <p class="field__note">Leave this empty when you are pasting a reply
+            <p class="field__note" id="accept-pass-note">Leave this empty when you are pasting a reply
               to an offer you made yourself &mdash; there is nothing to type,
               because your own server generated it.</p>
             <button class="button fieldstack__action" id="accept" type="button">Read this invitation</button>

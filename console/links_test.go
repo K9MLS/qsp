@@ -321,3 +321,83 @@ func TestNoControlSitsFlushAgainstTheFieldAboveIt(t *testing.T) {
 		t.Error(".fieldstack__action is styled and used by nothing")
 	}
 }
+
+// TestTheOfferFormAsksForALinkBeforeItsFields is the shape of the defect this
+// whole page had.
+//
+// The form asked for a talkgroup, a timeslot, a listen address and a network ID
+// on every peering, because it only knew how to write an OpenBridge one. A QSP
+// link has none of those: the slot crosses unchanged so there is no endpoint to
+// match, this side dials so there is nothing to bind, and everything crosses so
+// there is no list. Three faults on 2026-09-08 came from that single mechanism,
+// and the accept form asked a question the protocol had already answered.
+//
+// So the first question is what is at the other end, and the fields follow it.
+func TestTheOfferFormAsksForALinkBeforeItsFields(t *testing.T) {
+	html := readFile(t, "static/links.html")
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(html, `id="offer-kind"`) {
+		t.Fatal("the offer form does not ask what is at the other end")
+	}
+	if !strings.Contains(html, `id="offer-repeater-id"`) {
+		t.Error("the offer form has no box for the DMR ID a QSP link allocates, " +
+			"which is what the far end presents when it registers")
+	}
+	if !strings.Contains(js, "/api/links/offer-link") {
+		t.Error("the page never offers a QSP link; it can only write OpenBridge peerings")
+	}
+
+	// Every OpenBridge-only field has to be marked as one, or it is shown on a
+	// link that has no use for it.
+	for _, id := range []string{"offer-tg", "offer-slot", "offer-netid"} {
+		field := fieldBlock(t, html, id)
+		if !strings.Contains(field, `data-kind="openbridge"`) {
+			t.Errorf("%s is shown for every kind of link; it is meaningless on a QSP link", id)
+		}
+	}
+	if field := fieldBlock(t, html, "offer-repeater-id"); !strings.Contains(field, `data-kind="qsp"`) {
+		t.Error("the DMR ID box is shown for an OpenBridge peering, which does not have one")
+	}
+}
+
+// The accept form reads the kind off the token rather than asking. An operator
+// holding a token cannot answer that question without reading base64.
+func TestTheAcceptFormFollowsTheTokenItWasGiven(t *testing.T) {
+	html := readFile(t, "static/links.html")
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "QSP-PEER-2.") {
+		t.Fatal("the accept form cannot tell a QSP link invitation from an OpenBridge one")
+	}
+	for _, id := range []string{"accept-tg", "accept-listen", "accept-address", "accept-netid"} {
+		field := fieldBlock(t, html, id)
+		if !strings.Contains(field, `data-accept-kind="openbridge"`) {
+			t.Errorf("%s is shown for a QSP link, which has no such setting", id)
+		}
+	}
+}
+
+// fieldBlock returns the markup of the one labelled field carrying this id, so
+// an assertion is about that field rather than about the whole document.
+//
+// **Scoped deliberately.** A test searching the entire file for a string finds
+// it in some other field and passes, which is how three assertions in this
+// project passed against the code they existed to reject.
+func fieldBlock(t *testing.T, html, id string) string {
+	t.Helper()
+
+	at := strings.Index(html, `id="`+id+`"`)
+	if at < 0 {
+		t.Fatalf("the page has no field with id %q", id)
+	}
+	start := strings.LastIndex(html[:at], "<label")
+	if start < 0 {
+		t.Fatalf("%s is not inside a label", id)
+	}
+	end := strings.Index(html[start:], "</label>")
+	if end < 0 {
+		t.Fatalf("the label around %s is never closed", id)
+	}
+	return html[start : start+end]
+}
