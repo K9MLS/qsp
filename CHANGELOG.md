@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Removed
+
+- **`Export` and `Import` are gone, and retiring a configuration field is now
+  possible at all.** Deleting either from the Go struct would have made every
+  configuration already written unparseable — `Load` refuses unknown fields,
+  deliberately, and both were declared without `omitempty` so every save wrote
+  them. Both of this project's servers held them. **The failure would have
+  arrived at a restart, long after the change that caused it.**
+
+  So `Load` now strips fields QSP has deliberately removed, listed by path in
+  `retired.go`. They are dropped rather than migrated: these decided nothing, so
+  there is no new home for a value that never had one, and the next save writes
+  the document without them. **It is not a way to tolerate a typo** — anything
+  not on the list is still refused, which is the whole point of the rule it
+  preserves — and retirement is by path rather than by name, so a field called
+  `export` somewhere else is not silently dropped.
+
+  Neither list ever routed a frame. No code read them to move traffic; a bridge
+  naming the link carried it, and always had. Three tests that carefully checked
+  talkgroup numbers and timeslots inside them went with the fields: a whole
+  family of assertions about a setting that decided none of the behaviour it
+  described.
+
+  The shipped examples no longer contain them either. They load without, but an
+  example teaching a field that does not exist is worse than no example.
+
+- **The mechanism silently did nothing on its first run**, which is the failure
+  it exists to prevent, one layer up. `dmr.upstreams[].export` splits on dots
+  into three segments with the brackets attached to `upstreams`, and the first
+  version looked for a bare `[]` segment that never appeared — so nothing was
+  stripped and the shipped examples stopped loading. Caught by the example
+  fixtures rather than by reading it.
+
 ### Added
 
 - **Backup and restore, ADR-0054 built.** A server's configuration existed in

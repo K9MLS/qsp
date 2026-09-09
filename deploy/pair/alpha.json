@@ -87,18 +87,6 @@
         "listen_address": "127.0.0.1:62045",
         "network_id": 3132910,
         "passphrase_file": "/tmp/qsp-pair/pair.pass",
-        "export": [
-          {
-            "talkgroup": 2,
-            "timeslot": 2
-          }
-        ],
-        "import": [
-          {
-            "talkgroup": 2,
-            "timeslot": 2
-          }
-        ],
         "stale_after": "4h"
       }
     ]

@@ -19,6 +19,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -506,32 +507,10 @@ type Upstream struct {
 	// versioned, exported and pasted into support requests, and a secret should
 	// not travel with it.
 	PassphraseFile string `json:"passphrase_file"`
-	// Export names local talkgroups whose traffic is sent upstream.
-	//
-	// These are the *local* talkgroup and timeslot. QSP moves traffic to TS1
-	// on the way out, because proper OpenBridge passes all traffic on TS1 and
-	// an administrator should not have to remember that.
-	Export []UpstreamTalkgroup `json:"export"`
-	// Import names talkgroups accepted from upstream, with the local talkgroup
-	// and timeslot they are delivered on.
-	//
-	// Export and Import are separate lists because they are genuinely different
-	// sets: a club may send its own net upstream while accepting a nationwide
-	// talkgroup down. Collapsing them makes the asymmetric case unexpressible
-	// and the symmetric case look safer than it is.
-	//
-	// **Neither list routes anything today.** No code reads them to move a
-	// frame; a bridge with an endpoint naming this link is what carries
-	// traffic to it and back. They are kept because they describe the intended
-	// direction filtering and because removing a documented field would refuse
-	// configurations already written against it — but an operator who fills
-	// them in and expects audio to cross will not get any.
-	//
-	// A rule once required one of them to be non-empty. It was removed: it
-	// disagreed with the check that a link must be named by a bridge, and a
-	// configuration satisfying one and failing the other stopped a live
-	// network from starting.
-	Import []UpstreamTalkgroup `json:"import"`
+	// Export and Import are retired; see retired.go. Neither ever routed a
+	// frame — a bridge naming the link is what carried traffic — and they
+	// described a direction filtering that was never built, so an operator who
+	// filled them in and expected audio to cross got none.
 	// RepeaterID is the ID QSP presents when logging into a master, used by
 	// the homebrew protocol instead of NetworkID.
 	//
@@ -1489,23 +1468,9 @@ func (c Config) Validate() error {
 					"use \"4h\", or 0 to disable the warning")
 			}
 
-			for _, dir := range []struct {
-				name string
-				tgs  []UpstreamTalkgroup
-			}{{"export", u.Export}, {"import", u.Import}} {
-				for j, tg := range dir.tgs {
-					sub := fmt.Sprintf("%s.%s[%d]", field, dir.name, j)
-					if tg.Talkgroup == 0 {
-						v.add(sub+".talkgroup", "must not be 0",
-							"use the talkgroup as it exists on this network, not as the far end names it")
-					}
-					if tg.Timeslot != 1 && tg.Timeslot != 2 {
-						v.add(sub+".timeslot", fmt.Sprintf("is %d", tg.Timeslot),
-							"DMR has two timeslots; use 1 or 2. Traffic is moved to TS1 for the "+
-								"link itself, which QSP does for you")
-					}
-				}
-			}
+			// The export and import lists were validated here until 0308.
+			// They are retired: nothing read them to move a frame, so a
+			// carefully checked value decided nothing.
 		}
 
 		// Join. What a member is told to dial has to be a talkgroup this
@@ -1662,8 +1627,23 @@ func (c Config) Validate() error {
 // Unknown fields are rejected: a typo in a field name must not silently leave
 // the default in place, because the operator would believe a setting had been
 // applied when it had not.
+//
+// **Fields QSP has deliberately removed are the one exception**, and they are
+// listed by name in retired.go rather than tolerated by shape. Without that,
+// deleting a field from the Go struct makes every configuration already written
+// unparseable and every server holding one fails to start at its next restart —
+// which is a failure that arrives long after the change that caused it.
 func Load(r io.Reader) (Config, error) {
-	dec := json.NewDecoder(r)
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return Config{}, fmt.Errorf("cannot read configuration: %w", err)
+	}
+	raw, _, err = stripRetired(raw)
+	if err != nil {
+		return Config{}, err
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 
 	cfg := Default()

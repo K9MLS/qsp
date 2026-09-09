@@ -152,18 +152,6 @@
         "listen_address": "0.0.0.0:62035",
         "network_id": 3132910,
         "passphrase_file": "/var/lib/qsp/brandmeister.pass",
-        "export": [
-          {
-            "talkgroup": 9,
-            "timeslot": 2
-          }
-        ],
-        "import": [
-          {
-            "talkgroup": 9,
-            "timeslot": 2
-          }
-        ],
         "stale_after": "4h"
       }
     ]

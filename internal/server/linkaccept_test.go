@@ -73,9 +73,9 @@ func TestAnAcceptedLinkIsOneUpstreamAndNoBridge(t *testing.T) {
 	if up.NetworkID != 0 {
 		t.Errorf("a qsp link was given a network ID: %d", up.NetworkID)
 	}
-	if len(up.Export) != 0 || len(up.Import) != 0 {
-		t.Errorf("a qsp link was given talkgroup lists: export %v import %v", up.Export, up.Import)
-	}
+	// The export and import lists a qsp link must not have were retired in
+	// 0308: nothing read them to move a frame, so the field they were checked
+	// against no longer exists.
 	if up.PassphraseFile != "" {
 		t.Errorf("a qsp link was given an OpenBridge passphrase file: %q", up.PassphraseFile)
 	}

@@ -301,9 +301,7 @@ func TestUpstreamComparisonSeesEveryField(t *testing.T) {
 		func(u *config.Upstream) { u.Enabled = true },
 		func(u *config.Upstream) { u.Protocol = "homebrew" },
 		func(u *config.Upstream) { u.StaleAfter = config.Duration(1) },
-		func(u *config.Upstream) {
-			u.Export = []config.UpstreamTalkgroup{{Talkgroup: 9, Timeslot: 2}}
-		},
+		func(u *config.Upstream) { u.RepeaterID = 3132914 },
 	} {
 		after := base
 		after.DMR.Upstreams = []config.Upstream{base.DMR.Upstreams[0]}

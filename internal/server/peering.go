@@ -410,8 +410,9 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		ListenAddress:  listen,
 		NetworkID:      req.NetworkID,
 		PassphraseFile: path,
-		Export:         []config.UpstreamTalkgroup{{Talkgroup: tg, Timeslot: slot}},
-		Import:         []config.UpstreamTalkgroup{{Talkgroup: tg, Timeslot: slot}},
+		// The export and import lists were written here until 0308 and read by
+		// nothing. The bridge below is what actually carries the traffic, and
+		// always was.
 	})
 	// A bridge, because a link with nothing routing to it opens, authenticates
 	// and carries nothing — which is the failure this whole page exists after.

@@ -122,12 +122,19 @@ func TestThePairFacesItself(t *testing.T) {
 		t.Error("both instances share one database file")
 	}
 
-	// **The pair exports and imports the same talkgroup on purpose.** It is the
+	// **The pair carries the same talkgroup both ways on purpose.** It is the
 	// ordinary club configuration and the one that would loop, which is exactly
 	// what this harness exists to watch not happen.
-	if len(a.Export) == 0 || len(a.Import) == 0 || len(b.Export) == 0 || len(b.Import) == 0 {
-		t.Error("the pair must export and import the same talkgroup, or it exercises nothing")
+	//
+	// Asserted on the bridges rather than on export and import lists, which
+	// were retired in 0308: they were checked here and read by nothing, so the
+	// assertion was about a value that decided none of the behaviour it claimed
+	// to describe.
+	if len(alpha.DMR.Bridges) == 0 || len(bravo.DMR.Bridges) == 0 {
+		t.Error("the pair has no bridges, so neither instance carries anything and the " +
+			"harness exercises nothing")
 	}
+	_, _ = a, b
 	if !strings.Contains(alpha.DMR.Join.NetworkName, "alpha") ||
 		!strings.Contains(bravo.DMR.Join.NetworkName, "bravo") {
 		t.Error("the instances are not named apart, so a console cannot say which is which")

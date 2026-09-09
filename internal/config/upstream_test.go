@@ -16,8 +16,6 @@ func validUpstream() Upstream {
 		ListenAddress:  "0.0.0.0:62035",
 		NetworkID:      3132910,
 		PassphraseFile: "/var/lib/qsp/bm.pass",
-		Export:         []UpstreamTalkgroup{{Talkgroup: 3148, Timeslot: 2}},
-		Import:         []UpstreamTalkgroup{{Talkgroup: 3148, Timeslot: 2}},
 		StaleAfter:     Duration(4 * 3600 * 1e9),
 	}
 }
@@ -139,8 +137,6 @@ func TestEnabledUpstreamRequiresItsEssentials(t *testing.T) {
 // and the failure mode was a service that would not start.
 func TestALinkCarryingNothingIsRefused(t *testing.T) {
 	u := validUpstream()
-	u.Export = nil
-	u.Import = nil
 
 	// With a bridge, this is a working link and must be accepted.
 	if err := withUpstreams(u).Validate(); err != nil {
@@ -156,54 +152,12 @@ func TestALinkCarryingNothingIsRefused(t *testing.T) {
 	}
 }
 
-// TestUpstreamAllowsOneDirection.
-//
-// Export-only and import-only are both legitimate: a club may feed its net
-// upstream without accepting anything back, or take a nationwide talkgroup
-// without contributing to it.
-func TestUpstreamAllowsOneDirection(t *testing.T) {
-	exportOnly := validUpstream()
-	exportOnly.Import = nil
-	if msg := upstreamProblems(t, withUpstreams(exportOnly)); msg != "" {
-		t.Errorf("an export-only link was rejected:\n%s", msg)
-	}
-
-	importOnly := validUpstream()
-	importOnly.Export = nil
-	if msg := upstreamProblems(t, withUpstreams(importOnly)); msg != "" {
-		t.Errorf("an import-only link was rejected:\n%s", msg)
-	}
-}
-
-func TestUpstreamChecksTalkgroupsAndTimeslots(t *testing.T) {
-	u := validUpstream()
-	u.Export = []UpstreamTalkgroup{{Talkgroup: 0, Timeslot: 2}}
-	u.Import = []UpstreamTalkgroup{{Talkgroup: 3148, Timeslot: 3}}
-
-	msg := upstreamProblems(t, withUpstreams(u))
-	if !strings.Contains(msg, "export[0].talkgroup") {
-		t.Errorf("talkgroup 0 was accepted:\n%s", msg)
-	}
-	if !strings.Contains(msg, "import[0].timeslot") {
-		t.Errorf("timeslot 3 was accepted:\n%s", msg)
-	}
-}
-
-// TestUpstreamTimeslotErrorExplainsTheTS1Rule.
-//
-// An operator who has read the OpenBridge documentation knows traffic goes on
-// TS1 and may think they should say so here. These entries name the *local*
-// talkgroup, and QSP applies the TS1 rule. The error is where that gets
-// explained, because that is where they will be looking.
-func TestUpstreamTimeslotErrorExplainsTheTS1Rule(t *testing.T) {
-	u := validUpstream()
-	u.Export = []UpstreamTalkgroup{{Talkgroup: 3148, Timeslot: 0}}
-
-	msg := upstreamProblems(t, withUpstreams(u))
-	if !strings.Contains(msg, "TS1") {
-		t.Errorf("the timeslot error does not explain the TS1 translation:\n%s", msg)
-	}
-}
+// TestUpstreamAllowsOneDirection, TestUpstreamChecksTalkgroupsAndTimeslots and
+// TestUpstreamTimeslotErrorExplainsTheTS1Rule were removed in 0308 with the
+// export and import lists they exercised. Each carefully checked a value that
+// no code read to move a frame — a whole family of assertions about a setting
+// that decided nothing, which is worth remembering the next time a field is
+// added before the behaviour that would use it.
 
 func TestUpstreamNamesMustBeDistinct(t *testing.T) {
 	a := validUpstream()
@@ -251,8 +205,6 @@ func homebrewUpstream() Upstream {
 		RepeaterID:   3132910,
 		PasswordFile: "/var/lib/qsp/xlx950.pass",
 		Identity:     &UpstreamIdentity{Callsign: "K9MLS"},
-		Export:       []UpstreamTalkgroup{{Talkgroup: 9, Timeslot: 2}},
-		Import:       []UpstreamTalkgroup{{Talkgroup: 9, Timeslot: 2}},
 	}
 }
 
@@ -517,8 +469,6 @@ func TestABridgeCannotNameALinkThatIsNotThere(t *testing.T) {
 // and it must load.
 func TestTheConfigurationThatStoppedALiveNetwork(t *testing.T) {
 	u := validUpstream()
-	u.Export = nil
-	u.Import = nil
 
 	c := withUpstreams(u)
 	if err := c.Validate(); err != nil {
@@ -671,8 +621,6 @@ func qspLink() Upstream {
 	u.ListenAddress = ""
 	u.PassphraseFile = ""
 	u.NetworkID = 0
-	u.Export = nil
-	u.Import = nil
 	u.RepeaterID = 3132911
 	u.PasswordFile = "/var/lib/qsp/blake.pass"
 	u.Identity = &UpstreamIdentity{Callsign: "K9MLS"}
