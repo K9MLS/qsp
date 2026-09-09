@@ -4,6 +4,34 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The wrong port shipped again, because the fix was on the half nothing
+  calls.** 0292 gave a QSP offer its own address default and put it on the
+  *fallback* used when the request arrives with an empty address — which the
+  console never sends, because it prefills the box from `/api/links`, and that
+  prefill still came from the OpenBridge helper with 62045 hardcoded. The
+  corrected function was unreachable. A link offered from a server running the
+  fix was still written `qsp.hopto.me:62045`.
+
+  The page now gets two suggestions and picks by the kind of link being offered,
+  replacing its own earlier suggestion when the kind changes and leaving alone
+  anything the operator typed. **The handover named this exact hazard as a loose
+  thread** — two functions naming the same idea differently — four patches
+  before it produced the same defect a second time.
+
+- **The offer form never said which end ends up dialling.** An operator read
+  "offer a peering" as "set up the link from here", which is the natural reading
+  and the opposite of what it does: offering a QSP link means this server
+  listens and the other one dials, and the link itself is written on their
+  server when they accept. Nothing appeared here after offering, because nothing
+  was meant to. It cost a restart and a round trip. The form now says so, and
+  says how to make this server dial instead.
+
+- A console assertion was line-scoped and an expression spanned two lines, so
+  the test passed against code that had the defect. Scoped to the function
+  instead, which is the unit the rule is about.
+
 ### Added
 
 - **A server generates its own identifier, and announces it (ADR-0053).** 128

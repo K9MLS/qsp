@@ -22,6 +22,10 @@
    * replace what the operator had typed with what the server still has. */
   var editing = false;
 
+  /* What the instance last told us about itself, so the address suggestion can
+     follow the kind of link being offered rather than being filled once. */
+  var lastIdentity = null;
+
   function show(el) { if (el) { el.hidden = false; } }
   function hide(el) { if (el) { el.hidden = true; } }
 
@@ -428,15 +432,38 @@
    * naming a different field. A value already present is not typed again. */
   function fillOffer(identity) {
     if (!identity) return;
+    lastIdentity = identity;
     var pairs = [
       ["offer-callsign", identity.callsign],
-      ["offer-netid", identity.network_id],
-      ["offer-address", identity.address]
+      ["offer-netid", identity.network_id]
     ];
     pairs.forEach(function (p) {
       var node = el(p[0]);
       if (node && !node.value && p[1]) node.value = p[1];
     });
+    fillOfferAddress();
+  }
+
+  /* **The address depends on which kind of link is being offered**, and one
+   * value was being used for both: a QSP link was prefilled with the
+   * OpenBridge port whatever the operator chose. The fix that added a
+   * QSP-specific default put it on the fallback used when the box arrives
+   * empty — which this page never sends, because the box is prefilled. The
+   * corrected function was unreachable and the wrong port shipped anyway.
+   *
+   * So the suggestion is replaced when the kind changes, unless the operator
+   * has typed something of their own. */
+  function fillOfferAddress() {
+    var node = el("offer-address");
+    if (!node || !lastIdentity) { return; }
+    var suggestion = offerKind() === "qsp"
+      ? lastIdentity.link_address
+      : lastIdentity.address;
+    if (!suggestion) { return; }
+    var wasSuggested = node.value === "" ||
+      node.value === lastIdentity.address ||
+      node.value === lastIdentity.link_address;
+    if (wasSuggested) { node.value = suggestion; }
   }
 
   /* **Copy buttons, because these are three hundred characters of base64.**
@@ -525,6 +552,7 @@
         ? "qsp.example.com:62031"
         : "qsp.example.com:62045";
     }
+    fillOfferAddress();
   }
 
   var offerKindSelect = el("offer-kind");

@@ -123,9 +123,14 @@
                 <option value="qsp" selected>Another QSP server</option>
                 <option value="openbridge">A network that speaks OpenBridge</option>
               </select>
-              <p class="field__note">A QSP server links as a peer: it dials this
-                one, and only its own configuration changes. OpenBridge is for
-                reaching a network QSP did not build.</p>
+              <p class="field__note"><strong>Offering a QSP link means this
+                server listens and the other one dials it.</strong> Nothing is
+                configured here beyond allowing their DMR ID and writing a
+                password for it — the link itself is written on their server
+                when they accept, and it appears here once they connect. To
+                make <em>this</em> server dial theirs, ask them to offer and
+                paste their invitation into Accept a peering below. OpenBridge
+                is for reaching a network QSP did not build.</p>
             </label>
             <label class="picker__field" data-kind="qsp">
               <span class="picker__label">Their DMR ID</span>

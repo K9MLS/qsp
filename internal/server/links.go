@@ -138,9 +138,21 @@ type linkIdentity struct {
 	// when there is one. Empty on an instance that has never peered, which is
 	// every instance the first time.
 	NetworkID uint32 `json:"network_id,omitempty"`
-	// Address is a guess at where the far end should send, and is said to be a
-	// guess on the page: an instance behind NAT announces one nobody can reach.
+	// Address is a guess at where the far end should send for an OpenBridge
+	// peering, and is said to be a guess on the page: an instance behind NAT
+	// announces one nobody can reach.
 	Address string `json:"address,omitempty"`
+	// LinkAddress is the same guess for a QSP link, which is dialled on the
+	// peer listener rather than sent to on an agreed port.
+	//
+	// **Two fields because there are two answers, and one was being used for
+	// both.** The offer form prefilled its address box from Address, so a QSP
+	// link was proposed the OpenBridge port whatever the operator chose — and
+	// the fix that added a QSP-specific default put it on the *fallback* used
+	// when the box arrives empty, which the page never sends. The corrected
+	// function was unreachable and the wrong port shipped anyway. A value that
+	// exists in two places is a value that disagrees with itself.
+	LinkAddress string `json:"link_address,omitempty"`
 }
 
 // handleLinks reports the links to other networks.
@@ -192,9 +204,10 @@ func (s *Server) handleLinks(w http.ResponseWriter, r *http.Request) {
 		body.Links = append(body.Links, inboundLinks(s.opts.Peers.PeerViews(time.Now()), body.Links)...)
 	}
 	body.Identity = linkIdentity{
-		Callsign:  linkCallsign(cfg),
-		NetworkID: firstNetworkID(cfg),
-		Address:   defaultLinkAddress(cfg),
+		Callsign:    linkCallsign(cfg),
+		NetworkID:   firstNetworkID(cfg),
+		Address:     defaultLinkAddress(cfg),
+		LinkAddress: defaultQSPLinkAddress(cfg),
 	}
 	// Said only when it is true, and phrased as a fact about the configuration
 	// rather than about the build.

@@ -519,3 +519,72 @@ func lineAround(s string, at int) string {
 	}
 	return s[start : at+end]
 }
+
+// **The page never said which end ends up dialling**, and an operator read
+// "offer a peering" as "set up the link from here" — which is the natural
+// reading and the opposite of what it does. Offering a QSP link means this
+// server listens; the link is written on the other operator's server when they
+// accept. It cost a restart and a round trip on 2026-09-08.
+func TestTheOfferFormSaysWhichEndDials(t *testing.T) {
+	html := readFile(t, "static/links.html")
+
+	field := fieldBlock(t, html, "offer-kind")
+	if !strings.Contains(field, "listens and the other one dials") {
+		t.Error("the offer form does not say that offering a QSP link means this server listens")
+	}
+	if !strings.Contains(field, "Accept a peering") {
+		t.Error("the offer form does not say how to make this server dial instead")
+	}
+}
+
+// **One value was used for two answers.** The offer form prefilled its address
+// box from the OpenBridge default, so a QSP link was proposed port 62045
+// whatever the operator chose — and the fix that added a QSP default put it on
+// the fallback used when the box arrives empty, which this page never sends.
+// The corrected function was unreachable and the wrong port shipped anyway.
+func TestTheAddressSuggestionFollowsTheKindOfLink(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "link_address") {
+		t.Fatal("the page has only one address suggestion, so a QSP link is offered " +
+			"the OpenBridge port")
+	}
+	body := functionBody(t, js, "fillOfferAddress")
+	if !strings.Contains(body, "offerKind()") {
+		t.Error("the address suggestion does not depend on which kind of link is being offered")
+	}
+	if !strings.Contains(body, "link_address") {
+		t.Error("the address suggestion never uses the QSP link default")
+	}
+}
+
+// functionBody returns the source of one named function, so an assertion is
+// about that function rather than about the file — and is not defeated by an
+// expression spanning two lines, which is what a line-scoped version of this
+// test was.
+func functionBody(t *testing.T, js, name string) string {
+	t.Helper()
+
+	at := strings.Index(js, "function "+name+"(")
+	if at < 0 {
+		t.Fatalf("the page has no function called %s", name)
+	}
+	rest := js[at:]
+	depth, start := 0, strings.Index(rest, "{")
+	if start < 0 {
+		t.Fatalf("%s has no body", name)
+	}
+	for i := start; i < len(rest); i++ {
+		switch rest[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return rest[start : i+1]
+			}
+		}
+	}
+	t.Fatalf("the body of %s is never closed", name)
+	return ""
+}
