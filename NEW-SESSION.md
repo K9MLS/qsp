@@ -31,9 +31,12 @@ A repeater registering with a containerised instance is now on record, and
 instances** — a Motorola repeater heard by a hotspot user, which had never
 worked before 2026-09-08.
 
-**A link can now be agreed entirely from a console** — offered, accepted and
-refused — which until 2026-09-08 needed hand-edited JSON on a server. It has not
-yet produced a link that came up, and `HANDOVER.md` opens on that.
+**A link can now be agreed entirely from a console** — offered, accepted,
+refused, readdressed and restarted — which until 2026-09-08 needed hand-edited
+JSON on a server. It has been done on air, both directions, on TG2 TS2.
+
+What is decided and unbuilt is the administration page (ADR-0055) and backup
+and restore (ADR-0054). `HANDOVER.md` opens on the first.
 
 Relaying and deduplication are built, unit-tested and unexercised: two servers
 give nothing to relay to. A third instance on this LAN was built and rejected in

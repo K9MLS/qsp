@@ -6,6 +6,43 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **Handover, standing brief and §8a brought up to 0303.** The head names both
+  servers on 0.1.144, `origin/main` at `afd6233`, and the first copy of this
+  work off the two machines. Start here is the administration page, then the
+  callsign lookup default, then removing `Export` and `Import`, then backup and
+  restore.
+
+- **§8a: fix the half that is called, not the half that is named.** A QSP link
+  was offered the OpenBridge port; the fix went on the fallback used when the
+  request arrives with an empty address, which the console never sends because
+  it prefills the box from a different function. The corrected code was
+  unreachable and the patch's own tests passed. **The hazard had been written
+  into the handover's loose threads four patches earlier** — writing it down was
+  not enough, because the second place the value lived was never looked for. So:
+  grep for the *value* before changing any of the places that produce it, since
+  a grep for the function you are about to edit finds only the one you already
+  know about.
+
+  Its other half from the same night: a link whose name was not lowercase could
+  not be sent to, because one map served two questions — "is this a QSP link",
+  which must ignore case, and "what name is this addressed by", which must not.
+  **Ask what each reader needs before storing one form of anything.**
+
+- Recorded as proven: a link agreed entirely from a console and carrying audio
+  both ways; two servers generating distinct identifiers that survive a restart;
+  production coming back from a clean exit after the `Restart=always` drop-in.
+  Recorded as not proven: the identity packet against an older QSP, a restart
+  from the console, and a callsign crossing a link.
+
+- **A radio's callsign does not cross a link**, recorded as a loose thread. The
+  server that hears a radio directly knows its callsign because the station said
+  so at login — the strongest claim available — and discards it at the link,
+  leaving the far end to guess from a downloaded database. `QSPI` is where it
+  would travel. Not done, because whether an asserted callsign should beat a
+  fresh database is a real question.
+
+### Documentation
+
 - **ADR-0055: an administration page answers questions, and is not a settings
   dump.** Several defects found on 2026-09-08 existed because nothing could show
   them: a server's identifier appears in one log line that scrolls away, the

@@ -2871,6 +2871,32 @@ in §8o from the container work and was not thought of as available on
 production. **Ask what already works on one machine before inventing something
 for another.**
 
+### Fix the half that is called, not the half that is named
+
+**2026-09-09.** A QSP link was offered the OpenBridge port. The fix gave the
+offer its own address default — and put it on the *fallback* used when the
+request arrives with an empty address, which the console never sends, because
+the page prefills the box from a different function. The corrected code was
+unreachable. A server running the fix produced the same wrong port, and the
+patch's own tests passed.
+
+**The hazard had been written down four patches earlier**, in the handover's
+loose threads, in as many words: two functions naming the same idea differently
+is the shape that produced the wrong port. Writing it down was not enough; the
+second place the value lived was never looked for.
+
+So, when fixing a value that is wrong: **find every place it is produced before
+changing any of them.** A grep for the *value* rather than the function name
+finds them; a grep for the function you are about to edit finds only the one you
+already know about. A value in two places disagrees with itself, and fixing one
+of them looks exactly like fixing it.
+
+The same night gave the other half of this: a link whose name was not lowercase
+could not be sent to, because the routing core stored names lowercased and built
+targets from the key while the registry looked links up by the configured name.
+One value, two questions, and they disagreed. **Ask what each reader needs
+before storing one form of anything.**
+
 ### A design is true of a premise, and premises change
 
 **2026-09-08, twice in one evening.** Two defects came from reasoning that was
