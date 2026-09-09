@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -174,4 +176,52 @@ func applyToListener(listener *peers.Listener, ipsc *ipsclink.Listener) func(con
 		})
 		return nil
 	}
+}
+
+// ensureIdentifier gives a server an identifier if it has none, and saves it.
+//
+// # Why this runs at startup rather than only at first run
+//
+// The bootstrap writes a starting configuration only in a container with no
+// configuration at all. Every server that already exists — including the two
+// this project runs — has one, so an identifier added to the defaults would
+// never reach them. ADR-0053 says a server has an identifier; a server that
+// predates the field still has to get one.
+//
+// **It is written once and never rewritten.** A malformed one is refused loudly
+// rather than replaced: replacing it would silently make the server a stranger
+// to every neighbour that already knows it, which is the failure this exists to
+// prevent.
+func ensureIdentifier(ctx context.Context, store *configManager, log *slog.Logger) error {
+	cfg := store.Current()
+
+	if id := strings.TrimSpace(cfg.Server.Identifier); id != "" {
+		if err := config.ValidIdentifier(id); err != nil {
+			return fmt.Errorf("server.identifier is not usable, and QSP will not replace one: %w", err)
+		}
+		return nil
+	}
+
+	if err := store.Writable(); err != nil {
+		// An instance that cannot write its configuration runs without an
+		// identifier rather than refusing to start. A link still works; the
+		// far end simply learns nothing about who this is, which is where
+		// every QSP was before ADR-0053.
+		log.Warn("this server has no identifier and cannot write one",
+			slog.String("reason", err.Error()))
+		return nil
+	}
+
+	id, err := config.NewIdentifier()
+	if err != nil {
+		return err
+	}
+	cfg.Server.Identifier = id
+	if _, err := store.Save(ctx, cfg, "system", "generated this server's identifier"); err != nil {
+		return fmt.Errorf("cannot save this server's identifier: %w", err)
+	}
+	log.Info("this server has an identifier",
+		slog.String("identifier", config.ShortIdentifier(id)),
+	)
+	return nil
 }

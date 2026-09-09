@@ -6,6 +6,41 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A server generates its own identifier, and announces it (ADR-0053).** 128
+  bits from `crypto/rand` at first run, hex, stored in `server.identifier`,
+  never changed — unique without a coordinator, which is the one property no
+  issued number has and what ADR-0052 rule 2 requires of a network with no
+  headquarters.
+
+  **It is opaque and exactly one function knows its shape.** `ValidIdentifier`
+  checks length and hex and nothing else: no prefix, no version digit, no
+  meaning. Everything else compares it for equality. That is what keeps the
+  likely next generation — a public-key fingerprint, since a random number
+  proves nothing about who generated it — a generation change rather than a
+  redesign.
+
+  It rides in the `QSPI` identity packet as `server_id`, so a link learns who
+  the far end is rather than only what it calls itself. Empty from a server
+  older than this, which is a neighbour that cannot yet say rather than an
+  error.
+
+  **Generated at startup, not only at first run.** The bootstrap writes a
+  configuration only where none exists, which is never true of a server already
+  running — so an identifier added to the defaults would never have reached
+  either of this project's own servers. A malformed one is refused loudly and
+  never replaced: replacing it would silently make a server a stranger to every
+  neighbour that already knows it. An instance that cannot write its
+  configuration warns and runs without one rather than refusing to start.
+
+- **A forward-compatibility test caught its own premise expiring.** The test
+  that proves an identity packet ignores fields this build does not know used
+  `server_id` as its unknown field — and `server_id` stopped being unknown the
+  moment ADR-0053 was built, so the test failed. It now uses a key fingerprint,
+  which is the next field this packet is expected to grow. Exactly the shape
+  §8a records: a claim that was true when written and stopped being so.
+
+### Added
+
 - **A server now says what it is to a server that dials it.** ADR-0052 rule 3
   required it and registration only carried it one way: the dialling side
   announces a callsign, a network and a software string in its configuration and

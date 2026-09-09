@@ -68,6 +68,18 @@ type Identity struct {
 	Software string
 	// Description is free text about the server, when it has any.
 	Description string
+	// ServerID is the sending server's identifier (ADR-0053): opaque, fixed,
+	// and compared for equality by everything that reads it.
+	//
+	// **Nothing here may parse it.** It is carried, stored and matched. The
+	// generation after this one is likely a public-key fingerprint, and that
+	// only stays a generation change rather than a redesign if no code between
+	// the two ends has an opinion about the shape.
+	//
+	// Empty from a server older than ADR-0053, which is not an error: it is a
+	// neighbour that cannot yet say, and a console reports that rather than
+	// inventing one.
+	ServerID string
 }
 
 // identityPayload is the wire form of the fields above.
@@ -80,6 +92,7 @@ type identityPayload struct {
 	Callsign    string `json:"callsign,omitempty"`
 	Software    string `json:"software,omitempty"`
 	Description string `json:"description,omitempty"`
+	ServerID    string `json:"server_id,omitempty"`
 }
 
 // identityTag is the four bytes that mark this message.
@@ -107,6 +120,7 @@ func (i Identity) AppendTo(dst []byte) []byte {
 		Callsign:    strings.TrimSpace(i.Callsign),
 		Software:    strings.TrimSpace(i.Software),
 		Description: strings.TrimSpace(i.Description),
+		ServerID:    strings.TrimSpace(i.ServerID),
 	})
 	if err != nil {
 		// The payload is four strings; there is no input that fails to encode.
@@ -151,5 +165,6 @@ func parseIdentity(b []byte) (Message, error) {
 	out.Callsign = p.Callsign
 	out.Software = p.Software
 	out.Description = p.Description
+	out.ServerID = p.ServerID
 	return out, nil
 }

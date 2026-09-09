@@ -769,6 +769,22 @@ const OpenBridgeTimeslot = 1
 
 // Server configures the HTTP console listener.
 type Server struct {
+	// Identifier is what every other server calls this one (ADR-0053).
+	//
+	// **Generated at first run and never changed.** 128 bits of randomness,
+	// hex, unique without a coordinator — which is the one property no issued
+	// number has, and what ADR-0052 rule 2 requires of identity in a network
+	// with no headquarters.
+	//
+	// **Opaque. Nothing may parse it.** Not a prefix, not a checksum, not a
+	// length assumption outside the one function that validates it. The next
+	// generation of this field is likely a public-key fingerprint, because a
+	// random number proves nothing about who generated it; opaque now makes
+	// that a generation change rather than a redesign.
+	//
+	// It is not what a human reads — `dmr.join.network_name` is, and a
+	// callsign beside it. An identifier nobody reads is working correctly.
+	Identifier string `json:"identifier,omitempty"`
 	// ListenAddress is the host:port the console binds to.
 	ListenAddress string `json:"listen_address"`
 	// ReadHeaderTimeout bounds how long a client may take to send request

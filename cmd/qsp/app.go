@@ -574,6 +574,15 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		manager.store = store
 	}
 
+	// **After the writer and the version store, because it writes.** A server
+	// that predates ADR-0053 has no identifier and still needs one; the
+	// bootstrap only writes a configuration where none exists at all, which is
+	// never true of a server already running.
+	if err := ensureIdentifier(ctx, manager, log); err != nil {
+		return nil, err
+	}
+	cfg = manager.Current()
+
 	srv, err := server.New(log, registry, a.bus, server.Options{
 		ListenAddress:       cfg.Server.ListenAddress,
 		ReadHeaderTimeout:   cfg.Server.ReadHeaderTimeout.AsDuration(),
@@ -1847,5 +1856,6 @@ func serverIdentity(cfg config.Config) hbp.Identity {
 		Callsign:    strings.TrimSpace(cfg.DMR.Identity.Callsign),
 		Software:    buildVersion(),
 		Description: strings.TrimSpace(cfg.DMR.Identity.Description),
+		ServerID:    strings.TrimSpace(cfg.Server.Identifier),
 	}
 }

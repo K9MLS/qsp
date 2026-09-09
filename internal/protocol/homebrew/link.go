@@ -336,6 +336,7 @@ func (l *Link) Handle(datagram []byte) Outcome {
 			Callsign:    v.Callsign,
 			Software:    v.Software,
 			Description: v.Description,
+			ServerID:    v.ServerID,
 			Known:       true,
 		}
 		return Outcome{Note: fmt.Sprintf("%s: the far end is %s", l.cfg.Name, farEndLabel(l.farEnd))}
@@ -509,6 +510,9 @@ type FarEnd struct {
 	Software string
 	// Description is free text about the server.
 	Description string
+	// ServerID is the far end's identifier (ADR-0053), empty from a server too
+	// old to have one. Opaque: compared, never parsed.
+	ServerID string
 	// Known reports whether the far end has said anything at all.
 	//
 	// **False is not empty.** A link to an older QSP never receives an identity

@@ -36,11 +36,15 @@ func TestAnIdentityIgnoresFieldsThisBuildDoesNotKnow(t *testing.T) {
 	base := Identity{RepeaterID: 3132912, Network: "KD9EJA-01", Callsign: "KD9EJA"}
 	wire := base.Marshal()
 
-	// Splice in a field from some later QSP.
+	// Splice in a field from some later QSP. It has to be a field this build
+	// genuinely does not know: an earlier version of this test used server_id,
+	// which stopped being unknown the moment ADR-0053 was built, and the test
+	// caught it. A key fingerprint is the next field this packet is expected to
+	// grow.
 	body := wire[8:]
 	extended := append([]byte{}, wire[:8]...)
 	extended = append(extended, bytes.Replace(body,
-		[]byte(`{"network"`), []byte(`{"server_id":"0f1e2d3c","network"`), 1)...)
+		[]byte(`{"network"`), []byte(`{"key_fingerprint":"SHA256:0f1e2d3c","network"`), 1)...)
 
 	got, err := Parse(extended)
 	if err != nil {
