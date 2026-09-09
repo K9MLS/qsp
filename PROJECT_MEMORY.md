@@ -2897,6 +2897,25 @@ branch rendered nothing, and the test covering it asserted against a struct
 built by hand. **A state prevented by validation does not also need reporting,
 and a test that builds its own subject cannot fail.** Seventh time.
 
+### Rewrite a file rather than patch it a fifth time
+
+**2026-09-09.** Four consecutive pattern-matching edits to one console script —
+each replacing a string, each looking right — deleted a function while leaving
+its call site. The script threw at load, every page lost its administration
+navigation, and it shipped, because the whole gate chain is Go and reads no
+JavaScript.
+
+The edits were individually correct and collectively destructive: each was
+written against a file the previous edit had already changed, and none of them
+looked at the result. **After the second edit to one file in a session, stop
+replacing strings and read the whole thing** — or, as here, take the last
+known-good copy and apply the change once.
+
+And the gap it exposed: a language outside the gate chain gets no checking at
+all until somebody writes one. There is now a check that a console script
+defines every function it calls, which is crude and stops the failure that
+takes a page's chrome down without a word.
+
 ### Fix the half that is called, not the half that is named
 
 **Added 2026-09-09, having broken this rule the same day it was written.** The

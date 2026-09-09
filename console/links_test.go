@@ -818,3 +818,81 @@ func TestTheVersionIsOnEveryPage(t *testing.T) {
 		t.Error("the version is shown unlabelled")
 	}
 }
+
+// TestEveryFunctionAConsoleScriptCallsIsDefined is the test that would have
+// caught it.
+//
+// **A script that calls a function it does not define dies at load**, and takes
+// the rest of the file with it. On 2026-09-09 a sequence of edits to `nav.js`
+// deleted `render` while leaving `render()` called at the top — so the console
+// chrome threw a ReferenceError, the administration group never unhid, and the
+// page looked like a permissions problem. `gofmt`, `vet`, `staticcheck` and
+// every Go test passed, because none of them read JavaScript.
+//
+// This is not a parser. It looks for identifiers called like functions, ignores
+// anything reached through a dot or named by the language or the browser, and
+// asks whether the file defines the rest. That is enough for the failure it
+// exists to stop.
+func TestEveryFunctionAConsoleScriptCallsIsDefined(t *testing.T) {
+	scripts, err := filepath.Glob("static/*.js")
+	if err != nil {
+		t.Fatalf("listing scripts: %v", err)
+	}
+	if len(scripts) < 3 {
+		t.Fatalf("only %d scripts found; this test would pass by finding nothing", len(scripts))
+	}
+
+	// Reached through a dot, so not this file's to define; or provided by the
+	// language, the browser, or a control structure that looks like a call.
+	provided := map[string]bool{
+		"if": true, "for": true, "while": true, "switch": true, "catch": true,
+		"function": true, "return": true, "typeof": true, "new": true, "do": true,
+		"fetch": true, "setTimeout": true, "setInterval": true, "clearTimeout": true,
+		"String": true, "Number": true, "Boolean": true, "Array": true, "Object": true,
+		"JSON": true, "Date": true, "Math": true, "RegExp": true, "Error": true,
+		"parseInt": true, "parseFloat": true, "isNaN": true, "encodeURIComponent": true,
+		"decodeURIComponent": true, "atob": true, "btoa": true, "alert": true,
+		"confirm": true, "requestAnimationFrame": true, "Promise": true, "Map": true,
+		"Set": true, "console": true, "EventSource": true, "ResizeObserver": true,
+		"isFinite": true, "WebSocket": true, "URL": true, "URLSearchParams": true,
+		"AbortController": true, "IntersectionObserver": true, "MutationObserver": true,
+	}
+
+	defined := regexp.MustCompile(`function\s+([A-Za-z_$][\w$]*)\s*\(`)
+	// An identifier called, not preceded by a dot and not a property name.
+	called := regexp.MustCompile(`(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(`)
+
+	for _, script := range scripts {
+		src := stripComments(readFile(t, script))
+
+		have := map[string]bool{}
+		for _, m := range defined.FindAllStringSubmatch(src, -1) {
+			have[m[1]] = true
+		}
+		// Assigned function expressions count as definitions too.
+		for _, m := range regexp.MustCompile(`(?:var|let|const)\s+([A-Za-z_$][\w$]*)\s*=`).
+			FindAllStringSubmatch(src, -1) {
+			have[m[1]] = true
+		}
+		// **So do parameters.** A callback passed in and then called is the
+		// ordinary shape of this code, and a check that could not see it would
+		// be a check nobody could keep green.
+		for _, m := range regexp.MustCompile(`function\s*[A-Za-z_$\w]*\s*\(([^)]*)\)`).
+			FindAllStringSubmatch(src, -1) {
+			for _, param := range strings.Split(m[1], ",") {
+				if name := strings.TrimSpace(param); name != "" {
+					have[name] = true
+				}
+			}
+		}
+
+		for _, m := range called.FindAllStringSubmatch(src, -1) {
+			name := m[2]
+			if provided[name] || have[name] {
+				continue
+			}
+			t.Errorf("%s calls %s(), which it does not define; the script throws at load "+
+				"and every page loses its chrome", script, name)
+		}
+	}
+}

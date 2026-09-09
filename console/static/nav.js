@@ -41,24 +41,44 @@
 
   render();
 
-  /* **What is running here, at the foot of every page's navigation.** It lived
-   * in a startup log line and, since 0305, on the administration page — so the
-   * question asked after every deploy meant a terminal or a click, and it was
-   * read out of `journalctl` for two days.
+  function render() {
+    fetch("/api/session", {
+      headers: { Accept: "application/json" },
+      credentials: "same-origin"
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (body) {
+        apply(!!(body && body.authenticated), body ? body.username : "");
+        showVersion(body ? body.version : "");
+      })
+      .catch(function () {
+        /* Unreachable is not signed out. Saying "sign in to change these"
+         * because a fetch failed would be an assertion this file cannot
+         * support, so it asserts nothing and clears the one thing it knows is
+         * stale. */
+        if (authState) {
+          authState.textContent = "";
+        }
+      });
+  }
+
+  /* **What is running here, at the foot of every page's navigation**, where the
+   * "Not yet built" section used to be. It lived in a startup log line and, from
+   * 0305, on the administration page — so the question asked after every deploy
+   * meant a terminal or a click, and it was read out of `journalctl` for two
+   * days.
    *
    * It rides on the session request this file already makes, so there is no
    * second fetch and one source for the value.
    *
-   * **Shown to everybody, signed in or not.** That is a deliberate choice by
-   * the operator rather than an oversight: an exact build number tells somebody
-   * probing what this server is, and the judgement is that a console reachable
-   * by strangers is not the situation QSP is built for.
+   * **Shown to everybody, signed in or not**, unlike the administration group.
+   * Withholding it was the safer default and the operator overruled it: the
+   * version is read constantly and a console that answers only after a sign-in
+   * answers a moment too late.
    *
-   * Text and not a link: it is a fact about the server rather than somewhere to
-   * go, and a link at the foot of a navigation reads as one more destination.
-   * Empty rather than a placeholder until the answer arrives, because a dash
-   * where a version belongs is a thing an operator has to interpret.
-   */
+   * Text and not a link: a fact about the server rather than somewhere to go,
+   * and a link at the foot of a navigation reads as one more destination.
+   * Labelled, because a bare number there is a number. */
   function showVersion(value) {
     if (!version) { return; }
     version.textContent = value ? "Version " + value : "";

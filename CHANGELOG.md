@@ -4,6 +4,35 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The console chrome was broken by 0313: no administration group on any
+  page.** A sequence of edits to `nav.js` deleted `render` while leaving
+  `render()` called at the top of the file, so the script threw a
+  ReferenceError at load and stopped. Everything it does — revealing the
+  administration section, showing who is signed in, the version — went with it,
+  and the page looked like a permissions problem.
+
+  `gofmt`, `go vet`, `staticcheck` and every Go test passed, because none of
+  them reads JavaScript. The console has 434 lines of it in one file and about
+  1,500 across the directory, and until now nothing checked any of it.
+
+  `nav.js` is rebuilt from the last known-good copy with the version change
+  reapplied, rather than repaired in place — the file had been through four
+  pattern-matching edits in a row and repairing it would have been a fifth.
+
+### Added
+
+- **A gate for console scripts that call functions they do not define.** It
+  looks for identifiers called like functions, ignores anything reached through
+  a dot, named by the language or the browser, or arriving as a parameter, and
+  asks whether the file defines the rest. Deleting `render` again turns it red,
+  which was checked.
+
+  Not a parser, and it does not need to be: it stops the one failure that takes
+  a whole page's chrome down silently, in a language the rest of the gate chain
+  cannot see at all.
+
 ### Changed
 
 - **The version reads "Version 0.1.155" at the foot of the navigation**, where
