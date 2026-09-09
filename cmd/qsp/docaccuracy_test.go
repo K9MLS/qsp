@@ -20,12 +20,14 @@ package main
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/server"
@@ -473,6 +475,61 @@ func TestTheLocalEnvFileIsIgnored(t *testing.T) {
 		if strings.TrimSpace(strings.TrimPrefix(line, "!")) == ".git" &&
 			!strings.HasPrefix(strings.TrimSpace(line), "#") {
 			t.Error(".dockerignore excludes .git, so the binary cannot name its own commit")
+		}
+	}
+}
+
+// TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt is the test that would have
+// caught it.
+//
+// **The list of unbuilt subsystems lived in two places.** `unbuiltSubsystems`
+// in this package drives the health report; a hand-written "Not yet built"
+// section in the console's markup drove the sidebar. Removing the vocoder pool
+// from the first left the second untouched, and the operator saw an entry for a
+// subsystem the server no longer believed in — after a deploy, a hard reset, and
+// a version check that all said the change had landed.
+//
+// A value in two places disagrees with itself, which §8a already records. This
+// is the cheap half of the fix: the markup may name a planned subsystem only
+// while this package still calls it unbuilt.
+func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("reading the console: %v", err)
+	}
+	pages, err := fs.Glob(assets, "*.html")
+	if err != nil {
+		t.Fatalf("listing pages: %v", err)
+	}
+	if len(pages) == 0 {
+		t.Fatal("no console pages found; this test would pass by finding nothing")
+	}
+
+	unbuilt := make(map[string]bool, len(unbuiltSubsystems))
+	for _, s := range unbuiltSubsystems {
+		unbuilt[s.name] = true
+	}
+
+	// The names a sidebar would use for each, lowercased for comparison.
+	planned := map[string]string{
+		"vocoder pool": "vocoder",
+		"p25":          "p25",
+		"allstar":      "allstar",
+		"zello":        "zello",
+		"echolink":     "echolink",
+	}
+
+	for _, page := range pages {
+		b, err := fs.ReadFile(assets, page)
+		if err != nil {
+			t.Fatalf("reading %s: %v", page, err)
+		}
+		lower := strings.ToLower(string(b))
+		for label, name := range planned {
+			if strings.Contains(lower, ">"+label+"<") && !unbuilt[name] {
+				t.Errorf("%s offers %q in its navigation, and this build does not list %q "+
+					"as unbuilt; the markup and unbuiltSubsystems disagree", page, label, name)
+			}
 		}
 	}
 }

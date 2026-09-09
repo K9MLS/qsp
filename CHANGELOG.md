@@ -4,6 +4,25 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The vocoder pool was still in the sidebar after being removed everywhere
+  else.** 0310 took it out of the health report and out of the unbuilt-subsystem
+  list, deleted its package, and did not touch the console's markup — where a
+  hand-written "Not yet built" section listed it. The operator deployed, hard
+  reset the browser, checked the version, and still saw it.
+
+  **The list existed in two places**, one enumerable by the program and one
+  typed by hand, and only one was edited. That is the shape §8a already records,
+  and the reason this defect survived a correct deploy and a correct version
+  check is that neither of them was looking at the disagreement.
+
+  The section is gone — it held only the vocoder, so P25 and the connectors were
+  never in the sidebar at all — along with the phase-badge styles nothing else
+  used. And a gate now cross-checks the console's markup against
+  `unbuiltSubsystems`: the navigation may name a planned subsystem only while
+  this build still calls it unbuilt. Putting the entry back turns it red.
+
 ### Removed
 
 - **The vocoder pool is gone, and it was never going to be built.** QSP does not
