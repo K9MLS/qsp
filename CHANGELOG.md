@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A link whose name was not already lowercase could not be sent to.** The
+  routing core stored QSP link names lowercased and built repeat targets from
+  that key, while the upstream registry looks a link up by the name in the
+  configuration. So `route` addressed `qsp test server`, the registry held
+  `QSP Test Server`, and every frame was refused:
+
+  ```
+  cannot send a frame upstream upstream="qsp test server"
+  error="upstream: no link named \"QSP Test Server\" is configured"
+  ```
+
+  **Audio crossed one way and not the other, and the link reported itself
+  healthy throughout.** The direction that works never looks a name up — a frame
+  arriving from a link is delivered to peers — so only transmitting *into* the
+  link failed. Every link before this happened to be named in lowercase, which
+  is why it took until a link the accept form named after a network to surface.
+
+  The map now keys on the lowercased name and stores the configured one: the key
+  answers "is this a QSP link", which must ignore case because the loop rule
+  compares against a name from elsewhere, and the value is what a target is
+  built from, which must match the configuration exactly. Two questions were
+  being asked of one value and they disagreed.
+
+  Found on 2026-09-09 by keying a Motorola repeater into a link that carried in
+  the other direction. No test would have caught it: both names were valid, the
+  configuration was correct, and the link's own status was green.
+
+- Verified rather than assumed while fixing it: two links whose names differ
+  only by case were already refused by `config.Validate`, which compares them
+  case-insensitively. Nothing to add there.
+
 ### Added
 
 - **The Links page can restart QSP.** It told an operator to in four places and

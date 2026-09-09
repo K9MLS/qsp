@@ -282,14 +282,29 @@ type Core struct {
 	attached Subscriptions
 	timeout  time.Duration
 
-	// qspLinks names the links that reach another QSP server, lowercased.
+	// qspLinks maps a link name lowercased to the name as configured.
+	//
+	// **Two things were being asked of one map and they disagreed.** The key
+	// answers "is this link a QSP link", which must ignore case because the
+	// loop rule compares it against a name from elsewhere. The value is what a
+	// target is built from, and that must be the configured name exactly,
+	// because the upstream registry looks a link up by the name in the
+	// configuration.
+	//
+	// Storing only the lowercased form made every link whose name was not
+	// already lowercase unreachable: `route` built a target called
+	// `qsp test server`, the registry held `QSP Test Server`, and every frame
+	// was refused with *no link named ... is configured*. Found on 2026-09-09
+	// by a repeater transmitting into a link that reported itself healthy —
+	// audio crossed one way and not the other, because the working direction
+	// never looked a name up.
 	//
 	// **They are destinations for repeat, not bridge endpoints** (ADR-0051).
 	// A linked QSP server is a peer: every talkgroup crosses, the talkgroup
 	// and timeslot cross unchanged, and each side's own access lists decide
 	// what it keeps. An OpenBridge link is not in here and still needs a
 	// bridge, because the far end is a foreign network rather than a peer.
-	qspLinks map[string]bool
+	qspLinks map[string]string
 
 	// mu guards access, table and busy. Every other field is set once in
 	// NewCore and only read.
@@ -365,14 +380,15 @@ func NewCore(opts CoreOptions) (*Core, error) {
 
 // linkSet lowercases link names into a set, matching how the configuration
 // compares them everywhere else.
-func linkSet(names []string) map[string]bool {
+func linkSet(names []string) map[string]string {
 	if len(names) == 0 {
 		return nil
 	}
-	out := make(map[string]bool, len(names))
+	out := make(map[string]string, len(names))
 	for _, n := range names {
-		if k := strings.ToLower(strings.TrimSpace(n)); k != "" {
-			out[k] = true
+		name := strings.TrimSpace(n)
+		if k := strings.ToLower(name); k != "" {
+			out[k] = name
 		}
 	}
 	return out
@@ -390,7 +406,9 @@ func (c *Core) sortedQSPLinks() []string {
 		return nil
 	}
 	out := make([]string, 0, len(c.qspLinks))
-	for name := range c.qspLinks {
+	for _, name := range c.qspLinks {
+		// **The configured name, not the key.** A target is looked up in the
+		// upstream registry by exactly the name in the configuration.
 		out = append(out, name)
 	}
 	sort.Strings(out)
@@ -684,7 +702,7 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			// recognise our duplicates for us — its deduplication is not ours
 			// to rely on. So an OpenBridge target still refuses anything that
 			// arrived over a link.
-			if fromUpstream && !c.qspLinks[strings.ToLower(target.Upstream)] {
+			if _, isQSP := c.qspLinks[strings.ToLower(target.Upstream)]; fromUpstream && !isQSP {
 				res.Drops = append(res.Drops, Drop{
 					To: target.Endpoint,
 					Reason: fmt.Sprintf("arrived from upstream %s; a frame from a link is never "+
