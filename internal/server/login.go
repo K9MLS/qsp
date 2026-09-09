@@ -137,7 +137,16 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	session, ok := s.session(r)
 	if !ok {
-		writeJSON(w, s.log, http.StatusOK, sessionResponse{Authenticated: false})
+		// **The version is told to an anonymous visitor too.** The console
+		// shows it at the foot of every page whether anybody is signed in or
+		// not, which is the operator's decision: an exact build number is worth
+		// something to somebody probing, and the judgement is that a QSP
+		// console reachable by strangers is not the situation this is built
+		// for. Recorded here rather than argued each time it is read.
+		writeJSON(w, s.log, http.StatusOK, sessionResponse{
+			Authenticated: false,
+			Version:       buildinfo.Version,
+		})
 		return
 	}
 	writeJSON(w, s.log, http.StatusOK, sessionResponse{

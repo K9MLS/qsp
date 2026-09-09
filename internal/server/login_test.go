@@ -555,9 +555,10 @@ func TestTheVersionRidesOnTheEndpointTheConsoleAsks(t *testing.T) {
 	a := newStubAuth()
 	srv := newAuthServer(t, a, false)
 
-	// Anonymous: no version. An exact build number is worth more to somebody
-	// probing than to a visitor, and the administration group is hidden from
-	// one for the same reason.
+	// **Anonymous too.** Withholding it was the safer default and the operator
+	// chose otherwise: the version is a fact about the server, it is read
+	// constantly, and a console that answers only after a sign-in answers a
+	// moment too late.
 	rec := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/session", nil))
 
@@ -565,8 +566,8 @@ func TestTheVersionRidesOnTheEndpointTheConsoleAsks(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Version != "" {
-		t.Errorf("an anonymous request was told the version: %q", body.Version)
+	if body.Version != buildinfo.Version {
+		t.Errorf("an anonymous request was told %q, want %q", body.Version, buildinfo.Version)
 	}
 
 	// Signed in: the version, on the request the chrome makes every page load.

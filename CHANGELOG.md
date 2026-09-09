@@ -4,6 +4,28 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **The version reads "Version 0.1.155" at the foot of the navigation**, where
+  the "Not yet built" section used to be. The first attempt put it under the
+  brand at the top, which is not where the operator looked and not where the
+  space had opened up.
+
+  Plain text rather than a link: it is a fact about the server, not somewhere to
+  go, and a link at the foot of a sidebar reads as one more destination.
+  Labelled, because a bare number there is a number.
+
+  **Shown to everybody, signed in or not.** Withholding it from an anonymous
+  visitor was the safer default and was the operator's call to overrule: the
+  version is read constantly and a console that answers only after a sign-in
+  answers a moment too late. The cost — somebody probing learns the exact build
+  — is a judgement about who can reach this console rather than about the field,
+  and it is written down where the decision lives rather than argued each time.
+
+  A styling bug went with it: `display: inline-block` on the old element
+  overrode the `hidden` attribute, so a signed-out console would have rendered
+  an empty link rather than nothing. Text has no such rule.
+
 ### Fixed
 
 - **The version was returned by the endpoint nothing reads.** 0310 put it on the

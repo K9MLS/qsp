@@ -794,8 +794,15 @@ func TestTheVersionIsOnEveryPage(t *testing.T) {
 		if !strings.Contains(html, "brand__tagline") {
 			continue
 		}
-		if !strings.Contains(html, `id="brand-version"`) {
+		if !strings.Contains(html, `id="nav-version"`) {
 			t.Errorf("%s does not show which version is running", page)
+		}
+		// **At the foot of the navigation**, where the "Not yet built" section
+		// used to be — not under the brand, which is where a first attempt put
+		// it and where the operator did not look.
+		nav := html[strings.Index(html, "<nav"):]
+		if !strings.Contains(nav[:strings.Index(nav, "</nav>")], `id="nav-version"`) {
+			t.Errorf("%s shows the version outside the navigation", page)
 		}
 	}
 
@@ -805,10 +812,9 @@ func TestTheVersionIsOnEveryPage(t *testing.T) {
 	if strings.Contains(js, `fetch("/healthz"`) {
 		t.Error("the version is fetched separately; it rides on the session request")
 	}
-	// Not told to an anonymous visitor, for the same reason the administration
-	// group is hidden from one.
+	// Labelled, because a bare number at the foot of a sidebar is a number.
 	body := functionBody(t, js, "showVersion")
-	if !strings.Contains(body, "version.hidden = true") {
-		t.Error("the version is not hidden when nobody is signed in")
+	if !strings.Contains(body, `"Version "`) {
+		t.Error("the version is shown unlabelled")
 	}
 }
