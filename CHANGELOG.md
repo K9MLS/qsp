@@ -6,6 +6,37 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Four documents went on telling operators to make the first account from a
+  shell**, after ADR-0056 moved it into the browser. Each is the first thing
+  somebody reads in its own context, and one of them is printed by a fresh
+  install before anything else happens:
+
+  - the **bootstrap message**, which a first run prints and which ended with the
+    `adduser` command — the very instruction the setup wizard replaced;
+  - the **container README**, whose "Create your administrator account" section
+    was a shell command;
+  - **SECURITY.md**, still stating that the only way an account is created is on
+    the host;
+  - and the **sign-in page**, corrected in 0322 but only because it was the one
+    I happened to be looking at.
+
+  All four now describe the wizard and the token, and say where to find it. The
+  container README explains that a restart prints a new one, so a missed token
+  costs a `docker compose restart`. `qsp adduser` survives everywhere as the
+  recovery procedure for having lost every administrator, in a collapsed section
+  rather than as the headline.
+
+### Added
+
+- **A gate against that class of staleness**, which is four instances this week
+  of the same thing: a decision changes, one place is updated, and the rest go on
+  saying what used to be true. It fails on the phrases that mean "your first
+  account comes from a shell", each of which was really in the tree today, and
+  exempts the changelog and the decision records, which are history and must be
+  allowed to say what was once true.
+
+### Fixed
+
 - **The setup wizard was unreachable.** ADR-0056 says every path redirects to it
   until an administrator exists, and 0322 did not build the redirect — the page
   existed and nothing sent anybody there, so it was reachable only by typing the

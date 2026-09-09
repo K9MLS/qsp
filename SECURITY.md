@@ -68,12 +68,22 @@ cannot force arbitrary CPU consumption.
 
 ### Authentication
 
-Administrator accounts exist, and **the only way one is created is
-`qsp adduser` on the host**. See
-[ADR-0026](docs/adr/ADR-0026-authentication.md): a setup page open until the
-first account exists is a race an instance loses silently, so there is none, and
-the web surface has no unauthenticated path that writes anything at any point in
-the instance's life.
+Administrator accounts exist, and **the first is created in the browser through
+a setup page guarded by a one-time token** (ADR-0056, amending ADR-0026). The
+race an open setup page loses — a server with an empty database belonging to
+whoever loads it first — is real, and the token is what guards it: without one
+an attacker who wins the race gets a form they cannot submit.
+
+The token is generated at startup when no account exists, logged once, held in
+memory and never written to disk. **It is not required from loopback**, because
+a request from the machine itself is from somebody who could read the journal
+anyway. It is compared in constant time, and a refusal does not distinguish a
+wrong token from an absent one.
+
+**Every account after the first is created from the console**, by an
+administrator who is already authenticated. `qsp adduser` on the host survives
+as the recovery procedure for having lost every administrator, and is documented
+in the README rather than displayed in the console.
 
 `/api/login` exchanges a username and password for a session cookie.
 `/api/logout` ends it. `/api/session` reports who the caller is, answering

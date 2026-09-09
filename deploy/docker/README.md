@@ -64,15 +64,31 @@ Both values are read **only on the first run**. After that
 
 ## Create your administrator account
 
-**A fresh install has no accounts**, so this is the next thing after
-`docker compose up`. The console will not let you in until you do it.
+**A fresh install has no accounts**, and QSP sends every page to a setup form
+until it does. Open the console after `docker compose up` and it will ask you
+for a callsign and a password.
+
+**Over a network it asks for a setup token as well.** QSP prints one once when
+it starts with no administrator:
+
+```sh
+docker logs qsp 2>&1 | grep setup_token
+```
+
+There is no token to type when you open the console **from the machine QSP is
+running on** — a request from loopback is from somebody who could read that log
+line anyway. A restart prints a new token, so a missed one costs a
+`docker compose restart` rather than anything worse.
+
+Setup runs once. Afterwards the page refuses, and every account after the first
+is added from the administration page.
+
+<details>
+<summary>If every administrator is lost</summary>
 
 ```sh
 docker compose exec -it qsp /qsp -config /var/lib/qsp/qsp.json adduser mike
 ```
-
-It prompts for a password twice and prints
-`Created administrator "mike" in /var/lib/qsp/qsp.db`.
 
 The `-it` matters: the password is typed with echo off, and QSP refuses to read
 one from a pipe — a password that arrives through a pipe is in a shell history,
@@ -83,6 +99,12 @@ If you forget the password:
 ```sh
 docker compose exec -it qsp /qsp -config /var/lib/qsp/qsp.json unlock mike
 ```
+
+A password can also be reset from the administration page by any other
+administrator, which is the ordinary way — this is for when there is nobody left
+to do it.
+
+</details>
 
 ## Point a hotspot at it
 

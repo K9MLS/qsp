@@ -591,3 +591,70 @@ func TestTheRepositoryNamesNoCompetitor(t *testing.T) {
 		t.Fatalf("only %d files read; this test would pass by finding nothing", checked)
 	}
 }
+
+// TestNothingTellsAnOperatorToMakeTheFirstAccountFromAShell is the test that
+// would have caught it four times.
+//
+// **ADR-0056 moved the first administrator into the browser, and four places
+// went on telling operators otherwise**: the sign-in page, the bootstrap
+// message a fresh install prints, the container README, and SECURITY.md. Each
+// was the first thing somebody reads in its own context, and each was corrected
+// only after an operator hit it.
+//
+// `qsp adduser` survives as the recovery procedure for having lost every
+// administrator, so the command may still appear — but never as the way to make
+// the *first* one, which is what these phrases say.
+func TestNothingTellsAnOperatorToMakeTheFirstAccountFromAShell(t *testing.T) {
+	// Phrases that mean "your first account comes from a shell". Each was in the
+	// tree on 2026-09-09 and each was wrong.
+	stale := []string{
+		"create an administrator account before you can sign in",
+		"the only way one is created is",
+		"a fresh install has no accounts**, so this is the next thing",
+		"create one on the server, then come back",
+	}
+
+	var checked int
+	err := filepath.Walk("../..", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || info.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".go", ".md", ".html", ".js":
+		default:
+			return nil
+		}
+		// The changelog and the decision records are history: they record what
+		// was once true and must be allowed to say so.
+		base := filepath.Base(path)
+		if base == "CHANGELOG.md" || strings.Contains(path, "docs/adr/") ||
+			base == "docaccuracy_test.go" {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		checked++
+		lower := strings.ToLower(string(body))
+		for _, phrase := range stale {
+			if strings.Contains(lower, phrase) {
+				t.Errorf("%s still tells an operator to make the first account from a "+
+					"shell: %q — ADR-0056 puts it in the browser", path, phrase)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the repository: %v", err)
+	}
+	if checked < 50 {
+		t.Fatalf("only %d files read; this test would pass by finding nothing", checked)
+	}
+}

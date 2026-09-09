@@ -256,11 +256,9 @@ have a Motorola repeater to point at it.
 QSP writes the configuration on its first run. After that it is yours, and
 this will never overwrite it.
 
-Once it starts, create an administrator account before you can sign in to
-the console:
-
-  docker    docker compose exec -it qsp /qsp -config %[1]s adduser <name>
-  systemd   qsp -config %[1]s adduser <name>
+Once it starts, open the console and it will ask you to create the first
+administrator. From the machine itself there is nothing else to do; over a
+network it will ask for a setup token, which QSP prints once at startup.
 `, path, peerPasswordEnv, allowedPeersEnv)
 }
 

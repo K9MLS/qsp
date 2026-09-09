@@ -251,9 +251,18 @@ the project: access lists, bridges, the schedule, links, peer credentials, the
 call record, backup and restore, and a page saying what this server is and
 whether it matches its own configuration.
 
-Administrative endpoints require a session. The first administrator is made from
-a shell — see [ADR-0026](docs/adr/ADR-0026-authentication.md) — and everything
-after that is done in the console.
+Administrative endpoints require a session. **The first administrator is made in
+the browser**: a fresh server sends every page to a setup form, which asks for a
+callsign and a password. Over a network it also asks for a one-time token that
+QSP prints once at startup — there is none to type from the machine itself. See
+[ADR-0056](docs/adr/ADR-0056-first-administrator-in-a-browser.md).
+
+Every account after the first is added from the administration page. If every
+administrator is lost, one can be made on the host:
+
+```sh
+qsp -config /path/to/qsp.json adduser YOURCALL
+```
 
 ## Persistence
 
