@@ -2871,6 +2871,32 @@ in §8o from the container work and was not thought of as available on
 production. **Ask what already works on one machine before inventing something
 for another.**
 
+### Check what a deletion would break before deciding it is small
+
+**2026-09-09.** Removing two configuration fields that nothing read looked like
+tidying. `config.Load` refuses unknown fields — deliberately, so a typo cannot
+leave a default in place — and both fields were declared without `omitempty`, so
+every save wrote them. Deleting them from the Go struct would have made every
+configuration already on disk unparseable, and **the failure would have arrived
+at the next restart** rather than at the change: a server carrying traffic,
+stopped hours later by an edit that looked like nothing.
+
+The check was one grep and one look at `Load`. It turned a deletion into a
+mechanism the project needed anyway, and the mechanism was then proved on a live
+server that would otherwise have refused to start.
+
+So, before removing anything from a document a server reads: **what happens to a
+document already written that contains it?** The answer is in how it is parsed,
+not in how it is used, and "nothing reads it" is an answer to the wrong
+question.
+
+The same morning gave the smaller half: an unreachable state. The
+administration page reported a lookup that was on and could not run, and
+`config.Validate` refuses that combination — so no server can hold it, the
+branch rendered nothing, and the test covering it asserted against a struct
+built by hand. **A state prevented by validation does not also need reporting,
+and a test that builds its own subject cannot fail.** Seventh time.
+
 ### Fix the half that is called, not the half that is named
 
 **2026-09-09.** A QSP link was offered the OpenBridge port. The fix gave the

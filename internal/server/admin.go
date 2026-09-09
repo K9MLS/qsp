@@ -106,10 +106,12 @@ type adminCallsigns struct {
 	Contact string `json:"contact,omitempty"`
 	// Usable reports whether the lookup can actually run.
 	//
-	// **Enabled without a contact is a setting that says on and does
-	// nothing.** The registry asks automated clients to identify themselves,
-	// so a lookup with no contact address never runs — and a page showing only
-	// "enabled" would be reporting a state the server is not in.
+	// Equal to Enabled today, and kept separate because they answer different
+	// questions: an operator asks whether radios are being named, and the
+	// configuration says whether the setting is on. A future reason for the
+	// lookup to be on and not working — a registry that will not answer, a
+	// contact address it has rejected — belongs here rather than in a second
+	// field nobody reads.
 	Usable bool `json:"usable"`
 	// Why explains an unusable state in the operator's terms.
 	Why string `json:"why,omitempty"`
@@ -167,15 +169,21 @@ func callsignState(c config.Callsigns) adminCallsigns {
 		Enabled: c.Enabled,
 		Contact: strings.TrimSpace(c.Contact),
 	}
-	switch {
-	case !c.Enabled:
+	// **Two states, not three.** An earlier version reported a third — on, with
+	// no contact address, and therefore unable to run — and no server can be in
+	// it: `config.Validate` refuses a configuration with the lookup enabled and
+	// no contact, so such a document never loads. The branch rendered nothing
+	// and the test covering it asserted on a struct built by hand, which is a
+	// test that cannot fail.
+	//
+	// The state is prevented rather than reported, which is the stronger of the
+	// two, and the endpoint that saves this setting refuses the same
+	// combination with the same words before it reaches the validator.
+	if !c.Enabled {
 		out.Why = "callsign lookup is off, so Last heard shows radio IDs rather than callsigns"
-	case out.Contact == "":
-		out.Why = "callsign lookup is on and cannot run: the registry asks automated clients " +
-			"to identify themselves, and no contact address is set"
-	default:
-		out.Usable = true
+		return out
 	}
+	out.Usable = true
 	return out
 }
 

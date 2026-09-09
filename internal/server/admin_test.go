@@ -7,19 +7,26 @@ import (
 	"github.com/k9mls/qsp/internal/config"
 )
 
-// **Enabled with no contact is a setting that says on and does nothing.** The
-// registry asks automated clients to identify themselves, so a lookup with no
-// contact address never runs — and §7 forbids a field that means "not
-// applicable" while looking like "not set".
-func TestCallsignLookupOnWithNoContactIsReportedAsUnusable(t *testing.T) {
-	got := callsignState(config.Callsigns{Enabled: true, Contact: ""})
-	if got.Usable {
-		t.Fatal("a lookup with no contact address was reported as working")
-	}
-	if !strings.Contains(got.Why, "contact") {
-		t.Errorf("the reason does not name what is missing: %q", got.Why)
-	}
+// **A configuration cannot have the lookup on with no contact address**, so the
+// page has two states rather than three. An earlier version of this reported a
+// third and asserted it against a struct built by hand — a state no server can
+// hold, checked by a test that could not fail.
+//
+// Proved here against the validator rather than against a struct, because that
+// is what makes the claim true.
+func TestALookupWithNoContactIsPreventedRatherThanReported(t *testing.T) {
+	cfg := config.Default()
+	cfg.DMR.Callsigns = config.Callsigns{Enabled: true, Contact: ""}
 
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("a configuration with the lookup on and no contact was accepted; the " +
+			"administration page would then need a state for it")
+	} else if !strings.Contains(err.Error(), "contact") {
+		t.Errorf("the refusal does not name what is missing: %v", err)
+	}
+}
+
+func TestTheCallsignBlockSaysWhetherRadiosAreBeingNamed(t *testing.T) {
 	// Off is not the same as broken, and the page must not conflate them.
 	off := callsignState(config.Callsigns{Enabled: false})
 	if off.Usable {

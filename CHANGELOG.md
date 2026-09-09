@@ -4,6 +4,41 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **OpenBridge is recorded as narrowed to foreign networks**, which it already
+  was in practice. ADR-0051 and ADR-0052 narrowed it, the console can no longer
+  create a QSP-to-QSP OpenBridge link, and 0308 retired the direction lists. The
+  record still said *Proposed* while three later records amended it. Nothing was
+  refactored: the item was already done, and inventing work to match the size of
+  the heading would have been the wrong answer.
+
+- **An unreachable state removed from the administration page.** It reported a
+  callsign lookup that was on and could not run, and `config.Validate` refuses
+  that combination — so no server can hold it, the branch rendered nothing, and
+  the test covering it asserted against a struct built by hand. A state
+  prevented by validation does not also need reporting. Seventh test that could
+  not fail; the replacement drives the validator, which is what makes the claim
+  true.
+
+- **§8a: check what a deletion would break before deciding it is small.**
+  Removing two fields nothing read would have stopped every server holding a
+  configuration that mentioned them, at the next restart rather than at the
+  change. The check was one grep and one look at `Load`. The question is what
+  happens to a document already written that contains the field, and the answer
+  is in how it is parsed rather than in how it is used — "nothing reads it"
+  answers the wrong question.
+
+- Handover and standing brief brought up to 0309. Start here is Pete's server,
+  which nothing now blocks; the two answers he owes are whether he can get UDP
+  62031 reachable without CGNAT, and which DMR ID this server should present.
+  He listens and this server dials, which makes him the offering side and
+  exercises the accept form from the direction it has never run.
+
+- Corrected from 0308's commit message: **production never held the retired
+  fields** — only the test server did. The claim that both servers held them was
+  wrong, and the risk was real on one machine rather than two.
+
 ### Removed
 
 - **`Export` and `Import` are gone, and retiring a configuration field is now

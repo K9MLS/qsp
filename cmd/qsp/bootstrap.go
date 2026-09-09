@@ -84,6 +84,22 @@ const (
 	// connect before anything is listening, rather than starting a server that
 	// is silently useless and finding out when a hotspot will not register.
 	allowedPeersEnv = "QSP_ALLOWED_PEERS"
+	// contactEnv is the address sent to the amateur DMR registry so it knows
+	// who is asking.
+	//
+	// **The lookup is on by default and cannot run without this.** Naming
+	// radios is what an operator expects a network to do — a Last-heard table
+	// of seven-digit numbers is a server that looks broken — so a fresh
+	// instance turns it on. But the registry is volunteer-run and asks
+	// automated clients to identify themselves, and QSP has no business
+	// inventing an address for somebody else: it is the operator making the
+	// requests and the operator who would be contacted if something were
+	// wrong.
+	//
+	// Unset is not an error. The instance starts with the lookup on and
+	// unusable, and the administration page says so in those words rather
+	// than showing a table of numbers and letting an operator wonder.
+	contactEnv = "QSP_CONTACT"
 )
 
 // errNoPeerPassword is returned when there is no configuration and nothing
@@ -298,5 +314,9 @@ func starterConfig(passwordPath string, allowed []string) config.Config {
 	}
 	cfg.IPSC.Enabled = false
 	cfg.Server.ListenAddress = "0.0.0.0:8080"
+	// The contact is taken from the environment when it is there, so a
+	// container configured with one comes up naming radios rather than
+	// enabled and inert.
+	cfg.DMR.Callsigns.Contact = strings.TrimSpace(os.Getenv(contactEnv))
 	return cfg
 }

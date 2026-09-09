@@ -27,7 +27,7 @@ conclusion.
 | [0015](ADR-0015-level-triggered-scheduler.md) | The scheduler is level-triggered, and stores wall time | Accepted |
 | [0016](ADR-0016-ptt-triggered-bridging.md) | PTT-triggered bridging, and how it merges with the schedule | Accepted |
 | [0017](ADR-0017-first-dependency.md) | Adopting modernc.org/sqlite, the first dependency | Accepted |
-| [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Proposed — narrowed by 0051 to foreign networks |
+| [0018](ADR-0018-openbridge.md) | OpenBridge for linking to other networks | Accepted — narrowed by 0051 and 0052 to foreign networks only |
 | [0019](ADR-0019-master-repeats.md) | A master repeats; bridging is a layer on top | Accepted |
 | [0020](ADR-0020-access-control.md) | Access control, and why it is checked in two places | Accepted |
 | [0021](ADR-0021-private-calls-and-data.md) | Private calls and data are in scope, and share one missing thing | Proposed |

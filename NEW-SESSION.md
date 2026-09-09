@@ -35,8 +35,9 @@ worked before 2026-09-08.
 refused, readdressed and restarted — which until 2026-09-08 needed hand-edited
 JSON on a server. It has been done on air, both directions, on TG2 TS2.
 
-What is decided and unbuilt is the administration page (ADR-0055) and backup
-and restore (ADR-0054). `HANDOVER.md` opens on the first.
+The administration page (ADR-0055) and backup and restore (ADR-0054) are built
+and deployed. What is left before a second operator runs a server is nothing;
+`HANDOVER.md` opens on getting one running.
 
 Relaying and deduplication are built, unit-tested and unexercised: two servers
 give nothing to relay to. A third instance on this LAN was built and rejected in

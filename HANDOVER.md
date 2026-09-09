@@ -1,19 +1,41 @@
-# Handover, 2026-09-09 small hours
+# Handover, 2026-09-09 midday
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside, then **ADR-0053** (three names
 for a server) and **ADR-0055** (the administration page), which are decided and
 unbuilt. **§8o** is the last session.
 
-Version **0.1.145**, patches 0261–0303. **Production and the test server are
-both on 0.1.144**, which is everything except 0303, and 0303 is documentation.
-`origin/main` is `afd6233` — pushed, verified, and the first copy of this work
-off the two machines.
+Version **0.1.151**, patches 0261–0309. **Production and the test server are
+both on 0.1.150**, same build hash, and 0309 is documentation. `origin/main` was
+last pushed at `afd6233` and is behind by everything from 0303 — worth a push.
 
 Check a deploy by asking the running process: the `starting` log line on
 production, a string unique to the build in the container. And run `cat VERSION`
 after every `git am` — a patch file that never reached Fedora passed every gate
 and shipped the previous build, and the version was what caught it.
+
+## What the morning of 2026-09-09 did
+
+**The administration page exists, and a server can be backed up.**
+
+- **0305** — the administration page, ADR-0055 built. `/server`: identity,
+  agreement, services, callsign lookup.
+- **0306** — the restart control is always on that page, not only when
+  something waits. A rule from the Links page had been applied where it did not
+  hold, overriding what the operator had asked for.
+- **0307** — backup and restore, ADR-0054 built. An export carries no secret and
+  lists the credentials it cannot carry; an import is asked twice and asks
+  whether this server replaces the one that made the backup.
+- **0308** — `Export` and `Import` retired, and the mechanism that makes
+  retiring a configuration field possible at all. **Proved on a live server**:
+  the test server started on 0.1.150 with `export` still in its file, and the
+  field left the file on the next save.
+
+**The most valuable half hour was spent not building something.** Removing two
+dead fields would have made every configuration already written unparseable,
+because `Load` refuses unknown fields and both were written by every save. The
+failure would have arrived at a restart. Checking that first turned a small
+deletion into a mechanism the project needed anyway.
 
 ## What the night of 2026-09-08 did
 
@@ -107,37 +129,36 @@ clicking through a console rather than by a test.
 
 ## Start here
 
-**Build the administration page, ADR-0055.** Decided last night, argued through
-with the operator, nothing written. Five blocks — this server, agreement,
-services, backup and restore, the callsign lookup toggle — and the rule that
-keeps it from becoming a settings dump is in the record in both directions.
+**Pete's server.** Everything that was blocking it is built and deployed: the
+accept form works on air, a server says what it is in both directions, it has an
+identifier, and a configuration can be backed up and handed to somebody. He is
+waiting on two answers — whether he can get a public IP with UDP 62031 reachable
+and whether he is behind CGNAT, and which DMR ID he wants this server to present
+when it registers with his.
 
-The block that earns the page is **agreement**: does the running server match
-its configuration, and what differs. QSP already computes that and reports it
-only as a sentence beside whichever link was last saved. It cost three round
-trips in one evening and each time it was findable only by knowing to look.
+**He will listen and this server will dial**, which is the right direction for a
+home connection behind NAT and the shape most QSP networks will have. That makes
+**Pete the offering side**: his server allocates the DMR ID from his own
+registration list and writes the password, and this one accepts his invitation.
+It is the first time the accept form runs from that direction and the first time
+anything crosses the internet rather than one LAN — so relaying, deduplication
+and a real network path are all tested at once, which is why the local third
+instance was rejected.
 
-**Before writing any of it**, read ADR-0055's design section. The
-`ui-ux-pro-max` design system was consulted and its landing-page pattern
-rejected — oversized type and `clamp(3rem, 10vw, 12rem)` headlines describe a
-marketing page for an operations product. What it does bind is listed there and
-the build is checkable against it.
+The install path agreed with him: build the image on Fedora, `docker save` it,
+copy it over, `docker load`. He never compiles anything and runs the exact bytes
+that were tested. He gets the source too — GPLv3, and his eyes on it are wanted.
 
-**Then the callsign lookup default.** It is off unless configured, which is why
-the test server showed radio IDs where production showed callsigns. Defaulting
-`enabled` to true alone would create a setting that says on and does nothing,
-because the lookup needs a contact address to identify itself to RadioID —
-§7 already forbids a field that means "not applicable" and looks like "not set".
-Three parts: default it on, let the bootstrap take a contact from the
-environment or the operator identity, and make the gap loud where it exists
-rather than silently showing numbers.
+**Then private calls across a link**, which is deferred by decision rather than
+forgotten. A private call resolves through the subscriber table, links are never
+targets for one, and `DeliverFromUpstream` records nothing — so production can
+call a radio behind the test server and not the reverse. It needs an ADR before
+code: a private call sent to a link may chase a radio that has moved, and whose
+sighting wins across servers is ADR-0052 rule 4 territory.
 
-**Then remove `Export`, `Import` and the bridge-for-links machinery**, and
-narrow OpenBridge to foreign networks. Dead weight in exactly the paths a second
-operator will exercise.
-
-**Then backup and restore, ADR-0054.** It has no home until the administration
-page exists, which is part of why that comes first.
+**And a radio's callsign still does not cross a link** — the loose thread below.
+The server that hears a radio knows its callsign because the station said so at
+login, and discards it at the link.
 
 ## Two debts taken deliberately
 
@@ -302,6 +323,11 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 - **The repository pushed to GitHub**, `15cfb37..afd6233`, verified with
   `git rev-list --count origin/main..main` reading 0.
 
+- **A configuration field retired on a live server.** The test server started on
+  0.1.150 holding `export`, which the build that removed it no longer knows, and
+  the field left the file on the next save.
+- **A server backed up.** An export names the credentials it cannot carry.
+
 ## Not proven
 
 - **Relaying and deduplication, on any machine.** Every test is a unit test and
@@ -324,6 +350,10 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 - **A restart from the console.** The button exists on both machines and has
   never been pressed.
 - **A callsign crossing a link.** It does not: see the loose threads.
+- **A restore.** The import path is built and no configuration has been
+  restored from an export, on any machine.
+- **A restart from the console.** The button is on two pages and has never been
+  pressed.
 - The IPSC panel from 0265, never loaded in a browser.
 - Published image tag and CI publishing. `docker compose up` without the build
   override tries `ghcr.io/k9mls/qsp:<version>` and is denied.

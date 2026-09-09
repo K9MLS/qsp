@@ -1,6 +1,20 @@
 # ADR-0018: OpenBridge for linking to other networks
 
-**Status:** Proposed
+**Status:** accepted, and narrowed by ADR-0051 and ADR-0052 to foreign networks only
+
+**Narrowed, 2026-09-09.** OpenBridge is for reaching a network QSP did not
+build, and nothing else. Two QSP servers link as peers (ADR-0051): the talkgroup
+and the timeslot cross unchanged, every talkgroup crosses because each side's
+own access lists decide what it keeps (ADR-0052 rule 1), and no bridge is
+needed. The console cannot create a QSP-to-QSP OpenBridge link — the offer form
+asks what is at the other end and the accept form reads the kind off the token
+— and the direction lists that described a filtering never built were retired
+in 0308.
+
+Everything below describes OpenBridge as it stands for a foreign network, where
+it is still the right answer: the far end is somebody else's network, its
+timeslot rule is theirs, and bluntness is a feature.
+
 **Date:** 2026-08-27
 
 ## Context
