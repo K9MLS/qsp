@@ -13,6 +13,7 @@ import (
 
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/auth"
+	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 )
@@ -535,5 +536,52 @@ func TestEveryAuthenticationIsAudited(t *testing.T) {
 	read := strings.Index(handler, "who = sess.Username")
 	if read < 0 || end < 0 || read > end {
 		t.Error("logout ends the session before reading who it belonged to")
+	}
+}
+
+// TestTheVersionRidesOnTheEndpointTheConsoleAsks is the test that would have
+// caught it.
+//
+// **0310 put the version on the login response**, which the console chrome
+// reads once, instead of on the session response, which it reads on every page
+// load. So the value was returned to nothing and the sidebar stayed empty
+// through a correct build, a correct deploy and a correct version check.
+//
+// That is §8a's "fix the half that is called, not the half that is named",
+// recorded the same morning and repeated within hours. The lesson it adds:
+// **asserting a field is set is not the same as asserting the caller receives
+// it** — this drives the endpoint the console actually fetches.
+func TestTheVersionRidesOnTheEndpointTheConsoleAsks(t *testing.T) {
+	a := newStubAuth()
+	srv := newAuthServer(t, a, false)
+
+	// Anonymous: no version. An exact build number is worth more to somebody
+	// probing than to a visitor, and the administration group is hidden from
+	// one for the same reason.
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/session", nil))
+
+	var body sessionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Version != "" {
+		t.Errorf("an anonymous request was told the version: %q", body.Version)
+	}
+
+	// Signed in: the version, on the request the chrome makes every page load.
+	req := httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	req.AddCookie(sessionCookieFrom(t, postLogin(t, srv, "K9MLS", a.password)))
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Version == "" {
+		t.Fatal("the session response carries no version, so the sidebar shows none")
+	}
+	if body.Version != buildinfo.Version {
+		t.Errorf("the session reports version %q, want %q", body.Version, buildinfo.Version)
 	}
 }

@@ -2899,6 +2899,19 @@ and a test that builds its own subject cannot fail.** Seventh time.
 
 ### Fix the half that is called, not the half that is named
 
+**Added 2026-09-09, having broken this rule the same day it was written.** The
+version was added to the login response instead of the session response — one
+is asked once, the other on every page load, and the console reads the second.
+The sidebar stayed empty through a correct build, a correct deploy and a correct
+version check.
+
+**The rule was written as a debugging habit and is needed as an authoring one.**
+When adding a value for a caller, open the caller. A struct literal that
+compiles and a field that is populated prove nothing about whether the thing
+that wanted it ever sees it — and "assert the field is set" is a different test
+from "assert the caller receives it". Write the second.
+
+
 **2026-09-09.** A QSP link was offered the OpenBridge port. The fix gave the
 offer its own address default — and put it on the *fallback* used when the
 request arrives with an empty address, which the console never sends, because

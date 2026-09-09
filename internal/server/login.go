@@ -103,14 +103,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		Username:      session.Username,
 		ExpiresAt:     session.ExpiresAt.UTC().Format(time.RFC3339),
-		// **Only to somebody signed in.** The version answers "what is running
-		// here", which an operator asks after every deploy and which lived in a
-		// startup log line and one page. It rides on the request the console
-		// chrome already makes, so there is no second fetch and one source for
-		// the value — but it is not told to an anonymous visitor, because an
-		// exact build number is worth more to somebody probing than to anybody
-		// else.
-		Version: buildinfo.Version,
 	})
 }
 
@@ -152,6 +144,16 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		Username:      session.Username,
 		ExpiresAt:     session.ExpiresAt.UTC().Format(time.RFC3339),
+		// **Here, and not on the login response.** The console chrome asks this
+		// endpoint on every page load and asks the login endpoint once, so a
+		// version returned there is a version nothing reads — which is exactly
+		// what 0310 shipped, and what §8a calls fixing the half that is named
+		// rather than the half that is called.
+		//
+		// Only to somebody signed in, for the same reason the administration
+		// group is hidden from an anonymous visitor: an exact build number is
+		// worth more to somebody probing than to a visitor.
+		Version: buildinfo.Version,
 	})
 }
 

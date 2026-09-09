@@ -6,6 +6,26 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The version was returned by the endpoint nothing reads.** 0310 put it on the
+  login response, which the console chrome asks once, instead of on the session
+  response, which it asks on every page load. So the sidebar stayed empty
+  through a correct build, a correct deploy and a correct version check — three
+  things that were all true and none of which was looking at the one that was
+  not.
+
+  **This is §8a's "fix the half that is called, not the half that is named",
+  recorded the same morning and repeated within hours.** The rule was followed
+  when reading somebody else's code and forgotten when writing new code, which
+  is worth knowing about the rule: it was written as a debugging habit and it is
+  needed as an authoring one.
+
+  The lesson it adds: **asserting a field is set is not the same as asserting
+  the caller receives it.** The test drives `/api/session` — the request the
+  console actually makes — signed out and signed in, and putting the value back
+  on the login response turns it red.
+
+### Fixed
+
 - **The vocoder pool was still in the sidebar after being removed everywhere
   else.** 0310 took it out of the health report and out of the unbuilt-subsystem
   list, deleted its package, and did not touch the console's markup — where a
