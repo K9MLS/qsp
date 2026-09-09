@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The history was rewritten and force-pushed**, removing a product name from
+  every commit, message and path. 325 commits, verified three ways in a clone
+  before anything touched GitHub: no occurrence in any blob, any commit message,
+  or any tree path. Both servers and the working repository are on the new
+  history; nothing else has a copy.
+
+  **The handover now says so at the top**, because every commit hash recorded in
+  it and in this changelog predates the rewrite and no longer resolves. They are
+  a record of what happened rather than something to look up.
+
+- **§8a: a rule written into a test does not reach the shell.** A gate was
+  written that morning to keep the name out of the repository, carefully word
+  bounded on both sides because an earlier draft had matched `func bridgeState`
+  and because it must never see the IPSC bridge package. An hour later, three
+  consecutive ad-hoc searches verifying the rewrite made exactly that mistake
+  and reported a clean rewrite as dirty — on an operation that cannot be undone.
+
+  A test encodes a rule; a command typed afterwards does not inherit it. When a
+  check exists for something, reuse its expression rather than writing a fresh
+  one from memory.
+
+- Both of those checks then fired on the first draft of the section describing
+  them — one on the search pattern quoted literally, one on a path written with
+  an ellipsis. Neither was weakened; the paragraph describes the pattern instead
+  of spelling it.
+
+- Verified rather than added: the handover already records that the test server
+  cannot authenticate to GitHub and is always updated by bundle.
+
 ### Changed
 
 - **The repository names no competitor.** Every mention is gone — from the

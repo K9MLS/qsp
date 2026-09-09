@@ -5,10 +5,18 @@ the frame everything about linking sits inside, then **ADR-0053** (three names
 for a server). **ADR-0055** is the administration page, now built. **§8o** is
 the last session.
 
-Version **0.1.157**, patches 0261–0315. **Both servers should be on 0.1.156**
-after 0314 — check, because four deploys this session did not take.
-`origin/main` was last pushed at `afd6233` and is behind by everything from
-0303. **Push it.**
+**The history was rewritten on 2026-09-09** to remove a product name from every
+commit, message and path, and force-pushed. **Every commit hash in this document
+and in the changelog predates that and no longer resolves** — they are a record
+of what happened, not something to look up. `origin/main` is `ad1acc8`. Both
+servers and this repository are on the rewritten history; nothing else has a
+copy.
+
+Version **0.1.161**, patches 0261–0319. **Both servers should be on 0.1.156** —
+check, because four deploys on 2026-09-09 did not take, every one a pasted block
+eaten by the `sudo` password prompt. Everything from 0315 is documentation and
+tests, so the servers being four versions behind the tree is expected rather
+than a fault. `origin/main` is current.
 
 Check a deploy by asking the running process: the `starting` log line on
 production, a string unique to the build in the container. Run `cat VERSION`

@@ -2922,6 +2922,37 @@ Analog_Bridge has two sides: TLV frames carrying AMBE on the one an `xx_Bridge`
 connects to, and PCM over USRP on the other. Reading one stanza further would
 have settled it.
 
+### A rule written into a test does not reach the shell
+
+**2026-09-09.** A gate was written that morning to keep one product name out of
+the repository, and it was carefully word-bounded on both sides — because an
+earlier draft had matched `func bridgeState`, the *c* of `func` followed by a
+space and `bridge`, and because it must never see the `ipscbridge` package,
+where the *c* is preceded by an *s*.
+
+An hour later, verifying a history rewrite before force-pushing it, **three
+consecutive ad-hoc greps made exactly that mistake**: a case-insensitive search
+with no word boundary, which matched all twelve files of the IPSC bridge
+package, then the same on commit messages, then again. Each produced a non-zero
+count that read as "the rewrite failed", on an operation where believing it
+would have meant either abandoning a correct rewrite or, worse, pushing an
+unclean one while chasing a phantom.
+
+The two checks that exist for this both fired on the first draft of this very
+section — one on the search pattern quoted literally, one on a path written with
+an ellipsis in it. That is the checks working, and the reason this paragraph
+describes the pattern rather than spelling it.
+
+**A test encodes a rule; a command typed afterwards does not inherit it.** When
+a check exists for something, reuse its expression rather than writing a fresh
+one from memory — the test had the right pattern in it the whole time.
+
+The wider version: **a verification command is a claim like any other**, and one
+written in a hurry against an operation that cannot be undone is the worst place
+to be casual. §8a already records that a new instrument is the last thing
+anybody doubts. This is the same failure with the instrument written three times
+in five minutes.
+
 ### Rewrite a file rather than patch it a fifth time
 
 **2026-09-09.** Four consecutive pattern-matching edits to one console script —
