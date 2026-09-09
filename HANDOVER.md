@@ -53,14 +53,34 @@ of it.
 them, which is why DMR-to-DMR needs no codec and why the project has no patent
 question. Zello carries Opus; crossing to it means decoding to PCM and back.
 
-So **QSP will speak USRP** — UDP carrying 8 kHz signed 16-bit PCM, trivial in
-pure Go, no cgo — and an external transcoder with an AMBE dongle does the codec
-work, with `asl-zello-bridge` doing the Zello half over its WebSocket Channel
-API. A DVMEGA DVstick 30 is on order.
+**Corrected 2026-09-09: QSP speaks AMBE_AUDIO, not USRP.** An earlier note here
+said USRP, and it was wrong in a way worth understanding rather than just
+deleting: **USRP carries 8 kHz PCM**, so anything speaking it has already
+decoded the audio — the vocoder the paragraph above rules out. It recommended a
+protocol that requires the thing it had just refused.
 
-**It may be testable before any QSP code exists**: MMDVM_Bridge speaks homebrew
-to a master, which QSP already is, and hands AMBE to Analog_Bridge, which speaks
-USRP. Worth proving that chain before designing anything.
+Analog_Bridge has two sides. `[AMBE_AUDIO]` carries TLV frames to and from an
+`xx_Bridge`, where xx is MMDVM, Quantar, HB or IPSC. `[USRP]` carries PCM to
+AllStar or to another Analog_Bridge. **QSP's side is AMBE_AUDIO; USRP is the far
+side and QSP never touches it.**
+
+**And nothing needs building to try it.** One of those bridges is HB —
+homebrew — and QSP is a homebrew master, so MMDVM_Bridge registers with it
+exactly as a hotspot does:
+
+```
+QSP ──homebrew──▶ MMDVM_Bridge ──TLV──▶ Analog_Bridge ──USRP──▶ asl-zello-bridge ──▶ Zello
+                                        [DVstick 30]
+```
+
+Prove that before writing anything. Writing an AMBE_AUDIO connector first would
+be building the second version of something that has never worked once. The
+dongle is on order and the work is waiting for it; **the dongle is needed either
+way**, since it is the only part of the chain that cannot be replaced by
+software this project can legally ship.
+
+What QSP needs meanwhile is two console entries and no code: a DMR ID for
+MMDVM_Bridge in the registration list, and a password for it.
 
 P25 Phase 1 uses IMBE and needs DVSI's own far more expensive unit; deferred,
 and it costs nothing, because P25-to-P25 relaying needs no transcoding at all.
@@ -196,8 +216,9 @@ The install path agreed with him: build the image on Fedora, `docker save`, copy
 `docker load`. He compiles nothing and runs the bytes that were tested, and gets
 the source as well — GPLv3, and his eyes on it are wanted.
 
-**Then Zello, when the dongle arrives.** Prove the external chain first with any
-USRP audio source; the QSP side is a USRP connector and wants an ADR before
+**Then Zello, when the dongle arrives.** Prove the chain through MMDVM_Bridge
+first, which needs no QSP code. The connector QSP would eventually write is
+**AMBE_AUDIO**, not USRP — see the correction above — and it wants an ADR before
 code. One Zello channel to one talkgroup is a connector; several is a routing
 question, and the bridge machinery may already be the right shape.
 

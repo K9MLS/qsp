@@ -6,6 +6,34 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **Corrected: QSP speaks AMBE_AUDIO to a transcoder, not USRP.** The Zello
+  research recorded in 0310 concluded correctly that QSP must never contain a
+  vocoder, and then recommended a protocol that requires one — **USRP carries 8
+  kHz PCM**, so anything speaking it has already decoded the audio.
+
+  Analog_Bridge has two sides: `[AMBE_AUDIO]` carries TLV frames to and from an
+  `xx_Bridge` — MMDVM, Quantar, HB or IPSC — and `[USRP]` carries PCM to AllStar
+  or another Analog_Bridge. QSP's side is the first; USRP is the far side and
+  QSP never touches it. The answer was one stanza further into a document the
+  research had already read.
+
+  **The dongle is needed either way** and none of the hardware advice changes:
+  it is the only part of the chain that cannot be replaced by software this
+  project can legally ship.
+
+  And nothing needs building to try the chain. One of those bridges is HB —
+  homebrew — and QSP is a homebrew master, so MMDVM_Bridge registers with it
+  exactly as a hotspot does. What QSP needs meanwhile is a DMR ID in the
+  registration list and a password, both from the console.
+
+  §8a gains the check that would have caught it: **read a recommendation against
+  the constraint it was written under.** If the constraint is "this program never
+  does X" and the recommendation requires X, the recommendation is wrong however
+  well it is argued — and this one was argued at length in both directions,
+  which is what made it convincing.
+
+### Documentation
+
 - **Handover and standing brief brought up to 0315.** The head names both
   servers at 0.1.156 with a warning to check, because four deploys today did not
   take; `origin/main` is behind by everything from 0303 and wants pushing.

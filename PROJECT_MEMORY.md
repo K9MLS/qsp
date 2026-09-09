@@ -2897,6 +2897,28 @@ branch rendered nothing, and the test covering it asserted against a struct
 built by hand. **A state prevented by validation does not also need reporting,
 and a test that builds its own subject cannot fail.** Seventh time.
 
+### A recommendation that requires what it just ruled out is wrong
+
+**2026-09-09.** Research into bridging DMR to Zello concluded, correctly, that
+QSP must never contain a vocoder: it copies AMBE payloads and never inspects
+them, which is why DMR-to-DMR needs no codec and why the project has no patent
+question. The same note then recommended that QSP speak **USRP** — a protocol
+carrying 8 kHz PCM, which can only be produced by decoding the audio.
+
+**The two halves of one recommendation contradicted each other**, and both were
+argued at length, which is what made it convincing. It reached the handover and
+would have cost a session writing a connector with nothing to put in it.
+
+The check is mechanical and takes a moment: **read the recommendation against
+the constraint it was written under.** If the constraint is "this program never
+does X" and the recommendation requires X, the recommendation is wrong however
+well it is argued.
+
+The corrected answer was in the same documents the research had already read.
+Analog_Bridge has two sides: TLV frames carrying AMBE on the one an `xx_Bridge`
+connects to, and PCM over USRP on the other. Reading one stanza further would
+have settled it.
+
 ### Rewrite a file rather than patch it a fifth time
 
 **2026-09-09.** Four consecutive pattern-matching edits to one console script —
