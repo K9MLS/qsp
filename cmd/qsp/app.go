@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"os"
+	"syscall"
 
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/audit"
@@ -602,8 +603,19 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Auth:                authService,
 		Config:              manager,
 		Audit:               a.audit,
-		Map:                 mapSettings(cfg),
-		Join:                joinSettings(cfg),
+		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
+		// takes exactly the path systemctl restart already takes, so the audit
+		// record, the shutdown timeout and every subsystem's close run as they
+		// always have. A restart that unwound differently from a stop would be
+		// a second shutdown path to keep true.
+		Restart: func() {
+			if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+				log.Error("cannot stop this process to restart it",
+					slog.String("error", err.Error()))
+			}
+		},
+		Map:  mapSettings(cfg),
+		Join: joinSettings(cfg),
 	})
 	if err != nil {
 		return nil, err

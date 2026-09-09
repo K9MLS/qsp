@@ -588,3 +588,32 @@ func functionBody(t *testing.T, js, name string) string {
 	t.Fatalf("the body of %s is never closed", name)
 	return ""
 }
+
+// **The page said "restart QSP" in four places and could not do it.** An
+// upstream is built once at startup, so a link written through the accept form
+// carries nothing until the process comes back — and the answer was to find a
+// terminal and know whether this machine is systemd or Docker Compose. The page
+// knows neither, and an operator on a phone has neither.
+func TestTheLinksPageCanRestartQSP(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "/api/restart") {
+		t.Fatal("the page tells an operator to restart QSP and cannot do it")
+	}
+
+	body := functionBody(t, js, "showRestart")
+	// Two clicks, like Remove and Stop accepting: it drops every hotspot and
+	// link on the server.
+	if !strings.Contains(body, "armed(") {
+		t.Error("restarting is one click, and it takes every hotspot and link down")
+	}
+	// **Only where the page has just said a restart is needed.** A restart
+	// button on a healthy page is an invitation to press it.
+	if !strings.Contains(js, "needsRestart") {
+		t.Error("the restart button is not tied to the page having asked for one")
+	}
+	// The flag is recomputed on every render, or a button outlives its reason.
+	if !strings.Contains(functionBody(t, js, "render"), "needsRestart = false") {
+		t.Error("the restart button survives the restart it asked for")
+	}
+}

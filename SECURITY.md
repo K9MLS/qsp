@@ -239,6 +239,15 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
+`/api/restart`, on POST, stops QSP so that its supervisor starts it again. It
+requires a session like every other administrative action, is recorded in the
+audit trail **before** it happens — a record written afterwards is one that
+never gets written — and exits by the ordinary signal path, so shutdown runs
+exactly as it does for `systemctl restart`. **It does not promise the server
+comes back**: QSP cannot see its own supervisor from inside, so the response
+says what QSP does and names the case where the machine has nothing set to
+start it again.
+
 `/api/links/{name}/address`, on PUT, changes where one link reaches the far end
 and nothing else. A link's name is a file path, its DMR ID is what the far end's
 access list allows, and its password was agreed with somebody else — changing

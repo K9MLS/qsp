@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The Links page can restart QSP.** It told an operator to in four places and
+  could not do it: an upstream is built once at startup, so a link written
+  through the accept form carries nothing until the process comes back, and the
+  answer was to find a terminal and know whether that machine is systemd or
+  Docker Compose. The page knows neither, and an operator on a phone has
+  neither. Same rule as the Stop accepting button — an instruction a page gives
+  is one it should be able to carry out.
+
+  **It does not restart QSP, and says so.** QSP exits and whatever supervises it
+  starts it again; it cannot see its own supervisor from inside, so the note
+  says what happens and names the case where the machine has nothing set to
+  start it and the server stays down. Exiting uses the ordinary signal path, so
+  the audit record, the shutdown timeout and every subsystem's close run exactly
+  as they do for `systemctl restart` — a restart that unwound differently from a
+  stop would be a second shutdown path to keep true.
+
+  Two clicks, like Remove and Stop accepting, because it drops every hotspot and
+  link. Shown **only** where the page has just said a restart is needed, and the
+  flag is recomputed on every render so a button never outlives its reason. The
+  response leaves before the process does: exiting inside the handler closes the
+  connection first, and an operator who believes a restart failed presses the
+  button again.
+
+- A sixth test that could not fail, caught before it shipped: the note test
+  built its own copy of the message and asserted about the copy. It reads the
+  constant the handler sends, and changing that message to promise the server
+  comes back turns it red.
+
 ### Fixed
 
 - **The wrong port shipped again, because the fix was on the half nothing

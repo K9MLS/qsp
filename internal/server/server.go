@@ -86,6 +86,12 @@ type Options struct {
 	Config ConfigManager
 	// Audit records administrative actions. Nil records nothing.
 	Audit audit.Recorder
+	// Restart stops QSP so that its supervisor starts it again.
+	//
+	// **Nil is a working state**, and the console says so rather than showing a
+	// button that does nothing: an instance run in the foreground has nothing
+	// watching it, and exiting would simply stop the server.
+	Restart func()
 	// Map configures the console's peer map.
 	Map MapSettings
 	// Forwarding reports whether this instance relays traffic, for the
@@ -202,6 +208,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/links", s.requireSession(s.handleLinks)},
 		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
 		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
+		{"POST /api/restart", s.requireSession(s.handleRestart)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
 		{"POST /api/links/offer-link", s.requireSession(s.handleOfferLink)},
 		{"POST /api/links/accept", s.requireSession(s.handleAcceptPeering)},

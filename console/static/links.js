@@ -26,6 +26,10 @@
      follow the kind of link being offered rather than being filled once. */
   var lastIdentity = null;
 
+  /* Set by anything that reports a restart is needed, so the button appears
+     beside the message rather than sitting on a page that does not need it. */
+  var needsRestart = false;
+
   function show(el) { if (el) { el.hidden = false; } }
   function hide(el) { if (el) { el.hidden = true; } }
 
@@ -85,6 +89,12 @@
 
   function render(links) {
     text(count, links.length + (links.length === 1 ? " LINK" : " LINKS"));
+
+    /* **Recomputed every pass, not remembered.** A restart that has happened
+       leaves nothing to restart for, and a button that outlives its reason is
+       the same defect as a page that says a link needs a restart after it has
+       had one. */
+    needsRestart = false;
 
     if (links.length === 0) {
       list.innerHTML =
@@ -190,11 +200,25 @@
             escapeText(l.pending_restart) + ".</p>"
           : "") +
         (l.advice
-          ? '<p class="link__advice">' + escapeText(l.advice) + "</p>"
+          ? (function () {
+              /* A row telling the operator to restart is the same instruction
+                 the actions give, and the button belongs beside it. */
+              if (l.advice.indexOf("restart QSP") >= 0) { needsRestart = true; }
+              return '<p class="link__advice">' + escapeText(l.advice) + "</p>";
+            })()
           : "") +
         "</div>";
     }
     list.innerHTML = html;
+
+    if (needsRestart) {
+      var note = el("links-note");
+      if (note && note.hidden) {
+        note.textContent = "One or more links are waiting for a restart.";
+        note.hidden = false;
+      }
+      showRestart("links-note");
+    }
 
     wireRefuse();
     wireAddress();
@@ -363,8 +387,56 @@
    * link that did not exist yet. */
   function restartNote(body, what) {
     if (!body.needs_restart || !body.needs_restart.length) { return ""; }
+    needsRestart = true;
     return " QSP has to be restarted before this takes effect — until then " +
       what + ".";
+  }
+
+  /* **The page said "restart QSP" in four places and could not do it.** An
+   * upstream is built once at startup, so a link written here carries nothing
+   * until the process comes back — and the answer was to find a terminal and
+   * remember whether this machine is systemd or Docker Compose. An instruction
+   * a page gives is one the page should be able to carry out.
+   *
+   * Shown only where the page has just said a restart is needed. A restart
+   * button on a healthy page is an invitation to press it. */
+  function showRestart(where) {
+    var host = el(where);
+    if (!host || host.querySelector("[data-restart]")) { return; }
+    var button = document.createElement("button");
+    button.className = "button button--quiet";
+    button.type = "button";
+    button.setAttribute("data-restart", "yes");
+    button.textContent = "Restart QSP";
+    button.dataset.idle = "Restart QSP";
+    button.addEventListener("click", function () {
+      armed(button, "Restart now? Everything drops.", function () {
+        button.disabled = true;
+        button.textContent = "Restarting";
+        fetch("/api/restart", {
+          method: "POST",
+          headers: { Accept: "application/json" },
+          credentials: "same-origin"
+        }).then(function (r) {
+          return r.json().then(function (b) {
+            if (!r.ok) { throw new Error(b.error || "could not restart QSP"); }
+            return b;
+          });
+        }).then(function (b) {
+          /* **Says what happens rather than promising an outcome.** QSP exits
+           * and something else has to start it; this page cannot see whether
+           * anything will, so it does not claim to. */
+          fail("links-note", b.note + " This page will reconnect on its own.");
+          /* The polls carry on and fail while it is down, which is what
+             recovery looks like: when they succeed again, it is back. */
+        }).catch(function (e) {
+          button.disabled = false;
+          button.textContent = "Restart QSP";
+          fail("links-note", e.message);
+        });
+      });
+    });
+    host.appendChild(button);
   }
 
   function fact(label, value) {
@@ -410,6 +482,10 @@
       e.textContent = message;
       e.hidden = false;
     }
+    /* **After the text, because setting textContent removes the button.**
+       Every message that mentions a restart is followed by the means to do
+       one; every other message is not. */
+    if (id === "links-note" && needsRestart) { showRestart(id); }
   }
 
   function post(path, body) {
