@@ -89,7 +89,15 @@
       <div class="panel__body">
         <p id="agreement-summary"></p>
         <ul class="admin__pending" id="agreement-pending" hidden></ul>
-        <div id="agreement-actions"></div>
+
+        <!-- **Always here, unlike on the Links page.** There the rule is that a
+             restart control appears only beside a message asking for one: a
+             button sitting next to a status row is a slip away from being
+             pressed. This page is where the acts that belong to the server
+             live, so it is where an operator comes looking for one — and
+             sending them to find a terminal is the failure this page exists to
+             end. Still two clicks, and still honest that it drops everything. -->
+        <div class="admin__actions" id="agreement-actions"></div>
       </div>
     </section>
 

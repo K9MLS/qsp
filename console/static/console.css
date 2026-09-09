@@ -1494,6 +1494,11 @@ select.field__input {
 /* The settings a restart would apply, on the administration page. The one class
    that page adds: everything else reuses what the console already has, because
    a page that invents its own vocabulary drifts from the rest of it. */
+/* Where an act that belongs to the whole server sits, below what it acts on. */
+.admin__actions {
+  margin-top: var(--space-4);
+}
+
 .admin__pending {
   margin: var(--space-3) 0;
   padding-left: var(--space-5);

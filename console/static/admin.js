@@ -113,7 +113,7 @@
       say(el("agreement-summary"), a.not_writable ||
         "this server cannot be configured from here");
       hide(el("agreement-pending"));
-      el("agreement-actions").innerHTML = "";
+      offerRestart();
       show(el("block-agreement"));
       return;
     }
@@ -124,7 +124,7 @@
       say(el("agreement-summary"),
         "The running server matches its configuration. Nothing is waiting.");
       hide(el("agreement-pending"));
-      el("agreement-actions").innerHTML = "";
+      offerRestart();
       show(el("block-agreement"));
       return;
     }
@@ -147,9 +147,16 @@
     show(el("block-agreement"));
   }
 
-  /* **Only where the page has just said a restart is needed**, which is the
-   * same rule the links page follows. A restart button on a page with nothing
-   * waiting is an invitation to press it. */
+  /* **Always offered here, and only conditionally on the Links page.**
+   *
+   * The Links page shows a restart control beside the message asking for one,
+   * because a button next to a status row is a slip away from being pressed.
+   * This page is different: it is where the acts belonging to the server live,
+   * and it is where an operator comes looking for a restart whether or not
+   * anything is waiting. Hiding it here sends them to find a terminal, which is
+   * the failure the page exists to end.
+   *
+   * Two clicks either way, and the note says what drops. */
   function offerRestart() {
     var host = el("agreement-actions");
     if (!host || host.querySelector("[data-restart]")) { return; }

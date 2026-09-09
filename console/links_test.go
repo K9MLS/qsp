@@ -680,13 +680,22 @@ func TestTheAdministrationPageAnswersQuestions(t *testing.T) {
 
 	js := stripComments(readFile(t, "static/admin.js"))
 
-	// The restart button appears only where the page has said one is needed —
-	// the same rule the links page follows.
+	// **The restart control is always here**, unlike on the Links page, where
+	// it appears only beside a message asking for one. This page is where the
+	// acts belonging to the server live and where an operator comes looking for
+	// a restart whether or not anything is waiting; hiding it sends them to
+	// find a terminal, which is the failure the page exists to end.
+	//
+	// Asserted per branch rather than once, because a version that offered it
+	// on two of the three paths would pass a single check and still send an
+	// operator to a terminal from the third.
 	if !strings.Contains(functionBody(t, js, "offerRestart"), "data-restart") {
-		t.Error("the page cannot restart QSP where it says a restart is waiting")
+		t.Error("the page cannot restart QSP")
 	}
-	if !strings.Contains(functionBody(t, js, "renderAgreement"), "offerRestart") {
-		t.Error("the restart button is not tied to the agreement block reporting a wait")
+	branches := strings.Count(functionBody(t, js, "renderAgreement"), "offerRestart()")
+	if branches < 3 {
+		t.Errorf("renderAgreement offers a restart on %d of its 3 paths; an operator "+
+			"reaching the missing one is sent to a terminal", branches)
 	}
 
 	// A duration alone reads as a fault on a server restarted a minute ago.

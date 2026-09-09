@@ -4,6 +4,25 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The restart control is always on the administration page**, not only when
+  something is waiting. The Links page rule — a restart appears beside the
+  message asking for one, because a button next to a status row is a slip away
+  from being pressed — was applied to a page where it does not hold. This page
+  is where the acts belonging to the whole server live, and where an operator
+  comes looking for a restart whether or not a setting is pending; hiding it
+  sends them to find a terminal, which is the failure the page exists to end.
+
+  The operator asked for exactly this when the page was specified, and a rule
+  carried over from another context overrode it. **The rule was right where it
+  was written and wrong where it was applied**, which is the shape §8a already
+  records.
+
+  Asserted per branch rather than once: a version offering the control on two of
+  `renderAgreement`'s three paths would pass a single check and still send
+  somebody to a terminal from the third.
+
 ### Added
 
 - **An administration page, ADR-0055 built.** `/server` in the console, one
