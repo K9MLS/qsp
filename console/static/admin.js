@@ -232,6 +232,82 @@
     show(el("block-callsigns"));
   }
 
+  /* Backup and restore (ADR-0054).
+   *
+   * **The export is a download and the import is a paste**, because they are
+   * different kinds of act: one produces a file an operator keeps, and the
+   * other is a decision with consequences that wants looking at first. */
+  show(el("block-backup"));
+
+  var restoreDoc = el("restore-document");
+  if (restoreDoc) {
+    restoreDoc.addEventListener("focus", function () { editing = true; });
+    restoreDoc.addEventListener("blur", function () { editing = false; });
+  }
+
+  var readBackup = el("restore");
+  if (readBackup) {
+    readBackup.addEventListener("click", function () {
+      hide(el("restore-error"));
+      hide(el("restore-done"));
+      hide(el("restore-confirm"));
+      restore(false);
+    });
+  }
+
+  var confirmed = el("restore-confirmed");
+  if (confirmed) {
+    confirmed.addEventListener("click", function () { restore(true); });
+  }
+
+  /* **Asked twice, and the first answer is what it would do.** An import
+   * replaces every setting on the server, so the operator sees the date the
+   * backup was taken, the credentials it cannot bring back, and what taking its
+   * identity means, before anything changes. */
+  function restore(confirm) {
+    var document_ = (el("restore-document").value || "").trim();
+    if (!document_) {
+      say(el("restore-error"), "Paste a backup first.");
+      return;
+    }
+    var newIdentity = el("restore-identity-choice").value === "new";
+
+    fetch("/api/admin/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ document: document_, confirm: confirm, new_identity: newIdentity })
+    }).then(function (r) {
+      return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+    }).then(function (res) {
+      if (!res.ok && res.status === 428) {
+        say(el("restore-summary"), res.body.summary);
+        say(el("restore-identity"), res.body.identity);
+        el("restore-missing").innerHTML = (res.body.missing_credentials || [])
+          .map(function (m) {
+            return "<li>" + escapeText(m.name) + " — " + escapeText(m.fix) + "</li>";
+          }).join("");
+        show(el("restore-confirm"));
+        return;
+      }
+      if (!res.ok) { throw new Error(res.body.error || "could not restore"); }
+
+      hide(el("restore-confirm"));
+      editing = false;
+      el("restore-document").value = "";
+      var missing = (res.body.missing_credentials || []).length;
+      say(el("restore-done"),
+        "Restored. This server is now " + (res.body.identifier || "unnamed") +
+        (res.body.replaced ? ", a replacement for the one that made the backup." : ", with a new identity.") +
+        (missing ? " " + missing + " credentials are not restored: links and members " +
+          "are refused until they are reissued." : "") +
+        " QSP has to restart before any of it takes effect.");
+      load();
+    }).catch(function (e) {
+      say(el("restore-error"), e.message);
+    });
+  }
+
   var contact = el("callsigns-contact");
   if (contact) {
     contact.addEventListener("focus", function () { editing = true; });

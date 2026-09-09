@@ -509,6 +509,33 @@ func TestALinksAddressCanBeChangedFromThePage(t *testing.T) {
 	}
 }
 
+// sectionBlock returns the markup of one <section> by its id, so an assertion
+// is about that block rather than about the page.
+func sectionBlock(t *testing.T, html, id string) string {
+	t.Helper()
+
+	at := strings.Index(html, `id="`+id+`"`)
+	if at < 0 {
+		t.Fatalf("the page has no block with id %q", id)
+	}
+	start := strings.LastIndex(html[:at], "<section")
+	if start < 0 {
+		t.Fatalf("%s is not inside a section", id)
+	}
+	end := strings.Index(html[start:], "</section>")
+	if end < 0 {
+		t.Fatalf("the section around %s is never closed", id)
+	}
+	return html[start : start+end]
+}
+
+// inputsIn counts the things an operator can type or choose in.
+func inputsIn(block string) int {
+	return strings.Count(block, "<input") +
+		strings.Count(block, "<select") +
+		strings.Count(block, "<textarea")
+}
+
 // lineAround returns the source line containing an offset, so an assertion is
 // about the expression that decides something rather than about the file.
 func lineAround(s string, at int) string {
@@ -663,14 +690,24 @@ func TestTheAdministrationPageAnswersQuestions(t *testing.T) {
 		}
 	}
 
-	// **One editable setting.** Counting inputs is crude and it is exactly the
-	// drift this catches: every field added here has to be argued for, and a
-	// test that only checked the callsign fields existed would not notice a
-	// fifth one arriving beside them.
-	inputs := strings.Count(html, "<input") + strings.Count(html, "<select")
-	if inputs > 2 {
-		t.Errorf("the page has %d inputs; ADR-0055 allows the callsign toggle and its "+
-			"contact address, and nothing else without amending the record", inputs)
+	// **Settings live in one block, and only one.** ADR-0055 allows this page
+	// to edit a setting when it is the page that reports the problem — today
+	// the callsign lookup and nothing else.
+	//
+	// Counted per block rather than per page, because the first version of this
+	// counted every input and fired on the restore box: a field an operator
+	// types into to perform an act is not a setting the server stores, and a
+	// test that cannot tell them apart catches the wrong drift and gets
+	// loosened rather than obeyed.
+	settings := inputsIn(sectionBlock(t, html, "block-callsigns"))
+	if settings != 2 {
+		t.Errorf("the callsign block has %d inputs, want the toggle and the contact "+
+			"address; a third needs ADR-0055 amended first", settings)
+	}
+	for _, id := range []string{"block-server", "block-agreement", "block-services"} {
+		if n := inputsIn(sectionBlock(t, html, id)); n != 0 {
+			t.Errorf("%s has %d inputs; it reports and does not edit", id, n)
+		}
 	}
 
 	// The identifier is displayed and must never be editable.
@@ -701,5 +738,38 @@ func TestTheAdministrationPageAnswersQuestions(t *testing.T) {
 	// A duration alone reads as a fault on a server restarted a minute ago.
 	if !strings.Contains(functionBody(t, js, "uptime"), "since") {
 		t.Error("uptime is shown without the start time, so a small number reads as a fault")
+	}
+}
+
+// **A backup carries no secret, so the page must not imply it does** — and it
+// must say what a restore cannot bring back, because a restored server with
+// every link refused looks exactly like a network fault (ADR-0054).
+func TestTheBackupBlockSaysWhatItCannotCarry(t *testing.T) {
+	html := readFile(t, "static/admin.html")
+	block := sectionBlock(t, html, "block-backup")
+
+	if !strings.Contains(block, "no passwords") {
+		t.Error("the page does not say a backup carries no passwords, which is the " +
+			"property that makes it safe to send to somebody")
+	}
+	if !strings.Contains(block, "/api/admin/backup") {
+		t.Error("the page cannot download a backup")
+	}
+
+	js := stripComments(readFile(t, "static/admin.js"))
+
+	// Two answers: the first says what it would do, the second does it.
+	body := functionBody(t, js, "restore")
+	if !strings.Contains(body, "428") {
+		t.Error("an import is not shown to the operator before it happens")
+	}
+	if !strings.Contains(body, "missing_credentials") {
+		t.Error("the confirmation does not list the credentials a restore cannot bring back")
+	}
+	// **Replacement or clone is the operator's answer, not QSP's assumption.**
+	// Two servers claiming one identity is a fault neither reports.
+	if !strings.Contains(body, "new_identity") {
+		t.Error("an import does not ask whether this server replaces the one that made " +
+			"the backup, so two servers could claim one identity")
 	}
 }

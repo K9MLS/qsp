@@ -216,6 +216,8 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
 		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
 		{"GET /api/admin", s.requireSession(s.handleAdmin)},
+		{"GET /api/admin/backup", s.requireSession(s.handleBackup)},
+		{"POST /api/admin/restore", s.requireSession(s.handleRestore)},
 		{"PUT /api/admin/callsigns", s.requireSession(s.handleCallsigns)},
 		{"POST /api/restart", s.requireSession(s.handleRestart)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},

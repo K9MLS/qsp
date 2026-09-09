@@ -4,6 +4,53 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **Backup and restore, ADR-0054 built.** A server's configuration existed in
+  one place — the box it runs on — and a failed disk took the links, the access
+  lists, the bridges and the identifier with it. The first thing anybody says
+  helping a stranger is *send me your configuration*, and there was no way to.
+
+  **The export carries no secret**, which is what makes it safe to email, keep
+  with other files, or send to somebody helping. So it **lists the credentials
+  it cannot carry**, by the thing that needs each one and with the fix beside
+  it, and the file answers that on its own without being imported. A naively
+  restored server comes up with every link configured, every link unable to log
+  in, and a page reporting them as configured and not open — which reads as a
+  network fault and is not one.
+
+  **An import is asked twice.** The first answer says what it would do: the date
+  the backup was taken, the credentials it cannot bring back, and what taking
+  its identifier means. **Replacement or clone is the operator's answer, not
+  QSP's assumption** — two servers claiming one identity is a collision that
+  fails silently, and QSP cannot see the other machine, so it asks rather than
+  pretending to check.
+
+  An export from a newer QSP is refused outright with both versions named.
+  Importing three-quarters of a configuration is worse than importing none: the
+  missing quarter is invisible and the operator believes they restored a server.
+
+  The console's own listening address is deliberately not restored. It belongs
+  to the machine rather than to the configuration being carried, and a restored
+  server that cannot bind is discovered when the console stops answering.
+
+- **`Export` and `Import` were not removed, and the reason is worth recording.**
+  `config.Load` refuses unknown fields — deliberately, so a typo cannot leave a
+  default silently in place — and both fields are declared without `omitempty`,
+  so every save writes them. Deleting the struct fields would make every
+  existing configuration unparseable and stop both of this project's servers on
+  their next restart. Retiring a configuration field needs a mechanism that does
+  not exist yet, in the one code path every server's ability to start depends
+  on. It gets its own patch, after this one, and it is safer with a backup
+  format in place.
+
+- Two tests that were not testing what they claimed, both caught by breaking
+  them: the checklist's stable order was asserted nowhere, so reversing the list
+  passed; and the administration page's "one editable setting" rule counted
+  every input on the page and fired on the restore box, which is a field an
+  operator types into to perform an act rather than a setting the server stores.
+  Both are now scoped to the block the rule is about.
+
 ### Fixed
 
 - **The restart control is always on the administration page**, not only when

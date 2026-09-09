@@ -148,7 +148,56 @@
       </div>
     </section>
 
-    <!-- Block 5 (backup and restore, ADR-0054) lands here when it is built. -->
+    <!-- Block 5: backup and restore (ADR-0054). -->
+    <section class="panel" id="block-backup" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title">Backup and restore</h2>
+      </div>
+      <div class="panel__body">
+        <p class="field__note">
+          A backup carries this server's settings and its identifier, and
+          <strong>no passwords</strong> &mdash; so it is safe to email, to keep
+          with your other files, or to send to somebody helping you. It lists
+          the credentials it cannot carry, so a restore has a checklist rather
+          than a mystery.
+        </p>
+
+        <a class="button" id="backup-download" href="/api/admin/backup" download>Download a backup</a>
+
+        <h3 class="panel__heading">Restore from a backup</h3>
+        <label class="picker__label" for="restore-document">Paste a backup</label>
+        <textarea class="picker__input picker__input--wide" id="restore-document" rows="4"
+                  placeholder="the contents of a .qspbackup.json file"></textarea>
+        <p class="field__note">
+          This replaces every setting on this server. You will be shown what it
+          would do before anything changes.
+        </p>
+
+        <button class="button" id="restore" type="button">Read this backup</button>
+
+        <div id="restore-confirm" hidden>
+          <p class="link__advice" id="restore-summary"></p>
+          <p class="field__note" id="restore-identity"></p>
+          <ul class="admin__pending" id="restore-missing"></ul>
+          <label class="picker__field">
+            <span class="picker__label" for="restore-identity-choice">This server is</span>
+            <select class="picker__input" id="restore-identity-choice">
+              <option value="replace">A replacement for the one that made this backup</option>
+              <option value="new">A different server, and needs its own identity</option>
+            </select>
+            <p class="field__note">
+              Two servers claiming one identity is a fault neither of them
+              reports. QSP cannot see the other machine, so it asks rather than
+              checking.
+            </p>
+          </label>
+          <button class="button button--danger" id="restore-confirmed" type="button">Restore</button>
+        </div>
+
+        <p class="link__advice" id="restore-error" hidden></p>
+        <p class="field__note" id="restore-done" hidden></p>
+      </div>
+    </section>
 
   </main>
 </div>

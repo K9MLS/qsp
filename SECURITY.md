@@ -247,6 +247,27 @@ server identifier is returned **truncated and is not editable by any endpoint**,
 which is deliberate: "what everybody calls everybody else" and "an operator can
 change it" cannot both be true (ADR-0053).
 
+`/api/admin/backup`, on GET, returns this server's configuration as a file.
+**It carries no secret**: ADR-0012 keeps passwords in files beside the
+configuration precisely so a document that is versioned, diffed and pasted into
+support requests never holds a credential, and an export inherits that. It is
+safe to email, keep in a repository, or hand to somebody helping, and it stops
+being safe the moment it holds a password. So it **lists the credentials it
+cannot carry**, by the thing that needs each one, and the file answers that
+question on its own without being imported.
+
+`/api/admin/restore`, on POST, replaces every setting on this server with an
+export. A request without `confirm` is answered with what would happen rather
+than by doing it. The backup's server identifier is taken only when the operator
+accepts that this machine is a **replacement** for the one that made it: two
+servers claiming one identity is a collision that fails silently, and QSP cannot
+see the other machine, so it asks rather than checking. `new_identity` generates
+a fresh one instead. The console's own listening address is deliberately not
+restored — it belongs to the machine rather than to the configuration, and a
+restored server that cannot bind is discovered when the console stops answering.
+An export from a newer QSP is refused outright with both versions named, because
+importing three-quarters of a configuration leaves the missing quarter invisible.
+
 `/api/admin/callsigns`, on PUT, turns the callsign lookup on or off and sets
 the contact address. **It is the only setting the administration page may
 change**, under the rule that a page may edit a setting when it is the page that
