@@ -4,6 +4,30 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover and standing brief brought up to 0315.** The head names both
+  servers at 0.1.156 with a warning to check, because four deploys today did not
+  take; `origin/main` is behind by everything from 0303 and wants pushing.
+
+- **Start here is now: look at the console before anything else.** Three defects
+  shipped on 2026-09-09 through a clean gate chain and a correct deploy, and all
+  three were found by an operator looking at a page. That is the strongest
+  available evidence about where to spend the first ten minutes of a session.
+
+- The Zello decision is recorded where the next session will find it: QSP speaks
+  USRP and never contains a vocoder, an external transcoder with an AMBE dongle
+  does the codec work, and the chain may be testable through MMDVM_Bridge and
+  Analog_Bridge before any QSP code exists.
+
+- Three deferred-by-decision items are written down as deferred rather than
+  left to read as forgotten: private calls across a link, a radio's callsign
+  crossing one, and defaulting the callsign lookup on — the last of which
+  requires relaxing a validation rule, which is why it was not done.
+
+- **Newly recorded as not proven**: a restore, a backup download, and the
+  console's JavaScript beyond the one check written today.
+
 ### Fixed
 
 - **The console chrome was broken by 0313: no administration group on any

@@ -1,18 +1,69 @@
-# Handover, 2026-09-09 midday
+# Handover, 2026-09-09 afternoon
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside, then **ADR-0053** (three names
-for a server) and **ADR-0055** (the administration page), which are decided and
-unbuilt. **§8o** is the last session.
+for a server). **ADR-0055** is the administration page, now built. **§8o** is
+the last session.
 
-Version **0.1.151**, patches 0261–0309. **Production and the test server are
-both on 0.1.150**, same build hash, and 0309 is documentation. `origin/main` was
-last pushed at `afd6233` and is behind by everything from 0303 — worth a push.
+Version **0.1.157**, patches 0261–0315. **Both servers should be on 0.1.156**
+after 0314 — check, because four deploys this session did not take.
+`origin/main` was last pushed at `afd6233` and is behind by everything from
+0303. **Push it.**
 
 Check a deploy by asking the running process: the `starting` log line on
-production, a string unique to the build in the container. And run `cat VERSION`
-after every `git am` — a patch file that never reached Fedora passed every gate
-and shipped the previous build, and the version was what caught it.
+production, a string unique to the build in the container. Run `cat VERSION`
+after every `git am`. And **`sudo -v` before any block containing `sudo`** — the
+password prompt eats the next pasted line, which happened four times today and
+was caught by the version check every time.
+
+## What 2026-09-09 did
+
+**The administration page and backup exist; the vocoder does not and never
+will.**
+
+- **0305–0306** — the administration page (ADR-0055) at `/server`: identity,
+  agreement, services, callsign lookup. The restart control is always there,
+  not only when something waits.
+- **0307** — backup and restore (ADR-0054). An export carries no secret and
+  lists the credentials it cannot carry.
+- **0308** — a mechanism for retiring a configuration field, and `Export` and
+  `Import` retired. **Proved live**: the test server started on 0.1.150 holding
+  `export`, and the field left the file on the next save.
+- **0310–0311** — the vocoder pool removed. QSP does not decode audio and will
+  not; crossing codecs needs a hardware AMBE dongle behind a transcoder, which
+  belongs to the connectors that need it.
+- **0312–0314** — the version at the foot of every sidebar, and the repair of
+  the console chrome it broke on the way.
+
+**Half the session was spent fixing my own mistakes**, and the pattern is worth
+naming: three separate defects, all from editing one place while the truth lived
+in two. The version went to the endpoint nothing reads; the sidebar had its own
+hand-written list of unbuilt subsystems; and four consecutive string edits to
+one script deleted a function while leaving its call site.
+
+Each is now gated: `/api/session` is asserted to carry the version, the
+console's markup is cross-checked against `unbuiltSubsystems`, and a script must
+define every function it calls. **The last of those is the first check of any
+kind on ~1,500 lines of JavaScript** — the whole gate chain is Go and read none
+of it.
+
+## Zello, researched and decided
+
+**QSP will never contain a vocoder.** It copies AMBE payloads and never inspects
+them, which is why DMR-to-DMR needs no codec and why the project has no patent
+question. Zello carries Opus; crossing to it means decoding to PCM and back.
+
+So **QSP will speak USRP** — UDP carrying 8 kHz signed 16-bit PCM, trivial in
+pure Go, no cgo — and an external transcoder with an AMBE dongle does the codec
+work, with `asl-zello-bridge` doing the Zello half over its WebSocket Channel
+API. A DVMEGA DVstick 30 is on order.
+
+**It may be testable before any QSP code exists**: MMDVM_Bridge speaks homebrew
+to a master, which QSP already is, and hands AMBE to Analog_Bridge, which speaks
+USRP. Worth proving that chain before designing anything.
+
+P25 Phase 1 uses IMBE and needs DVSI's own far more expensive unit; deferred,
+and it costs nothing, because P25-to-P25 relaying needs no transcoding at all.
 
 ## What the morning of 2026-09-09 did
 
@@ -129,36 +180,40 @@ clicking through a console rather than by a test.
 
 ## Start here
 
-**Pete's server.** Everything that was blocking it is built and deployed: the
-accept form works on air, a server says what it is in both directions, it has an
-identifier, and a configuration can be backed up and handed to somebody. He is
-waiting on two answers — whether he can get a public IP with UDP 62031 reachable
-and whether he is behind CGNAT, and which DMR ID he wants this server to present
-when it registers with his.
+**Look at the console before anything else.** Three defects today shipped
+through a clean gate chain and a correct deploy, and all three were found by an
+operator looking at a page. Sign in, walk every page, and treat anything that
+reads wrong as real.
 
-**He will listen and this server will dial**, which is the right direction for a
-home connection behind NAT and the shape most QSP networks will have. That makes
-**Pete the offering side**: his server allocates the DMR ID from his own
-registration list and writes the password, and this one accepts his invitation.
-It is the first time the accept form runs from that direction and the first time
-anything crosses the internet rather than one LAN — so relaying, deduplication
-and a real network path are all tested at once, which is why the local third
-instance was rejected.
+**Then Pete's server.** Nothing blocks it. He owes two answers: whether he can
+get UDP 62031 reachable without CGNAT, and which DMR ID this server should
+present to his. **He listens and this server dials**, which makes him the
+offering side — the accept form runs from the direction it never has, across the
+internet rather than one LAN, so relaying, deduplication and a real network path
+are tested together.
 
-The install path agreed with him: build the image on Fedora, `docker save` it,
-copy it over, `docker load`. He never compiles anything and runs the exact bytes
-that were tested. He gets the source too — GPLv3, and his eyes on it are wanted.
+The install path agreed with him: build the image on Fedora, `docker save`, copy,
+`docker load`. He compiles nothing and runs the bytes that were tested, and gets
+the source as well — GPLv3, and his eyes on it are wanted.
 
-**Then private calls across a link**, which is deferred by decision rather than
-forgotten. A private call resolves through the subscriber table, links are never
-targets for one, and `DeliverFromUpstream` records nothing — so production can
-call a radio behind the test server and not the reverse. It needs an ADR before
-code: a private call sent to a link may chase a radio that has moved, and whose
-sighting wins across servers is ADR-0052 rule 4 territory.
+**Then Zello, when the dongle arrives.** Prove the external chain first with any
+USRP audio source; the QSP side is a USRP connector and wants an ADR before
+code. One Zello channel to one talkgroup is a connector; several is a routing
+question, and the bridge machinery may already be the right shape.
 
-**And a radio's callsign still does not cross a link** — the loose thread below.
-The server that hears a radio knows its callsign because the station said so at
-login, and discards it at the link.
+**Deferred by decision, not forgotten:**
+
+- **Private calls across a link.** They resolve through the subscriber table,
+  links are never targets for one, and `DeliverFromUpstream` records nothing —
+  so production can call a radio behind the test server and not the reverse. It
+  needs an ADR: a private call sent to a link may chase a radio that has moved.
+- **A radio's callsign does not cross a link.** The server that hears a radio
+  knows its callsign because the station said so at login, and discards it at
+  the link, leaving the far end to guess from a database.
+- **Defaulting the callsign lookup on.** `config.Validate` refuses the lookup
+  enabled with no contact address, so a default of on makes a fresh install
+  refuse to start. Doing it means relaxing that rule so the state loads and is
+  reported instead. The operator decided the toggle on the page is enough.
 
 ## Two debts taken deliberately
 
@@ -328,6 +383,10 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   the field left the file on the next save.
 - **A server backed up.** An export names the credentials it cannot carry.
 
+- **A configuration field retired on a live server**, and gone from the file on
+  the next save.
+- **The administration page**, in a browser, on production.
+
 ## Not proven
 
 - **Relaying and deduplication, on any machine.** Every test is a unit test and
@@ -351,7 +410,11 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   never been pressed.
 - **A callsign crossing a link.** It does not: see the loose threads.
 - **A restore.** The import path is built and no configuration has been
-  restored from an export, on any machine.
+  restored from an export, on any machine. **A backup has not been downloaded
+  either** — the button exists and nobody has pressed it.
+- **The console's JavaScript, beyond one crude check.** ~1,500 lines, and the
+  only thing verifying any of it is that a script defines the functions it
+  calls. Three chrome defects today; the gate chain is Go and reads none of it.
 - **A restart from the console.** The button is on two pages and has never been
   pressed.
 - The IPSC panel from 0265, never loaded in a browser.

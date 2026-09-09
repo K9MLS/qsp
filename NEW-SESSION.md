@@ -36,8 +36,15 @@ refused, readdressed and restarted — which until 2026-09-08 needed hand-edited
 JSON on a server. It has been done on air, both directions, on TG2 TS2.
 
 The administration page (ADR-0055) and backup and restore (ADR-0054) are built
-and deployed. What is left before a second operator runs a server is nothing;
-`HANDOVER.md` opens on getting one running.
+and deployed, and `/server` is where an operator asks what this server is and
+whether it matches its configuration. What is left before a second operator runs
+a server is nothing; `HANDOVER.md` opens on getting one running.
+
+**The console has about 1,500 lines of JavaScript and one check on any of it.**
+Three defects shipped there on 2026-09-09 through a clean `gofmt`, `vet`,
+`staticcheck` and `go test` — the gate chain is Go and reads none of it. Treat
+anything an operator says looks wrong on a page as real, immediately: every one
+of those three was found that way and none by reading code.
 
 Relaying and deduplication are built, unit-tested and unexercised: two servers
 give nothing to relay to. A third instance on this LAN was built and rejected in
@@ -102,6 +109,12 @@ does:
 git log --oneline -1
 cat VERSION
 ```
+
+**And `sudo -v` on its own before any block containing `sudo`.** The password
+prompt reads standard input, so the next pasted line goes in as the password and
+one command silently does not run. It happened four times on 2026-09-09 and the
+version check caught it every time — which is the argument for the check, not
+for the habit that made it necessary.
 
 **And run `cat VERSION` again after `git am`, before building.** On 2026-09-08 a
 patch file never reached the machine: `git am` said so, the gates then passed,
