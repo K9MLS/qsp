@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/k9mls/qsp/internal/server"
 )
 
 // TestTheOfferFormHasABoxForEverythingTheInvitationNeeds is the test that would
@@ -895,4 +897,143 @@ func TestEveryFunctionAConsoleScriptCallsIsDefined(t *testing.T) {
 				"and every page loses its chrome", script, name)
 		}
 	}
+}
+
+// TestEveryElementAScriptReachesForExists is the second test that would have
+// caught this week.
+//
+// **A script asking for an element no page defines gets null and carries on**,
+// so the feature silently does nothing. That is how the version arrived: the
+// element was renamed from `brand-version` to `nav-version` in the markup while
+// `nav.js` still asked for the old id, and the sidebar stayed empty through a
+// correct build and a correct deploy.
+//
+// Checked per script against the pages that load it, because an id defined on
+// one page and used by a script another page loads is the same defect wearing a
+// disguise.
+func TestEveryElementAScriptReachesForExists(t *testing.T) {
+	pages, err := filepath.Glob("static/*.html")
+	if err != nil {
+		t.Fatalf("listing pages: %v", err)
+	}
+	if len(pages) < 5 {
+		t.Fatalf("only %d pages found; this test would pass by finding nothing", len(pages))
+	}
+
+	wants := regexp.MustCompile(`getElementById\("([^"]+)"\)`)
+	loads := regexp.MustCompile(`<script src="/([^"]+\.js)"`)
+	defines := regexp.MustCompile(`id="([^"]+)"`)
+
+	// **Ids a script creates rather than finds**, and so need not be in any
+	// page's markup: assigned to an element it built, or written into markup it
+	// renders. The sign-out button and the IPSC access fields are both the
+	// second kind, and a check that could not see them would be a check nobody
+	// could keep green.
+	made := map[string]bool{}
+	for _, script := range mustGlob(t, "static/*.js") {
+		src := readFile(t, script)
+		for _, m := range regexp.MustCompile(`\.id = "([^"]+)"`).FindAllStringSubmatch(src, -1) {
+			made[m[1]] = true
+		}
+		for _, m := range regexp.MustCompile(`id=\\?"([^"\\]+)`).FindAllStringSubmatch(src, -1) {
+			made[m[1]] = true
+		}
+	}
+
+	for _, page := range pages {
+		html := readFile(t, page)
+
+		have := map[string]bool{}
+		for _, m := range defines.FindAllStringSubmatch(html, -1) {
+			have[m[1]] = true
+		}
+
+		for _, s := range loads.FindAllStringSubmatch(html, -1) {
+			script := "static/" + s[1]
+			src := stripComments(readFile(t, script))
+			for _, m := range wants.FindAllStringSubmatch(src, -1) {
+				id := m[1]
+				if have[id] || made[id] {
+					continue
+				}
+				t.Errorf("%s loads %s, which asks for #%s — no element with that id is on "+
+					"the page, so it gets null and the feature silently does nothing",
+					page, s[1], id)
+			}
+		}
+	}
+}
+
+// **A script calling an endpoint the server does not register gets a 404 and
+// says nothing useful.** Every route is enumerable and every fetch is a literal,
+// so the two can be compared.
+//
+// Paths built by concatenation — `"/api/links/" + name` — are checked as far as
+// their fixed prefix, which is enough to catch a route that was renamed or
+// never registered.
+func TestEveryEndpointAScriptCallsIsRegistered(t *testing.T) {
+	scripts := mustGlob(t, "static/*.js")
+
+	calls := regexp.MustCompile(`fetch\("(/[^"?]*)`)
+	seen := map[string][]string{}
+	for _, script := range scripts {
+		for _, m := range calls.FindAllStringSubmatch(stripComments(readFile(t, script)), -1) {
+			seen[m[1]] = append(seen[m[1]], script)
+		}
+	}
+	if len(seen) < 5 {
+		t.Fatalf("found %d endpoints in the console; this test would pass by finding "+
+			"nothing", len(seen))
+	}
+
+	// **A prefix match only where the route has a wildcard.** The console builds
+	// some paths by concatenation — "/api/links/" + name — so those can only be
+	// checked as far as their fixed part. Everywhere else the match is exact,
+	// because a loose comparison in both directions lets a typo through: the
+	// first version of this accepted "/api/admin/callsign" against the
+	// registered "/api/admin/callsigns", which is precisely the failure it
+	// exists to catch.
+	exact := map[string]bool{}
+	var prefixes []string
+	for _, p := range server.APIPaths() {
+		if at := strings.Index(p, "{"); at >= 0 {
+			prefixes = append(prefixes, p[:at])
+			continue
+		}
+		exact[p] = true
+	}
+	// Served as files rather than registered as API routes.
+	static := map[string]bool{"/healthz": true, "/readyz": true}
+
+	for path, from := range seen {
+		if static[path] {
+			continue
+		}
+		found := exact[path]
+		for _, r := range prefixes {
+			if found {
+				break
+			}
+			found = strings.HasPrefix(path, r)
+		}
+		if !found {
+			t.Errorf("%v calls %s, which the server does not register; it answers 404 "+
+				"and the page reports a failure that names nothing", from, path)
+		}
+	}
+}
+
+// mustGlob lists files or fails, so a pattern that matches nothing is a failure
+// rather than a test that passes by checking none.
+func mustGlob(t *testing.T, pattern string) []string {
+	t.Helper()
+
+	out, err := filepath.Glob(pattern)
+	if err != nil {
+		t.Fatalf("listing %s: %v", pattern, err)
+	}
+	if len(out) == 0 {
+		t.Fatalf("%s matched nothing", pattern)
+	}
+	return out
 }

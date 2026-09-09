@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **Two more checks on the console's JavaScript**, both reconstructing defects
+  that shipped this week rather than defects imagined for the occasion.
+
+  **An element a script reaches for must exist on the pages that load it.**
+  `getElementById` returns null and the script carries on, so the feature
+  silently does nothing — which is exactly how the version arrived: the markup
+  was renamed from `brand-version` to `nav-version` while `nav.js` still asked
+  for the old id, and the sidebar stayed empty through a correct build and a
+  correct deploy. Restoring that rename turns it red on eight pages.
+
+  **An endpoint a script calls must be one the server registers.** Every route
+  is enumerable and every fetch is a literal, so the two can be compared. A path
+  built by concatenation is matched only as far as the fixed part of a route
+  that has a wildcard; everywhere else the comparison is exact — **the first
+  version compared prefixes in both directions and accepted
+  `/api/admin/callsign` against the registered `/api/admin/callsigns`**, which
+  is the precise failure it exists to catch. A one-letter typo and a renamed
+  route now both turn it red.
+
+  Both needed teaching about ids a script creates rather than finds — the
+  sign-out button and the IPSC access fields are written into markup by the
+  scripts that then look them up. A check that could not see those would be one
+  nobody could keep green.
+
+  That is three checks on about 1,500 lines that had none until yesterday. The
+  gate chain is Go and reads no JavaScript, and every console defect this week
+  reached an operator's screen.
+
 ### Documentation
 
 - **Corrected: QSP speaks AMBE_AUDIO to a transcoder, not USRP.** The Zello
