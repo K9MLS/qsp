@@ -4,6 +4,26 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The accept form suggests a link name from the invitation.** An operator
+  typed "QSP Test Server" into that box — a reasonable thing to type, and also
+  the name of their own server, so a link to somebody else's ended up named
+  after theirs. The console cannot rename a link, so the only way back was
+  hand-editing JSON on the server; and the capitals broke audio outright,
+  because the routing core addressed the lowercased form while the upstream
+  registry held the configured one.
+
+  The page now reads the pasted invitation and fills the box with the far end's
+  display name reduced to lower case, digits and hyphens — safe as a file name
+  and as a routing target. **Only into an empty box**: a suggestion that
+  overwrites what somebody typed is not a suggestion. The note says it becomes a
+  file name and cannot be changed later without editing the configuration.
+
+  Chosen over adding a rename: stopping a bad name being created is less code
+  than making one repairable, and the operator sees the right answer at the
+  moment they would otherwise invent one.
+
 ### Fixed
 
 - **A link whose name was not already lowercase could not be sent to.** The

@@ -715,9 +715,54 @@
       : "Leave this empty when you are pasting a reply to an offer you made yourself — there is nothing to type, because your own server generated it.");
   }
 
+  /* **A name is easier to suggest than to repair.** An operator typed "QSP
+   * Test Server" into this box, which is a perfectly reasonable thing to type
+   * and was also the name of their own server — and it became the name of a
+   * link to somebody else's. The console cannot rename a link, so the only way
+   * back was hand-editing JSON on the server.
+   *
+   * So the box is filled in from the invitation: the far end's display name,
+   * reduced to something safe to be a file name and a routing target. The
+   * operator can still type whatever they like over it. */
+  function slug(text) {
+    return String(text || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 32);
+  }
+
+  /* The token is base64url of JSON, so the page can read what it was given
+     rather than waiting for a round trip to tell it. Anything unreadable is
+     simply not a suggestion; the server refuses a malformed token on its own
+     terms and says so better than this could. */
+  function invitationFields(token) {
+    try {
+      var body = String(token).trim().split(".")[1];
+      if (!body) { return null; }
+      var b64 = body.replace(/-/g, "+").replace(/_/g, "/");
+      while (b64.length % 4) { b64 += "="; }
+      return JSON.parse(atob(b64));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function suggestAcceptName() {
+    var box = el("accept-name");
+    if (!box || box.value.trim() !== "") { return; }
+    var inv = invitationFields(val("accept-token"));
+    if (!inv) { return; }
+    var suggestion = slug(inv.network) || slug(inv.callsign);
+    if (suggestion) { box.value = suggestion; }
+  }
+
   var acceptToken = el("accept-token");
   if (acceptToken) {
-    acceptToken.addEventListener("input", syncAcceptFields);
+    acceptToken.addEventListener("input", function () {
+      syncAcceptFields();
+      suggestAcceptName();
+    });
     syncAcceptFields();
   }
 

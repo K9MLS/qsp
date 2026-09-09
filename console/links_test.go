@@ -617,3 +617,31 @@ func TestTheLinksPageCanRestartQSP(t *testing.T) {
 		t.Error("the restart button survives the restart it asked for")
 	}
 }
+
+// **A name is easier to suggest than to repair.** An operator typed "QSP Test
+// Server" into the accept form — a reasonable thing to type, and also the name
+// of their own server, so a link to somebody else's was named after theirs. The
+// console cannot rename a link, so the only way back was hand-editing JSON.
+//
+// It also broke audio: the routing core addressed the lowercased name and the
+// upstream registry held the configured one, so frames going into the link were
+// refused while frames coming out of it were fine.
+func TestTheAcceptFormSuggestsASafeLinkName(t *testing.T) {
+	js := stripComments(readFile(t, "static/links.js"))
+
+	if !strings.Contains(js, "suggestAcceptName") {
+		t.Fatal("the accept form does not suggest a name, so an operator invents one")
+	}
+	body := functionBody(t, js, "slug")
+	if !strings.Contains(body, "toLowerCase") {
+		t.Error("the suggested name is not lower case")
+	}
+	if !strings.Contains(body, "a-z0-9") {
+		t.Error("the suggested name may contain characters that become a file name")
+	}
+	// Never over what the operator typed: a suggestion that overwrites is not a
+	// suggestion.
+	if !strings.Contains(functionBody(t, js, "suggestAcceptName"), "box.value.trim() !== \"\"") {
+		t.Error("the suggestion overwrites a name the operator typed")
+	}
+}
