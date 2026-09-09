@@ -308,6 +308,142 @@
     });
   }
 
+  /* **Arming a destructive button**, which this page needs three times over:
+   * restarting, resetting somebody's password, and removing an account. The
+   * same shape as the Links page and deliberately a copy rather than shared —
+   * two pages, two scripts, and no module system in a console that vendors
+   * nothing (ADR-0025).
+   *
+   * Caught by the gate: an earlier version of this block called `armed` as
+   * though it were global, and it is defined in links.js. The script would have
+   * thrown at load and taken the administration page's chrome with it. */
+  function armed(button, question, act) {
+    if (button.dataset.armed !== "yes") {
+      button.dataset.armed = "yes";
+      button.textContent = question;
+      button.classList.add("button--danger");
+      setTimeout(function () {
+        button.dataset.armed = "no";
+        button.textContent = button.dataset.idle;
+        button.classList.remove("button--danger");
+      }, 5000);
+      return;
+    }
+    act();
+  }
+
+  /* Administrators (ADR-0056). Everything after the first is here rather than
+   * in a shell, because an administrator adding another is already
+   * authenticated and that is the check. */
+  loadUsers();
+
+  function loadUsers() {
+    fetch("/api/users", { headers: { Accept: "application/json" }, credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (body) {
+        if (!body) { return; }
+        renderUsers(body.users || []);
+        show(el("block-users"));
+      })
+      .catch(function () { /* the block simply does not appear */ });
+  }
+
+  function renderUsers(users) {
+    var host = el("users-list");
+    if (!host) { return; }
+
+    host.innerHTML = users.map(function (u) {
+      var facts = fact("Added", u.created) +
+        fact("Last seen", u.last_seen || "never") +
+        fact("State", u.locked ? "locked out" : "in use");
+      return '<div class="link">' +
+        '<div class="link__head">' +
+        '<span class="link__name">' + escapeText(u.username) + "</span>" +
+        (u.self ? '<span class="pill">you</span>' : "") +
+        '<button class="button button--quiet" type="button" data-reset="' +
+        escapeText(u.username) + '">Reset password</button>' +
+        (users.length > 1
+          ? '<button class="button button--quiet" type="button" data-remove-user="' +
+            escapeText(u.username) + '">Remove</button>'
+          : "") +
+        "</div>" +
+        '<dl class="link__facts">' + facts + "</dl>" +
+        "</div>";
+    }).join("");
+
+    /* **No Remove at all on the last administrator.** The server refuses it
+     * too, and a button that always fails is a button that teaches an operator
+     * to distrust the page. */
+    wireUserButtons();
+  }
+
+  function wireUserButtons() {
+    Array.prototype.forEach.call(
+      el("users-list").querySelectorAll("[data-reset]"), function (button) {
+        button.dataset.idle = "Reset password";
+        button.addEventListener("click", function () {
+          var name = button.getAttribute("data-reset");
+          armed(button, "Reset " + name + "'s password?", function () {
+            send("POST", "/api/users/" + encodeURIComponent(name) + "/password", null,
+              function (b) {
+                say(el("users-secret"), b.username + "'s new password is " + b.password +
+                  ". " + b.note);
+                loadUsers();
+              });
+          });
+        });
+      });
+
+    Array.prototype.forEach.call(
+      el("users-list").querySelectorAll("[data-remove-user]"), function (button) {
+        button.dataset.idle = "Remove";
+        button.addEventListener("click", function () {
+          var name = button.getAttribute("data-remove-user");
+          armed(button, "Remove " + name + "?", function () {
+            send("DELETE", "/api/users/" + encodeURIComponent(name), null, function (b) {
+              say(el("users-secret"), b.note);
+              loadUsers();
+            });
+          });
+        });
+      });
+  }
+
+  var addUser = el("user-add");
+  if (addUser) {
+    addUser.addEventListener("click", function () {
+      hide(el("users-error"));
+      hide(el("users-secret"));
+      var name = (el("user-name").value || "").trim();
+      if (!name) {
+        say(el("users-error"), "A callsign, please.");
+        return;
+      }
+      send("POST", "/api/users", { username: name }, function (b) {
+        el("user-name").value = "";
+        say(el("users-secret"), b.username + "'s password is " + b.password + ". " + b.note);
+        loadUsers();
+      });
+    });
+  }
+
+  function send(method, path, body, then) {
+    hide(el("users-error"));
+    fetch(path, {
+      method: method,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: body ? JSON.stringify(body) : null
+    }).then(function (r) {
+      return r.json().then(function (b) {
+        if (!r.ok) { throw new Error(b.error || "that did not work"); }
+        return b;
+      });
+    }).then(then).catch(function (e) {
+      say(el("users-error"), e.message);
+    });
+  }
+
   var contact = el("callsigns-contact");
   if (contact) {
     contact.addEventListener("focus", function () { editing = true; });

@@ -150,6 +150,30 @@
       </div>
     </section>
 
+    <!-- Administrators (ADR-0056). No token and no shell: an administrator
+         adding another is already authenticated, and that is the check. -->
+    <section class="panel" id="block-users" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title">Administrators</h2>
+      </div>
+      <div class="panel__body">
+        <div id="users-list"></div>
+
+        <h3 class="panel__heading">Add an administrator</h3>
+        <label class="picker__label" for="user-name">Callsign</label>
+        <input class="picker__input" id="user-name" type="text"
+               autocapitalize="characters" spellcheck="false" placeholder="KD9EJA">
+        <p class="field__note">
+          QSP chooses the password and shows it once, so nobody types a weak one
+          for somebody else and no administrator knows another's password.
+        </p>
+        <button class="button" id="user-add" type="button">Add</button>
+
+        <p class="link__advice" id="users-error" hidden></p>
+        <p class="field__note" id="users-secret" hidden></p>
+      </div>
+    </section>
+
     <!-- Block 5: backup and restore (ADR-0054). -->
     <section class="panel" id="block-backup" hidden>
       <div class="panel__head">

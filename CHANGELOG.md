@@ -6,6 +6,50 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A setup page, so the first thing an operator does is not in a terminal**
+  (ADR-0056). A server with no administrator serves `/setup` and refuses it —
+  404, not a message — once one exists, so somebody probing cannot tell a
+  configured QSP from anything else.
+
+  Gated by a one-time token, generated at startup, logged once, held in memory
+  and never written to disk. **No token from loopback**: a request from the
+  machine itself is from somebody who could read the journal anyway. So an
+  ordinary single-machine install needs no terminal at all, and a server across
+  a network needs one line pasted from `docker logs`.
+
+  The sign-in page no longer tells an operator to run a command; it sends them
+  to the setup page. `qsp adduser` survives as the recovery procedure for having
+  lost every administrator, documented rather than displayed.
+
+- **An Administrators block on This Server**: who exists, when they were added,
+  when they last signed in, and whether they are locked out. Add, reset, remove.
+  **QSP chooses the password and shows it once**, so nobody types a weak one for
+  somebody else and no administrator learns another's. The last administrator
+  has no Remove button at all — the server refuses it with a 409, and a button
+  that always fails teaches an operator to distrust the page.
+
+- Three audit actions: an administrator created, a password reset, an account
+  removed. The password is not among them.
+
+### Fixed
+
+- **Caught by yesterday's gate before it shipped**: the Administrators block
+  called `armed` as though it were global, and it is defined in `links.js`. The
+  script would have thrown at load and taken the administration page's chrome
+  with it — the exact failure that gate exists for, found by a test rather than
+  by an operator.
+
+- A test that failed on the prose describing it: the check that a refused setup
+  token says nothing useful searched the whole source file and matched the
+  comment explaining the rule. Scoped to the message itself.
+
+  Each of the three security properties was then broken to prove the tests:
+  trusting `X-Forwarded-For` for the loopback exemption, comparing the token
+  with `==`, and treating a failed account lookup as an empty database. All
+  three turn a different test red.
+
+### Added
+
 - **ADR-0056: the first administrator is made in a browser, with a token** —
   amending ADR-0026, which decided the opposite and gave good reasons that are
   answered rather than ignored.

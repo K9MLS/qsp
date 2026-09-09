@@ -541,6 +541,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// free of any unauthenticated path that writes. The handlers say so rather
 	// than returning a 404 that would read like a missing feature.
 	var authService server.Authenticator
+	// **The concrete service, for the two options that need more than
+	// authenticating.** Setting up the first administrator and managing the
+	// rest are not part of the login flow, so they are separate interfaces —
+	// and nil for an instance with no database, which disables both pages
+	// explicitly rather than by accident.
+	var accountService *auth.Service
 	if a.db != nil {
 		repo, rerr := auth.NewSQLRepository(a.db.SQL())
 		if rerr != nil {
@@ -551,6 +557,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			return nil, serr
 		}
 		authService = svc
+		accountService = svc
 		a.auth = svc
 	}
 
@@ -601,8 +608,14 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		IPSCPeers:           ipscPeerSource(a.ipsc, a.names),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
-		Config:              manager,
-		Audit:               a.audit,
+		// The first administrator comes from the setup page (ADR-0056) and
+		// every one after it from the administration page. Both are the same
+		// service; they are separate options so that an instance without an
+		// account store disables each explicitly rather than by accident.
+		Setup:    setupOrNil(accountService),
+		Accounts: accountsOrNil(accountService),
+		Config:   manager,
+		Audit:    a.audit,
 		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
 		// takes exactly the path systemctl restart already takes, so the audit
 		// record, the shutdown timeout and every subsystem's close run as they
@@ -630,6 +643,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// restart was needed.
 	manager.applyServer = func(c config.Config) {
 		srv.ApplyConfig(joinSettings(c), mapSettings(c), c.DMR.Enabled && c.DMR.Forwarding)
+	}
+	// **Before the listener starts**, so a server with no administrator has
+	// already printed its setup token by the time the console can be reached
+	// (ADR-0056).
+	if err := srv.PrepareSetup(ctx); err != nil {
+		return nil, err
 	}
 	a.closers = append(a.closers, srv.Shutdown)
 
@@ -1881,4 +1900,25 @@ func serverIdentity(cfg config.Config) hbp.Identity {
 		Description: strings.TrimSpace(cfg.DMR.Identity.Description),
 		ServerID:    strings.TrimSpace(cfg.Server.Identifier),
 	}
+}
+
+// setupOrNil and accountsOrNil keep a nil *auth.Service out of a non-nil
+// interface.
+//
+// **A typed nil in an interface is not nil**, so assigning one directly would
+// make every `s.opts.Setup == nil` check false and the handlers would call
+// methods on nothing. It is the oldest trap in the language and it is worth two
+// functions to stay out of.
+func setupOrNil(s *auth.Service) server.SetupAccounts {
+	if s == nil {
+		return nil
+	}
+	return s
+}
+
+func accountsOrNil(s *auth.Service) server.AccountAdmin {
+	if s == nil {
+		return nil
+	}
+	return s
 }

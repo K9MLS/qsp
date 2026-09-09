@@ -39,6 +39,16 @@ const (
 	ActionUserLogin Action = "user.login"
 	// ActionUserLogout records a session ending.
 	ActionUserLogout Action = "user.logout"
+	// ActionUserCreated records an administrator being made — by the setup
+	// page for the first, or by another administrator afterwards.
+	ActionUserCreated Action = "user.created"
+	// ActionUserPasswordReset records one administrator resetting another's
+	// password. **Not the password**, obviously, and not who it was given to;
+	// the audit trail records that it happened and by whom.
+	ActionUserPasswordReset Action = "user.password.reset"
+	// ActionUserDeleted records an administrator being removed, along with
+	// every session they held.
+	ActionUserDeleted Action = "user.deleted"
 	// ActionServiceStarted records process startup.
 	ActionServiceStarted Action = "service.started"
 	// ActionServiceStopped records graceful shutdown.
@@ -68,15 +78,18 @@ const (
 )
 
 var knownActions = map[Action]bool{
-	ActionConfigChanged:    true,
-	ActionConfigRolledBack: true,
-	ActionUserLogin:        true,
-	ActionUserLogout:       true,
-	ActionServiceStarted:   true,
-	ActionServiceStopped:   true,
-	ActionPeeringOffered:   true,
-	ActionPeeringAccepted:  true,
-	ActionPeeringRemoved:   true,
+	ActionConfigChanged:     true,
+	ActionConfigRolledBack:  true,
+	ActionUserLogin:         true,
+	ActionUserLogout:        true,
+	ActionUserCreated:       true,
+	ActionUserPasswordReset: true,
+	ActionUserDeleted:       true,
+	ActionServiceStarted:    true,
+	ActionServiceStopped:    true,
+	ActionPeeringOffered:    true,
+	ActionPeeringAccepted:   true,
+	ActionPeeringRemoved:    true,
 }
 
 // IsKnownAction reports whether a is a declared action.

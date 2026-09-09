@@ -30,12 +30,15 @@
 
   <!-- Shown when the instance has no accounts. A form that cannot succeed is
        worse than no form: an operator would try their callsign, fail, and have
-       no way to learn that the step they are missing happens on the host. -->
+       no way to learn what they are missing.
+
+       It sends them to the setup page rather than to a shell (ADR-0056). The
+       command survives only as the recovery procedure for having lost every
+       administrator, and that lives in the README. -->
   <div class="notice notice--warn" id="no-accounts" hidden>
-    <p class="notice__title">This instance has no administrator accounts</p>
+    <p class="notice__title">This server has no administrator yet</p>
     <p class="notice__body">
-      Create one on the server, then come back:
-      <code>qsp -config /path/to/qsp.json adduser YOURCALL</code>
+      <a href="/setup">Set it up</a> — it takes a callsign and a password.
     </p>
   </div>
 

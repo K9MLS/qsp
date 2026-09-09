@@ -239,6 +239,27 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
+`/api/setup`, on GET and POST, creates the **first** administrator and refuses
+once one exists — 404 rather than a message, so somebody probing cannot tell a
+configured QSP from anything else. It is gated by a one-time token generated
+when the server starts with no account, logged once, held in memory only and
+never written to disk; a restart mints a new one. **No token is required from
+loopback**, because a request from the machine itself is from somebody who could
+read the token from the journal in any case — that recognises a check already
+passed rather than removing one. The token is compared in constant time and a
+refusal does not distinguish a wrong token from an absent one. See ADR-0056,
+which amends ADR-0026.
+
+`/api/users` manages every administrator after the first, and needs a session
+rather than a token: an administrator adding another is already authenticated.
+On POST it creates an account and returns a generated password **once** — one
+administrator never chooses or learns another's password. `/api/users/{name}/password`, on POST,
+resets one the same way and clears any lockout. `/api/users/{name}`, on DELETE,
+removes an account
+and every session it holds in one transaction, and **refuses to remove the last
+administrator** with a 409, because a console able to lock an operator out of
+their own server is worse than one that refuses.
+
 `/api/admin`, on GET, assembles the administration page: what this server is,
 whether the running process matches its saved configuration, and what is running
 that nobody configured per link (ADR-0055). It reads rather than computes — the

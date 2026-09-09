@@ -77,6 +77,11 @@ type Options struct {
 	// endpoint that changes anything for its first several phases, and an
 	// instance that only observes still does not need one.
 	Auth Authenticator
+	// Setup creates the first administrator (ADR-0056). Nil disables the setup
+	// page entirely, which is what an instance with no account store should do.
+	Setup SetupAccounts
+	// Accounts manages administrators after the first.
+	Accounts AccountAdmin
 	// Logins reports refused logins, so the console can say that somebody is
 	// being turned away rather than leaving it to a member's phone call.
 	Logins LoginReporter
@@ -119,6 +124,8 @@ type Server struct {
 	// restarted a minute ago shows a small number, which is correct and reads
 	// as a fault; the start time makes "4m" legible as *since 08:14*.
 	startedAt time.Time
+	// setup holds the one-time token until the first administrator exists.
+	setup setupState
 	// offered holds passphrases this instance has offered and not yet seen
 	// come back, so a reciprocal invitation needs no secret typed. See
 	// offered.go.
@@ -215,6 +222,12 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/links", s.requireSession(s.handleLinks)},
 		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
 		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
+		{"GET /api/setup", s.handleSetupState},
+		{"POST /api/setup", s.handleSetup},
+		{"GET /api/users", s.requireSession(s.handleUsers)},
+		{"POST /api/users", s.requireSession(s.handleAddUser)},
+		{"POST /api/users/{name}/password", s.requireSession(s.handleResetPassword)},
+		{"DELETE /api/users/{name}", s.requireSession(s.handleRemoveUser)},
 		{"GET /api/admin", s.requireSession(s.handleAdmin)},
 		{"GET /api/admin/backup", s.requireSession(s.handleBackup)},
 		{"POST /api/admin/restore", s.requireSession(s.handleRestore)},
@@ -278,6 +291,9 @@ func (s *Server) handler() http.Handler {
 		// asset root is not listed there.
 		// /signin, for the same reason /join exists: a URL an operator types
 		// or bookmarks should not end in .html.
+		mux.HandleFunc("GET /setup", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/setup.html", http.StatusFound)
+		})
 		mux.HandleFunc("GET /signin", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/signin.html", http.StatusFound)
 		})
