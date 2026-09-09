@@ -289,6 +289,14 @@ func (l *PeerLink) Status() Status {
 		EverReceived: !l.lastReceived.IsZero(),
 		Stats:        l.stats,
 	}
+	// What the far end announced when it accepted this registration. Nothing
+	// else in the handshake carries it: a configuration goes one way and the
+	// answer is four bytes and an ID.
+	if far := l.link.FarEnd(); far.Known {
+		st.FarEndNetwork = far.Network
+		st.FarEndCallsign = far.Callsign
+		st.FarEndSoftware = far.Software
+	}
 	if st.EverReceived {
 		st.Since = l.now().Sub(l.lastReceived).Truncate(time.Second)
 	}

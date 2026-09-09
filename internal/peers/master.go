@@ -73,6 +73,27 @@ type MasterConfig struct {
 	// talkgroup lists in this set are not consulted here: a talkgroup is a
 	// routing question and is answered where destinations are known.
 	Access access.Lists
+	// Identity is what this server says about itself to a QSP server that has
+	// registered with it, and whether it should say anything at all.
+	//
+	// **Identity rides on registration, and registration goes one way**
+	// (ADR-0052 rule 3, as amended). The dialling side announces a callsign, a
+	// network and a software string in its configuration and receives four
+	// bytes and an ID back, so the listening server knows its neighbour and the
+	// dialling server knows an address. This is the answer.
+	//
+	// Nil sends nothing, which is what an instance with no identity configured
+	// should do rather than announcing empty fields.
+	Identity func() hbp.Identity
+	// IsQSPLink reports whether a peer's announced configuration marks it as
+	// another QSP server rather than a hotspot.
+	//
+	// **The reply goes only to a peer that claims to be one.** A hotspot never
+	// receives an identity, because it never asks to be treated as a link and
+	// would have nothing to do with the answer. Nil treats every peer as a
+	// hotspot, which is the safe direction: nothing is sent that nobody
+	// expects.
+	IsQSPLink func(hbp.Config) bool
 	// Now supplies the current time. Zero uses time.Now.
 	Now func() time.Time
 	// Salt generates login challenges. Zero uses crypto/rand.
@@ -480,6 +501,15 @@ func (m *Master) handleConfig(msg hbp.Config, from netip.AddrPort, now time.Time
 	var id [4]byte
 	putRepeaterID(&id, msg.RepeaterID)
 	out := Outcome{Responses: []Response{{To: from, Payload: hbp.Ack{Payload: id}.Marshal()}}}
+
+	// **After the ACK, not instead of it.** The handshake is HBP's and must
+	// complete exactly as a hotspot's does; this is an extra datagram that a
+	// server which does not understand it reports as a note and ignores.
+	if m.cfg.Identity != nil && m.cfg.IsQSPLink != nil && m.cfg.IsQSPLink(msg) {
+		ident := m.cfg.Identity()
+		ident.RepeaterID = msg.RepeaterID
+		out.Responses = append(out.Responses, Response{To: from, Payload: ident.Marshal()})
+	}
 
 	if first {
 		m.log.Info("peer connected",

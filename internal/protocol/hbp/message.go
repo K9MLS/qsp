@@ -30,6 +30,13 @@ const (
 	// KindGatewayConfig is the abbreviated configuration used on a local
 	// gateway link. Tag "DMRC".
 	KindGatewayConfig Kind = "DMRC"
+	// KindIdentity is a QSP server saying what it is, to a QSP server that has
+	// registered with it. Tag "QSPI".
+	//
+	// **QSP's own, not HBP.** Every other tag here was observed in a capture
+	// and implemented from what was seen; this one is an extension, sent only
+	// to a peer that announced itself as a QSP link. See identity.go.
+	KindIdentity Kind = "QSPI"
 	// KindGatewayPong is the four-byte keepalive used on a local gateway link.
 	// Tag "DMRP".
 	KindGatewayPong Kind = "DMRP"
@@ -127,6 +134,8 @@ func Parse(b []byte) (Message, error) {
 		return parseKey(b)
 	case hasTag(b, "RPTC"):
 		return parseConfig(b)
+	case hasTag(b, "QSPI"):
+		return parseIdentity(b)
 	case hasTag(b, "DMRD"):
 		return parseData(b)
 	case hasTag(b, "DMRC"):

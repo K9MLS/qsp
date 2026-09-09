@@ -229,6 +229,16 @@ type Status struct {
 	Name string
 	// Open reports whether the socket is bound.
 	Open bool
+	// FarEndNetwork, FarEndCallsign and FarEndSoftware are what the server at
+	// the other end says it is, empty when it has not said.
+	//
+	// **Every one is a claim** (ADR-0052 rule 4): announced, unverified,
+	// displayed, and deciding nothing about what this server carries. Empty
+	// means a QSP too old to answer or one with no identity configured, and a
+	// page must say "not announced" rather than inventing a name.
+	FarEndNetwork  string
+	FarEndCallsign string
+	FarEndSoftware string
 	// EverReceived reports whether any frame has ever verified.
 	EverReceived bool
 	// Since is how long since a frame last arrived. Meaningless when

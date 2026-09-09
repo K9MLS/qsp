@@ -684,6 +684,14 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		SubscriberTimeout: cfg.DMR.SubscriberTimeout.AsDuration(),
 		// Which talkgroups each peer receives; see ADR-0023.
 		Subscription: subscriptionFrom(cfg),
+		// **What this server says about itself, to a server that registers as
+		// a link.** ADR-0052 rule 3 requires a server to say what it is, and
+		// registration only carried it one way: the side that dialled
+		// announced a callsign, a network and a version, and got four bytes
+		// back. Sent only to a peer whose package ID marks it a QSP link, so a
+		// hotspot never receives one.
+		Identity:  func() hbp.Identity { return serverIdentity(cfg) },
+		IsQSPLink: func(c hbp.Config) bool { _, ok := LinkNameFromPackageID(c.PackageID); return ok },
 	})
 	if err != nil {
 		return nil, "", err
@@ -1760,12 +1768,17 @@ func (l *links) LinkStatuses() []server.LinkStatus {
 	for _, st := range statuses {
 		u := byName[st.Name]
 		entry := server.LinkStatus{
-			Name:         st.Name,
-			Protocol:     u.Protocol,
-			FarEnd:       u.Address,
-			Listening:    u.ListenAddress,
-			NetworkID:    u.NetworkID,
-			Open:         st.Open,
+			Name:      st.Name,
+			Protocol:  u.Protocol,
+			FarEnd:    u.Address,
+			Listening: u.ListenAddress,
+			NetworkID: u.NetworkID,
+			Open:      st.Open,
+			// What the far end announced about itself, which until 0297
+			// nothing carried: an outbound link showed an address where the
+			// other operator's console showed a name (ADR-0052 rule 3).
+			Network:      st.FarEndNetwork,
+			Software:     st.FarEndSoftware,
 			Measured:     true,
 			Sent:         st.Stats.Sent,
 			Received:     st.Stats.Received,
@@ -1819,4 +1832,20 @@ func attachmentViews(l *peers.Listener, peer hbp.RepeaterID, now time.Time) []se
 		out = append(out, view)
 	}
 	return out
+}
+
+// serverIdentity is what this server announces to a QSP server that registers
+// with it.
+//
+// **The display name first, then the callsign, and neither is invented.** A
+// server with nothing configured announces empty fields, and the far end's
+// console reports that it was not announced rather than guessing — an invented
+// name is worse than an address, because an address is at least true.
+func serverIdentity(cfg config.Config) hbp.Identity {
+	return hbp.Identity{
+		Network:     strings.TrimSpace(cfg.DMR.Join.NetworkName),
+		Callsign:    strings.TrimSpace(cfg.DMR.Identity.Callsign),
+		Software:    buildVersion(),
+		Description: strings.TrimSpace(cfg.DMR.Identity.Description),
+	}
 }

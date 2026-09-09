@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A server now says what it is to a server that dials it.** ADR-0052 rule 3
+  required it and registration only carried it one way: the dialling side
+  announces a callsign, a network and a software string in its configuration and
+  receives four bytes and an ID back. So the listening server knew its neighbour
+  and the dialling server knew an address — the same asymmetry ADR-0051 called
+  invisible, one layer up.
+
+  A new message, tag `QSPI`, sent after the `RPTACK` rather than instead of it.
+  **It is QSP's own and not HBP**: every other tag in that package was observed
+  in a capture and implemented from what was seen, and this one is an extension.
+
+  Three things make sending it safe. It goes only to a peer whose package ID
+  marks it a QSP link, so a hotspot never receives one. An older QSP that does
+  not know the tag reports an unparseable datagram as a note and keeps the link,
+  because `Link.Receive` treats a parse failure as something to mention rather
+  than something to fail over. And the payload is JSON with **unknown fields
+  ignored** — the opposite of the rule for an invitation token, and for the
+  reason that a token is read once by a human pasting it while this is read on
+  every link by software that may be older than the server sending it. ADR-0053
+  puts a server identifier in this packet next.
+
+  An outbound link's row now shows the far end's display name and version where
+  it showed an address. Everything in it is a claim: announced, unverified, and
+  deciding nothing about what this server carries.
+
+- **A test that could not fail, caught before it shipped, for the fifth time.**
+  The first version of the hotspot-versus-link test defined its own predicate
+  and then asserted about the predicate. It now drives a real handshake through
+  the master and reads the responses: answering every peer, or sending the
+  identity ahead of the ACK, each turn a different test red.
+
 ### Documentation
 
 - **ADR-0054: a backup restores a server, not its secrets.** A server's

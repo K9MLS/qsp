@@ -165,6 +165,9 @@ type Link struct {
 	lastHeard time.Time
 	// lastPing is when a keepalive was last sent.
 	lastPing time.Time
+	// farEnd is what the far end said about itself. Empty until it does, and
+	// empty forever against a QSP too old to say anything.
+	farEnd FarEnd
 	// salt is the challenge the far end issued.
 	salt [4]byte
 	// backoff is the current retry delay, doubling on each failure.
@@ -322,6 +325,20 @@ func (l *Link) Handle(datagram []byte) Outcome {
 			return Outcome{Note: fmt.Sprintf("%s: keepalive answer arrived while %s", l.cfg.Name, l.state)}
 		}
 		return Outcome{}
+	case hbp.Identity:
+		// **What the far end says it is**, which nothing else in this
+		// handshake carries: a configuration goes one way and the answer is
+		// four bytes and an ID (ADR-0052 rule 3, as amended). Unverified, like
+		// every other claim a neighbour makes, and stored so a console can show
+		// this link as something better than an address.
+		l.farEnd = FarEnd{
+			Network:     v.Network,
+			Callsign:    v.Callsign,
+			Software:    v.Software,
+			Description: v.Description,
+			Known:       true,
+		}
+		return Outcome{Note: fmt.Sprintf("%s: the far end is %s", l.cfg.Name, farEndLabel(l.farEnd))}
 	case hbp.Data:
 		if !l.state.CanSend() {
 			// A frame before the handshake finished is not routable: the link
@@ -474,5 +491,45 @@ func (l *Link) Close() Outcome {
 		Send:    [][]byte{payload},
 		Changed: true,
 		Note:    fmt.Sprintf("%s: closing", l.cfg.Name),
+	}
+}
+
+// FarEnd is what the server at the other end of this link says it is.
+//
+// **Every field is a claim.** ADR-0052 rule 4 records that anything a neighbour
+// announces may be false, and nothing here is verified — it is displayed, and
+// it decides nothing about what this server carries.
+type FarEnd struct {
+	// Network is the far end's display name (ADR-0053), which is what both
+	// consoles head this link with.
+	Network string
+	// Callsign is the operator's callsign there.
+	Callsign string
+	// Software is what it says it runs, verbatim.
+	Software string
+	// Description is free text about the server.
+	Description string
+	// Known reports whether the far end has said anything at all.
+	//
+	// **False is not empty.** A link to an older QSP never receives an identity
+	// and a link to a new one may announce blank fields; a console that cannot
+	// tell those apart says "unknown" where it should say "not announced".
+	Known bool
+}
+
+// FarEnd reports what the far end said about itself, if anything.
+func (l *Link) FarEnd() FarEnd { return l.farEnd }
+
+// farEndLabel is the shortest true description of a far end, for a log line.
+func farEndLabel(f FarEnd) string {
+	switch {
+	case f.Network != "" && f.Callsign != "":
+		return f.Network + " (" + f.Callsign + ")"
+	case f.Network != "":
+		return f.Network
+	case f.Callsign != "":
+		return f.Callsign
+	default:
+		return "a QSP server that announced no name"
 	}
 }
