@@ -63,3 +63,4 @@ conclusion.
 | [0051](ADR-0051-a-qsp-link-is-a-peer.md) | A link between two QSP servers is a peer, not a bridge | Accepted — confirmed on air |
 | [0052](ADR-0052-qsp-is-federated.md) | QSP is a federated network | Accepted |
 | [0053](ADR-0053-three-names-for-a-server.md) | A server has three names, and they do different jobs | Accepted |
+| [0054](ADR-0054-a-backup-restores-a-server-not-its-secrets.md) | A backup restores a server, not its secrets | Accepted |

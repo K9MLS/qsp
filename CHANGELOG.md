@@ -6,6 +6,48 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **ADR-0054: a backup restores a server, not its secrets.** A server's
+  configuration exists in one place — the box it runs on — and a failed disk
+  takes the links, the access lists, the bridges and the identifier with it.
+  Tolerable while every server belongs to the operator who built it; not once
+  somebody else is running one, because the first thing anybody says helping a
+  stranger is *send me your configuration*, and there is no way to.
+
+  **The obvious design is wrong, which is why it is written down before somebody
+  builds it.** Export the configuration, import it on the new box, and you get
+  back every link and no credential at all: ADR-0012 deliberately keeps secrets
+  in files beside the configuration rather than inside it, so that a document
+  which is versioned, diffed, shown in a console and copied about never holds a
+  password. Three fields point at secrets rather than containing them. A naively
+  restored server comes up with every link configured, every link unable to log
+  in, and a page reporting them as configured and not open — which looks exactly
+  like a network fault and is not one.
+
+  So the export carries configuration and the identifier and no secrets, and
+  **names the credentials it cannot carry**, by the thing that needs each one.
+  An import reports each link as awaiting a credential rather than as broken,
+  with the action beside it: for a QSP link that action already exists and is
+  two clicks, because the offering side reissues a password and an access-list
+  entry in one act.
+
+  The identifier travels, because ADR-0053 requires it — without it a restored
+  server is a stranger to every neighbour. **But an import is a replacement, not
+  a clone**, and it says so and asks the operator to confirm the original is not
+  still running, because QSP cannot see the other machine and will not imply a
+  check it did not make. Two servers holding one identifier is the collision
+  class this project has met repeatedly, and every instance failed silently.
+
+  An older export migrates. A newer one is refused outright with both versions
+  named, because importing three-quarters of a configuration is worse than
+  importing none: the missing quarter is invisible and the operator believes
+  they have restored a server.
+
+  An encrypted export carrying secrets is rejected — it makes every copy of the
+  backup a credential and needs a passphrase stored on the machine that just
+  died. Nothing is built; the record exists to be argued with first.
+
+### Documentation
+
 - **ADR-0053: a server has three names, and they do different jobs.** Answers
   the question ADR-0052 left open, and it was stuck because it was the wrong
   question. "Is a DMR ID good enough as an identity?" assumes one number should
