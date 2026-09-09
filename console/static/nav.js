@@ -30,6 +30,7 @@
   "use strict";
 
   var authState = document.getElementById("auth-state");
+  var version = document.getElementById("brand-version");
   var adminGroup = document.getElementById("nav-admin-group");
   var adminHeading = document.getElementById("nav-admin");
 
@@ -40,6 +41,28 @@
 
   render();
 
+  /* **What is running here, on every page.** The version lived in a startup log
+   * line and, since 0305, on the administration page — so the answer to the
+   * question asked after every deploy was a terminal or a click.
+   *
+   * It rides on the session request this file already makes, so there is no
+   * second fetch and one source for the value. Shown only to somebody signed
+   * in, for the same reason the administration group is: an exact build number
+   * is worth more to somebody probing than to a visitor.
+   *
+   * A link, because noticing the version is usually the moment somebody wants
+   * the page that explains the rest of the server. */
+  function showVersion(value) {
+    if (!version) { return; }
+    if (!value) {
+      version.hidden = true;
+      version.textContent = "";
+      return;
+    }
+    version.textContent = value;
+    version.hidden = false;
+  }
+
   function render() {
     fetch("/api/session", {
       headers: { Accept: "application/json" },
@@ -48,6 +71,7 @@
       .then(function (r) { return r.json(); })
       .then(function (body) {
         apply(!!(body && body.authenticated), body ? body.username : "");
+        showVersion(body && body.version);
       })
       .catch(function () {
         /* Unreachable is not signed out. Saying "sign in to change these"

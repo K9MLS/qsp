@@ -36,7 +36,7 @@ Implemented today: config, storage, events, health, logging, HTTP, console, the
 HBP codec (`parse` above), the peer lifecycle (`validate` above), the routing
 core, call observation, the scheduler and PTT triggers.
 
-P25, the vocoder pool and the analog connectors (AllStar, Zello, EchoLink) are
+P25 and the analog connectors (AllStar, Zello, EchoLink) are
 later phases and report `unavailable` in the health endpoint.
 
 ---
@@ -177,7 +177,6 @@ internal/protocol/p25       (phase 4) P25 reflector networking
 internal/routing            bridge model, routing decision, contention core, PTT triggers
 internal/peers              peer identity, lifecycle, and the UDP listener (M9 complete)
 internal/scheduler          scheduled bridging: level-triggered, DST-correct
-internal/vocoder            (phase 5) finite resource pool
 internal/audio              (phase 5) USRP transport
 internal/calls              call observation: frames reassembled into transmissions
 

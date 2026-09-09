@@ -23,7 +23,7 @@
 **Changes from v0.3:**
 - **P25 position revised.** We don't rebuild the wire protocol, but we *do* own the setup experience. DVM being technically excellent and painful to configure is our thesis, not a reason to walk away (§5).
 - **AllStar and Zello are now full bidirectional v1 features.** Not listen-only, not deferred (§6).
-- **Vocoder pool architecture added** — the real engineering problem, with hard capacity limits (§7).
+- **Transcoding architecture added** — the real engineering problem, with hard capacity limits (§7). QSP does not decode audio; a transcoder outside it owns the AMBE hardware.
 - **Transcoding policy is now an admin decision, exposed in the UI** (§8).
 - **Engineering standards section added** (§13).
 
@@ -251,7 +251,7 @@ Per-repeater refusal is the important one. It means a repeater owner who joins a
 | Role | Can | Cannot |
 |---|---|---|
 | **Owner** | Everything; can't be locked out | — |
-| **Admin** | Config, routing, peers, users, vocoder pool | Remove Owner |
+| **Admin** | Config, routing, peers, users, transcoder links | Remove Owner |
 | **Net Control** | Link/unlink, start/stop/extend scheduled events | Change any configuration |
 | **Viewer** | Dashboard, last-heard | Anything — safe to share publicly |
 
@@ -321,7 +321,7 @@ Status semantics on top: green healthy, amber degraded/pending, red down. **Neve
 3. **Scheduler** — month + week views, next-three-fire-times in plain English, dry-run preview
 4. **Net Control** — deliberately spartan (§9)
 5. **Peers** — add/edit with full field-help
-6. **Transcoding** — vocoder pool, per-bridge and per-repeater policy, live capacity
+6. **Transcoding** — external transcoder, per-bridge and per-repeater policy, live capacity
 7. **Health** — port reachability, Docker networking check, clock sync, disk, vocoder device status
 8. **History** — searchable, exportable last-heard with `TRANSCODED` badges
 9. **Config Versions** — timeline, diff, rollback
@@ -478,7 +478,7 @@ Each phase ends at an **approval gate** with **real hardware validation**. A pas
 | **2** | Console: wizard, routing matrix, live feed, health, full field-help | A ham who's never seen it is running in under 10 minutes, unassisted |
 | **3** | Scheduler + PTT-triggered bridging + config versioning | A scheduled net links and unlinks unattended for **two weeks** |
 | **4** | P25 peer + DVM network peering + guided DVM provisioning | P25 and DMR live on one instance; a Quantar site configured from our UI |
-| **5** | Vocoder pool + USRP bus + AllStar connector (full duplex) | Bidirectional DMR ⇄ AllStar QSO on real hardware, with capacity gauge accurate under load |
+| **5** | USRP bus + AllStar connector (full duplex) | Bidirectional DMR ⇄ AllStar QSO on real hardware, through an external transcoder, with capacity accurate under load |
 | **6** | Zello connector (full duplex) + EchoLink via ASL3 | Bidirectional QSO through both |
 | **7** | Closed beta with the group | 5+ independent operators running it |
 | **8** | Public repo, docs, Docker image | v1.0 |

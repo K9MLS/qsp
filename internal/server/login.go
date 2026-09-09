@@ -12,6 +12,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
+	"github.com/k9mls/qsp/internal/buildinfo"
 )
 
 // SessionCookie is the cookie the console carries.
@@ -41,6 +42,9 @@ type sessionResponse struct {
 	Authenticated bool   `json:"authenticated"`
 	Username      string `json:"username,omitempty"`
 	ExpiresAt     string `json:"expires_at,omitempty"`
+	// Version is what this server is running, sent only to a signed-in
+	// operator. See handleSession.
+	Version string `json:"version,omitempty"`
 }
 
 // handleLogin exchanges a username and password for a session cookie.
@@ -99,6 +103,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		Authenticated: true,
 		Username:      session.Username,
 		ExpiresAt:     session.ExpiresAt.UTC().Format(time.RFC3339),
+		// **Only to somebody signed in.** The version answers "what is running
+		// here", which an operator asks after every deploy and which lived in a
+		// startup log line and one page. It rides on the request the console
+		// chrome already makes, so there is no second fetch and one source for
+		// the value — but it is not told to an anonymous visitor, because an
+		// exact build number is worth more to somebody probing than to anybody
+		// else.
+		Version: buildinfo.Version,
 	})
 }
 

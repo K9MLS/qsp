@@ -43,7 +43,7 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > **Not yet run unattended.** The scheduler and PTT triggers are built and
 > tested, but the two-week soak that BLUEPRINT-v1 requires has not started.
 >
-> **Not yet built:** P25, the vocoder pool, and the analog connectors
+> **Not yet built:** P25 and the analog connectors
 > (AllStar, Zello, EchoLink). The health endpoint reports each as
 > `unavailable`.
 > See [`BLUEPRINT.md`](BLUEPRINT.md) for the product specification and

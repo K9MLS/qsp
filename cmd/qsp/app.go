@@ -1417,10 +1417,21 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 // it. A subsystem leaves this list on the commit that implements it.
 var unbuiltSubsystems = []struct{ name, arrives string }{
 	{"p25", "P25 peering arrives in phase 5"},
-	{"vocoder", "the vocoder pool arrives in phase 5"},
-	{"allstar", "the AllStar connector arrives in phase 5"},
-	{"zello", "the Zello connector arrives in phase 6"},
-	{"echolink", "the EchoLink connector arrives in phase 6"},
+	// **The vocoder pool was removed from this list in 0310, not built.** QSP
+	// does not decode audio and will not: it copies vocoder payloads and never
+	// inspects them, which is why DMR-to-DMR needs no codec at all. Crossing
+	// codecs — into AllStar, Zello or EchoLink, or between P25 Phase 1 and DMR
+	// — needs an AMBE decoder, and in this hobby that is a hardware dongle
+	// behind a transcoder, not a package in this repository.
+	//
+	// So it belonged to the connectors that need it rather than to QSP. The
+	// three below say so themselves.
+	{"allstar", "the AllStar connector arrives in phase 5; it needs an external transcoder " +
+		"with an AMBE dongle, because QSP does not decode audio"},
+	{"zello", "the Zello connector arrives in phase 6; it needs an external transcoder " +
+		"with an AMBE dongle, because QSP does not decode audio"},
+	{"echolink", "the EchoLink connector arrives in phase 6; it needs an external " +
+		"transcoder with an AMBE dongle, because QSP does not decode audio"},
 }
 
 // unbuilt returns a check for a subsystem that does not exist yet.

@@ -93,6 +93,28 @@ body {
   letter-spacing: var(--tracking-wide);
 }
 
+/* **The version, on every page.** It existed only in a log line and on one
+   page, and an operator spent two days reading it out of `journalctl` after
+   every deploy — which is the question "what is actually running here", asked
+   constantly and answered nowhere convenient.
+
+   A link rather than text, because noticing the version is usually the moment
+   somebody wants the page that explains the rest of the server. Quiet enough
+   that it does not compete with the navigation. */
+.brand__version {
+  display: inline-block;
+  margin-top: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-foreground-subtle);
+  text-decoration: none;
+}
+
+.brand__version:hover,
+.brand__version:focus-visible {
+  color: var(--color-foreground);
+}
+
 .brand__tagline {
   margin: 0;
   font-size: var(--text-xs);

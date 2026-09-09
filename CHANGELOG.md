@@ -4,6 +4,43 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Removed
+
+- **The vocoder pool is gone, and it was never going to be built.** QSP does not
+  decode audio: it copies vocoder payloads and never inspects them, which is why
+  DMR to DMR over homebrew, OpenBridge or IPSC needs no codec at all — and a
+  large part of why it is fast and legally uncomplicated.
+
+  Crossing codecs is what needs one, and in this hobby that means a hardware
+  AMBE dongle behind a transcoder, not a package in this repository. So the pool
+  belonged to the connectors that need it rather than to QSP: AllStar, Zello and
+  EchoLink now each say in the health report that they need an external
+  transcoder with an AMBE dongle, and the empty vocoder package is deleted. Its
+  own doc comment said it existed so the boundary would be reviewed before code
+  was written — the review happened, and the answer was no.
+
+  Researched rather than assumed. Zello's Channel API is a small WebSocket
+  protocol carrying Opus; the established path from a radio network is USRP,
+  which is UDP carrying 8 kHz signed 16-bit PCM and needs no codec. So the
+  connector QSP will eventually write is **USRP**, and `asl-zello-bridge` or
+  DVSwitch does the Opus half. Cheap AMBE-3000 dongles cover DMR and P25 Phase
+  2; P25 Phase 1 uses IMBE and needs DVSI's own far more expensive unit, which
+  is a decision that can wait because P25-to-P25 relaying needs no transcoding
+  at all.
+
+### Added
+
+- **The version is in the sidebar of every page.** It lived in a startup log
+  line and, since 0305, on the administration page — so "what is actually
+  running here", asked after every deploy, meant a terminal or a click. An
+  operator read it out of `journalctl` for two days.
+
+  It rides on the session request the console chrome already makes, so there is
+  no second fetch and one source for the value, and it is shown only to somebody
+  signed in — for the same reason the administration group is hidden from an
+  anonymous visitor. It links to `/server`, because noticing the version is
+  usually the moment somebody wants the page that explains the rest.
+
 ### Documentation
 
 - **OpenBridge is recorded as narrowed to foreign networks**, which it already

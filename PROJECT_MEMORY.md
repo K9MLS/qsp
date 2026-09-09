@@ -135,7 +135,7 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
 
 ### Not built
 
-P25, vocoder pool, AllStar, Zello, EchoLink. Each registers a health check
+P25, AllStar, Zello, EchoLink. Each registers a health check
 reporting `unavailable` with the phase that brings it; the authoritative list is
 `unbuiltSubsystems` in `cmd/qsp/app.go`, and a subsystem leaves it on the commit
 that implements it.

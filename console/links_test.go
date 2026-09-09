@@ -1,6 +1,7 @@
 package console_test
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -771,5 +772,43 @@ func TestTheBackupBlockSaysWhatItCannotCarry(t *testing.T) {
 	if !strings.Contains(body, "new_identity") {
 		t.Error("an import does not ask whether this server replaces the one that made " +
 			"the backup, so two servers could claim one identity")
+	}
+}
+
+// **The version, on every page.** It lived in a startup log line and on one
+// page, and an operator read it out of `journalctl` after every deploy for two
+// days — the question "what is actually running here", asked constantly and
+// answered nowhere convenient.
+func TestTheVersionIsOnEveryPage(t *testing.T) {
+	pages, err := filepath.Glob("static/*.html")
+	if err != nil {
+		t.Fatalf("listing pages: %v", err)
+	}
+	if len(pages) < 5 {
+		t.Fatalf("only %d pages found; this test would pass by finding nothing", len(pages))
+	}
+
+	for _, page := range pages {
+		html := readFile(t, page)
+		// The sign-in page has no chrome to hang it on.
+		if !strings.Contains(html, "brand__tagline") {
+			continue
+		}
+		if !strings.Contains(html, `id="brand-version"`) {
+			t.Errorf("%s does not show which version is running", page)
+		}
+	}
+
+	js := stripComments(readFile(t, "static/nav.js"))
+	// **One fetch and one source.** Riding on the session request means there
+	// is nothing to drift and no second round trip on every page load.
+	if strings.Contains(js, `fetch("/healthz"`) {
+		t.Error("the version is fetched separately; it rides on the session request")
+	}
+	// Not told to an anonymous visitor, for the same reason the administration
+	// group is hidden from one.
+	body := functionBody(t, js, "showVersion")
+	if !strings.Contains(body, "version.hidden = true") {
+		t.Error("the version is not hidden when nobody is signed in")
 	}
 }
