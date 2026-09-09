@@ -186,3 +186,75 @@ func (r *SQLRepository) DeleteExpiredSessions(ctx context.Context, now time.Time
 	}
 	return int(n), nil
 }
+
+// Accounts implements Repository.
+func (r *SQLRepository) Accounts(ctx context.Context) ([]Account, error) {
+	const q = `
+		SELECT id, username, password_hash, created_at, last_login_at,
+		       failed_count, locked_until
+		FROM users ORDER BY id`
+
+	rows, err := r.db.QueryContext(ctx, q)
+	if err != nil {
+		return nil, fmt.Errorf("auth: listing accounts: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Account
+	for rows.Next() {
+		var (
+			a         Account
+			created   string
+			lastLogin sql.NullString
+			lockedTil sql.NullString
+		)
+		if err := rows.Scan(&a.ID, &a.Username, &a.PasswordHash, &created,
+			&lastLogin, &a.FailedCount, &lockedTil); err != nil {
+			return nil, fmt.Errorf("auth: listing accounts: %w", err)
+		}
+		a.CreatedAt = readTime(created)
+		a.LastLoginAt = readTime(lastLogin.String)
+		a.LockedUntil = readTime(lockedTil.String)
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("auth: listing accounts: %w", err)
+	}
+	return out, nil
+}
+
+// SetPassword implements Repository.
+func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash string) error {
+	const q = `UPDATE users SET password_hash = ?, failed_count = 0, locked_until = NULL WHERE id = ?`
+
+	// **A reset clears the lockout too.** An operator resetting a password for
+	// somebody locked out has answered the question the lockout was asking, and
+	// leaving it in place would make the new password appear not to work.
+	if _, err := r.db.ExecContext(ctx, q, hash, id); err != nil {
+		return fmt.Errorf("auth: setting a password: %w", err)
+	}
+	return nil
+}
+
+// DeleteAccount implements Repository.
+//
+// **In one transaction**, so an account cannot lose its sessions and survive,
+// or be removed while its sessions remain usable.
+func (r *SQLRepository) DeleteAccount(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("auth: removing an account: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, id); err != nil {
+		return fmt.Errorf("auth: removing an account's sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
+		return fmt.Errorf("auth: removing an account: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("auth: removing an account: %w", err)
+	}
+	return nil
+}

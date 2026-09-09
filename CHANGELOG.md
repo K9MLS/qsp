@@ -4,6 +4,48 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **ADR-0056: the first administrator is made in a browser, with a token** —
+  amending ADR-0026, which decided the opposite and gave good reasons that are
+  answered rather than ignored.
+
+  0026 rejected a browser setup page because a server reachable from the
+  internet with an empty database belongs to whoever loads it first, and
+  rejected a token in the journal because a log is copied into support requests.
+  **Two things changed.** The console became the product: a project whose
+  premise is that an operator should never need a terminal cannot require one
+  for the first thing an operator does. And the objection is about *durable*
+  secrets — a peer password stays valid for years, while a setup token is valid
+  only while no administrator exists, which on a working server is minutes.
+
+  So: a setup page served when no account exists and refused afterwards, gated
+  by a one-time token logged once and held in memory, **with no token needed
+  from loopback** — a request from the machine itself is from somebody who could
+  read the token anyway, so skipping it recognises a check already passed rather
+  than weakening one. `qsp adduser` survives as the documented recovery
+  procedure for having lost every administrator.
+
+- **The account management the record needs**: listing, password reset, and
+  removal, with the three rules it requires. **The last administrator cannot be
+  removed**, because a console able to lock an operator out of their own server
+  is worse than one that refuses. **Removing an account ends its sessions** in
+  one transaction, or "removed" means "removed in about a fortnight". **A reset
+  clears the lockout**, because an operator resetting a password for somebody
+  locked out has answered the question the lockout was asking.
+
+- **A safeguard that could not fail, found by trying to break it.**
+  `ResetPassword` called `ValidatePassword` explicitly, and removing that call
+  changed no behaviour: `Hash` applies the policy itself. The line was deleted
+  and the test now also asserts that the policy does reject the password it
+  tries, so the assertion cannot pass vacuously.
+
+  Three break attempts before that were themselves wrong — a compile error read
+  as a pass, an edit that silently matched nothing, and an edit that removed the
+  check from `CreateAccount` rather than from the function under test. All three
+  are the same failure the §8a entries already name, met while checking a
+  security boundary.
+
 ### Documentation
 
 - **The README described a project three weeks out of date, and four of its

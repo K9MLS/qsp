@@ -1,6 +1,6 @@
 # ADR-0026: The first administrator is made from a shell, not a browser
 
-**Status:** Proposed
+**Status:** superseded in part by [ADR-0056](ADR-0056-first-administrator-in-a-browser.md), which makes the first administrator in a browser with a one-time token. The reasoning below is answered there rather than discarded, and `qsp adduser` survives as the recovery procedure.
 
 ## Context
 

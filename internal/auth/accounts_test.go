@@ -3,6 +3,7 @@ package auth_test
 import (
 	"context"
 	"errors"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -572,4 +573,60 @@ func TestUnlockDoesNotChangeThePassword(t *testing.T) {
 	if _, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", ""); err != nil {
 		t.Errorf("the password stopped working: %v", err)
 	}
+}
+
+// Accounts implements auth.Repository.
+//
+// Oldest first, by ID, so a test asserting on order gets the same answer the
+// SQL repository gives rather than whatever a map iteration produced.
+func (r *memoryRepo) Accounts(ctx context.Context) ([]auth.Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	out := make([]auth.Account, 0, len(r.accounts))
+	for _, a := range r.accounts {
+		out = append(out, a)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// SetPassword implements auth.Repository.
+func (r *memoryRepo) SetPassword(ctx context.Context, id int64, hash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for fold, a := range r.accounts {
+		if a.ID == id {
+			a.PasswordHash = hash
+			// A reset clears the lockout, as the SQL repository does.
+			a.FailedCount = 0
+			a.LockedUntil = time.Time{}
+			r.accounts[fold] = a
+			return nil
+		}
+	}
+	return auth.ErrNoSuchAccount
+}
+
+// DeleteAccount implements auth.Repository.
+//
+// Sessions go with it, because an account removed while its sessions survive is
+// removed for as long as a session lasts.
+func (r *memoryRepo) DeleteAccount(ctx context.Context, id int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for fold, a := range r.accounts {
+		if a.ID == id {
+			delete(r.accounts, fold)
+			for token, s := range r.sessions {
+				if s.UserID == id {
+					delete(r.sessions, token)
+				}
+			}
+			return nil
+		}
+	}
+	return auth.ErrNoSuchAccount
 }

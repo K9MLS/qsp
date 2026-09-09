@@ -99,6 +99,16 @@ type Repository interface {
 	DeleteSession(ctx context.Context, token string) error
 	// DeleteExpiredSessions removes every session that has expired.
 	DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	// Accounts returns every account, oldest first.
+	Accounts(ctx context.Context) ([]Account, error)
+	// SetPassword replaces one account's hash.
+	SetPassword(ctx context.Context, id int64, hash string) error
+	// DeleteAccount removes an account and every session it holds.
+	//
+	// **One call, not two.** An account removed while its sessions survive is
+	// removed for as long as a session lasts, which is not what an
+	// administrator pressing the button believes they have done.
+	DeleteAccount(ctx context.Context, id int64) error
 }
 
 // Policy is the tunable part of the flow.
@@ -361,4 +371,76 @@ func NewToken() (string, error) {
 		return "", fmt.Errorf("auth: cannot generate a session token: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
+
+// ErrLastAccount is a refusal to remove the only administrator.
+//
+// **A console able to lock an operator out of their own server is worse than
+// one that refuses** (ADR-0056). Recovering from it means a shell, which is the
+// thing the console exists to avoid.
+var ErrLastAccount = errors.New("auth: this is the only administrator, and removing it would " +
+	"leave nobody able to sign in")
+
+// ErrNoSuchAccount is a name that is not an account.
+var ErrNoSuchAccount = errors.New("auth: no such account")
+
+// Accounts returns every account, oldest first.
+func (s *Service) Accounts(ctx context.Context) ([]Account, error) {
+	return s.repo.Accounts(ctx)
+}
+
+// AnyAccount reports whether this server has an administrator yet.
+//
+// **What the setup page turns on.** A server with no account serves setup and
+// nothing else; a server with one refuses it (ADR-0056).
+func (s *Service) AnyAccount(ctx context.Context) (bool, error) {
+	accounts, err := s.repo.Accounts(ctx)
+	if err != nil {
+		return false, err
+	}
+	return len(accounts) > 0, nil
+}
+
+// ResetPassword sets a new password for an account and returns nothing.
+//
+// **The caller generates the password and shows it once.** One administrator
+// choosing another's password means one administrator knowing another's
+// password, which the peer credentials page already declines to do.
+func (s *Service) ResetPassword(ctx context.Context, username, password string) error {
+	account, ok, err := s.repo.AccountByUsername(ctx, NormaliseUsername(username))
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrNoSuchAccount, username)
+	}
+	// **No explicit ValidatePassword here.** `Hash` applies the policy itself,
+	// and a second call would be a safeguard that cannot fail — removing it
+	// changed no behaviour, which is how it was found.
+	hash, err := Hash(password, s.policy.Hash)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetPassword(ctx, account.ID, hash)
+}
+
+// RemoveAccount deletes an account and every session it holds.
+func (s *Service) RemoveAccount(ctx context.Context, username string) error {
+	accounts, err := s.repo.Accounts(ctx)
+	if err != nil {
+		return err
+	}
+	if len(accounts) <= 1 {
+		return ErrLastAccount
+	}
+
+	fold := NormaliseUsername(username)
+	account, ok, err := s.repo.AccountByUsername(ctx, fold)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrNoSuchAccount, username)
+	}
+	return s.repo.DeleteAccount(ctx, account.ID)
 }
