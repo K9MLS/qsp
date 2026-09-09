@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **ADR-0055: an administration page answers questions, and is not a settings
+  dump.** Several defects found on 2026-09-08 existed because nothing could show
+  them: a server's identifier appears in one log line that scrolls away, the
+  callsign lookup was off on one server and on on the other with nothing saying
+  so, the two machines had different restart policies the console knew nothing
+  about, and the version was read out of `journalctl` all evening because there
+  was nowhere on the page to look.
+
+  The cause is not any one omission — this project has built capability faster
+  than visibility into capability, and both buttons added that session came from
+  an operator noticing a gap rather than from the design anticipating it.
+
+  Five blocks: **this server** (name, callsign, truncated identifier, version,
+  uptime), **agreement** (does the running server match its configuration, and
+  what differs — the state that bit three times in one evening and is reported
+  only in passing), **services**, **backup and restore**, which has no home
+  anywhere else, and the **callsign lookup** toggle.
+
+  **The rule that keeps it from becoming a settings dump**: a page may edit a
+  setting when it is the page that reports the problem — and, binding harder,
+  if it is not reporting a problem with a setting it does not get to edit it.
+  "It is administration, so it belongs on the administration page" is not a
+  justification.
+
+  The `ui-ux-pro-max` design system was consulted and its landing-page pattern
+  rejected: oversized type and `clamp(3rem, 10vw, 12rem)` headlines describe a
+  marketing page for an operations product, not an operations page. Its
+  typography recommendation is already what the console uses. What it does bind
+  is recorded: 4.5:1 contrast, visible focus rings, 44×44px touch targets,
+  confirmation before disruptive actions, loading then success or failure,
+  labels rather than placeholders, and no emoji as icons.
+
+  Nothing is built. The record exists to be argued with first.
+
 ### Added
 
 - **The accept form suggests a link name from the invitation.** An operator

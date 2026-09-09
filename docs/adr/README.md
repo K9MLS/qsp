@@ -64,3 +64,4 @@ conclusion.
 | [0052](ADR-0052-qsp-is-federated.md) | QSP is a federated network | Accepted |
 | [0053](ADR-0053-three-names-for-a-server.md) | A server has three names, and they do different jobs | Accepted |
 | [0054](ADR-0054-a-backup-restores-a-server-not-its-secrets.md) | A backup restores a server, not its secrets | Accepted |
+| [0055](ADR-0055-an-administration-page-answers-questions.md) | An administration page answers questions, and is not a settings dump | Accepted |
