@@ -4,49 +4,49 @@
 
 QSP is named for the Q-code meaning *"I will relay your message."*
 
-> **Status: v1.0 feature-complete for DMR.** QSP accepts peers, relays audio
-> between bridged talkgroups, and opens those bridges on a schedule or on
-> demand when somebody keys up. Forwarding is off by default.
+> **Status: in production on two servers, and not yet used by anybody else.**
+> QSP accepts peers, repeats between them, bridges talkgroups on a schedule or
+> on demand, links to other QSP servers, and is administered entirely from a
+> web console.
 >
-> **Validated against real hardware.** On 2026-08-23 a WPSD hotspot
-> (MMDVMHost + DMRGateway) completed the login handshake and held its session.
-> On 2026-08-25 a live transmission reached the codec and decoded: five voice
-> streams, 556 frames, none dropped, every one of 576 payloads round-tripping
-> byte-for-byte. Frame rates landed within 1.5 % of DMR's 16.67/s across
-> durations from 3.8 s to 14.6 s. The capture is committed at
+> **Validated against real hardware.** A WPSD hotspot completed the login
+> handshake and held its session; a live transmission reached the codec and
+> decoded, with five voice streams and 556 frames, none dropped, every one of
+> 576 payloads round-tripping byte-for-byte. The capture is committed at
 > [`testdata/hbp/hbp-voice-live.pcap`](testdata/hbp/hbp-voice-live.pcap); see
 > [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
 > what those runs confirmed and what they did not.
 >
-> **The master repeats.** A group call on a talkgroup reaches every other peer
-> on that talkgroup, with no bridge and no configuration — the ordinary
-> behaviour of a DMR network. Bridges are additional, and move traffic between
-> talkgroups. This was built on 2026-08-27; before that, QSP had bridging and
-> no repeat. See [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
+> **Motorola repeaters, over IPSC.** A Motorola repeater points at QSP directly,
+> with no master repeater alongside it and nothing commercial in the path. Audio
+> crosses in both directions on air. See
+> [ADR-0036](docs/adr/ADR-0036-ipsc-voice-is-not-a-dmr-burst.md) and
+> [ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md).
 >
-> **No access control yet.** Every connected peer receives every talkgroup any
-> peer transmits on. That suits a club whose members know each other and does
-> not suit an instance facing the internet.
+> **The master repeats.** A group call reaches every other peer on that
+> talkgroup, with no bridge and no configuration — the ordinary behaviour of a
+> DMR network. Bridges are additional, and move traffic *between* talkgroups.
+> See [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
 >
-> **Linking to other networks** is implemented over OpenBridge, which is what
-> BrandMeister requires for interconnecting a network. No link has yet run
-> against a real far end — that needs a bridge granted by the network being
-> joined.
+> **Linking two QSP servers** is a peer registration rather than a bridge: the
+> talkgroup and the timeslot cross unchanged, and a link is offered, accepted,
+> refused and readdressed from the console. Confirmed on air in both directions.
+> See [ADR-0051](docs/adr/ADR-0051-a-qsp-link-is-a-peer.md) and
+> [ADR-0052](docs/adr/ADR-0052-qsp-is-federated.md). OpenBridge remains for
+> reaching a network QSP did not build.
 >
-> **Relay is tested; two radios are not.** Audio crossing between bridged
-> talkgroups is verified over real sockets, both with constructed frames
-> (`internal/peers/forward_test.go`) and by replaying a captured transmission
-> from a hotspot (`internal/peers/fanout_test.go`), and the fan-out holds at a
-> hundred peers. What has never happened is two *physical* hotspots connected to
-> one instance — the gap is hardware, not code.
+> **What has not happened**: a third server, so relaying between more than two
+> and the deduplication that goes with it are built, unit-tested and never
+> exercised. No operator other than the author has run QSP. The two-week
+> unattended soak has not started.
 >
-> **Not yet run unattended.** The scheduler and PTT triggers are built and
-> tested, but the two-week soak that BLUEPRINT-v1 requires has not started.
+> **Not yet built:** P25 and the analog connectors (AllStar, Zello, EchoLink).
+> The health endpoint reports each as `unavailable`, and each needs an external
+> transcoder with an AMBE dongle — **QSP does not decode audio and will not**,
+> which is why DMR-to-DMR needs no codec at all.
 >
-> **Not yet built:** P25 and the analog connectors
-> (AllStar, Zello, EchoLink). The health endpoint reports each as
-> `unavailable`.
-> See [`BLUEPRINT.md`](BLUEPRINT.md) for the product specification and
+> See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) for what is built and where
+> the line is, [`BLUEPRINT.md`](BLUEPRINT.md) for the product specification, and
 > [`ARCHITECTURE.md`](ARCHITECTURE.md) for how this is put together.
 
 ## Why
@@ -64,11 +64,26 @@ somebody is actually keyed up. No free tool does this today.
 
 ## Requirements
 
-- Go 1.22 or later
+- Docker, or Go 1.27 and later to build from source
 - Linux, macOS, or Windows for development
 - Ubuntu Server 24.04 LTS is the supported deployment target
 
-## Build and run
+## Install
+
+**With Docker**, which needs no toolchain and is how the author's own test
+server runs:
+
+```sh
+cd deploy/docker
+cp .env.example .env       # set QSP_PEER_PASSWORD and QSP_ALLOWED_PEERS
+docker compose up -d
+```
+
+QSP writes its configuration on the first run and never touches that file
+again — after it exists, it is yours and the console edits it. See
+[ADR-0048](docs/adr/ADR-0048-container-install.md).
+
+**From source:**
 
 ```sh
 go build ./cmd/qsp
@@ -80,6 +95,7 @@ The console listens on `127.0.0.1:8080` by default.
 ```sh
 ./qsp -print-config > qsp.json   # write the effective configuration
 ./qsp -config qsp.json           # run with it
+./qsp -check                     # validate a configuration and exit
 ./qsp -version
 ```
 
@@ -91,7 +107,12 @@ The console listens on `127.0.0.1:8080` by default.
 | `/healthz` | Full health report as JSON |
 | `/readyz` | Terse readiness answer for orchestrators |
 | `/api/events` | Server-Sent Events stream |
-| `/api/peers` | Current peer list (read-only) |
+| `/api/peers` | Current peer list |
+| `/api/admin` | What this server is, and whether it matches its configuration |
+
+Administrative endpoints are omitted here because they change; `SECURITY.md`
+lists every one and what it does, and a test refuses to pass if that list and
+the routes disagree.
 
 ## Accepting peers
 
@@ -223,15 +244,24 @@ syllable.
 Point a hotspot at QSP as a custom DMR master. The console shows connected
 peers live, and `/healthz` reports the bound address and datagram counters.
 
-Every endpoint is **read-only**. QSP exposes nothing that changes state until
-authorisation is designed.
+## The console
+
+Everything above can be done from a browser instead, and that is the point of
+the project: access lists, bridges, the schedule, links, peer credentials, the
+call record, backup and restore, and a page saying what this server is and
+whether it matches its own configuration.
+
+Administrative endpoints require a session. The first administrator is made from
+a shell — see [ADR-0026](docs/adr/ADR-0026-authentication.md) — and everything
+after that is done in the console.
 
 ## Persistence
 
-**This build has no SQL driver registered**, so it runs without persistence and
-says so in the health report. This is deliberate: the driver is imported by the
-binary rather than by the storage package, keeping that dependency at the edge
-of the program. See [`docs/adr/ADR-0005-sqlite-driver.md`](docs/adr/ADR-0005-sqlite-driver.md).
+QSP persists its configuration history, the call record and the audit trail to
+SQLite. **The driver is imported by the binary rather than by the storage
+package**, keeping that dependency at the edge of the program — so a build that
+omits it runs without persistence and says so in the health report rather than
+failing. See [`docs/adr/ADR-0005-sqlite-driver.md`](docs/adr/ADR-0005-sqlite-driver.md).
 
 ## Development
 

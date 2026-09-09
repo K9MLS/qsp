@@ -6,6 +6,48 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The README described a project three weeks out of date, and four of its
+  claims were the opposite of true.** It is the first thing a stranger reads,
+  and this is the first review pass before the repository is shown to anybody.
+
+  **"No access control yet. Every connected peer receives every talkgroup any
+  peer transmits on."** Access control shipped in ADR-0020 — four lists, checked
+  at registration and again per destination — and a listener reachable from
+  beyond the host now refuses to start without an access block. Two sections
+  later the README documented the block it had just said did not exist. A club
+  evaluating QSP for a public instance would have read paragraph one and left.
+
+  **"Every endpoint is read-only. QSP exposes nothing that changes state until
+  authorisation is designed."** There are fourteen write endpoints and an
+  authentication package. This was the most misleading sentence in the file.
+
+  **"No link has yet run against a real far end."** QSP-to-QSP linking has run
+  on air in both directions for days, and a link can be offered, accepted,
+  refused and readdressed from the console.
+
+  **"What has never happened is two physical hotspots connected to one
+  instance."** Production carries a hotspot, a Motorola repeater over IPSC, and
+  peers in two other states.
+
+  **"This build has no SQL driver registered."** `cmd/qsp` imports it; a normal
+  build persists.
+
+- **IPSC was not mentioned anywhere in the README**, and it is arguably the most
+  compelling thing QSP has for a club with real repeaters. Nor was the console,
+  which is the point of the project. Both are now in the status block.
+
+- **The only documented install was `go build`**, which a non-developer cannot
+  follow — while ADR-0048 exists precisely so they can, and the container path
+  is how the author's own test server runs. Docker is now the first install and
+  building from source the second. The Go requirement said 1.22; `go.mod`
+  requires 1.27, so somebody on 1.22 got a toolchain error rather than an
+  answer.
+
+  Every path and flag the rewrite names was checked to exist first, since a
+  README naming a file it has not got is the defect being fixed.
+
+### Documentation
+
 - **The history was rewritten and force-pushed**, removing a product name from
   every commit, message and path. 325 commits, verified three ways in a clone
   before anything touched GitHub: no occurrence in any blob, any commit message,
