@@ -323,6 +323,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"signin.js": true, "access.js": true, "network.js": true,
 		"bridges.js": true, "history.js": true, "hints.js": true,
 		"nav.js": true, "links.js": true, "record.js": true,
+		"admin.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {

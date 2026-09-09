@@ -26,6 +26,8 @@ type stubConfig struct {
 	// saved records what Save was asked to write.
 	saved   []config.Config
 	authors []string
+	// pending is what a restart would apply, for the administration page.
+	pending []string
 }
 
 func newStubConfig() *stubConfig {
@@ -34,6 +36,10 @@ func newStubConfig() *stubConfig {
 
 func (c *stubConfig) Current() config.Config { return c.current }
 func (c *stubConfig) Writable() error        { return c.readOnly }
+
+// pending is what the running process is not yet applying, for the tests that
+// care. Empty means the running server and its configuration agree.
+func (c *stubConfig) PendingRestart() []string { return c.pending }
 
 func (c *stubConfig) Save(_ context.Context, cfg config.Config, author, summary string) (config.Version, error) {
 	if c.saveErr != nil {

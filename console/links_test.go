@@ -645,3 +645,52 @@ func TestTheAcceptFormSuggestsASafeLinkName(t *testing.T) {
 		t.Error("the suggestion overwrites a name the operator typed")
 	}
 }
+
+// TestTheAdministrationPageAnswersQuestions holds the page to ADR-0055.
+//
+// **The rule that keeps it from becoming a settings dump**: a page may edit a
+// setting when it is the page that reports the problem, and — binding harder —
+// if it is not reporting a problem with a setting, it does not get to edit it.
+// Today that is the callsign lookup and nothing else, so a second input
+// appearing here is the thing this test exists to notice.
+func TestTheAdministrationPageAnswersQuestions(t *testing.T) {
+	html := readFile(t, "static/admin.html")
+
+	// The blocks the record names. Backup and restore is not built yet.
+	for _, id := range []string{"block-server", "block-agreement", "block-services", "block-callsigns"} {
+		if !strings.Contains(html, `id="`+id+`"`) {
+			t.Errorf("the page has no %s block", id)
+		}
+	}
+
+	// **One editable setting.** Counting inputs is crude and it is exactly the
+	// drift this catches: every field added here has to be argued for, and a
+	// test that only checked the callsign fields existed would not notice a
+	// fifth one arriving beside them.
+	inputs := strings.Count(html, "<input") + strings.Count(html, "<select")
+	if inputs > 2 {
+		t.Errorf("the page has %d inputs; ADR-0055 allows the callsign toggle and its "+
+			"contact address, and nothing else without amending the record", inputs)
+	}
+
+	// The identifier is displayed and must never be editable.
+	if strings.Contains(html, `id="server-identifier"`) && strings.Contains(html, "<input") {
+		t.Error("the identifier appears to be editable; there is deliberately no way to change one")
+	}
+
+	js := stripComments(readFile(t, "static/admin.js"))
+
+	// The restart button appears only where the page has said one is needed —
+	// the same rule the links page follows.
+	if !strings.Contains(functionBody(t, js, "offerRestart"), "data-restart") {
+		t.Error("the page cannot restart QSP where it says a restart is waiting")
+	}
+	if !strings.Contains(functionBody(t, js, "renderAgreement"), "offerRestart") {
+		t.Error("the restart button is not tied to the agreement block reporting a wait")
+	}
+
+	// A duration alone reads as a fault on a server restarted a minute ago.
+	if !strings.Contains(functionBody(t, js, "uptime"), "since") {
+		t.Error("uptime is shown without the start time, so a small number reads as a fault")
+	}
+}

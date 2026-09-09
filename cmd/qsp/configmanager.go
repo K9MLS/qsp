@@ -37,6 +37,29 @@ type configManager struct {
 	// shown would describe a state neither of them saw.
 	mu      sync.Mutex
 	current config.Config
+	// startup is the configuration this process was built from.
+	//
+	// **What "the running server" means, precisely.** Settings that take
+	// effect live are applied to the listener as they are saved; settings that
+	// do not need a restart, and a restart rebuilds from `current`. So the
+	// difference between this and `current` is exactly the set of things the
+	// running process is not yet doing — which is what an administrator is
+	// asking when they ask whether the server matches its configuration.
+	startup config.Config
+}
+
+// PendingRestart implements server.ConfigManager.
+//
+// **Compared against what the process started with, not against the previous
+// save.** A server three changes behind its configuration has to say so once,
+// rather than once per change that somebody happened to notice — which is how
+// it was reported before ADR-0055: a sentence beside whichever link was saved
+// last, and nothing anywhere that added them up.
+func (m *configManager) PendingRestart() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return config.NeedsRestart(m.startup, m.current)
 }
 
 // Current implements server.ConfigManager.

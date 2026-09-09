@@ -113,6 +113,12 @@ type Server struct {
 	opts   Options
 	log    *slog.Logger
 	health Registry
+	// startedAt is when this process began serving, in UTC.
+	//
+	// **Reported beside the uptime rather than instead of it.** A server
+	// restarted a minute ago shows a small number, which is correct and reads
+	// as a fault; the start time makes "4m" legible as *since 08:14*.
+	startedAt time.Time
 	// offered holds passphrases this instance has offered and not yet seen
 	// come back, so a reciprocal invitation needs no secret typed. See
 	// offered.go.
@@ -154,10 +160,11 @@ func New(log *slog.Logger, reg Registry, bus *events.Bus, opts Options) (*Server
 	}
 
 	s := &Server{
-		opts:   opts,
-		log:    logging.Subsystem(log, "server"),
-		health: reg,
-		bus:    bus,
+		opts:      opts,
+		log:       logging.Subsystem(log, "server"),
+		health:    reg,
+		bus:       bus,
+		startedAt: time.Now().UTC(),
 	}
 	s.baseCtx, s.cancelBase = context.WithCancel(context.Background())
 
@@ -208,6 +215,8 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/links", s.requireSession(s.handleLinks)},
 		{"POST /api/peers/{id}/password", s.requireSession(s.handleIssueCredential)},
 		{"DELETE /api/peers/{id}/password", s.requireSession(s.handleRevokeCredential)},
+		{"GET /api/admin", s.requireSession(s.handleAdmin)},
+		{"PUT /api/admin/callsigns", s.requireSession(s.handleCallsigns)},
 		{"POST /api/restart", s.requireSession(s.handleRestart)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
 		{"POST /api/links/offer-link", s.requireSession(s.handleOfferLink)},
@@ -273,6 +282,9 @@ func (s *Server) handler() http.Handler {
 		// The page itself is served to anyone; it shows a sign-in prompt rather
 		// than a form when nobody is. The endpoints behind it are what require
 		// a session, which is where the decision belongs.
+		mux.HandleFunc("GET /server", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/admin.html", http.StatusFound)
+		})
 		mux.HandleFunc("GET /access", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/access.html", http.StatusFound)
 		})

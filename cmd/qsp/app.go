@@ -558,7 +558,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// started without -config runs on defaults and cannot be reconfigured from
 	// a browser, which the console reports rather than discovering at save.
 
-	manager := &configManager{current: cfg}
+	manager := &configManager{current: cfg, startup: cfg}
 	a.configManager = manager
 	if configPath != "" {
 		writer, werr := config.NewWriter(configPath)

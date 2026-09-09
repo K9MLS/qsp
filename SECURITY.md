@@ -239,6 +239,23 @@ an audit event naming the far end's callsign and address whether it succeeds or
 fails. A failed acceptance is worth having later; its absence would suggest
 nobody tried.
 
+`/api/admin`, on GET, assembles the administration page: what this server is,
+whether the running process matches its saved configuration, and what is running
+that nobody configured per link (ADR-0055). It reads rather than computes — the
+health report is the source for subsystem state, so the two cannot drift. The
+server identifier is returned **truncated and is not editable by any endpoint**,
+which is deliberate: "what everybody calls everybody else" and "an operator can
+change it" cannot both be true (ADR-0053).
+
+`/api/admin/callsigns`, on PUT, turns the callsign lookup on or off and sets
+the contact address. **It is the only setting the administration page may
+change**, under the rule that a page may edit a setting when it is the page that
+reports the problem — and, binding harder, may not otherwise. Enabling it
+without a contact address is refused rather than saved: the registry asks
+automated clients to identify themselves, so a lookup with no contact never
+runs, and a stored setting that says on and does nothing is the shape §7
+forbids.
+
 `/api/restart`, on POST, stops QSP so that its supervisor starts it again. It
 requires a session like every other administrative action, is recorded in the
 audit trail **before** it happens — a record written afterwards is one that

@@ -31,6 +31,10 @@ type ConfigManager interface {
 	Versions(ctx context.Context, limit int) ([]config.Version, error)
 	// Version returns one version by number.
 	Version(ctx context.Context, number int64) (config.Version, bool, error)
+	// PendingRestart names the settings the running process is not yet
+	// applying, because they need a restart to take effect. Empty means the
+	// running server and its configuration agree.
+	PendingRestart() []string
 }
 
 // configResponse is what GET /api/config returns.

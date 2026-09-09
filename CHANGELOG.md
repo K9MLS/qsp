@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **An administration page, ADR-0055 built.** `/server` in the console, one
+  endpoint behind it, and four of the record's five blocks — backup and restore
+  lands when ADR-0054 is built.
+
+  **Identity**: display name, callsign, version, uptime, and the truncated
+  server identifier. The version was read out of `journalctl` all of the
+  previous evening because there was nowhere on a page to look; the identifier
+  appeared in one log line that scrolled away.
+
+  **Agreement** is the block that earns the page: does the running process match
+  its saved configuration, and what differs. `configManager` now remembers the
+  configuration it started with, so the answer is *everything the running server
+  is not yet doing* rather than what the last save happened to change. Before
+  this it was a sentence beside whichever link was saved last, and nothing
+  anywhere added them up — it cost three round trips in one evening.
+
+  **Services** reads the health report rather than recomputing it. Health stays
+  the machine-readable subsystem check and this page is the operator-facing view
+  of the same facts; two sources would be two things that drift.
+
+  **Callsign lookup** is the one setting the page edits, under the rule that a
+  page may edit a setting when it is the page that reports the problem. Enabling
+  it without a contact address is refused rather than saved: the registry asks
+  automated clients to identify themselves, so a lookup with no contact never
+  runs, and a stored setting that says on and does nothing is the shape §7
+  forbids.
+
+  Uptime is shown with the start time beside it — a server restarted four
+  minutes ago is correct and reads as a fault without it. The restart button
+  appears only where the page has just said a restart is waiting, and arms on
+  the first click.
+
+  **A test counts the page's inputs.** Crude on purpose: every field added here
+  has to be argued for against the record, and a test that only checked the
+  callsign fields existed would not notice a fifth arriving beside them.
+
+- Two console gates caught this as it was written, both correctly: the
+  no-vendoring script allowlist, which is what ADR-0025's no-dependency
+  guarantee rests on, and the rule that every class a page uses must be defined
+  by a stylesheet that page loads. The one new class went into `console.css`
+  rather than a new sheet.
+
 ### Documentation
 
 - **Handover, standing brief and §8a brought up to 0303.** The head names both
