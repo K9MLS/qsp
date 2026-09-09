@@ -228,5 +228,6 @@ in hours rather than minutes or days.
 fragile besides.
 
 **Nothing — clubs stay isolated.** Rejected. A network that cannot reach the
-wider DMR world is a worse product than a commercial DMR server for the one thing a commercial DMR server is
+wider DMR world is a worse product than a commercial DMR server, for the one
+thing such a server is
 bought for.

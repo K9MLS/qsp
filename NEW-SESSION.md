@@ -5,8 +5,9 @@ Paste the text below into a new chat and attach `qsp-handoff.bundle`.
 ---
 
 I'm Mike, K9MLS. I'm building **QSP**, a free open-source DMR network routing
-and linking server in pure Go — a community alternative to commercial a commercial DMR server
-software. The repository is `github.com/K9MLS/qsp`.
+and linking server in pure Go — a free, self-hosted alternative to the
+commercial DMR servers clubs otherwise buy. The repository is
+`github.com/K9MLS/qsp`.
 
 **It carries a real network.** Three stations use it: mine in Denton, Texas,
 KB9TYC's in Wisconsin, Wisconsin, and AD0MI's in Post Falls, Idaho. Voice, private

@@ -20,7 +20,8 @@ carries, who it links to, and what it accepts — and servers cooperate through 
 shared protocol rather than through anybody's central configuration. There is no
 QSP headquarters, no registry a club must join, no operator whose server is more
 authoritative than another's. That is not an aspiration; it is what makes QSP a
-community alternative to a a commercial DMR server rather than another thing to be admitted to.
+community alternative to a commercial server rather than another thing to be
+admitted to.
 
 Three decisions taken on 2026-09-08 read differently in that light, and the
 error in each is the same: **the sender was made responsible for what the

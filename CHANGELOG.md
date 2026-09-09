@@ -4,6 +4,41 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **The repository names no competitor.** Every mention is gone — from the
+  README, both blueprints, the standing brief, PROJECT_MEMORY, eleven decision
+  records and this changelog's own history. **No Go source ever mentioned it**;
+  the apparent hits were the `ipscbridge` package name, which is untouched, as
+  is the `Bridge` configuration type.
+
+  **The reasoning those mentions carried was kept and reworded, not deleted.**
+  ADR-0031 explains why a fingerprint uses fields that already exist: a frame
+  must stay parseable by whatever relays it at the far end of somebody else's
+  network. That constraint is the whole justification for the rule, and it
+  survives without a vendor named. So does *QSP's routing model is the
+  commercial one, not BrandMeister's*, which is the single sentence explaining
+  why `enabled`, `schedule` and `triggers` exist.
+
+  A blind find-and-replace to "Bridge" was considered and refused: `Bridge` is
+  already a configuration type, a package and a console page in this project, so
+  it would have put confusing sentences into eleven records to avoid a name.
+
+- **The parity document is now `docs/CAPABILITIES.md`**, and correcting it
+  mattered more than renaming it. It called IPSC missing, private calls
+  untested, outbound peer mode unbuilt and a vocoder planned — every one of
+  those wrong now. Its vocabulary section existed only to map one product's
+  nouns onto QSP's, so it went with the name.
+
+### Added
+
+- **A gate against the name returning.** It reads every source and documentation
+  file in the repository and fails on the product name in any spelling. Word
+  bounded on both sides, because an earlier version matched `func bridgeState` —
+  the *c* of `func`, a space, then `bridge` — and must never see `ipscbridge`,
+  where the *c* is preceded by an *s*. Both breaks were checked: the name back
+  in the README, and back in a Go comment.
+
 ### Added
 
 - **Two more checks on the console's JavaScript**, both reconstructing defects
@@ -1144,7 +1179,7 @@ which any test would have found.
   cooperate through a shared protocol rather than anyone's central
   configuration. No headquarters, no registry a club must join, no server more
   authoritative than another's. That is what makes QSP an alternative to a
-  a commercial DMR server rather than another thing to be admitted to.
+  commercial server rather than another thing to be admitted to.
 
   It corrects three decisions taken the same day, and the error in each is the
   same: **the sender was made responsible for what the receiver gets.**
@@ -3218,7 +3253,7 @@ them findable by reading the code.
 ### Added
 - **[ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md): QSP is the master, and a
   club runs no second one.** Every Pi-Star and every Motorola repeater points at
-  QSP. No Motorola master repeater alongside it, no a commercial DMR server, no second thing to
+  QSP. No Motorola master repeater alongside it, nothing commercial, no second thing to
   configure and keep alive.
 
   **QSP is never an IPSC peer in production**, which removes half a protocol
@@ -4247,7 +4282,7 @@ them findable by reading the code.
   the payload" is exactly the sentence that ends with somebody decoding and
   re-encoding audio for convenience. If reconstruction cannot be made lossless,
   IPSC voice does not ship — a club whose audio is quietly worse than their old
-  a commercial DMR server blames the radio.
+  server they replaced blames the radio.
 
 - **The voice payload layout**, and a `Payload` accessor for it: frame class at
   byte 30 (header, voice or terminator), a length at 31, a payload class at 32,
@@ -5646,7 +5681,7 @@ sides are in sync.
   preserves as `Trailing`, and putting one there would produce frames that
   behave differently depending on who relays them, failing at the far end of
   somebody else's network. The rule lives entirely in the receiver, so a QSP
-  peering with a a commercial DMR server is protected by it too.
+  peering with somebody else's server is protected by it too.
 
   Also recorded: parrot must take a fresh StreamID, or a replay is dropped as a
   loop of what it is replaying; federation stays shallow, because each hop adds
@@ -5705,13 +5740,13 @@ sides are in sync.
   exact field — including which timeslot — so an error points at the line to
   edit rather than at the block.
 
-- **[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md)**, which states
-  a commercial DMR server's architecture in a commercial DMR server's own vocabulary, maps it onto QSP's
-  layers, and says where the line is today. QSP is ahead on scheduling, on the
-  repeat model and on being free; behind on access control, per-peer
-  subscription, and being administrable without SSH.
+- **A capabilities reference**, stating what QSP does, mapping the vocabulary
+  an operator arrives with onto QSP's layers, and saying where the line is
+  today. QSP is ahead on scheduling, on the repeat model and on being free;
+  behind on access control, per-peer subscription, and being administrable
+  without SSH.
 
-  It also names three things a commercial DMR server parity does not cover: outbound peer
+  It also names three things that reference does not cover: outbound peer
   mode, which is the single largest gap by reach and is what would let QSP
   dial XLX, DMR+ or IPSC2 rather than only accept connections; IPSC, which is
   what makes QSP a drop-in for clubs running Motorola repeaters rather than a
@@ -7237,7 +7272,8 @@ so it stops being rediscovered.
   configuration rather than design-time questions. That mistake was made three
   times in one session.
 - **How QSP relates to the existing networks is recorded.** Its routing model is
-  a commercial DMR server's — always-on, scheduled, on-demand — which is `enabled`, `schedule`
+  the commercial one — always-on, scheduled, on-demand — which is `enabled`,
+  `schedule`
   and `triggers`, built before anyone checked. BrandMeister's subscription model
   is documented as a difference rather than a defect, with the one real gap
   named: QSP's PTT trigger opens a bridge network-wide, where a dynamic

@@ -151,7 +151,8 @@ regenerated from BrandMeister's API hourly, so anything committed here is stale
 within the week. Worse, the numbers are not portable: a talkgroup number on one
 network is not the same talkgroup on another, and DMR-MARC and BrandMeister
 differ on numbers in the same range. Bundling one network's list would make QSP
-quietly wrong for every a commercial DMR server network, every club network, and everyone who
+quietly wrong for every commercially served network, every club network, and
+everyone who
 is not on BrandMeister — which is §0's rule with a specific number attached.
 
 A talkgroup list belongs to the operator. When the admin interface exists it may

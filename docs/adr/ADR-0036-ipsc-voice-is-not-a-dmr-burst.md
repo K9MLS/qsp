@@ -41,7 +41,8 @@ that ends with somebody decoding and re-encoding audio for convenience.
 
 **If reconstruction cannot be made lossless, IPSC voice does not ship.** A
 degraded bridge is worse than no bridge: a club that cannot use QSP knows it,
-and a club whose audio is quietly worse than their old a commercial DMR server blames the radio.
+and a club whose audio is quietly worse than the server they replaced blames the
+radio.
 
 ## Consequences
 

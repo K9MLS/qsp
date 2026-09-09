@@ -52,9 +52,9 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 ## Why
 
 Every tool in this space is technically capable and operationally miserable.
-a commercial DMR server is proprietary, expensive, and ships a 128-page manual. The open
-alternatives require hand-editing config files and matching port numbers between
-INI stanzas whose field names disagree with each other.
+The commercial options are proprietary and dealer-quoted. The open alternatives
+require hand-editing config files and matching port numbers between INI stanzas
+whose field names disagree with each other.
 
 The protocols are solved. The operations are not. QSP is the operations layer.
 

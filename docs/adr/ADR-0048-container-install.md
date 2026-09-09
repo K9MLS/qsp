@@ -5,7 +5,8 @@
 
 ## Context
 
-QSP is meant to be a free alternative to a commercial DMR server for the amateur community, and
+QSP is meant to be a free alternative to commercial DMR servers for the amateur
+community, and
 today the only way to run it is to build it from source with a Go toolchain and
 write a configuration file by hand. That is a reasonable bar for the three
 people on this network and an unreasonable one for the audience the project

@@ -18,7 +18,7 @@ decoder already preserves these faithfully. `hbp.Data` carries `FrameType` and
 capture never established its meaning. So the wire is carried; the meaning is
 not acted on.
 
-These arrived as separate items on the a commercial DMR server parity list. They are recorded
+These arrived as separate items on the capability list. They are recorded
 together because they turn out to need the same missing piece.
 
 ## The thing they share

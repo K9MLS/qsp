@@ -16,7 +16,8 @@ both anyway.
 
 ADR-0019 named two established answers and did not choose between them.
 
-**a commercial DMR server** has the administrator define talkgroups centrally, each
+**A commercial DMR server** has the administrator define talkgroups centrally,
+each
 always-on, scheduled, or activated by PTT. **QSP already has this**: it is what
 bridges, `dmr.schedule` and `dmr.triggers` are, and ADR-0019 records that the
 work is correct. Nothing here replaces it.

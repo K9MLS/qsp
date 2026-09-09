@@ -160,14 +160,16 @@ The obvious fix is a hop count, and it is available: the homebrew frame has
 bytes QSP already preserves verbatim as `Trailing`.
 
 **No.** QSP's value is that it speaks what MMDVMHost, BrandMeister, HBlink and
-a commercial DMR server already speak. A frame carrying a field only QSP understands is a frame
+commercial DMR servers already speak. A frame carrying a field only QSP
+understands is a frame
 that behaves differently depending on who relays it, and the failure appears at
 the far end of somebody else's network where nobody can debug it. ADR-0010 keeps
 codecs parsing what is there rather than interpreting it, and this is the same
 discipline pointed outward.
 
 The fingerprint uses fields that already exist and already mean this. Nothing
-downstream has to change, and a QSP peering with a a commercial DMR server is protected by the
+downstream has to change, and a QSP peering with somebody else's server is
+protected by the
 same rule as one peering with a QSP — because the rule lives entirely in the
 receiver.
 

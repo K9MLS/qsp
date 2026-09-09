@@ -35,7 +35,7 @@ Every tool in this space is technically capable and operationally miserable.
 
 | Tool | Technically | Operationally |
 |---|---|---|
-| **a commercial DMR server** | Excellent | Proprietary, dealer-quoted, 128-page manual, hostile UI |
+| Commercial servers | Excellent | Proprietary, dealer-quoted, and administered through a manual |
 | HBlink3/4 | Correct, solid | Hand-edit `.cfg` and `rules.py`. README says "for tinkerers" |
 | FreeDMR | Works | Docker + 5 containers. Breaks → debug container networking |
 | DMRlink | Real IPSC implementation | No scheduling, no triggering, all rules static (author's own FAQ) |
@@ -91,7 +91,7 @@ Published guides warn about this specific footgun. That is not a documentation p
         (UDP 62035)                     │   VOCODER POOL (§7)   │
         → QSP instances                 │  AMBE ⇄ PCM, N chans  │
         → BrandMeister                  │  allocate / queue     │
-        → a commercial DMR server via cc2obp           └───────────┬───────────┘
+        → other networks                └───────────┬───────────┘
                                                     │
                                         ┌───────────▼───────────┐
                                         │     USRP AUDIO BUS    │
@@ -107,7 +107,7 @@ Published guides warn about this specific footgun. That is not a documentation p
 
 ### The headline feature
 
-**Scheduled and PTT-triggered bridging.** a commercial DMR server offers talkgroups on always-on, scheduled, or on-demand (PTT) basis. Every free alternative is static-only. A club wanting a net linked Tuesdays 20:00–21:30, or a talkgroup that bridges only when someone keys up, currently has to buy a a commercial DMR server.
+**Scheduled and PTT-triggered bridging.** Commercial servers offer talkgroups on an always-on, scheduled, or on-demand (PTT) basis. Every free alternative is static-only. A club wanting a net linked Tuesdays 20:00–21:30, or a talkgroup that bridges only when someone keys up, currently has to buy one.
 
 ---
 
@@ -374,9 +374,9 @@ Tooltips alone fail: hover-dependent (dead on mobile) and they hide what the use
 - **USB passthrough** for vocoder dongles must be declared in Compose — another silent-failure source we detect explicitly.
 - **The health page says all of this in English**, with the fix.
 
-### Why this beats a a commercial DMR server
+### Why this beats buying one
 
-| | a commercial DMR server | QSP |
+| | Commercial | QSP |
 |---|---|---|
 | Repeater count | Licensed tier | Unlimited |
 | Cost to add a peer | Purchase | Free |
@@ -385,7 +385,7 @@ Tooltips alone fail: hover-dependent (dead on mobile) and they hide what the use
 | Redundancy | Buy a second box | Another container anywhere |
 | **Staging instance** | Buy another | `docker compose -f test.yml up` |
 
-**Nobody stands up a test a commercial DMR server.** Every QSP club gets one free — so changes get tested before they hit the repeaters.
+**Nobody stands up a second commercial server to test against.** Every QSP club gets one free — so changes get tested before they hit the repeaters.
 
 ---
 
@@ -443,7 +443,7 @@ Simple/Advanced progressive disclosure. Everything adjustable; every field shows
 5. **Per-repeater transcoded-audio refusal (§8) — is that the right default?** We default to *refuse*. Too conservative?
 6. **Scheduled bridging — what's the real use case beyond nets?** And what should the calendar look like to someone running one?
 7. **PTT-triggered bridging — right idle timeout, per-talkgroup or global?**
-8. **What's the worst config mistake you've personally made** on HBlink / a commercial DMR server / DVM / DVSwitch? We want each one *structurally impossible*, not documented. **If you answer one question, make it this one.**
+8. **What's the worst config mistake you've personally made** on HBlink / DVM / DVSwitch, or a commercial server? We want each one *structurally impossible*, not documented. **If you answer one question, make it this one.**
 9. **Test hardware.** DMR hotspots, MMDVM repeaters, P25 gear, Quantars, vocoder dongles — who has what?
 10. **Public hosted instance?** Reputation and traffic play, but a permanent support and moderation commitment.
 

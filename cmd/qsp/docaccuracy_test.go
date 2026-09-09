@@ -533,3 +533,61 @@ func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRepositoryNamesNoCompetitor keeps a decision that is the operator's to
+// make rather than a matter of taste.
+//
+// **QSP is not defined by what it is an alternative to.** Naming a commercial
+// product throughout the record makes the project read as a comparison rather
+// than as a thing in its own right, dates badly, and is the first impression a
+// stranger gets when the repository is published.
+//
+// The reasoning those mentions carried has been kept and reworded: a frame must
+// stay parseable by whatever relays it, and the routing model is the commercial
+// one rather than BrandMeister's. Neither needs a vendor named to make its
+// point. This check exists so the name does not drift back in a paragraph
+// written months from now.
+func TestTheRepositoryNamesNoCompetitor(t *testing.T) {
+	// The package name `ipscbridge` is not this; the pattern is written to see
+	// the difference rather than to be sensitive to it.
+	// **Word-bounded on both sides**, or it matches innocent things: an earlier
+	// version had no leading boundary and flagged `func bridgeState` — the c of
+	// func, a space, then bridge. It must also not see the ipscbridge package,
+	// where the c is preceded by an s.
+	banned := regexp.MustCompile(`(?i)\bc[-\s]?bridge\b`)
+
+	var checked int
+	err := filepath.Walk("../..", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || info.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch filepath.Ext(path) {
+		case ".go", ".md", ".js", ".html", ".css", ".json", ".yml", ".yaml":
+		default:
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		checked++
+		for i, line := range strings.Split(string(body), "\n") {
+			if banned.MatchString(line) {
+				t.Errorf("%s:%d names a competitor: %q", path, i+1, strings.TrimSpace(line))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the repository: %v", err)
+	}
+	if checked < 50 {
+		t.Fatalf("only %d files read; this test would pass by finding nothing", checked)
+	}
+}

@@ -219,7 +219,7 @@ carries, so the mismatch is legible in seconds rather than a day.
 reconcile upstreams today, which is tolerable when a link is a line in a file
 and is not when a link is a live connection that drops and returns on its own.
 Telling a club administrator that adding a link means dropping every station on
-their network is the a commercial DMR server-shaped answer. This is where that debt comes due.
+their network is the commercial answer. This is where that debt comes due.
 
 **OpenBridge stays, narrowed.** BrandMeister and DMR+ will never speak anything
 else and forcing TS1 is correct there. It stops being how QSP servers reach each

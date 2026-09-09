@@ -57,9 +57,10 @@ not workable at scale.
 **3. Talkgroup subscription.** Which peers receive which talkgroups. Two models
 exist and they are genuinely different. BrandMeister attaches talkgroups
 per-peer — static, dynamic and auto-static, with dynamic created by transmitting
-and timing out. a commercial DMR server has the administrator define talkgroups centrally, with
+and timing out. A commercial DMR server has the administrator define talkgroups
+centrally, with
 always-on, scheduled or PTT activation. **QSP's existing schedule and trigger
-work is the a commercial DMR server model and is correct**; it was simply built on top of
+work is the commercial model and is correct**; it was simply built on top of
 nothing.
 
 **4. Bridging.** Connecting this master to other systems: another master, an

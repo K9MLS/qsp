@@ -28,8 +28,8 @@ mechanism for everyone; validate it against the equipment in the room.
 
 ## 1. What QSP is
 
-**A DMR call-routing server for amateur radio: a free, open alternative to
-a commercial DMR server.**
+**A DMR call-routing server for amateur radio: a free, open alternative to the
+commercial servers clubs otherwise buy.**
 
 The near-term deliverable is a private club network for hotspots — fifty to a
 hundred of them — that can also link outward to the wider DMR world. The
@@ -39,8 +39,8 @@ rather than a specialist.
 
 ## 2. Why this exists
 
-a commercial DMR server is the incumbent and it is commercial. Its moat is not capability, it
-is that networks have already paid the setup cost and will not pay it twice.
+The incumbents are commercial. Their moat is not capability, it is that
+networks have already paid the setup cost and will not pay it twice.
 
 A free alternative competes on the twenty minutes a club officer will spend
 before concluding it does not work. **The evidence for what that means is this
@@ -55,12 +55,13 @@ arrived. A stranger hitting either concludes the software is broken.
 Understanding this stopped a wrong turn, so it is recorded rather than
 rediscovered.
 
-### QSP's routing model is a commercial DMR server's, not BrandMeister's
+### QSP's routing model is the commercial one, not BrandMeister's
 
-The a commercial DMR server manages talkgroups on an **always-on, scheduled, or on-demand
-(PTT)** basis. That is exactly QSP's `enabled`, `schedule` and `triggers` — the
-alignment is complete, and it was built before anyone checked. A a commercial DMR server is a
-point-to-multipoint router, similar to VLAN trunking, with talkgroups as the
+A commercial server manages talkgroups on an **always-on, scheduled, or
+on-demand (PTT)** basis. That is exactly QSP's `enabled`, `schedule` and
+`triggers` — the alignment is complete, and it was built before anyone checked.
+Such a server is a point-to-multipoint router, similar to VLAN trunking, with
+talkgroups as the
 control points carrying traffic, routing and timers that hold off other traffic
 on a timeslot. That is ADR-0013's pure routing decision plus ADR-0014's
 contention.
@@ -74,7 +75,7 @@ transmitting, times out after ~15 minutes without local traffic), and
 **auto-static** (hotspot-only; persists until the user keys a different
 talkgroup; TG 4000 clears everything).
 
-**QSP follows the a commercial DMR server model:** the administrator sets the static
+**QSP follows the commercial model:** the administrator sets the static
 talkgroups; users select among them by programming their subscriber radios.
 
 **Known gap.** QSP's PTT trigger opens a bridge **network-wide**. On
@@ -108,8 +109,8 @@ blocks — a club may bridge to BrandMeister *and* to a neighbouring QSP.
 ### IPSC: for real repeaters
 
 Motorola XPR8300, XPR8400, SLR7500 and MTR3000 are what club sites actually run,
-and they speak IPSC. **This is what makes QSP a a commercial DMR server alternative rather than
-a hotspot server.**
+and they speak IPSC. **This is what makes QSP an alternative to a commercial
+server rather than a hotspot server.**
 
 Both directions are needed, because both exist in the wild: QSP as **IPSC
 master**, with repeaters registering to it, and QSP as **IPSC peer**, joining an
@@ -148,8 +149,8 @@ Blocked until IPSC lands.
 
 ## 6. Deployment
 
-**The target is a server or VM, not a Raspberry Pi.** a commercial DMR server is server
-software and that is the right precedent. A club network with upstream links,
+**The target is a server or VM, not a Raspberry Pi.** The commercial products
+are server software and that is the right precedent. A club network with upstream links,
 persistence and a hundred peers deserves more than a Pi, and a 4-vCPU VM is the
 honest deployment target.
 
@@ -255,7 +256,7 @@ possible and needs an ADR.
 - Public internet exposure without a proxy: there is no authentication, and
   `/api/peers` discloses callsigns, radio IDs and addresses
 - A mobile app. The console must work in a phone browser; that is different
-- Migration tooling from a commercial DMR server
+- Migration tooling from other servers
 
 ## 13. Still open
 

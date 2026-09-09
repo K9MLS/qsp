@@ -49,8 +49,9 @@ A free, self-hosted DMR linking server for amateur radio. GPL-3.0. Copyright
 K9MLS; employer clearance granted 2026-08-23.
 
 The gap it fills: the protocols in this space are solved, the operations are
-not. a commercial DMR server is proprietary and dealer-quoted; the open alternatives require
-hand-editing INI files whose field names disagree with each other.
+not. The commercial options are proprietary and dealer-quoted; the open
+alternatives require hand-editing INI files whose field names disagree with each
+other.
 
 **The feature that justifies its existence is scheduled and PTT-triggered
 bridging.** Both are now implemented.
@@ -748,7 +749,8 @@ and passwords are all administrator configuration. When a question sounds like
 "which talkgroup does the club want?", the answer is "that is a field, not a
 decision". K9MLS's club is the test bed, not the specification.
 
-**QSP's routing model is a commercial DMR server's**, not BrandMeister's: always-on, scheduled
+**QSP's routing model is the commercial one**, not BrandMeister's: always-on,
+scheduled
 and on-demand talkgroup management, which is `enabled`, `schedule` and
 `triggers`. The administrator sets static talkgroups; users choose among them by
 programming their radios.
@@ -1671,8 +1673,9 @@ need a second opinion from a forum.
 
 - **QSP is the master and a club runs no second one**
   ([ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md)). Every Pi-Star and every
-  Motorola repeater points at QSP; no Motorola master repeater alongside, no
-  a commercial DMR server. **QSP is never an IPSC peer in production**, which removes half the
+  Motorola repeater points at QSP; no Motorola master repeater alongside, and
+  nothing commercial. **QSP is never an IPSC peer in production**, which removes
+  half the
   protocol from the project's obligations permanently.
 
   It is replace, not augment: a club whose existing IPSC master they cannot

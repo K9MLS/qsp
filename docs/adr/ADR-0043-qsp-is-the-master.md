@@ -15,7 +15,8 @@ bridge was one-way.
 IP Site Connect has a master and it has peers. Nothing in the protocol requires
 that the master be QSP. A club could run a Motorola repeater in the master role,
 point its other repeaters at that, and hang QSP off the side as a peer — which
-is roughly how a a commercial DMR server is often deployed, and it is the shape a club with an
+is roughly how a commercial server is often deployed, and it is the shape a club
+with an
 existing IPSC system would reach for first.
 
 Until now QSP had no position on this. It happened to be a master because that
@@ -28,7 +29,8 @@ answer a repeater rather than to ask a master anything.
 never a peer in production.**
 
 Every Pi-Star and every Motorola repeater points at QSP. There is no Motorola
-master repeater alongside it, no a commercial DMR server, and no second thing to configure and
+master repeater alongside it, nothing commercial, and no second thing to
+configure and
 keep alive.
 
 ### Why authority belongs here
