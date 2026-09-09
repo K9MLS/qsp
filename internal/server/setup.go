@@ -255,3 +255,35 @@ func (s *Server) PrepareSetup(ctx context.Context) error {
 	_ = time.Now
 	return nil
 }
+
+// beforeSetup sends every page to the setup wizard until an administrator
+// exists.
+//
+// **ADR-0056 says every path redirects to it, and the first build of the wizard
+// did not do this** — the page existed and nothing sent anybody there, so it
+// was reachable only by typing the URL. An operator installing QSP landed on
+// Overview and had no way to learn what they were missing. Fixing the half that
+// is called, again.
+//
+// Only pages, never the API: an XHR answered with a redirect to HTML is a
+// confusing failure rather than a helpful one, and the setup endpoints already
+// answer for themselves.
+func (s *Server) beforeSetup(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+
+		// The wizard itself, and what it needs to render, must not redirect to
+		// themselves — a loop that leaves an operator with a browser error and
+		// no idea why.
+		exempt := strings.HasPrefix(path, "/setup") ||
+			strings.HasSuffix(path, ".css") ||
+			strings.HasSuffix(path, ".js") ||
+			strings.HasSuffix(path, ".svg")
+
+		if !exempt && s.setupNeeded(r.Context()) {
+			http.Redirect(w, r, "/setup", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

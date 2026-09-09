@@ -324,7 +324,7 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("GET /join", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/join.html", http.StatusFound)
 		})
-		mux.Handle("GET /", revalidated(http.FileServerFS(s.opts.ConsoleAssets)))
+		mux.Handle("GET /", s.beforeSetup(revalidated(http.FileServerFS(s.opts.ConsoleAssets))))
 	} else {
 		mux.HandleFunc("GET /", s.handleNoConsole)
 	}

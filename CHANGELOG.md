@@ -4,6 +4,28 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The setup wizard was unreachable.** ADR-0056 says every path redirects to it
+  until an administrator exists, and 0322 did not build the redirect — the page
+  existed and nothing sent anybody there, so it was reachable only by typing the
+  URL. An operator installing QSP landed on Overview with no way to learn what
+  they were missing.
+
+  **Found by installing it**, which is the only way it could have been found:
+  every gate passed, the endpoint answered correctly, and the page rendered
+  perfectly for anybody who already knew where it was. It is the same shape as
+  the version going to the endpoint nothing reads — the half that is named built
+  and the half that is called forgotten, now three times this week.
+
+  Pages redirect; the API does not, because an XHR answered with a redirect to
+  HTML is a confusing failure rather than a helpful one. The wizard and the
+  stylesheets, scripts and icon it needs are exempt, or an operator gets a
+  redirect loop and no idea why.
+
+  Both halves were broken to prove the test: the redirect removed, which is what
+  shipped, and the exemption removed, which loops.
+
 ### Added
 
 - **A setup page, so the first thing an operator does is not in a terminal**
