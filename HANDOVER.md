@@ -1,4 +1,4 @@
-# Handover, 2026-09-09 afternoon
+# Handover, 2026-09-09 evening
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside, then **ADR-0053** (three names
@@ -12,17 +12,48 @@ of what happened, not something to look up. `origin/main` is `ad1acc8`. Both
 servers and this repository are on the rewritten history; nothing else has a
 copy.
 
-Version **0.1.161**, patches 0261–0319. **Both servers should be on 0.1.156** —
-check, because four deploys on 2026-09-09 did not take, every one a pasted block
-eaten by the `sudo` password prompt. Everything from 0315 is documentation and
-tests, so the servers being four versions behind the tree is expected rather
-than a fault. `origin/main` is current.
+Version **0.1.167**, patches 0261–0325. **Both servers should be on 0.1.166** —
+check, because deploys have silently not taken several times, every one a pasted
+block eaten by the `sudo` password prompt. `sudo -v` first, always.
 
 Check a deploy by asking the running process: the `starting` log line on
 production, a string unique to the build in the container. Run `cat VERSION`
 after every `git am`. And **`sudo -v` before any block containing `sudo`** — the
 password prompt eats the next pasted line, which happened four times today and
 was caught by the version check every time.
+
+## What the afternoon of 2026-09-09 did
+
+**The first administrator is made in a browser** (ADR-0056, amending ADR-0026),
+and every account after it from the console.
+
+- **0320** — the README, which described a project three weeks out of date with
+  four claims that were the opposite of true, including *no access control yet*
+  and *every endpoint is read-only*.
+- **0321** — ADR-0056 and the account layer: listing, reset, removal, with the
+  last administrator unremovable and removal ending sessions in one transaction.
+- **0322** — the setup page and the Administrators block.
+- **0323** — **the wizard was unreachable**: the record says every path
+  redirects to it and the redirect was never built.
+- **0324** — **four documents still sent operators to a shell**, including the
+  message a fresh install prints before anything else.
+
+**The name of a commercial product is gone from the repository**, working tree
+and history both — 0318 for the tree, then a `filter-repo` rewrite of 325
+commits, verified three ways in a clone before it was force-pushed.
+
+**And four gates now exist that did not this morning**: a console script must
+define every function it calls, an element it reaches for must exist on the
+pages that load it, an endpoint it calls must be registered, and nothing may
+tell an operator to make the first account from a shell. Every one reconstructs
+a defect that actually shipped.
+
+**The pattern of the day, stated once because it recurred four times**: build
+the half that is named and forget the half that is called. The version went to
+the endpoint nothing reads. The sidebar kept its own list of unbuilt
+subsystems. The wizard had no link to it. Four documents kept the old
+instruction. **Every one was found by the operator using the thing**, and none
+by any test — though three of the four now have one.
 
 ## What 2026-09-09 did
 
@@ -208,41 +239,50 @@ clicking through a console rather than by a test.
 
 ## Start here
 
-**Look at the console before anything else.** Three defects today shipped
-through a clean gate chain and a correct deploy, and all three were found by an
-operator looking at a page. Sign in, walk every page, and treat anything that
-reads wrong as real.
+**Use the console before anything else.** Every defect that reached an operator
+this week was found that way and none by a test: three console defects on
+2026-09-09 alone, plus a wizard nothing linked to and four documents giving an
+instruction that had been wrong for hours. Sign in, walk every page, and treat
+anything that reads wrong as real.
+
+Three things are built and have never been used once:
+
+- **A backup download and a restore.** The button exists, nobody has pressed it,
+  and no configuration has been restored from an export on any machine.
+- **The Administrators block.** Add a second account and confirm Remove appears
+  on both — with one account there is deliberately no Remove button at all.
+- **The restart button**, on the Links page and on This Server.
 
 **Then Pete's server.** Nothing blocks it. He owes two answers: whether he can
 get UDP 62031 reachable without CGNAT, and which DMR ID this server should
 present to his. **He listens and this server dials**, which makes him the
-offering side — the accept form runs from the direction it never has, across the
-internet rather than one LAN, so relaying, deduplication and a real network path
-are tested together.
+offering side — so the accept form runs from the direction it never has, across
+the internet rather than one LAN, and relaying, deduplication and a real network
+path are tested together.
 
-The install path agreed with him: build the image on Fedora, `docker save`, copy,
-`docker load`. He compiles nothing and runs the bytes that were tested, and gets
-the source as well — GPLv3, and his eyes on it are wanted.
+The install path agreed with him: build the image on Fedora, `docker save`,
+copy, `docker load`. He compiles nothing and runs the bytes that were tested,
+and gets the source as well — GPLv3, and his eyes on it are wanted.
 
-**Then Zello, when the dongle arrives.** Prove the chain through MMDVM_Bridge
-first, which needs no QSP code. The connector QSP would eventually write is
-**AMBE_AUDIO**, not USRP — see the correction above — and it wants an ADR before
-code. One Zello channel to one talkgroup is a connector; several is a routing
-question, and the bridge machinery may already be the right shape.
+**Then Zello, when the DVstick 30 arrives.** Prove the chain through
+MMDVM_Bridge first; it needs no QSP code. See the correction below: QSP would
+speak **AMBE_AUDIO**, not USRP.
 
 **Deferred by decision, not forgotten:**
 
 - **Private calls across a link.** They resolve through the subscriber table,
-  links are never targets for one, and `DeliverFromUpstream` records nothing —
-  so production can call a radio behind the test server and not the reverse. It
-  needs an ADR: a private call sent to a link may chase a radio that has moved.
+  links are never targets for one, and a frame arriving from a link records no
+  location — so a call crosses one way only. Needs a record before code.
 - **A radio's callsign does not cross a link.** The server that hears a radio
-  knows its callsign because the station said so at login, and discards it at
-  the link, leaving the far end to guess from a database.
+  knows the callsign because the station said so at login, and discards it.
 - **Defaulting the callsign lookup on.** `config.Validate` refuses the lookup
   enabled with no contact address, so a default of on makes a fresh install
-  refuse to start. Doing it means relaxing that rule so the state loads and is
-  reported instead. The operator decided the toggle on the page is enough.
+  refuse to start. The operator decided the toggle on the page is enough.
+- **The code review**, one pass done of three. Pass one was what a stranger hits
+  first, and it found the README. Pass two is the protocol boundaries — anything
+  parsing bytes from an untrusted source, where a bug is a vulnerability. Pass
+  three is the unloved code: the IPSC panel never loaded in a browser, the
+  parrot, the scheduler.
 
 ## Two debts taken deliberately
 
@@ -416,6 +456,11 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   the next save.
 - **The administration page**, in a browser, on production.
 
+- **The setup wizard, from a clean install.** A fresh instance on Fedora with an
+  empty database redirected to it, took a callsign and a password with **no
+  token field**, and refused to run again afterwards. That is the loopback
+  exemption confirmed by something other than a test.
+
 ## Not proven
 
 - **Relaying and deduplication, on any machine.** Every test is a unit test and
@@ -441,6 +486,11 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 - **A restore.** The import path is built and no configuration has been
   restored from an export, on any machine. **A backup has not been downloaded
   either** — the button exists and nobody has pressed it.
+- **The setup token.** The wizard has only been used from loopback, so the token
+  path — the part that guards a server on a network — has never been exercised
+  by a person.
+- **A second administrator.** The Administrators block has been seen with one
+  account, which is the case where Remove is deliberately absent.
 - **The console's JavaScript, beyond one crude check.** ~1,500 lines, and the
   only thing verifying any of it is that a script defines the functions it
   calls. Three chrome defects today; the gate chain is Go and reads none of it.

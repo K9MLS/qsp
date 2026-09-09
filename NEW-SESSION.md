@@ -41,7 +41,13 @@ and deployed, and `/server` is where an operator asks what this server is and
 whether it matches its configuration. What is left before a second operator runs
 a server is nothing; `HANDOVER.md` opens on getting one running.
 
-**The console has about 1,500 lines of JavaScript and one check on any of it.**
+**The first administrator is made in a browser** (ADR-0056): a fresh server
+redirects every page to a setup form, gated by a one-time token that is not
+required from loopback. `qsp adduser` survives only as the recovery procedure
+for having lost every administrator.
+
+**The console has about 1,500 lines of JavaScript and four checks on it**, all
+written on 2026-09-09 and each reconstructing a defect that shipped.
 Three defects shipped there on 2026-09-09 through a clean `gofmt`, `vet`,
 `staticcheck` and `go test` — the gate chain is Go and reads none of it. Treat
 anything an operator says looks wrong on a page as real, immediately: every one

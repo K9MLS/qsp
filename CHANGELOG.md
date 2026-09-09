@@ -4,6 +4,34 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover and standing brief brought up to 0325.** Start here is: use the
+  console before anything else — every defect that reached an operator this week
+  was found that way and none by a test.
+
+  Three things are recorded as built and never once used: a backup download and
+  a restore, a second administrator, and the restart button.
+
+- **§8a: build the half that is named, forget the half that is called.** The
+  entry §8a already had was about *fixing* — find every place a value is
+  produced before changing one. The authoring version is worse, because nothing
+  is broken to draw attention: the feature simply does not exist and every check
+  passes. It happened four times on 2026-09-09 — the version on the wrong
+  endpoint, the sidebar's own list, a wizard nothing linked to, and four
+  documents giving a replaced instruction.
+
+  So: when adding anything a caller consumes, **open the caller** — not the
+  interface, not the handler, the code or page or document that must change for
+  the new thing to be reachable. And when a decision changes, **grep for the old
+  instruction rather than the new one**, because the search that finds what is
+  now wrong is not the one anybody's fingers reach for.
+
+- Newly recorded as proven: the setup wizard from a clean install, with no token
+  field on loopback — the exemption confirmed by something other than a test.
+  Newly not proven: the setup token itself, which has never been exercised by a
+  person, and a second administrator.
+
 ### Fixed
 
 - **Four documents went on telling operators to make the first account from a

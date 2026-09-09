@@ -2922,6 +2922,37 @@ Analog_Bridge has two sides: TLV frames carrying AMBE on the one an `xx_Bridge`
 connects to, and PCM over USRP on the other. Reading one stanza further would
 have settled it.
 
+### Build the half that is named, forget the half that is called
+
+**2026-09-09, four times.** The rule §8a already had was about *fixing* — find
+every place a value is produced before changing one. The authoring version is
+worse, because nothing is broken to draw attention to it: the feature simply
+does not exist and every check passes.
+
+- The version was added to the login response, which the console reads once,
+  rather than the session response, which it reads on every page load.
+- The vocoder pool was removed from the enumerable list and left in the
+  sidebar's hand-written one.
+- The setup wizard was built and nothing redirected to it: the record said
+  every path should, and the page was reachable only by typing the URL.
+- Four documents went on giving an instruction the wizard had replaced,
+  including the one a fresh install prints before anything else.
+
+**Every one was found by the operator using the thing, and none by a test** —
+because in each case the part that was built worked perfectly, and the tests
+were written against the part that was built.
+
+So, when adding anything a caller consumes: **open the caller.** Not the
+interface, not the handler, not the record — the code or the page or the
+document that has to change for the new thing to be reachable at all. A struct
+field that compiles, an endpoint that answers and a page that renders prove
+nothing about whether anybody can get to them.
+
+And when a decision changes: **grep for the old instruction, not for the new
+one.** Four documents said the old thing; one had been updated. The search that
+finds the other three is for what is now wrong, which is not the search
+anybody's fingers reach for.
+
 ### A rule written into a test does not reach the shell
 
 **2026-09-09.** A gate was written that morning to keep one product name out of
