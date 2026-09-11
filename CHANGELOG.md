@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **P25 could be configured and not switched on.** 0331 shipped the block, the
+  listener, the health check and the validator, and no page had a control — the
+  operator went looking in Network settings and it was not there.
+
+  **The fifth instance of one failure this week**: build the half that is named
+  and forget the half that is called. The others were the version on the
+  endpoint nothing reads, the sidebar's own list of unbuilt subsystems, a setup
+  wizard nothing linked to, and four documents giving a replaced instruction.
+  Every one was found by the operator using the thing.
+
+  Network settings has a P25 panel now — enable, listen address, callsign, and
+  an allow list of gateway callsigns, one per line. The panel says plainly that
+  this is **P25 over IP and not a Quantar link**, and that P25 traffic does not
+  reach DMR and will not, because passing IMBE through AMBE+2 would decode and
+  re-encode the audio.
+
+  The allow-list state line uses the same wording as the IPSC panel, including
+  the case that catches people: **empty answers every gateway that knows the
+  address.**
+
+### Added
+
+- **A gate that would have caught it five times.** It enumerates what the
+  program can be asked — any top-level configuration section with an `Enabled`
+  field is something an operator switches — and requires the console both to
+  offer a control and to write the value back, because a control that cannot
+  save is decoration.
+
+  It carries one exemption with its reason recorded: the DMR listener, because a
+  page that can switch off the core listener is a way to lock yourself out and
+  recover by editing JSON — the failure the console exists to end, arrived at
+  from the other side. An exemption list is how a gate stops being a gate, so
+  anything added has to be argued for in the same place.
+
 ### Added
 
 - **P25 over IP is wired in, and QSP is now a P25 reflector.** A `p25` block

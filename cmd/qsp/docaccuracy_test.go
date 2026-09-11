@@ -23,11 +23,13 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/k9mls/qsp/console"
+	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/server"
@@ -656,5 +658,86 @@ func TestNothingTellsAnOperatorToMakeTheFirstAccountFromAShell(t *testing.T) {
 	}
 	if checked < 50 {
 		t.Fatalf("only %d files read; this test would pass by finding nothing", checked)
+	}
+}
+
+// TestEverySwitchableSubsystemCanBeReachedFromTheConsole is the test that
+// would have caught it five times.
+//
+// **A setting with no control is a setting that does not exist.** On
+// 2026-09-11 a `p25` configuration block, a listener, a health check and a
+// validator all shipped, and no page could turn it on — the operator looked for
+// it in Network settings and it was not there. That is the fifth instance of
+// one failure this week: build the half that is named and forget the half that
+// is called.
+//
+// The others were the version on the endpoint nothing reads, the sidebar's own
+// list of unbuilt subsystems, a setup wizard nothing linked to, and four
+// documents giving a replaced instruction. Every one was found by the operator
+// using the thing.
+//
+// This enumerates what the program can be asked: any top-level configuration
+// section with an `Enabled` field is something an operator switches, so the
+// console must be able to switch it.
+func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("reading the console: %v", err)
+	}
+	script, err := fs.ReadFile(assets, "network.js")
+	if err != nil {
+		t.Fatalf("reading network.js: %v", err)
+	}
+	page, err := fs.ReadFile(assets, "network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+
+	// **Exempt, with the reason recorded rather than assumed.** A list like
+	// this is how a gate stops being a gate, so anything added must be argued
+	// for here and not merely added.
+	exempt := map[string]string{
+		// The DMR listener is what the server is for. A console control to
+		// switch it off would let an operator disable the thing they are
+		// reaching the console through, and recover by editing JSON — which is
+		// the failure the console exists to end, arrived at from the other
+		// side.
+		"dmr": "disabling the core listener from a page is a way to lock yourself out",
+	}
+
+	cfgType := reflect.TypeOf(config.Config{})
+	var checked int
+	for i := 0; i < cfgType.NumField(); i++ {
+		field := cfgType.Field(i)
+		if field.Type.Kind() != reflect.Struct {
+			continue
+		}
+		if _, hasEnabled := field.Type.FieldByName("Enabled"); !hasEnabled {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		if _, ok := exempt[name]; ok {
+			continue
+		}
+		checked++
+
+		// Read: the page must have a control, and the script must set it from
+		// the loaded configuration.
+		if !strings.Contains(string(page), `id="`+name+`-enabled"`) {
+			t.Errorf("configuration section %q can be enabled, and network.html has no "+
+				"control for it — the setting exists and no operator can reach it", name)
+		}
+		// Write: the script must put it back, or the control is decoration.
+		if !strings.Contains(string(script), "next."+name+".enabled") {
+			t.Errorf("network.js never writes %s.enabled, so the control cannot save", name)
+		}
+	}
+
+	if checked < 2 {
+		t.Fatalf("only %d switchable sections found; this test would pass by finding "+
+			"nothing", checked)
 	}
 }

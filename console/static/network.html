@@ -454,6 +454,64 @@
         </div>
       </section>
 
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">P25 gateways</h2>
+            <button class="hint" type="button" aria-controls="hint-p25" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="p25-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-p25">
+          <p class="hint__text"><strong>This is P25 over IP, not a Motorola Quantar link.</strong> Enabling it makes QSP a P25 reflector that hotspots and P25 gateways can link to, carrying their audio between each other untouched. A Quantar connects over a V.24 daughtercard rather than over a network, which is a different problem and is not built. <strong>P25 traffic does not reach DMR</strong> and will not: P25 carries IMBE and DMR carries AMBE+2, so passing one through the other would decode and re-encode the audio and everybody would hear the difference.</p>
+        </div>
+        <div class="panel__body">
+          <p class="panel__lede">
+            A P25 gateway announces itself by polling and QSP answers. Audio
+            from one gateway reaches every other gateway linked here, and
+            nowhere else.
+          </p>
+
+          <label class="toggle">
+            <input class="toggle__input" id="p25-enabled" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="p25-enabled-state">Off</span>
+            <span>Accept P25 gateways</span>
+          </label>
+
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Listen on</span>
+              <input class="picker__input" id="p25-listen" type="text"
+                     placeholder="0.0.0.0:41000">
+              <p class="field__note">The local address this server binds for
+                P25. 41000 is what the P25 reflectors use and what a gateway
+                tries first.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Callsign</span>
+              <input class="picker__input" id="p25-callsign" type="text"
+                     autocapitalize="characters" spellcheck="false"
+                     placeholder="K9MLS">
+              <p class="field__note">What this server would announce in its own
+                polls. Nothing reads it yet: a gateway is answered with the poll
+                it sent rather than with one of ours.</p>
+            </label>
+          </div>
+
+          <label class="field__label" for="p25-allowed">Allowed gateways</label>
+          <textarea class="field__input acl__ids" id="p25-allowed" rows="3"
+                    spellcheck="false"></textarea>
+          <p class="acl__state" id="p25-allowed-state"></p>
+          <p class="acl__hint">
+            One callsign per line. A gateway announces its own callsign and
+            nothing verifies it, so on an address the internet can reach this
+            list is the only thing between the port and anybody who knows one.
+            Changing any of these needs a restart of QSP.
+          </p>
+        </div>
+      </section>
+
       <div class="page__actions">
         <button class="button" id="save" type="button">Save changes</button>
         <button class="button button--quiet" id="revert" type="button">Discard changes</button>

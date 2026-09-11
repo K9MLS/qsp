@@ -45,6 +45,13 @@
   var parrotTalkgroup = document.getElementById("parrot-talkgroup");
   var parrotTimeslot = document.getElementById("parrot-timeslot");
   var parrotState = document.getElementById("parrot-state");
+  var p25Enabled = document.getElementById("p25-enabled");
+  var p25Listen = document.getElementById("p25-listen");
+  var p25Callsign = document.getElementById("p25-callsign");
+  var p25Allowed = document.getElementById("p25-allowed");
+  var p25EnabledState = document.getElementById("p25-enabled-state");
+  var p25State = document.getElementById("p25-state");
+  var p25AllowedState = document.getElementById("p25-allowed-state");
   var ipscEnabled = document.getElementById("ipsc-enabled");
   var ipscListen = document.getElementById("ipsc-listen");
   var ipscMaster = document.getElementById("ipsc-master");
@@ -143,6 +150,31 @@
    * permitted, and on with a list. Hiding the section when disabled is what
    * left an operator with no way to enable it at all — this was editable only
    * by hand in qsp.json. */
+  /* **"on, any gateway" is the case that catches people.** An empty allow
+   * list answers everything that knows the address, which is the opposite of
+   * what an empty list usually means — the same trap the IPSC panel warns
+   * about, and the same wording, so an operator reading both is not asked to
+   * hold two meanings for one idea. */
+  function refreshP25State() {
+    p25EnabledState.textContent = p25Enabled.checked ? "On" : "Off";
+    var calls = p25Allowed.value.split("\n").filter(function (c) {
+      return c.trim() !== "";
+    });
+    if (!p25Enabled.checked) {
+      p25State.textContent = "off";
+      p25AllowedState.textContent = "";
+      return;
+    }
+    p25State.textContent = calls.length
+      ? "on, " + calls.length + (calls.length === 1 ? " gateway" : " gateways")
+      : "on, any gateway";
+    p25AllowedState.textContent = calls.length
+      ? "Only the " + calls.length + " gateway" + (calls.length === 1 ? "" : "s") +
+        " listed are answered. Everything else is ignored and counted."
+      : "Every gateway that knows the address is answered. On an address the " +
+        "internet can reach, name the gateways instead.";
+  }
+
   function refreshIPSCState() {
     ipscEnabledState.textContent = ipscEnabled.checked ? "On" : "Off";
     ipscSlot2State.textContent = ipscSlot2.checked ? "Yes" : "No";
@@ -219,6 +251,15 @@
     ipscPeers.value = (ipsc.allowed_peers || []).join(", ");
     ipscSlot2.checked = !!ipsc.slot_bit_is_timeslot2;
     refreshIPSCState();
+
+    var p25 = cfg.p25 || {};
+    p25Enabled.checked = !!p25.enabled;
+    p25Listen.value = p25.listen_address || "";
+    p25Callsign.value = p25.callsign || "";
+    /* One per line rather than comma separated, because a callsign list is
+     * read down a column and a long comma-separated line is not. */
+    p25Allowed.value = (p25.allowed_callsigns || []).join("\n");
+    refreshP25State();
 
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
@@ -318,6 +359,19 @@
         }
         return out;
       });
+
+    next.p25 = next.p25 || {};
+    next.p25.enabled = p25Enabled.checked;
+    next.p25.listen_address = p25Listen.value.trim();
+    next.p25.callsign = p25Callsign.value.trim().toUpperCase();
+    next.p25.allowed_callsigns = p25Allowed.value.split("\n")
+      .map(function (c) { return c.trim().toUpperCase(); })
+      .filter(function (c) { return c !== ""; });
+    /* Supplied here rather than left empty, which validation refuses. An
+     * operator turning this on should not have to know a port number. */
+    if (next.p25.enabled && !next.p25.listen_address) {
+      next.p25.listen_address = "0.0.0.0:41000";
+    }
 
     next.ipsc = next.ipsc || {};
     next.ipsc.enabled = ipscEnabled.checked;
@@ -465,6 +519,8 @@
   ipscEnabled.addEventListener("change", refreshIPSCState);
   ipscSlot2.addEventListener("change", refreshIPSCState);
   ipscPeers.addEventListener("input", refreshIPSCState);
+  p25Enabled.addEventListener("change", refreshP25State);
+  p25Allowed.addEventListener("input", refreshP25State);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

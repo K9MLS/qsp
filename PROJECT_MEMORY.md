@@ -2925,6 +2925,22 @@ have settled it.
 
 ### Build the half that is named, forget the half that is called
 
+**Fifth instance, 2026-09-11.** A `p25` configuration block, a listener, a
+health check and a validator all shipped, and no page could turn it on. The
+operator went looking for it in Network settings and it was not there.
+
+**A setting with no control is a setting that does not exist.** The check that
+now exists enumerates what the program can be asked — any top-level
+configuration section with an `Enabled` field is something an operator switches
+— and requires the console to switch it. It carries one exemption, the DMR
+listener, with the reason written down: a page that can switch off the core
+listener is a way to lock yourself out and recover by editing JSON, which is the
+failure the console exists to end, arrived at from the other side.
+
+**An exemption list is how a gate stops being a gate**, so anything added to it
+has to be argued for in the same place.
+
+
 **2026-09-09, four times.** The rule §8a already had was about *fixing* — find
 every place a value is produced before changing one. The authoring version is
 worse, because nothing is broken to draw attention to it: the feature simply
