@@ -104,7 +104,24 @@ type Recorder struct {
 	active map[hbp.RepeaterID]*recording
 	// nextStream produces stream IDs for replays.
 	nextStream func() hbp.StreamID
+	// maxFrames is the count a recording is allowed to reach, derived from
+	// MaxDuration rather than configured separately.
+	//
+	// **Derived, so it cannot disagree with the duration it exists to
+	// enforce.** A second setting would be a second thing to keep in step, and
+	// an operator who lengthened one and not the other would get a bound they
+	// did not choose. The headroom is generous because a frame arriving a
+	// little early is ordinary and being truncated for it is not.
+	maxFrames int
 }
+
+// frameHeadroom is how far above the expected frame count a recording may go
+// before the count rather than the clock ends it.
+//
+// Three times. A transmission at the DMR rate reaches MaxDuration long before
+// this, so a well-behaved peer never meets it; a peer sending three times too
+// fast is not one whose audio is worth keeping.
+const frameHeadroom = 3
 
 // New constructs a Recorder.
 func New(cfg Config) (*Recorder, error) {
@@ -125,7 +142,13 @@ func New(cfg Config) (*Recorder, error) {
 		now = time.Now
 	}
 
-	r := &Recorder{cfg: cfg, now: now, active: make(map[hbp.RepeaterID]*recording)}
+	r := &Recorder{
+		cfg:    cfg,
+		now:    now,
+		active: make(map[hbp.RepeaterID]*recording),
+		// One frame every FrameInterval for MaxDuration, times the headroom.
+		maxFrames: int(cfg.MaxDuration/FrameInterval) * frameHeadroom,
+	}
 	// Derived from the clock so a test can predict it, and monotonic so a
 	// replay never reuses the stream ID of the transmission it copies — a
 	// repeated stream ID is a duplicate to a radio and is discarded as one.
@@ -199,11 +222,23 @@ func (r *Recorder) Observe(peer hbp.RepeaterID, frame hbp.Data) *Recording {
 	current.lastFrame = now
 
 	if !current.truncated {
-		if now.Sub(current.startedAt) > r.cfg.MaxDuration {
+		// **Bounded by count as well as by the clock.** The duration check
+		// alone is a bound that does not hold: frames arrive over UDP and
+		// nothing obliges a peer to send them at sixty a second, so a looping
+		// hotspot — or a deliberate one — can send tens of thousands inside
+		// thirty wall-clock seconds, and this map is per peer.
+		//
+		// Reaching it needs a registered peer that knows the password, so it is
+		// not a way in from outside. It is a member's equipment misbehaving,
+		// which is the ordinary case rather than the adversarial one, and a
+		// bound that only holds for well-behaved senders is not a bound.
+		switch {
+		case now.Sub(current.startedAt) > r.cfg.MaxDuration,
+			len(current.frames) >= r.maxFrames:
 			// Kept rather than discarded: hearing thirty seconds of your own
 			// audio answers the question a member was asking.
 			current.truncated = true
-		} else {
+		default:
 			current.frames = append(current.frames, frame)
 		}
 	}

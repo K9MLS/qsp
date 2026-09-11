@@ -496,7 +496,12 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   calls. Three chrome defects today; the gate chain is Go and reads none of it.
 - **A restart from the console.** The button is on two pages and has never been
   pressed.
-- The IPSC panel from 0265, never loaded in a browser.
+- **Not this**: the IPSC access panel was recorded here as never loaded in a
+  browser, and that was stale. It renders whenever `ipsc.enabled`, which
+  production has been running for weeks, so it has been on the Access page all
+  along. Reviewed and sound in pass three: the field names match the API, the
+  JSON string-keyed name map is handled, and the save path guards a disabled
+  IPSC block. Worth a glance, not a risk.
 - Published image tag and CI publishing. `docker compose up` without the build
   override tries `ghcr.io/k9mls/qsp:<version>` and is denied.
 

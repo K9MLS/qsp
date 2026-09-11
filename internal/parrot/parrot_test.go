@@ -401,3 +401,92 @@ func TestTheDurationExcludesTheSilence(t *testing.T) {
 		t.Errorf("duration is %v; the silence was counted as transmission", done[0].Duration)
 	}
 }
+
+// TestARecordingIsBoundedByFramesAndNotOnlyByTheClock is the finding pass three
+// of the code review turned up.
+//
+// **The duration bound alone is a bound that does not hold.** Frames arrive
+// over UDP and nothing obliges a peer to send them at sixty a second, so a
+// looping hotspot can send tens of thousands inside thirty wall-clock seconds
+// — and the active map is one recording per peer, so it multiplies.
+//
+// Reaching it needs a registered peer that knows the password, so this is not a
+// way in from outside; it is a member's equipment misbehaving, which is the
+// ordinary case rather than the adversarial one.
+//
+// The clock is held still here, so **only the frame count can end the
+// recording**. If the count is not enforced this test does not fail slowly, it
+// allocates until the runner dies.
+func TestARecordingIsBoundedByFramesAndNotOnlyByTheClock(t *testing.T) {
+	r, _ := newRecorder(t)
+
+	// Far more than any real transmission, and far fewer than a flood: enough
+	// to prove the bound without making the test slow.
+	const flood = 20000
+
+	var finished *parrot.Recording
+	var sent int
+	for i := 0; i < flood; i++ {
+		sent++
+		// No clock advance at all.
+		if rec := r.Observe(testPeer, voice(1, parrotTG)); rec != nil {
+			finished = rec
+			break
+		}
+	}
+
+	if finished == nil {
+		t.Fatalf("%d frames arrived with the clock held still and the recording never "+
+			"ended; it is bounded by time alone and a peer sending faster than real time "+
+			"grows it without limit", sent)
+	}
+	if !finished.Truncated {
+		t.Error("the recording ended without being marked truncated, so a member is told " +
+			"they heard all of it")
+	}
+	if len(finished.Frames) == 0 {
+		t.Error("nothing was kept; hearing some of your own audio answers the question, " +
+			"hearing none does not")
+	}
+	// The bound must be well under the flood, or it is not doing anything.
+	if sent > flood/2 {
+		t.Errorf("the recording took %d frames to end, which is not a bound worth having", sent)
+	}
+}
+
+// A transmission arriving faster than nominal must still be ended by the clock
+// rather than the count — otherwise the fix for a flood has quietly shortened
+// every recording made by a hotspot with a slightly fast clock.
+//
+// **Sent at twice the rate on purpose.** A first version of this test sent at
+// exactly FrameInterval, which cannot tell a headroom of three from a headroom
+// of one: at the nominal rate the two bounds fall on the same frame. Jitter is
+// ordinary and being truncated for it is not.
+func TestATransmissionArrivingFastIsStillEndedByTheClock(t *testing.T) {
+	r, c := newRecorder(t)
+
+	// Frames every 30ms — twice the DMR rate, which no radio does but a
+	// hotspot with a fast clock or a burst after a network hiccup approaches.
+	const fast = parrot.FrameInterval / 2
+	nominal := int(parrot.DefaultMaxDuration / parrot.FrameInterval)
+
+	var rec *parrot.Recording
+	for i := 0; i < nominal*4; i++ {
+		if got := r.Observe(testPeer, voice(1, parrotTG)); got != nil {
+			rec = got
+			break
+		}
+		c.advance(fast)
+	}
+	if rec == nil {
+		t.Fatal("a fast transmission never ended")
+	}
+
+	// At twice the rate, MaxDuration of wall time carries about twice the
+	// nominal frame count — so the clock must be what stops it.
+	if len(rec.Frames) < nominal+nominal/2 {
+		t.Errorf("kept %d frames from a transmission arriving at twice the rate; the "+
+			"nominal count is %d, so the frame bound cut it short rather than the clock",
+			len(rec.Frames), nominal)
+	}
+}

@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A parrot recording was bounded by the clock and not by volume**, found by
+  pass three of the code review. Frames were appended until thirty wall-clock
+  seconds passed — but frames arrive over UDP and nothing obliges a peer to
+  send them at sixty a second, so a looping hotspot can send tens of thousands
+  inside those thirty seconds, and the active map holds one recording per peer.
+
+  **Not a way in from outside**: reaching the parrot needs a registered peer
+  that knows the password and transmits on the parrot talkgroup. It is a
+  member's equipment misbehaving, which is the ordinary case rather than the
+  adversarial one — and a bound that only holds for well-behaved senders is not
+  a bound.
+
+  Recordings are now bounded by frame count as well, derived from `MaxDuration`
+  rather than configured separately, so the two cannot disagree. Three times the
+  nominal count, because a frame arriving a little early is ordinary and being
+  truncated for it is not.
+
+  The test holds the clock still, so only the count can end the recording — if
+  the bound is absent it does not fail slowly, it allocates until the runner
+  dies. A second test sends at **twice** the rate: a first version sent at
+  exactly the nominal interval, where a headroom of three and a headroom of one
+  fall on the same frame and the test could not tell them apart.
+
+### Documentation
+
+- **The IPSC access panel was not unproven after all.** The handover recorded it
+  as never loaded in a browser; it renders whenever `ipsc.enabled`, which
+  production has been running for weeks, so it has been on the Access page the
+  whole time. Reviewed in pass three and sound: the field names match the API,
+  the JSON string-keyed name map is handled correctly, and the save path guards
+  a disabled IPSC block.
+
+  Worth recording as a lesson about the not-proven list itself: an item can stop
+  being true without anybody touching it, and this one sat there for weeks
+  making a sound page look like a risk.
+
+- **The scheduler reviewed and sound.** It embeds the IANA timezone database,
+  which is the trap a `scratch` container sets — without it every
+  `LoadLocation` would fail on the deployment target and nowhere else. It also
+  states what it does about a daylight-saving change inside a window rather than
+  leaving it to be discovered.
+
 ### Added
 
 - **Code review, pass two: the protocol boundaries.** Two of them were
