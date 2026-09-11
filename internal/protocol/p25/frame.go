@@ -178,7 +178,18 @@ func (f Frame) Marshal() []byte {
 
 // Poll is the keepalive a gateway sends, carrying the callsign it announces.
 type Poll struct {
+	// Callsign is the announced callsign, with padding removed.
 	Callsign string
+	// raw is the payload exactly as it arrived, so a poll QSP relays is the
+	// poll it received.
+	//
+	// **Found by the fuzzer within seconds of the target existing.** A
+	// keepalive padded with NUL rather than space came back space-padded,
+	// because the trim accepted both and the render wrote one. Harmless in
+	// itself, and it breaks the rule this whole package is built on: QSP does
+	// not rewrite bytes it carries. A parser that quietly normalises is a
+	// parser that will one day normalise something that matters.
+	raw []byte
 }
 
 // pollCallsignLength is the fixed width of the callsign field.
@@ -195,18 +206,36 @@ func ParsePoll(b []byte) (Poll, error) {
 	if f.Kind != KindPoll {
 		return Poll{}, fmt.Errorf("%w: 0x%02x is not a poll", ErrUnknownKind, byte(f.Kind))
 	}
-	return Poll{Callsign: trimPadding(f.Payload)}, nil
+	return Poll{Callsign: trimPadding(f.Payload), raw: f.Payload}, nil
+}
+
+// NewPoll builds a keepalive for QSP to send.
+//
+// Space padded, which is what every poll in both captures uses. A callsign
+// longer than the field is truncated rather than refused: the field is a fixed
+// width on the wire and there is nowhere for the rest to go.
+func NewPoll(callsign string) Poll {
+	padded := make([]byte, pollCallsignLength)
+	for i := range padded {
+		padded[i] = ' '
+	}
+	copy(padded, callsign)
+	return Poll{Callsign: trimPadding(padded), raw: padded}
 }
 
 // Marshal renders a keepalive.
+//
+// **A parsed poll renders exactly as it arrived**, padding bytes and all, so
+// relaying one cannot change it. A poll built by NewPoll renders with the
+// space padding both captures show.
 func (p Poll) Marshal() []byte {
-	out := make([]byte, 1+pollCallsignLength)
-	out[0] = byte(KindPoll)
-	for i := range out[1:] {
-		out[1+i] = ' '
+	payload := p.raw
+	if payload == nil {
+		return NewPoll(p.Callsign).Marshal()
 	}
-	copy(out[1:], p.Callsign)
-	return out
+	out := make([]byte, 0, len(payload)+1)
+	out = append(out, byte(KindPoll))
+	return append(out, payload...)
 }
 
 // trimPadding removes the trailing spaces a fixed-width field carries.

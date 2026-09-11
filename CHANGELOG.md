@@ -6,6 +6,33 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Code review, pass two: the protocol boundaries.** Two of them were
+  unfuzzed. `hbp`, `ipsc`, `peers`, `routing` and `access` all had a fuzz
+  target; `openbridge` and `p25` did not — and `p25` was the parser written an
+  hour earlier, so the newest code on the most hostile boundary had the least
+  scrutiny.
+
+  **The fuzzer found a real bug within seconds of the target existing.** A P25
+  keepalive padded with NUL rather than space came back space-padded, because
+  the trim accepted both and the render wrote one. Harmless in itself, and it
+  breaks the rule the whole package rests on: **QSP does not rewrite bytes it
+  carries.** A parser that quietly normalises is one that will eventually
+  normalise something that matters. A parsed poll now renders exactly as it
+  arrived, padding and all, and `NewPoll` builds one for QSP to send.
+
+  Both P25 targets survive over a million executions. The openbridge targets
+  assert what an attacker attacks: that a verified frame is exactly the bytes
+  the signature covered, that signing and verifying agree about what is
+  covered, and that **no input verifies under the wrong passphrase** — the last
+  asserted separately, because a test that could not report a forgery would be
+  a test that hid one.
+
+  Pass one was what a stranger hits first and found the README. Pass three —
+  the unloved code, the IPSC panel never loaded in a browser, the parrot, the
+  scheduler — has not started.
+
+### Added
+
 - **A P25 voice capture, and the frame layer built from it.** Seven
   transmissions between MMDVMHost and P25Gateway with a reflector linked, every
   frame type appearing exactly 30 or 32 times — nothing dropped, which is what
