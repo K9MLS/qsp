@@ -106,3 +106,36 @@ func gatewayFrames(tb testing.TB) []capturedPacket {
 func describe(p capturedPacket) string {
 	return fmt.Sprintf("0x%02x/%d", p.Payload[0], len(p.Payload))
 }
+
+// transmissions groups the talkgroup capture's inbound frames into calls,
+// splitting on a gap of more than a second.
+//
+// A P25 transmission ends in a terminator, but grouping by silence rather than
+// by that frame means a capture missing one still yields sensible calls — and
+// the assertion that there are fourteen would otherwise be an assertion about
+// terminators instead of about transmissions.
+func transmissions(tb testing.TB) [][]capturedPacket {
+	tb.Helper()
+
+	var inbound []capturedPacket
+	for _, p := range readCapture(tb, "../../../testdata/p25/p25-talkgroups.pcap") {
+		if p.SrcPort == 32010 && p.DstPort == 42020 && len(p.Payload) > 0 {
+			inbound = append(inbound, p)
+		}
+	}
+	if len(inbound) == 0 {
+		tb.Fatal("the talkgroup fixture holds no inbound frames")
+	}
+
+	const gap = 1_000_000 // one second, in microseconds
+	var out [][]capturedPacket
+	current := []capturedPacket{inbound[0]}
+	for i := 1; i < len(inbound); i++ {
+		if inbound[i].Micros-inbound[i-1].Micros > gap {
+			out = append(out, current)
+			current = nil
+		}
+		current = append(current, inbound[i])
+	}
+	return append(out, current)
+}

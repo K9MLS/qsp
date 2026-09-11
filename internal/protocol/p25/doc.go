@@ -12,12 +12,18 @@
 // not. `testdata/p25/p25-voice.pcap` holds seven transmissions with no dropped
 // frames, and all 565 of them round-trip byte for byte through frame.go.
 //
-// What is missing is the talkgroup. Frames 0x66 to 0x69 each carry three bytes
-// that were identical across every captured transmission, which is where the
-// Link Control lives — but one radio on one talkgroup makes a constant field
-// indistinguishable from constant framing. A capture with two talkgroups
-// settles it; see testdata/p25/CAPTURE-REQUEST.md.
+// **The talkgroup and the source radio are located too**, from a second capture
+// with fourteen transmissions across four talkgroups — one of them returned to
+// after another had been used, which is what makes it a finding rather than a
+// coincidence. Frame 0x65 carries the talkgroup and frame 0x66 the radio, and
+// the operator confirmed all four numbers against the radio's own programming.
 //
-// So QSP can recognise and relay P25 today and cannot decide where a call
-// goes, which is the honest state of it.
+// So this package can now answer the three questions routing asks of a frame:
+// what kind it is, which talkgroup it belongs to, and who sent it.
+//
+// What is not built is the listener — binding a port, answering a gateway's
+// registration, and handing frames to the routing core. The registration
+// exchange is still uncaptured: both captures began with the gateway already
+// running or restarted underneath by a timer. See
+// testdata/p25/CAPTURE-REQUEST.md.
 package p25

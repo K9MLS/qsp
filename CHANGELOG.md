@@ -4,6 +4,52 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The P25 talkgroup and source radio are located, which unblocks routing.** A
+  second capture — `testdata/p25/p25-talkgroups.pcap`, 5173 packets, none
+  dropped — holds **fourteen transmissions across four talkgroups** and three
+  reflector hosts, because in a P25 gateway a talkgroup is a reflector.
+
+  | Frame 0x65, bytes 1–3 | Talkgroup |
+  |---|---|
+  | `0x00039D` | 925 |
+  | `0x00270F` | 9999 |
+  | `0x002A88` | 10888 |
+  | `0x007BB8` | 31672 |
+
+  **Talkgroup 9999 is returned to after 10888 had been used**, and that control
+  is what the whole finding rests on: without it a byte drifting with time would
+  look exactly like a talkgroup. The operator confirmed all four against the
+  radio's own programming, so this is a confirmed decode rather than an observed
+  difference.
+
+  **Frame 0x66, bytes 1–3 is `0x2FCDEE` in every one of the fourteen** — 3132910,
+  the transmitting radio. A 24-bit field holding the operator's own identifier
+  exactly is not a coincidence.
+
+  The first capture could not answer either question: every transmission was one
+  radio on one talkgroup, and a field that never changes cannot be told apart
+  from framing that never changes.
+
+  Each field is read **only from the frame that carries it**. A caller asking
+  every frame for the talkgroup would otherwise get whatever those bytes happen
+  to be in a voice frame — which is audio, and would route a call at random. The
+  sixteen-bit identifier is returned separately from the byte above it, which
+  was zero throughout, so a capture showing it non-zero is a visible surprise
+  rather than a talkgroup sixty-five thousand too large.
+
+  Three breaks confirmed the decode: reading the talkgroup from the wrong frame,
+  folding the high byte into it, and reading the source from the wrong frame.
+  The fuzz target now calls both accessors on every accepted frame, because they
+  index into the payload and a length `Parse` allows that they cannot survive
+  would be a crash reachable from the network.
+
+- **Recorded as a guess rather than a finding**: frames 0x67, 0x68 and 0x69 each
+  hold three constant bytes that are neither the radio ID nor any talkgroup.
+  Reed–Solomon over the Link Control is the obvious explanation and nothing
+  depends on it, because QSP carries those bytes untouched either way.
+
 ### Fixed
 
 - **A parrot recording was bounded by the clock and not by volume**, found by

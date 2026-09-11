@@ -58,6 +58,13 @@ func FuzzParse(f *testing.F) {
 			t.Fatalf("accepted 0x%02x at %d bytes; the table says %d",
 				byte(frame.Kind), len(data), want)
 		}
+
+		// **The link control accessors must never panic on an accepted
+		// frame.** They index into the payload, and a frame Parse admitted is
+		// one a listener will hand them — so a length Parse allows and they
+		// cannot survive is a crash reachable from the network.
+		_, _, _ = frame.Talkgroup()
+		_, _ = frame.SourceID()
 	})
 }
 

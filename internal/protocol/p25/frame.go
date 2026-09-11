@@ -246,3 +246,90 @@ func trimPadding(b []byte) string {
 	}
 	return string(b[:end])
 }
+
+// The talkgroup and the source radio.
+//
+// # How these were located
+//
+// `testdata/p25/p25-talkgroups.pcap`, 2026-09-11: fourteen transmissions across
+// **four** talkgroups, with one talkgroup returned to after another had been
+// used. That last part is what makes this a finding rather than a coincidence —
+// a byte that follows the talkgroup rather than drifting with time.
+//
+// The first capture could not answer this. Every transmission in it was one
+// radio on one talkgroup, so a field that never changed was indistinguishable
+// from framing that never changes.
+//
+//	frame 0x65, bytes 1–3   0x00039D 925, 0x00270F 9999,
+//	                        0x002A88 10888, 0x007BB8 31672
+//	frame 0x66, bytes 1–3   0x2FCDEE — 3132910, the transmitting radio, in
+//	                        every one of the fourteen
+//
+// The operator confirmed 925, 9999, 10888 and 31672 are the talkgroups
+// programmed into the radio. The reflector addresses in the capture agree from
+// the other side: in a P25 gateway a talkgroup is a reflector, and the host
+// changed when these bytes did.
+//
+// **Frames 0x67, 0x68 and 0x69 hold three constant bytes each** whose values
+// are neither the radio ID nor any talkgroup. P25 protects its Link Control
+// with Reed–Solomon, and that is the obvious explanation — but it is a guess,
+// so it is written here as one and nothing depends on it. QSP carries those
+// bytes untouched either way.
+
+const (
+	// talkgroupFrame carries the talkgroup, and sourceFrame the radio.
+	talkgroupFrame = KindVoice4
+	sourceFrame    = KindVoice5
+
+	// lcOffset is where each frame's Link Control fragment begins.
+	lcOffset = 1
+	// lcWidth is how much of it each frame carries.
+	lcWidth = 3
+)
+
+// ErrNoLinkControl is a request for a field from a frame that does not carry it.
+var ErrNoLinkControl = errors.New("p25: this frame carries no link control")
+
+// Talkgroup returns the talkgroup a voice frame names.
+//
+// **Only frame 0x65 carries it.** A transmission is nine frames per logical
+// data unit and the Link Control is spread across several of them, so a caller
+// wanting the talkgroup must wait for the right one rather than expecting every
+// frame to answer.
+//
+// The identifier is sixteen bits, and the byte above it was zero in all
+// fourteen captured transmissions. It is returned separately rather than folded
+// in, so that a capture showing it non-zero produces a visible surprise instead
+// of a talkgroup number sixty-five thousand too large.
+func (f Frame) Talkgroup() (id uint16, high byte, err error) {
+	if f.Kind != talkgroupFrame {
+		return 0, 0, fmt.Errorf("%w: 0x%02x is not 0x%02x",
+			ErrNoLinkControl, byte(f.Kind), byte(talkgroupFrame))
+	}
+	if len(f.Payload) < lcOffset+lcWidth-1+1 {
+		return 0, 0, ErrShort
+	}
+	lc := f.Payload[lcOffset-1 : lcOffset-1+lcWidth]
+	return uint16(lc[1])<<8 | uint16(lc[2]), lc[0], nil
+}
+
+// SourceID returns the radio a voice frame says is transmitting.
+//
+// Twenty-four bits, which is what a P25 radio identifier is, and it matched the
+// operator's own DMR ID exactly in every captured transmission.
+//
+// **Asserted, not verified.** A radio announces its own identifier and nothing
+// in the frame proves it; the same is true of every network QSP speaks, and
+// ADR-0052 rule 4 says so in general terms. It decides what an operator reads
+// and it must not decide what QSP admits.
+func (f Frame) SourceID() (uint32, error) {
+	if f.Kind != sourceFrame {
+		return 0, fmt.Errorf("%w: 0x%02x is not 0x%02x",
+			ErrNoLinkControl, byte(f.Kind), byte(sourceFrame))
+	}
+	if len(f.Payload) < lcOffset+lcWidth-1+1 {
+		return 0, ErrShort
+	}
+	lc := f.Payload[lcOffset-1 : lcOffset-1+lcWidth]
+	return uint32(lc[0])<<16 | uint32(lc[1])<<8 | uint32(lc[2]), nil
+}
