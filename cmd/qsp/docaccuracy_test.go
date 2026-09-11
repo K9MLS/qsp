@@ -741,3 +741,101 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 			"nothing", checked)
 	}
 }
+
+// TestNoMessageSendsAnOperatorToAFieldTheConsoleCanChange is the general form
+// of a defect that shipped twice.
+//
+// **A health report telling an operator to edit `qsp.json` for something they
+// can click is the console admitting it cannot do the thing** — which is the
+// failure that produced the restart button, the Stop accepting button and the
+// setup wizard. Both the IPSC and P25 disabled messages said "set
+// ipsc.enabled" and "set p25.enabled" long after Network settings grew a
+// control for each.
+//
+// It is checkable because the switchable-subsystem test already enumerates
+// which fields the console owns: any top-level section with an `Enabled` field
+// and a control on the page. Nothing may then tell an operator to set it by
+// hand.
+//
+// Scoped deliberately to those fields. There are other messages naming
+// configuration paths, and some are correct — a setting with no control is
+// still edited in the file — so widening this would make it a list of
+// exceptions rather than a check.
+func TestNoMessageSendsAnOperatorToAFieldTheConsoleCanChange(t *testing.T) {
+	assets, err := console.Assets()
+	if err != nil {
+		t.Fatalf("reading the console: %v", err)
+	}
+	page, err := fs.ReadFile(assets, "network.html")
+	if err != nil {
+		t.Fatalf("reading network.html: %v", err)
+	}
+
+	// The sections the console can switch, taken from the program rather than
+	// from a list here, so a new subsystem is covered the day it arrives.
+	var owned []string
+	cfgType := reflect.TypeOf(config.Config{})
+	for i := 0; i < cfgType.NumField(); i++ {
+		field := cfgType.Field(i)
+		if field.Type.Kind() != reflect.Struct {
+			continue
+		}
+		if _, has := field.Type.FieldByName("Enabled"); !has {
+			continue
+		}
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if name == "" || name == "-" {
+			continue
+		}
+		// Only where a control actually exists. A section the console cannot
+		// switch is one an operator does edit by hand, and saying so is right.
+		if strings.Contains(string(page), `id="`+name+`-enabled"`) {
+			owned = append(owned, name)
+		}
+	}
+	if len(owned) == 0 {
+		t.Fatal("no switchable section has a console control; this test would pass by " +
+			"finding nothing")
+	}
+
+	var checked int
+	err = filepath.Walk("../..", func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			if info.Name() == ".git" || info.Name() == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		checked++
+		for i, line := range strings.Split(string(body), "\n") {
+			trimmed := strings.TrimSpace(line)
+			// Comments explain; only what QSP says to an operator counts.
+			if strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			for _, name := range owned {
+				if strings.Contains(line, "set "+name+".enabled") {
+					t.Errorf("%s:%d tells an operator to set %s.enabled, which Network "+
+						"settings can change: %q", path, i+1, name, trimmed)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking the repository: %v", err)
+	}
+	if checked < 40 {
+		t.Fatalf("only %d Go files read; this test would pass by finding nothing", checked)
+	}
+}

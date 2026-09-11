@@ -6,6 +6,39 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Two health messages told an operator to edit `qsp.json` for something they
+  can click.** The IPSC and P25 disabled lines said *set ipsc.enabled* and *set
+  p25.enabled*, and both were written when editing the file was the only way —
+  then stayed put after Network settings grew a control for each. The P25 one
+  was written in the same session as the toggle.
+
+  **A health report sending an operator to a configuration field is the console
+  admitting it cannot do the thing**, which is the failure that produced the
+  restart button, the Stop accepting button and the setup wizard. Both now name
+  the page.
+
+  The P25 line also carried a sentence about not being a Motorola Quantar link.
+  That was written because the operator asked exactly the right question about
+  which P25 was being built, and the answer went in the wrong place: a health
+  line says what state a subsystem is in and what would change it, and **what a
+  subsystem is not** is documentation. It lives in the panel's hint, where
+  somebody is already reading about P25.
+
+### Added
+
+- **A gate for the general form**, because this shipped twice. Nothing may tell
+  an operator to set a field the console owns, and *which fields those are* is
+  taken from the program rather than a list: any top-level section with an
+  `Enabled` field that has a control on the page. A new subsystem is covered the
+  day it arrives.
+
+  Scoped deliberately. Other messages name configuration paths and some are
+  right — a setting with no control is still edited by hand — so widening it
+  would turn a check into a list of exceptions. Comments are skipped, because
+  only what QSP says to an operator counts.
+
+### Fixed
+
 - **P25 could be configured and not switched on.** 0331 shipped the block, the
   listener, the health check and the validator, and no page had a control — the
   operator went looking in Network settings and it was not there.
