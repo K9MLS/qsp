@@ -1,4 +1,4 @@
-# Handover, 2026-09-09 evening
+# Handover, 2026-09-11
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside, then **ADR-0053** (three names
@@ -12,7 +12,7 @@ of what happened, not something to look up. `origin/main` is `ad1acc8`. Both
 servers and this repository are on the rewritten history; nothing else has a
 copy.
 
-Version **0.1.167**, patches 0261–0325. **Both servers should be on 0.1.166** —
+Version **0.1.176**, patches 0261–0334. **Both servers should be on 0.1.175** —
 check, because deploys have silently not taken several times, every one a pasted
 block eaten by the `sudo` password prompt. `sudo -v` first, always.
 
@@ -21,6 +21,48 @@ production, a string unique to the build in the container. Run `cat VERSION`
 after every `git am`. And **`sudo -v` before any block containing `sudo`** — the
 password prompt eats the next pasted line, which happened four times today and
 was caught by the version check every time.
+
+## What 2026-09-11 did: P25 over IP, complete
+
+**QSP is a P25 reflector**, built entirely from three captures taken off the
+operator's Pi-Star in one afternoon. Nothing in it came from reading another
+implementation (ADR-0029).
+
+- **0326** — the frame layer. Nine frames per logical data unit, `0x62`–`0x6A`
+  and `0x6B`–`0x73` alternating, `0x80` to end, `0xF0` the keepalive. All 565
+  frames round-trip byte for byte.
+- **0329** — **the talkgroup and the source radio**, from fourteen
+  transmissions across four talkgroups with one returned to. Frame `0x65` is the
+  talkgroup, frame `0x66` the radio. Confirmed against the operator's APX.
+- **0330** — **there is no registration.** A gateway polls, the far end returns
+  the identical datagram, every 5.01 seconds. 96 out, 96 back. That is the
+  finding that would have been most expensive to guess at: a state machine built
+  for a login that does not exist would be correct against itself and broken
+  against a real gateway.
+- **0331–0333** — configuration, listener startup, health check, console panel,
+  and a health message that stopped telling an operator to edit `qsp.json`.
+
+**Audio is king, and here it is a consequence rather than a slogan.** ADR-0034
+says a P25 call crosses QSP without a vocoder, so nothing looks inside a voice
+payload: frames are identified, length-checked and passed on unchanged. Every
+byte QSP would rebuild is a byte it could get wrong.
+
+**What P25 over IP is not**: a Motorola Quantar link. A Quantar connects over a
+V.24 daughtercard running bit-oriented HDLC, not over a network, and **nothing
+in QSP opens a serial port.** That is the half the operator actually wants and
+it is untouched. See `docs/P25-PLANNING.md`, and the operator has a Cisco router
+with a WIC-1T for the capture it needs.
+
+**Three of the day's own defects were mine and the operator found two.** Two
+protocol boundaries were unfuzzed, and the fuzzer found a padding bug in the
+newest one within seconds. `Start` served inline, which would have hung the
+daemon. And **P25 could be configured and not switched on** — the fifth instance
+this week of building the half that is named and forgetting the half that is
+called.
+
+Every one of the five is now gated, and the newest gate is the strongest because
+it **enumerates rather than lists**: any configuration section with an `Enabled`
+field must have a console control and must be written back on save.
 
 ## What the afternoon of 2026-09-09 did
 
@@ -239,34 +281,40 @@ clicking through a console rather than by a test.
 
 ## Start here
 
-**Use the console before anything else.** Every defect that reached an operator
-this week was found that way and none by a test: three console defects on
-2026-09-09 alone, plus a wizard nothing linked to and four documents giving an
-instruction that had been wrong for hours. Sign in, walk every page, and treat
-anything that reads wrong as real.
+**Pete's server is the live thing.** He has a VM, the image and the compose
+files were sent on 2026-09-11, and nothing has come back yet. He compiles
+nothing: the image is built on the **test server** — Fedora has no Docker — then
+`docker save`, copied, `docker load`, and retagged to the name the compose file
+expects, because `ghcr.io/k9mls/qsp:<version>` was never published.
 
-Three things are built and have never been used once:
+**He listens and this server dials**, which makes him the offering side: his
+console allocates the DMR ID and password and hands over a `QSP-PEER-2.` token
+to paste into Accept here. First time the accept form runs from that direction,
+and the first time anything crosses the internet rather than one LAN.
 
-- **A backup download and a restore.** The button exists, nobody has pressed it,
-  and no configuration has been restored from an export on any machine.
-- **The Administrators block.** Add a second account and confirm Remove appears
-  on both — with one account there is deliberately no Remove button at all.
-- **The restart button**, on the Links page and on This Server.
+**What that unlocks**: relaying and deduplication, which have been built,
+unit-tested and never once exercised, because two servers give nothing to relay
+to. Longest-standing item on the not-proven list.
 
-**Then Pete's server.** Nothing blocks it. He owes two answers: whether he can
-get UDP 62031 reachable without CGNAT, and which DMR ID this server should
-present to his. **He listens and this server dials**, which makes him the
-offering side — so the accept form runs from the direction it never has, across
-the internet rather than one LAN, and relaying, deduplication and a real network
-path are tested together.
+**Then the Quantars**, which is the half the operator wants and the harder one.
+A Quantar's linking interface is a V.24 daughtercard running bit-oriented HDLC
+and nothing in QSP opens a serial port. **Read `docs/P25-PLANNING.md` before
+proposing anything** — it already records what is known, and the first step is a
+capture off the Cisco WIC-1T, the same way IPSC started.
 
-The install path agreed with him: build the image on Fedora, `docker save`,
-copy, `docker load`. He compiles nothing and runs the bytes that were tested,
-and gets the source as well — GPLv3, and his eyes on it are wanted.
+**Use the console before writing code.** Every defect that reached the operator
+this week was found that way and none by a test. P25 is the newest surface and
+the least used: enable it on the test server, point the Pi-Star's P25Gateway at
+it, and see whether the health page and Last heard say anything useful.
 
-**Then Zello, when the DVstick 30 arrives.** Prove the chain through
-MMDVM_Bridge first; it needs no QSP code. See the correction below: QSP would
-speak **AMBE_AUDIO**, not USRP.
+**Untested, and each one click:**
+
+- A backup download and a restore. No configuration has been restored from an
+  export on any machine.
+- A second administrator, so Remove appears on both.
+- The restart button, on Links and on This Server.
+- The setup token over a network. The wizard has only been used from loopback.
+- **P25 with a real gateway.** The listener has never met one.
 
 **Deferred by decision, not forgotten:**
 
@@ -274,15 +322,22 @@ speak **AMBE_AUDIO**, not USRP.
   links are never targets for one, and a frame arriving from a link records no
   location — so a call crosses one way only. Needs a record before code.
 - **A radio's callsign does not cross a link.** The server that hears a radio
-  knows the callsign because the station said so at login, and discards it.
+  knows it because the station said so at login, and discards it.
 - **Defaulting the callsign lookup on.** `config.Validate` refuses the lookup
   enabled with no contact address, so a default of on makes a fresh install
-  refuse to start. The operator decided the toggle on the page is enough.
-- **The code review**, one pass done of three. Pass one was what a stranger hits
-  first, and it found the README. Pass two is the protocol boundaries — anything
-  parsing bytes from an untrusted source, where a bug is a vulnerability. Pass
-  three is the unloved code: the IPSC panel never loaded in a browser, the
-  parrot, the scheduler.
+  refuse to start. The operator decided the page toggle is enough.
+- **Zello**, until the DVstick 30 arrives — expected Monday 2026-09-15. QSP
+  speaks **AMBE_AUDIO**, not USRP; see the correction further down, which is
+  there because the first recommendation contradicted itself.
+- **A second P25 radio**, to prove the source field follows a different one. It
+  blocks nothing.
+- **The two-week soak.** The only honest source of a requirements table, and the
+  last item that needs nothing but time.
+
+**Not yet public.** Going public is a deliberate conversation, and the reasons to
+wait are: no operator other than the author has run QSP, the requirements answer
+is reasoning rather than measurement, and three things built this week have never
+been used once.
 
 ## Two debts taken deliberately
 
@@ -461,6 +516,14 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
   token field**, and refused to run again afterwards. That is the loopback
   exemption confirmed by something other than a test.
 
+- **P25 frames, byte for byte.** All 565 on the inbound path of
+  `testdata/p25/p25-voice.pcap` round-trip unchanged, and both P25 fuzz targets
+  survive over a million executions.
+- **The P25 talkgroup and source radio**, decoded and confirmed against the
+  operator's own radio programming rather than inferred.
+- **The P25 poll interval**, 5 seconds, measured on two independent hops — and
+  the poll echo confirmed across three different reflector hosts.
+
 ## Not proven
 
 - **Relaying and deduplication, on any machine.** Every test is a unit test and
@@ -489,6 +552,14 @@ character means hand-editing `qsp.json`. That is the same shape as the IPSC gap
 - **The setup token.** The wizard has only been used from loopback, so the token
   path — the part that guards a server on a network — has never been exercised
   by a person.
+- **P25 against a real gateway.** The listener is tested against a real UDP
+  socket with real frames from the captures, and no P25 gateway has ever linked
+  to it. Enabling it on the test server and pointing the Pi-Star at it is the
+  cheapest real test available.
+- **Anything about a malformed P25 frame.** Three captures show a correct
+  implementation sending correct frames. What a P25 radio does with a wrong one
+  is where the IPSC work found its real defects, and that needed a repeater
+  rather than a capture.
 - **A second administrator.** The Administrators block has been seen with one
   account, which is the case where Remove is deliberately absent.
 - **The console's JavaScript, beyond one crude check.** ~1,500 lines, and the

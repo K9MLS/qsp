@@ -2923,6 +2923,30 @@ Analog_Bridge has two sides: TLV frames carrying AMBE on the one an `xx_Bridge`
 connects to, and PCM over USRP on the other. Reading one stanza further would
 have settled it.
 
+### A capture cannot answer a question nothing varied in
+
+**2026-09-11.** The first P25 voice capture held seven transmissions and could
+not say where the talkgroup was, because every one of them was **one radio on
+one talkgroup**. Frames 0x66 to 0x69 each carried three bytes identical
+throughout — certainly the link control, and impossible to decode, because a
+field that never changes is indistinguishable from framing that never changes.
+
+The second capture was asked for **in a specific order**: talkgroup A, then B,
+**then back to A**. That return is what made it a finding rather than a
+coincidence — without it, a byte drifting with time looks exactly like a
+talkgroup. Fourteen transmissions across four talkgroups settled both fields in
+one go, and the operator confirmed the numbers against the radio's own
+programming, which turned an observed difference into a confirmed decode.
+
+So, before asking for a capture: **write down which bytes are expected to change
+and arrange for them to.** A capture of one steady state is worth less than a
+short capture of two states and a return, and it is the same cost to take.
+
+The corollary, met the same day: **the evidence may already be in hand.** The
+poll echo was treated as one reflector's behaviour and the talkgroup capture had
+already shown three reflectors doing it, 78 polls and 78 identical replies. The
+answer was in a file that had been read for something else.
+
 ### Build the half that is named, forget the half that is called
 
 **Fifth instance, 2026-09-11.** A `p25` configuration block, a listener, a

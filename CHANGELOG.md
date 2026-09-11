@@ -4,6 +4,36 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover and standing brief brought up to 0334.** Start here is Pete's
+  server, which is live and waiting, then the Quantars — with an instruction to
+  read `docs/P25-PLANNING.md` before proposing anything, because a Quantar links
+  over V.24/HDLC and the distinction from P25-over-IP has already confused one
+  conversation.
+
+- **§8a: a capture cannot answer a question nothing varied in.** The first P25
+  capture could not locate the talkgroup, because all seven transmissions were
+  one radio on one talkgroup. The second was asked for in a specific order —
+  talkgroup A, then B, **then back to A** — and that return is what made it a
+  finding rather than a coincidence: without it a byte drifting with time looks
+  exactly like a talkgroup.
+
+  So before asking for a capture, write down which bytes are expected to change
+  and arrange for them to. A capture of one steady state is worth less than a
+  short capture of two states and a return, at the same cost.
+
+  Its corollary, met the same day: **the evidence may already be in hand.** The
+  poll echo was treated as one reflector's habit when the talkgroup capture had
+  already shown three reflectors doing it — 78 polls, 78 identical replies, in a
+  file that had been read for something else.
+
+- Newly proven: P25 frames byte for byte, the talkgroup and source decoded and
+  confirmed against the radio, and the poll interval measured on two hops with
+  the echo seen on three hosts. Newly not proven: P25 against a real gateway,
+  and anything about a malformed P25 frame — three captures show a correct
+  implementation sending correct frames.
+
 ### Fixed
 
 - **Two health messages told an operator to edit `qsp.json` for something they

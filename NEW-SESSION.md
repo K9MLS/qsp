@@ -46,6 +46,11 @@ redirects every page to a setup form, gated by a one-time token that is not
 required from loopback. `qsp adduser` survives only as the recovery procedure
 for having lost every administrator.
 
+**P25 over IP is built** (2026-09-11): QSP is a P25 reflector, from three
+captures and nothing else. **It is not a Motorola Quantar link** — a Quantar
+connects over a V.24 daughtercard running HDLC and nothing here opens a serial
+port. That distinction has already confused one conversation; keep it straight.
+
 **The console has about 1,500 lines of JavaScript and four checks on it**, all
 written on 2026-09-09 and each reconstructing a defect that shipped.
 Three defects shipped there on 2026-09-09 through a clean `gofmt`, `vet`,
