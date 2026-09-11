@@ -1,86 +1,70 @@
-# P25 voice capture request
+# P25 capture request: what is still needed
 
-QSP carries P25 natively — bytes in, bytes out, no vocoder — for the reasons in
-[ADR-0034](../docs/adr/ADR-0034-p25-is-native.md). It cannot be built without a
-capture of a real P25 call.
+`p25-voice.pcap` answered most of the first request — seven transmissions, no
+dropped frames, and the frame table in `p25-voice.md` is built from it.
 
-`p25-gateway-idle.pcap` already covers the idle path: 155 packets of P25Gateway
-polling and status, captured 2026-08-23. **It contains no voice**, which is the
-part that matters.
-
-## What we need, in one sentence
-
-A packet capture of P25Gateway's conversation with MMDVMHost from before the
-gateway starts, through at least two voice transmissions, to a clean stop.
+**Two things remain, and the first is what blocks routing.**
 
 ---
 
-## Why the boundaries matter more than the middle
+## 1. Two talkgroups and two radios
 
-**Start the capture before the gateway.** Registration and the first exchange
-happen once. A capture that begins after the gateway is already running shows
-steady state and nothing about how it got there — and steady state is the part
-that can be guessed at, while the handshake is not.
+**The problem in one sentence:** frames `0x66` to `0x69` each carry three bytes
+that were identical across all seven captured transmissions, so the talkgroup
+and source ID are certainly in there and cannot be located.
 
-**Two transmissions, not one.** One shows the shape. Two show what changes
-between them: whether a stream identifier increments, resets or is random, and
-whether the second call carries anything the first did not. A field that is
-constant across one call and varies across two is a field nobody can identify
-from a single capture.
+A field that never changes is indistinguishable from framing that never changes.
+Until something varies, any claim about which byte means what is a guess — and a
+guess in a routing field sends a call to the wrong place.
 
-**Let it run quiet in between.** Thirty seconds of nothing happening records the
-keepalive interval, and an interval guessed wrong looks right until a gateway
-drops an hour later.
+**What to capture:**
 
-## On the hotspot
+- **Two different talkgroups.** Transmit on one, then the other, in the same
+  capture. The bytes that change between them are the talkgroup.
+- **Two different radios**, if there is a second to hand. The bytes that change
+  when the radio changes are the source ID.
+- **Several transmissions on each**, so a byte that changes for some other
+  reason is not mistaken for one of these.
 
-Make the filesystem writable first:
+Two talkgroups alone is enough to make a start. Two radios as well settles both
+fields in one capture.
+
+**Why it cannot be worked out any other way:** the P25 air interface is
+specified, but the way a gateway packages it into UDP is a convention rather
+than a standard, and ADR-0029 forbids reading another implementation to find
+out. The Homebrew and IPSC work was built the same way — from captures.
+
+---
+
+## 2. The registration handshake
+
+Start the capture **before** the gateway, so the first exchange is in it.
+Registration happens once; a capture beginning after the gateway is running
+shows steady state, which is the part that can be reasoned about, and hides the
+part that cannot.
+
+On the hotspot:
 
 ```sh
 rpi-rw
-```
-
-Stop the gateway, start the capture, then start the gateway:
-
-```sh
 sudo systemctl stop p25gateway
-sudo tcpdump -i any -w /tmp/p25-voice.pcap -s 0 'udp and (port 42020 or port 32010)'
-```
-
-Leave that running. In a second session:
-
-```sh
+sudo tcpdump -i any -w /tmp/p25-register.pcap -s 0 udp &
+sleep 2
 sudo systemctl start p25gateway
 ```
 
-Wait about thirty seconds, then make **two** transmissions on a P25 talkgroup
-with a gap between them, then wait another thirty seconds and stop the capture
-with Ctrl-C.
+Then let it sit quiet for thirty seconds — that records the keepalive interval,
+and an interval guessed wrong looks right until a gateway drops an hour later —
+before transmitting.
 
-```sh
-sudo systemctl stop p25gateway
-```
+---
 
-## What to send
+## What a capture will never answer
 
-The `.pcap`, and a note recording:
+**What a P25 radio does with a frame that is wrong.** A capture shows a correct
+implementation sending correct frames. The IPSC work found its real defects on
+the far side of that line: a repeater that keyed up and transmitted silence, and
+a codec that was right against captured bursts and wrong against a radio.
 
-| | |
-|---|---|
-| Captured by | callsign |
-| Date | |
-| Software and versions | P25Gateway, MMDVMHost, WPSD release |
-| Talkgroup used | |
-| Radio | make and model |
-| Anything unusual | a retry, a reconnect, a call that did not go through |
-
-**The unusual things are worth as much as the clean ones.** A failed
-registration in a capture is a documented failure mode; a failed registration
-nobody captured is a bug report six months later with no evidence attached.
-
-## What we will not do with it
-
-Read another implementation to interpret it. ADR-0008 records why: reading a GPL
-implementation to learn a protocol binds this project to a derivative-work
-licence from the moment it is read, whether or not a line is copied. The capture
-and the published specification come first, in that order.
+So a capture gets P25 to the point of being relayable. Getting it to the point
+of being *trustworthy* needs a radio and somebody to listen.

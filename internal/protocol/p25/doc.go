@@ -8,8 +8,16 @@
 // the whole product for that club rather than a compatibility mode. See
 // docs/adr/ADR-0034.
 //
-// It is not implemented. As with the hbp package, implementation is blocked on
-// captured real traffic for golden-frame fixtures, and on the licence question
-// recorded in docs/adr/ADR-0008. testdata/p25 holds an idle capture and a
-// request for the voice one, which is the only remaining blocker.
+// **The frame layer is built and proven against a real capture**; routing is
+// not. `testdata/p25/p25-voice.pcap` holds seven transmissions with no dropped
+// frames, and all 565 of them round-trip byte for byte through frame.go.
+//
+// What is missing is the talkgroup. Frames 0x66 to 0x69 each carry three bytes
+// that were identical across every captured transmission, which is where the
+// Link Control lives — but one radio on one talkgroup makes a constant field
+// indistinguishable from constant framing. A capture with two talkgroups
+// settles it; see testdata/p25/CAPTURE-REQUEST.md.
+//
+// So QSP can recognise and relay P25 today and cannot decide where a call
+// goes, which is the honest state of it.
 package p25

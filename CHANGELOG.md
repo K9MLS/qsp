@@ -4,6 +4,51 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A P25 voice capture, and the frame layer built from it.** Seven
+  transmissions between MMDVMHost and P25Gateway with a reflector linked, every
+  frame type appearing exactly 30 or 32 times — nothing dropped, which is what
+  makes the frame lengths exact rather than typical. Committed as
+  `testdata/p25/p25-voice.pcap`; the previous fixture held polling only, and
+  `CAPTURE-REQUEST.md` had been waiting for this since August.
+
+  **Voice arrives in logical data units of nine frames**: `0x62`–`0x6A` is LDU1,
+  `0x6B`–`0x73` is LDU2, alternating until `0x80` ends the transmission. The
+  keepalive is `0xF0` and a callsign padded to ten characters.
+
+  `internal/protocol/p25` identifies a frame, checks its length exactly, and
+  **carries the payload verbatim**. That is ADR-0034 having a consequence rather
+  than a preference: a P25 call crosses QSP without a vocoder, so QSP has no
+  reason to understand the inside of a voice frame — and every byte it would
+  rebuild is a byte it could get wrong. The IPSC work found real defects in
+  exactly that territory.
+
+  All 565 frames on the inbound path round-trip byte for byte. The payload is
+  copied rather than aliased, because a frame handed on while the listener
+  reuses its buffer would change underneath whoever relays it and look like a
+  radio fault. A type the capture never showed is refused rather than forwarded
+  blind. Three breaks confirmed it: aliasing the buffer, one wrong length in the
+  table, and inventing a frame type.
+
+  **The type table is asserted in both directions** — every type the capture
+  holds is known, and every type known appeared in the capture, so nothing here
+  was invented.
+
+### Fixed
+
+- **The honest state of P25 is now recorded rather than implied.** The package
+  said implementation was blocked on a capture; it now says the frame layer is
+  proven and **routing is not possible yet**, because the talkgroup cannot be
+  located: frames `0x66` to `0x69` each carry three bytes that were identical
+  across all seven transmissions, and one radio on one talkgroup makes a
+  constant field indistinguishable from constant framing.
+
+  `CAPTURE-REQUEST.md` is rewritten around that single question — two
+  talkgroups, and two radios if there is a second to hand — plus the
+  registration handshake, which this capture missed because it began with the
+  gateway already running.
+
 ### Documentation
 
 - **Handover and standing brief brought up to 0325.** Start here is: use the
