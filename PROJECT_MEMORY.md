@@ -808,7 +808,8 @@ it is more use than a list of what exists today.
 | **IPSC** | a club with a Motorola repeater cannot use QSP. Blocked on a capture, deliberately — see [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) |
 | **A vocoder** | QSP relays audio without decoding it, which is why parrot works and transcoding does not |
 | **Hotspot configuration guidance** | a member's own hotspot needs `TGRewrite` and `PCRewrite` rules QSP cannot supply, and the join page does not mention them. Every new member repeats the same afternoon. See §6a |
-| **P25, vocoder, AllStar, Zello, EchoLink** | later phases, each reporting `unavailable` |
+| **AllStar, Zello, EchoLink** | later phases, each reporting `unavailable`, and each needing an external transcoder with an AMBE dongle |
+| **P25** | built 2026-09-11 — a P25 reflector over IP, off unless `p25.enabled`. Not a Quantar link; that is V.24/HDLC and unbuilt |
 
 The live map is built, and `/api/peers` is deliberately unauthenticated: it
 carries callsigns, radio IDs and coordinates, all of which are public

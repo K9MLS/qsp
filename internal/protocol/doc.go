@@ -10,7 +10,13 @@
 // testdata/hbp/ parses and round-trips byte-for-byte, the codec is fuzzed, and
 // a WPSD hotspot completed the login handshake against it on 2026-08-23.
 //
-// P25 is a later phase. It is blocked on a capture containing an actual P25
-// transmission — testdata/p25/ holds polling traffic only — and on the
-// licensing question in ADR-0008; see docs/architecture/testing.md.
+// P25 over IP is built: the p25 package reads the frames and internal/p25link
+// serves gateways. It was blocked on a capture containing real P25 voice, and
+// testdata/p25 now holds three — voice, four talkgroups, and the registration
+// exchange, which turned out not to exist.
+//
+// **Linking a Motorola Quantar is a different problem and is not built.** A
+// Quantar's linking interface is a V.24 daughtercard running bit-oriented HDLC
+// rather than anything over IP, and nothing here opens a serial port. See
+// docs/P25-PLANNING.md.
 package protocol

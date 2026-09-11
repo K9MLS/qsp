@@ -49,6 +49,7 @@ type Config struct {
 	Events   Events   `json:"events"`
 	DMR      DMR      `json:"dmr"`
 	IPSC     IPSC     `json:"ipsc"`
+	P25      P25      `json:"p25"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -74,6 +75,36 @@ type Config struct {
 // seven characters and a suffix; the room above that is for "K9MLS/R" and the
 // like, not for a description of the site.
 const maxPeerName = 20
+
+// P25 configures the P25 network listener.
+//
+// **A P25 reflector, not a Quantar link.** This is the MMDVM P25 network
+// protocol that hotspots and reflectors speak over UDP, evidenced by three
+// captures in testdata/p25. A Motorola Quantar links over a V.24 daughtercard
+// running bit-oriented HDLC, which is a different transport entirely and is
+// documented separately in docs/P25-PLANNING.md.
+type P25 struct {
+	// Enabled turns the P25 listener on.
+	Enabled bool `json:"enabled"`
+	// ListenAddress is the UDP host:port to bind. 41000 is the port the
+	// amateur P25 reflectors use and what a gateway will try first.
+	ListenAddress string `json:"listen_address"`
+	// Callsign is what this server announces in its own polls.
+	//
+	// **Not read by anything today**, because the far end echoes the poll it
+	// received rather than announcing itself — so a QSP on the reflector side
+	// sends nothing of its own. Kept because a gateway QSP dials would need
+	// it, and because a field that exists and is honest about doing nothing is
+	// better than one added later in a hurry.
+	Callsign string `json:"callsign,omitempty"`
+	// AllowedCallsigns names the gateways answered.
+	//
+	// **Empty answers every gateway that knows the address**, which is the
+	// same rule and the same hazard as the IPSC allow list. A poll carries a
+	// callsign the gateway asserts about itself and nothing verifies it, so
+	// this list is the only thing between the port and anybody who knows one.
+	AllowedCallsigns []string `json:"allowed_callsigns"`
+}
 
 type IPSC struct {
 	// Enabled turns the IPSC listener on.
@@ -1111,6 +1142,26 @@ func (c Config) Validate() error {
 	if _, err := parseFormat(c.Logging.Format); err != nil {
 		v.add("logging.format", fmt.Sprintf("%q is not a recognised format", c.Logging.Format),
 			"use \"text\" for interactive use or \"json\" for production")
+	}
+
+	if c.P25.Enabled {
+		if strings.TrimSpace(c.P25.ListenAddress) == "" {
+			v.add("p25.listen_address", "must not be empty when the P25 listener is enabled",
+				"use \"0.0.0.0:41000\" to accept gateways on every interface")
+		} else if _, _, err := net.SplitHostPort(c.P25.ListenAddress); err != nil {
+			v.add("p25.listen_address", fmt.Sprintf("%q is not a host:port address", c.P25.ListenAddress),
+				"include a port, for example \"0.0.0.0:41000\"")
+		}
+		// **No advisory about an empty allow list here**, because the bind
+		// check already refuses to start a listener reachable from beyond the
+		// host with no access rules, and a second warning about the same thing
+		// teaches an operator to skim both.
+		for i, call := range c.P25.AllowedCallsigns {
+			if strings.TrimSpace(call) == "" {
+				v.add(fmt.Sprintf("p25.allowed_callsigns[%d]", i), "is empty",
+					"remove the entry; an empty callsign matches nothing and reads as a mistake")
+			}
+		}
 	}
 
 	if c.IPSC.Enabled {

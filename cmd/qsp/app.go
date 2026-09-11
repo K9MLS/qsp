@@ -27,6 +27,7 @@ import (
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/ipsclink"
+	"github.com/k9mls/qsp/internal/p25link"
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
@@ -53,6 +54,7 @@ type app struct {
 	srv       *server.Server
 	dmr       *peers.Listener
 	ipsc      *ipsclink.Listener
+	p25       *p25link.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
 	// auth is the concrete login service, kept alongside the interface the
@@ -423,6 +425,29 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// IPSC is its own listener on its own port. A club may run a Motorola
 	// repeater, an HBP network, both or neither, so neither enables the other.
 	ipscDisabledReason := "IPSC peering is off; set ipsc.enabled to serve Motorola repeaters"
+	// **Names what this is and what it is not.** A P25 operator reading
+	// "P25 is off" would reasonably expect enabling it to link a Quantar, and
+	// it will not: a Quantar links over a V.24 daughtercard running HDLC, which
+	// is a different transport entirely (docs/P25-PLANNING.md).
+	p25DisabledReason := "the P25 reflector is off; set p25.enabled to serve P25 gateways " +
+		"and hotspots. This is P25 over IP, not a Motorola Quantar link"
+	if cfg.P25.Enabled {
+		// **A P25 reflector, and it does not touch DMR.** ADR-0034: P25
+		// carries IMBE and DMR carries AMBE+2, so routing one through the
+		// other is tandem vocoding and QSP will not do it. A P25 call crosses
+		// between P25 endpoints and nowhere else, which is why this listener
+		// needs no sink into the DMR side and has none.
+		pl, perr := p25link.New(log, p25link.Config{
+			ListenAddress:    cfg.P25.ListenAddress,
+			Callsign:         cfg.P25.Callsign,
+			AllowedCallsigns: cfg.P25.AllowedCallsigns,
+		})
+		if perr != nil {
+			return nil, perr
+		}
+		a.p25 = pl
+	}
+
 	if cfg.IPSC.Enabled {
 		// A Motorola repeater's audio reaches the rest of the network through
 		// the DMR listener, because that listener owns the socket Homebrew
@@ -507,6 +532,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	}
 
 	registry.MustRegister(ipsclink.HealthCheck{Listener: a.ipsc, DisabledReason: ipscDisabledReason})
+	registry.MustRegister(p25link.HealthCheck{Listener: a.p25, DisabledReason: p25DisabledReason})
 
 	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
@@ -776,6 +802,11 @@ func (a *app) run(ctx context.Context) error {
 	}
 	if a.ipsc != nil {
 		if err := a.ipsc.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if a.p25 != nil {
+		if err := a.p25.Start(ctx); err != nil {
 			return err
 		}
 	}
@@ -1435,7 +1466,7 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 // been written yet", and docaccuracy_test.go checks the documentation against
 // it. A subsystem leaves this list on the commit that implements it.
 var unbuiltSubsystems = []struct{ name, arrives string }{
-	{"p25", "P25 peering arrives in phase 5"},
+
 	// **The vocoder pool was removed from this list in 0310, not built.** QSP
 	// does not decode audio and will not: it copies vocoder payloads and never
 	// inspects them, which is why DMR-to-DMR needs no codec at all. Crossing

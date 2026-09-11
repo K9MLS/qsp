@@ -40,7 +40,12 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > exercised. No operator other than the author has run QSP. The two-week
 > unattended soak has not started.
 >
-> **Not yet built:** P25 and the analog connectors (AllStar, Zello, EchoLink).
+> **P25 over IP** is built — QSP can serve P25 gateways and hotspots as a
+> reflector, carrying IMBE frames untouched exactly as it carries AMBE. Linking
+> a Motorola Quantar is a different problem and is not built: a Quantar links
+> over a V.24 daughtercard running HDLC rather than over IP.
+>
+> **Not yet built:** the analog connectors (AllStar, Zello, EchoLink).
 > The health endpoint reports each as `unavailable`, and each needs an external
 > transcoder with an AMBE dongle — **QSP does not decode audio and will not**,
 > which is why DMR-to-DMR needs no codec at all.

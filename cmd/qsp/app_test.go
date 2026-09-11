@@ -113,7 +113,12 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// A subsystem that genuinely does not exist yet says which phase brings it.
 	// Routing and the scheduler are built, so they are not in this list; their
 	// checks describe the instance instead.
-	for _, name := range []string{"p25", "allstar", "zello", "echolink"} {
+	// **P25 left this list on 2026-09-11**, when the listener was built from
+	// three captures. An entry saying a subsystem arrives in a future phase
+	// becomes a lie the moment it ships, and §8a records four instances in one
+	// day of exactly that kind of staleness — so it moves in the same patch
+	// that builds the thing rather than the next one.
+	for _, name := range []string{"allstar", "zello", "echolink"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("unbuilt subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)
@@ -125,7 +130,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 
 	// Built-but-inactive subsystems name the setting that would turn them on,
 	// which is a different statement from "not implemented".
-	for _, name := range []string{"routing", "scheduler"} {
+	for _, name := range []string{"routing", "scheduler", "p25"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("inactive subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)

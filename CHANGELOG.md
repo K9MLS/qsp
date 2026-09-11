@@ -6,6 +6,44 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **P25 over IP is wired in, and QSP is now a P25 reflector.** A `p25` block
+  configures it — listen address, callsign, and an allow list of gateway
+  callsigns — validated the same way IPSC is, and the listener binds at startup
+  so a port already in use is an error where an operator is watching rather than
+  a warning in a log.
+
+  **It is off unless `p25.enabled`**, and the disabled message says what it is
+  *not*: a P25 operator reading "P25 is off" would reasonably expect enabling it
+  to link a Quantar, and it will not. A Quantar links over a V.24 daughtercard
+  running HDLC, which is a different transport entirely.
+
+- A health check reporting registered gateways, frames received, refusals with
+  the most recent callsign named, and unrecognised datagrams. **No gateways is
+  healthy, not degraded** — a reflector nobody has linked to is one waiting, and
+  an operator who has just enabled it should not be sent looking for a fault.
+
+### Fixed
+
+- **`Start` served inline, which would have hung the daemon.** Listeners are
+  started in sequence, so a `Start` that did not return would have stopped the
+  links, the console and the scheduler from ever starting — and the symptom
+  would have been a daemon that appears to come up and then does nothing, with
+  no error anywhere. Caught by reading how the IPSC listener returns rather than
+  by any test; there is a test now, and it calls `Start` the way the daemon does
+  rather than on a goroutine, because a goroutine would have hidden it.
+
+- **Three documents claimed P25 was unbuilt**, and the gate written yesterday
+  named all three: PROJECT_MEMORY's subsystem table, `internal/protocol/doc.go`,
+  and the README. That is the same staleness class §8a records four instances of
+  — a decision changes, one place is updated, the rest go on saying what used to
+  be true — and this is the first time a check caught it in the same patch
+  rather than an operator catching it days later.
+
+  The health report's unbuilt list lost P25 in the same patch that built it, for
+  the same reason.
+
+### Added
+
 - **There is no P25 registration: the poll is the registration.** A third
   capture — `testdata/p25/p25-register.pcap`, taken with the systemd timer
   disabled so the service could not be restarted underneath it — shows a gateway

@@ -2,7 +2,9 @@ package p25link_test
 
 import (
 	"context"
+	"errors"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,23 +40,20 @@ func serve(t *testing.T, cfg p25link.Config) (*p25link.Listener, string, func())
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	// **Called directly, not on a goroutine**, because Start binds and returns
+	// — and calling it the way the daemon does is the point. The first version
+	// of Start served inline, which would have hung every listener started
+	// after it; running it on a goroutine here would have hidden that.
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		if err := l.Start(ctx); err != nil {
-			t.Errorf("Start: %v", err)
-		}
-	}()
-
-	for i := 0; i < 200 && !l.Running(); i++ {
-		time.Sleep(time.Millisecond)
+	if err := l.Start(ctx); err != nil {
+		cancel()
+		t.Fatalf("Start: %v", err)
 	}
 	if !l.Running() {
 		cancel()
-		t.Fatal("the listener never started")
+		t.Fatal("Start returned and the listener is not running")
 	}
-	return l, addr, func() { cancel(); <-done }
+	return l, addr, cancel
 }
 
 func dial(t *testing.T, addr string) *net.UDPConn {
@@ -317,5 +316,65 @@ func TestAGatewayThatStopsPollingIsForgotten(t *testing.T) {
 	l.ExpireAt(time.Now().Add(p25link.PollInterval*p25link.MissedPollsBeforeGone + time.Second))
 	if len(l.Gateways()) != 0 {
 		t.Error("a gateway that stopped polling was never forgotten")
+	}
+}
+
+// TestStartBindsAndReturns is the test for the defect this file's harness was
+// written around.
+//
+// **The daemon starts its listeners in sequence.** A Start that served inline
+// would hang everything after it — the links, the console, the scheduler — and
+// the symptom would be a daemon that appears to start and then does nothing,
+// with no error anywhere. The first version of Start did exactly that, and it
+// was caught by reading how the IPSC listener returns rather than by any test.
+//
+// A second listener started after the first is what makes this fail rather than
+// hang: if Start blocks, the second New never runs and the test times out,
+// which is a failure either way but a slower and less clear one.
+func TestStartBindsAndReturns(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		l, _, stop := serve(t, p25link.Config{})
+		defer stop()
+		if !l.Running() {
+			done <- errors.New("not running after Start")
+			return
+		}
+		done <- nil
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Start did not return within three seconds; it is serving inline and would " +
+			"hang every listener the daemon starts after it")
+	}
+}
+
+// A port already in use must be an error at startup rather than a warning in a
+// log, because it is the operator's to fix and they are watching the start.
+func TestAPortAlreadyInUseIsAnErrorAtStartup(t *testing.T) {
+	held, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("holding a port: %v", err)
+	}
+	defer func() { _ = held.Close() }()
+
+	l, err := p25link.New(logging.Discard(), p25link.Config{
+		ListenAddress: held.LocalAddr().String(),
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	if err := l.Start(ctx); err == nil {
+		t.Error("binding a port already in use succeeded")
+	} else if !strings.Contains(err.Error(), held.LocalAddr().String()) {
+		t.Errorf("the error does not name the address: %v", err)
 	}
 }

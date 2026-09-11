@@ -3,6 +3,7 @@ package p25link
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 
@@ -17,58 +18,73 @@ import (
 // looks like a different frame — which is worse than refusing it.
 const maxDatagram = 1500
 
-// Start serves until the context is cancelled.
+// Start binds the socket and returns.
+//
+// **It must return rather than serve.** The daemon starts its listeners in
+// sequence, so a Start that blocked would hang everything after it — the first
+// version of this did exactly that, and it was caught by looking at how the
+// IPSC listener returns rather than by any test. Binding here and serving on a
+// goroutine also means a port already in use is an error at startup, which is
+// what an operator needs, rather than a warning in a log nobody reads.
 func (l *Listener) Start(ctx context.Context) error {
 	addr, err := net.ResolveUDPAddr("udp", l.cfg.ListenAddress)
 	if err != nil {
-		return err
+		return fmt.Errorf("p25: cannot resolve %s: %w", l.cfg.ListenAddress, err)
 	}
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("p25: cannot listen on %s: %w", l.cfg.ListenAddress, err)
 	}
 	l.conn = conn
 	l.running.Store(true)
-	defer func() {
-		l.running.Store(false)
-		_ = conn.Close()
-	}()
 
-	l.log.Info("p25 listener started",
+	l.log.Info("listening",
 		"address", conn.LocalAddr().String(),
 		"callsign", l.cfg.Callsign,
-		"allowed", len(*l.allowed.Load()),
+		"allowed_gateways", len(*l.allowed.Load()),
 		"poll_interval", PollInterval.String())
 
-	// Closing the socket is what unblocks the read below; a deadline would
-	// work too and would mean waking up for nothing several times a second.
+	// Closing the socket is what unblocks the read; a deadline would work too
+	// and would mean waking up for nothing several times a second.
 	go func() {
 		<-ctx.Done()
 		_ = conn.Close()
 	}()
+	go l.serve(ctx)
+	go l.sweep(ctx)
+	return nil
+}
+
+// serve reads datagrams until the socket closes.
+func (l *Listener) serve(ctx context.Context) {
+	defer l.running.Store(false)
 
 	buf := make([]byte, maxDatagram)
-	sweep := time.NewTicker(PollInterval)
-	defer sweep.Stop()
-
 	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case now := <-sweep.C:
-			l.expire(now)
-		default:
-		}
-
-		n, from, err := conn.ReadFromUDP(buf)
+		n, from, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
 			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
-				return nil
+				return
 			}
 			l.log.Warn("p25 read failed", "error", err.Error())
 			continue
 		}
 		l.handle(buf[:n], from)
+	}
+}
+
+// sweep forgets gateways that have stopped polling.
+func (l *Listener) sweep(ctx context.Context) {
+	t := time.NewTicker(PollInterval)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case now := <-t.C:
+			l.expire(now)
+		}
 	}
 }
 
