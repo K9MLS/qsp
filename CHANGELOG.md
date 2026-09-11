@@ -6,6 +6,46 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **There is no P25 registration: the poll is the registration.** A third
+  capture — `testdata/p25/p25-register.pcap`, taken with the systemd timer
+  disabled so the service could not be restarted underneath it — shows a gateway
+  announcing itself with an eleven-byte poll and the far end returning the
+  **identical datagram**. Ninety-six out, ninety-six back, every 5.01 seconds,
+  no login of any kind.
+
+  That is the finding that would have been most expensive to guess at. The
+  obvious assumption is that a login exists, and a state machine built for one
+  that does not would have been wrong in the direction no test catches: correct
+  against itself, and failing against a real gateway in a way that looks like a
+  network problem.
+
+- **`internal/p25link`: a P25 listener.** It answers a poll with the bytes it
+  received — a gateway that pads its callsign differently gets its own padding
+  back, because QSP does not rewrite what it carries — registers the gateway,
+  and **relays voice verbatim to every other registered gateway**. ADR-0034
+  arriving at a socket: what goes out is what came in.
+
+  **The timeout is measured rather than assumed.** Three missed polls, fifteen
+  seconds: one dropped datagram on a UDP path says nothing.
+
+  Three refusals, each with a break behind it. **A refused gateway is not
+  answered at all** — one that got a reply would believe it had registered and
+  sit there sending voice nobody carries, which looks like a QSP fault from its
+  end. **A frame is never echoed to its sender**, which would be a loop. And
+  **voice from a gateway that has not polled is not carried**, because QSP does
+  not know who it is and relaying it would put audio from an unidentified source
+  onto somebody's repeater.
+
+  The allow list ignores case, because 0301 shipped that defect one layer up: a
+  link whose name was not lowercase could not be sent to, and refusing a station
+  for its shift key would be the same mistake in a new place.
+
+  Tested against a real UDP socket with real frames from the capture — a fake
+  connection would test the handler and leave the part that has never worked
+  untested. Race detector clean.
+
+### Added
+
 - **The P25 talkgroup and source radio are located, which unblocks routing.** A
   second capture — `testdata/p25/p25-talkgroups.pcap`, 5173 packets, none
   dropped — holds **fourteen transmissions across four talkgroups** and three

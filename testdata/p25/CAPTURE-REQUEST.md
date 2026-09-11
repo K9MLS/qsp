@@ -21,28 +21,16 @@ this one, closes it.
 
 ---
 
-## 2. The registration handshake
+## 2. The registration handshake — **answered 2026-09-11**
 
-Start the capture **before** the gateway, so the first exchange is in it.
-Registration happens once; a capture beginning after the gateway is running
-shows steady state, which is the part that can be reasoned about, and hides the
-part that cannot.
+`p25-register.pcap` settled it, and the answer is that there is no handshake: a
+gateway polls, the far end returns the identical datagram, every 5.01 seconds.
+See `p25-register.md`.
 
-On the hotspot:
-
-```sh
-rpi-rw
-sudo systemctl stop p25gateway
-sudo tcpdump -i any -w /tmp/p25-register.pcap -s 0 udp &
-sleep 2
-sudo systemctl start p25gateway
-```
-
-Then let it sit quiet for thirty seconds — that records the keepalive interval,
-and an interval guessed wrong looks right until a gateway drops an hour later —
-before transmitting.
-
----
+What remains is **a second P25 radio**, which no longer blocks anything. Every
+transmission in all three captures is the same radio, so the source field is
+confirmed as a 24-bit identifier matching this one and not yet proven to follow
+a different one. Any second radio, on any talkgroup, closes it.
 
 ## What a capture will never answer
 
