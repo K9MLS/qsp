@@ -4,6 +4,58 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **[ADR-0060](docs/adr/ADR-0060-qsp-terminates-the-serial-tunnel.md): QSP is a
+  Motorola P25 repeater's master directly.** It terminates the serial tunnel,
+  reads the Motorola framing and carries the audio. No bridge host, no relay
+  chain, nothing between the router and QSP.
+
+  **This answers the question ADR-0057 left open — which process opens the V.24
+  serial port — with "none of them."** A Quantar's V.24 link is carried over IP
+  by a Cisco router using STUN, Cisco's serial tunnel, which exists because it
+  was built for IBM SDLC and HDLC descends from it; `basic` mode carries
+  everything from one side to the other on TCP 1994. The router does the
+  physical layer in hardware and presents a TCP stream, so a STUN listener is
+  the same shape as every other listener QSP has. The objection recorded
+  against QSP owning the repeater interface — a serial dependency in a binary
+  whose selling point is having none — does not apply to this path at all.
+
+  **And the bridge host was only ever an instrument.** `stun route all tcp`
+  accepts any address, so pointing it at a QSP host and catching the bytes with
+  `tcpdump` and a socket produces the fixture with no second machine and none
+  of the four processes, two of which this project cannot instrument. The
+  operator's objection was sharper than the architecture note: relying on
+  another machine to run software that speaks a protocol QSP already speaks, to
+  reach a repeater QSP is meant to be master of, is the wrong shape.
+
+  Four phases, each with its own instrument, in the order the evidence arrives
+  — the order the P25 reflector and the IPSC listener were both built in.
+  Phase 2 is the P25 milestone a second time on a different transport: the
+  wireline card's LED goes steady when QSP answers the keepalive, and *the poll
+  is the registration* again.
+
+  **No code before phase 1 produces bytes.** The Motorola framing above HDLC
+  has no published specification, so this is ADR-0029 exactly. Scale, stated
+  rather than discovered: comparable to the IPSC listener or the P25 reflector,
+  several sessions rather than one.
+
+### Documentation
+
+- **`docs/P25-PLANNING.md` rewritten around the decision.** The DVSwitch chain
+  is demoted from first step to fallback — it keeps a repeater on the air
+  during the build and is a known-good far end if phase 3 needs one, and if
+  phases 1 and 2 go cleanly it is never stood up. The ordered plan now buys the
+  V.24 daughtercard first, because it is the only item on the hardware list
+  that survives every route including the one that replaces all of this.
+
+- **The physical build, researched properly.** The cable KD9EJA photographed is
+  the standard rig: V.24 board, an eight-conductor lead, an RJ-45 to DB-25
+  adapter, and a Cisco DCE serial cable. Two things that stop it working and
+  are not obvious — the Cisco DCE needs DTR asserted and the Motorola RJ-45 has
+  no pin for it, so pin 6 jumpers to pin 20 inside the DB-25 hood; and the
+  V.24 card must be set for external clocking with the Cisco supplying it.
+
 ### Fixed
 
 - **The Traffic panel was ~296px to show eight numbers, six of them zero**, at

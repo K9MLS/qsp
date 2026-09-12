@@ -152,11 +152,37 @@ of scope — ADR-0057 says both are in it — but because it is the same protoco
 behind a worse door, so it teaches nothing the Quantar does not and costs more
 to try. Once the Quantar path works, the GTR 8000 is a cable and a codeplug.
 
-## Two routes to a Motorola P25 repeater, and one is scaffolding
+## QSP is the repeater's master directly
 
-### The scaffold: Quantar_Bridge into P25Gateway
+**Decided 2026-09-12, [ADR-0060](adr/ADR-0060-qsp-terminates-the-serial-tunnel.md).**
+QSP terminates the serial tunnel itself, reads the Motorola framing and carries
+the audio. No bridge host and nothing between the router and QSP.
 
-Available before any QSP code, and worth using.
+The research that produced the scaffold below also dissolved the argument for
+it. A Quantar's V.24 link is carried over IP by a Cisco router using STUN,
+Cisco's serial tunnel — `basic` mode carries everything from one side to the
+other on TCP 1994 — so **nothing opens a serial device on this path**. The
+router does the physical layer in hardware and hands over a TCP stream, which
+is the same shape as every other listener QSP has. And `stun route all tcp`
+accepts any address, so the captures need no second machine either.
+
+### The four phases, and the instrument for each
+
+| Phase | What | Instrument |
+|---|---|---|
+| 1 | Capture the keepalive: tunnel pointed at a QSP host, `tcpdump` plus a socket that accepts and records | The wireline card's LED, which flashes while the link is down |
+| 2 | QSP answers the keepalive | The LED goes steady — *the poll is the registration*, a second time, on a different transport |
+| 3 | Capture and parse voice, handheld into a dummy load | Frame counts against the reflector side's, and `internal/protocol/p25`, which already reads these logical data units |
+| 4 | Relay a Quantar transmission to a hotspot and back | Last heard, and the traffic counters on both sides |
+
+**No code before phase 1 produces bytes.** The Motorola framing above HDLC has
+no published specification, so this is ADR-0029 exactly: captures taken here,
+never anyone's implementation. Scale, honestly: comparable to the IPSC listener
+or the P25 reflector — several sessions, not one.
+
+## The DVSwitch chain, which is now a fallback rather than a first step
+
+Available before any QSP code, and no longer the plan.
 
 ```
 Quantar ──V.24──▶ Cisco WIC-1T ──▶ Quantar_Bridge ──▶ MMDVM_Bridge ──▶ P25Gateway ──UDP:41000──▶ QSP
@@ -169,13 +195,15 @@ started. The far end QSP would see is **P25Gateway** — the same software the
 three existing captures came from — so QSP needs no new protocol knowledge at
 all for this.
 
-**Why it is worth doing anyway**, given ADR-0057:
+**What it still buys, after ADR-0060:**
 
-- It proves audio crosses from a Motorola P25 repeater to a QSP network before
-  any of QSP's own repeater code exists, which means the native work starts
-  against a known-good reference rather than a hypothesis.
-- It keeps a repeater on the air during the build.
-- It produces the first P25 traffic on QSP that QSP did not generate itself.
+- It keeps a repeater on the air while the native path is being written.
+- It is a known-good far end if phase 3 turns out to need one.
+
+**What it no longer buys.** Its main justification was being a reference to
+measure against, and the capture is that reference — taken with `tcpdump` and a
+socket, with none of the four processes, two of which this project cannot
+instrument. If phases 1 and 2 go cleanly it is never stood up.
 
 **What it costs, stated so it is not forgotten**: a defect can live in five
 processes and QSP owns one. This project's diagnostic method is to log the same
@@ -185,10 +213,9 @@ instrument. Tolerable to prove a path, not as a standing arrangement.
 **It comes out when the native interface carries a call.** A scaffold with no
 removal date becomes the building.
 
-### The destination: QSP's own fixed station interface
+### DFSI, which is a different box rather than a substitute
 
-QSP speaks a P25 fixed station interface directly, and a Motorola repeater is a
-peer of a QSP server.
+Still worth doing, and not the same thing as being a Quantar's master.
 
 The published standard is TIA-102.BAHA-A, the Digital Fixed Station Interface,
 which is what the commercial converters and third-party consoles already speak.
@@ -225,12 +252,16 @@ bytes is this project's equivalent of a pcap.
 a full network. A Motorola P25 repeater is a peer of a QSP server, speaking an
 interface QSP owns. QSP is not a client of somebody else's P25 network.
 
-**Still open, and deliberately**: which process opens the V.24 serial port. A
-site-side element speaking IP back to QSP, or QSP opening the device itself.
-Both are QSP's own code, which is why this is a smaller question than it first
-looks — the first suits a multi-site network and keeps a UDP daemon free of
-serial dependencies, the second is fewer moving parts for a club with one
-repeater in the same rack as the server.
+**Decided 2026-09-12, [ADR-0060](adr/ADR-0060-qsp-terminates-the-serial-tunnel.md)**:
+which process opens the V.24 serial port. **None of them.** The Cisco router
+does the physical layer in hardware and carries the frames over TCP with STUN,
+so QSP terminates a tunnel rather than a serial device, and there is no bridge
+host. A USB V.24 converter feeding a serial device remains a possible second
+path and is not what this builds.
+
+**Still open**: [ADR-0058](adr/ADR-0058-the-p25-fixed-station-interface-is-specified.md),
+the permission to implement from TIA-102.BAHA-A. It gates DFSI, not the Quantar
+work — the Motorola framing has no standard to read either way.
 
 **This was nearly decided the wrong way round.** The first write-up of the
 2026-09-12 research argued against QSP owning the repeater interface at all,
@@ -264,17 +295,17 @@ empty. Recorded for completeness:
    the largest untested P25 claim: the listener has never met a real gateway.
 3. **Decide [ADR-0058](adr/ADR-0058-the-p25-fixed-station-interface-is-specified.md).**
    The scaffold in step 4 does not need it; everything after step 5 does.
-4. **Stand up the scaffold**: Quantar behind Quantar_Bridge and P25Gateway,
-   pointed at QSP. **One variable changes from step 2** — the same gateway,
-   fed by a repeater instead of a hotspot — which is the whole reason to do
-   these in this order rather than building the bench first.
-5. **Capture the V.24 link** with one Quantar and a handheld, through the
-   router. The first V.24 bytes this project has seen, and the fixture
-   everything after depends on.
-6. **Then** decide where the serial code lives, from that capture.
-7. **Build QSP's own fixed station interface**, and take the scaffold out when
-   it carries a call.
+4. **Buy the V.24 daughtercard.** The only item on the hardware list that
+   survives every route, including the one that replaces all of this.
+5. **Build the capture rig**: router, serial card, cable, the DTR jumper in the
+   DB-25 hood, tunnel pointed at a QSP host. No bridge host, no DVSwitch.
+6. **Phase 1 and 2** — capture the keepalive, then answer it. The wireline
+   card's LED going steady is the milestone.
+7. **Phase 3 and 4** — voice, then relay.
 8. **Then the GTR 8000**, which by then is a cable and a codeplug.
+
+The scaffold is not in this list. It is a fallback if phase 3 needs a
+known-good far end, and a way to keep a repeater on the air meanwhile.
 
 No longer deferred. ADR-0034 deferred this until the DMR and IPSC work was
 finished, and the routing core was assessed as essentially complete on
