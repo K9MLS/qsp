@@ -66,3 +66,5 @@ conclusion.
 | [0054](ADR-0054-a-backup-restores-a-server-not-its-secrets.md) | A backup restores a server, not its secrets | Accepted |
 | [0055](ADR-0055-an-administration-page-answers-questions.md) | An administration page answers questions, and is not a settings dump | Accepted |
 | [0056](ADR-0056-first-administrator-in-a-browser.md) | The first administrator is made in a browser, with a token | Accepted — amends 0026 |
+| [0057](ADR-0057-p25-is-a-full-network.md) | The P25 side is a full network, and it carries Motorola repeaters natively | Accepted |
+| [0058](ADR-0058-the-p25-fixed-station-interface-is-specified.md) | The P25 fixed station interface is specified, and the Motorola framing above it is not | Proposed |

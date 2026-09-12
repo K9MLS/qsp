@@ -4,6 +4,53 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **The P25 side is a full network** ([ADR-0057](docs/adr/ADR-0057-p25-is-a-full-network.md),
+  accepted by the operator). A Motorola P25 repeater is a peer of a QSP server
+  in the same sense a Motorola DMR repeater already is, speaking an interface
+  that is QSP's own. QSP is not a client of somebody else's P25 network.
+
+  **The research that preceded this recommended the opposite and was wrong**,
+  in a way worth recording rather than quietly correcting. It found a route
+  that works today with no QSP code — Quantar_Bridge into P25Gateway, whose far
+  end is the same software QSP's three captures came from — and then argued
+  against QSP owning the repeater interface at all. Two questions had been
+  collapsed into one: whether QSP carries Motorola P25 repeaters, and which
+  process opens the V.24 serial port. An argument about the second was written
+  as an answer to the first. The scope question is now settled and the serial
+  question is still open, deliberately, to be answered from a capture.
+
+  The DVSwitch chain stays in the plan as **scaffolding with a stated removal
+  date**: it proves audio crosses before QSP's own repeater code exists, and it
+  comes out when the native interface carries a call. A scaffold with no removal
+  date becomes the building.
+
+- **[ADR-0058](docs/adr/ADR-0058-the-p25-fixed-station-interface-is-specified.md),
+  Proposed**: TIA-102.BAHA-A is a published standard and falls on ADR-0040's
+  side of the line, the Motorola framing above HDLC on a V.24 link does not,
+  and a third-party capture is a hypothesis rather than a fact. The planning
+  document has carried this recommendation since 2026-09-06 and said it should
+  be an ADR before any P25 code is written; ADR-0057 depends on it, so it is
+  now one. It needs a yes.
+
+### Documentation
+
+- **`docs/P25-PLANNING.md` rewritten against what is now true.** The reflector
+  half is built rather than researched; the architectural fork is half decided
+  and says which half; the plan is reordered so that pointing the Pi-Star's
+  gateway at QSP comes before any hardware, and standing up the Quantar behind
+  the same gateway changes exactly one variable from it.
+
+- **The GTR 8000, which the document had never mentioned.** Its V.24 port uses
+  the same pin-outs as a Quantar, so one rig serves both and it adds nothing to
+  the protocol question. Its IP interface is *not* DFSI — it carries voice to a
+  CCGW or GCM 8000 Comparator, and the clearest evidence that this is
+  proprietary is that a product exists to convert it into DFSI. It is also
+  CSS-configured with per-option licensing. Both repeaters are in scope; the
+  Quantar comes first because the GTR 8000 is the same protocol behind a worse
+  door.
+
 ### Testing
 
 - **Four gates, and three of them were watched failing first.** A link
