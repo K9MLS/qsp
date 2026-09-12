@@ -3106,6 +3106,54 @@ was this true of, and is that still the case?** A comment explaining why
 something is absent is the place to look: it names its own premise, which is
 what makes it checkable. Both of these said so in as many words.
 
+### A counter's name is a claim, and a question about a number is a defect report
+
+**2026-09-12.** An operator asked what 20 collisions on the test server were.
+They were the loop rule: `repeat` offers a group call to every QSP link
+including the one it arrived on, that one is refused, and the refusal was
+counted. Keying up twice on the far end took the number to 88 — 34 frames
+apiece — which settled it in one move, one variable changed and two readings
+taken, rather than by reading the routing core.
+
+Three things worth keeping:
+
+- **A counter that rises when nothing is wrong is worse than no counter.** It
+  was amber on Traffic from the moment the link came up, so the first real
+  collision would have arrived as a number that was already climbing. Pete's
+  server would have gone amber on its first day for working correctly.
+- **The classification already existed.** `routing.Drop.NotAJudgement` was
+  declared, commented at length, set on exactly the right drops — and read by
+  one of the two places that needed it. The tenth-instance form of §8a's
+  question is not "what is read by nothing" but **"what is read by some of the
+  paths that should read it"**.
+- **An operator asking what a number means is the defect report.** Nothing was
+  broken enough to complain about; a number was merely unexplained. Every
+  question of that shape this week has ended in a real fault.
+
+The same investigation found that the Homebrew side logged `call started` and
+never `call ended` — the whole tree had that line in one file,
+`internal/ipsclink/listener.go` — so the project's primary diagnostic was
+running on one and a half layers. **A diagnostic is a thing that can be broken,
+and nothing tests it.** Log the same fact at two layers and read the gap only
+works if both layers emit the fact; a missing line that always means nothing
+can never mean something.
+
+### An unreachable branch looks like care
+
+**2026-09-12, within an hour of quoting the rule against it.** The fix above
+added an end-of-call line, and its first draft switched on `EndReason` to warn
+about a stream that ended without a terminator. `Tracker.Update` returns a
+finished call for one reason only, and the sweep that produces the other is
+`expireCalls`, which has logged it — warn for voice, debug for data — since the
+text work. So the branch duplicated an existing line's wording and could never
+run.
+
+It read as thoroughness. That is what makes this one hard: the seventh instance
+was a validation-prevented state reported by a page, and this is the same shape
+arrived at from the authoring side, where nothing is broken to draw attention to
+it. **Before writing a branch for a state, ask what produces that state and
+whether it arrives here.** In both cases the answer was one function away.
+
 ### A test that has never failed is a test you do not believe
 
 Three tests written the same day asserted something adjacent to the thing that

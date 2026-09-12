@@ -795,10 +795,17 @@ func TestAJudgedFrameFromALinkReachesNoRepeater(t *testing.T) {
 
 // TestTheLoopRuleIsNotAJudgement covers the second network a club adds.
 //
-// With one link the routing table excludes the endpoint the frame arrived on,
-// so no drop is recorded at all and the frame is unjudged by being untouched.
-// With two, the frame is offered to the other link and the loop rule refuses
-// it — a rule about links, not a verdict on the transmission. Classifying that
+// **Corrected 2026-09-12.** This said that with one link the routing table
+// excludes the endpoint the frame arrived on, so no drop is recorded at all.
+// That is true of the bridge path and false of the network the project
+// actually runs: `repeat` offers a group call to every QSP link (ADR-0051),
+// including the one it arrived on, so a server with a single link records one
+// loop-rule drop for every frame that crosses it. The test server read 88 of
+// them after two keyups.
+//
+// With two links the frame is also offered to the other one and the loop rule
+// refuses only the first — a rule about links, not a verdict on the
+// transmission. Classifying that
 // drop as a refusal would silence every repeater on any server carrying more
 // than one link, which is the shape this network is growing into.
 func TestTheLoopRuleIsNotAJudgement(t *testing.T) {

@@ -906,7 +906,19 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 	}
 
 	for _, drop := range res.Drops {
-		l.collided.Add(1)
+		// **A drop that decided nothing is not a collision** (2026-09-12).
+		//
+		// `repeat` offers a group call to every QSP link including the one it
+		// arrived on, so on a server with one link every frame crossing it
+		// produced a loop-rule refusal, counted here, amber on Traffic. The
+		// test server read 88 after two keyups. NotAJudgement already
+		// classified these; core.go read it and this did not.
+		//
+		// **Still logged** — the line is how an operator sees a link is
+		// carrying, and it is what diagnosed this.
+		if !drop.NotAJudgement {
+			l.collided.Add(1)
+		}
 		// **Debug is where a reason goes to be unreachable.** Production runs
 		// at info, raising the level needs a restart, and by then the
 		// transmission is over — so a refused destination was countable and
@@ -1094,10 +1106,71 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 		l.publishCall(events.TypeCallStarted, *started)
 	}
 	if ended != nil {
+		l.logCallEnded(*ended, now)
 		l.publishCall(events.TypeCallEnded, *ended)
 		l.storeCall(*ended)
 	}
 	l.refreshCalls()
+}
+
+// logCallEnded says that a transmission finished.
+//
+// # Why this did not exist until 2026-09-12
+//
+// `observe` computed the end of every call, published it to the console over
+// SSE and wrote it to the history, and said nothing to the journal. `"call
+// ended"` appeared in exactly one file in this repository,
+// internal/ipsclink/listener.go, so the Motorola side reported both halves of
+// a transmission and the Homebrew side reported only the first — on every
+// server, since the tracker was written.
+//
+// **That breaks this project's primary diagnostic.** §8a: log the same fact at
+// two layers and read the gap. internal/protocol/ipsc/voice.go records a whole
+// timeslot of audio lost from the day the listener was written until
+// 2026-09-04, found because the IPSC listener logged a call starting and the
+// DMR side logged nothing. One of those two layers only ever emitted half a
+// transmission, which makes the gap ambiguous in the direction that matters: a
+// missing `call ended` meant nothing, so it could not mean something. It cost
+// an exchange on 2026-09-12 spent wondering whether audio arriving over a link
+// was reaching a repeater at all.
+//
+// # This is the clean end only, and the other half already existed
+//
+// Tracker.Update returns a finished call for one reason, EndTerminated: a
+// transmission closed by its terminator. A stream that stopped without one is
+// closed by the sweep instead, and `expireCalls` has logged that since the
+// text work — warn for voice, debug for data, with the reasoning written
+// there. **So there is no branch here for a lost stream**, because nothing can
+// reach it: a switch on c.EndReason would have looked careful, duplicated the
+// wording of a line that already exists, and never once run.
+//
+// The first draft of this function had exactly that branch, written within an
+// hour of quoting §8a's rule about unreachable states. It is recorded rather
+// than quietly deleted because the rule keeps needing to be relearned in the
+// authoring direction: a state prevented upstream does not also need
+// reporting.
+//
+// # Level
+//
+// Voice is info; a data burst is debug. A text message is a run of bursts, and
+// info for each of them is the seventeen-lines-per-text defect that dropped
+// `call started` to debug for a data run in the first place. Homebrew text
+// never arrives here at all — its bursts are one frame apiece and finish on
+// expiry — but a text converted from a Motorola repeater shares one stream and
+// does.
+func (l *Listener) logCallEnded(c calls.Call, now time.Time) {
+	level := slog.LevelInfo
+	if !c.Voice {
+		level = slog.LevelDebug
+	}
+	l.log.Log(context.Background(), level, "call ended",
+		logging.PeerID(c.Source),
+		logging.Talkgroup(c.Target),
+		logging.Timeslot(int(c.Key.Timeslot)),
+		logging.StreamID(uint32(c.Key.Stream)),
+		slog.Int("frames", c.Frames),
+		slog.Duration("duration", c.Duration(now).Round(time.Millisecond)),
+	)
 }
 
 // isPreamble reports whether a frame is a CSBK preamble rather than anything a

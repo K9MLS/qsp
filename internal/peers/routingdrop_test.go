@@ -97,7 +97,19 @@ func TestARefusalIsLoggedWhereAnOperatorWillSeeIt(t *testing.T) {
 	if i < 0 {
 		t.Fatal("the routing drop loop is gone; this test needs rewriting")
 	}
-	body := s[i:min(i+1400, len(s))]
+	// **The window is the loop, not a character count.** This read the next
+	// 1,400 characters, which made the assertions below sensitive to the
+	// length of the comments above them: a paragraph added inside the loop on
+	// 2026-09-12 pushed `l.log.Info` past the cut-off and failed this test for
+	// prose rather than for behaviour. A gate that fires on comment length is
+	// a gate an author edits to make green, which is how one stops being a
+	// gate.
+	body := s[i:]
+	if end := strings.Index(body, "\n\tfor _, started := range res.StartedStreams {"); end > 0 {
+		body = body[:end]
+	} else {
+		t.Fatal("the loop after the routing drops is gone; this test needs rewriting")
+	}
 
 	if !strings.Contains(body, `l.log.Info("frame not forwarded"`) {
 		t.Error("a routing refusal is not logged at info; production runs at " +

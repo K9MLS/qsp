@@ -267,8 +267,25 @@ type Traffic struct {
 	FramesAccepted uint64 `json:"frames_accepted"`
 	// FramesForwarded is frames relayed to another peer.
 	FramesForwarded uint64 `json:"frames_forwarded"`
-	// Collisions is frames refused because a destination was already carrying
-	// another transmission.
+	// Collisions is frames a destination refused.
+	//
+	// **Contention is one of the reasons, not the only one** — this said
+	// "frames refused because a destination was already carrying another
+	// transmission", which described one of the several things it counts, and
+	// an operator asking what 88 of them were on 2026-09-12 is how that was
+	// noticed. The rest are the access lists, a peer not attached to the
+	// talkgroup, deduplication, and a bridge naming an upstream on a server
+	// with no links configured.
+	//
+	// A refusal that decided nothing is **not** counted: the loop rule
+	// declines to send a frame back to the link it arrived on, which is a
+	// rule about links rather than a verdict, and counting it made the number
+	// rise at the frame rate on any server carrying a link. See
+	// routing.Drop.NotAJudgement.
+	//
+	// The name is still wider than the word suggests. Splitting contention
+	// out from the refusals is a separate decision and wants a number that is
+	// actually wrong first.
 	Collisions uint64 `json:"collisions"`
 }
 

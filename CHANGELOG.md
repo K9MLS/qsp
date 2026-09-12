@@ -4,6 +4,26 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Testing
+
+- **Four gates, and three of them were watched failing first.** A link
+  carrying one transmission counts no collisions; a destination that judged the
+  frame still counts one, so excluding the loop rule cannot silence the
+  counter; a completed transmission reaches the journal with its frame count
+  and duration; and a data burst ending is not an info line.
+
+  The second is the one that never went red, deliberately — it guards against
+  over-fixing rather than reconstructing a defect.
+
+- **A gate that fired on comment length stopped being a gate.**
+  `TestARefusalIsLoggedWhereAnOperatorWillSeeIt` read the next 1,400
+  characters of `listener.go` after the drop loop, so a paragraph added inside
+  that loop pushed `l.log.Info` past the cut-off and failed the test for prose
+  rather than behaviour. Its window is now the loop itself. Confirmed still
+  red against the defect it exists for — the refusal moved back to debug —
+  because a gate relaxed to make an author's change pass is the one thing
+  worse than no gate.
+
 ### Documentation
 
 - **Handover and standing brief brought up to 0334.** Start here is Pete's
@@ -35,6 +55,55 @@ All notable changes to QSP. Dates are UTC.
   implementation sending correct frames.
 
 ### Fixed
+
+- **COLLISIONS counted the link working.** An operator asked what 20 collisions
+  on the test server were, keyed up twice on the far end of its link, and the
+  number went to 88 — 34 frames apiece, at the frame rate, for as long as
+  anybody talked.
+
+  `repeat` offers a group call to every QSP link including the one it arrived
+  on (ADR-0051), the loop rule refuses that one, and every refusal was counted
+  and rendered amber on Traffic. So the counter rose on a server whose link was
+  working perfectly, which is worse than no counter: the first real collision
+  arrives as a number that was already climbing, and Pete's server would have
+  gone amber on its first day for doing the right thing.
+
+  **`routing.Drop.NotAJudgement` had already classified these correctly** —
+  declared, commented at length, set on exactly the right drops, and read by
+  one of the two places that needed it. `core.go` consults it to decide whether
+  the Motorola side still gets the frame; the counter did not. §8a's recurring
+  shape, found by an operator asking what a number meant.
+
+  The refusal is still logged. The line is how an operator sees a link is
+  carrying at all, and it is what diagnosed this; it was the counting that was
+  wrong, not the saying.
+
+- **A transmission on the network side started and never ended.** `"call
+  ended"` existed in `internal/ipsclink/listener.go` and nowhere else in the
+  repository, so the Motorola side reported both halves of a transmission and
+  the Homebrew side reported only the first — on every server, since the
+  tracker was written. `observe` computed the end, published it to the console
+  over SSE and wrote it to the call history, and said nothing to the journal.
+
+  **That breaks the diagnostic this project relies on most**, in the direction
+  that matters. §8a: log the same fact at two layers and read the gap. A whole
+  timeslot of lost audio was found by exactly that comparison — but a missing
+  end line meant nothing, so it could not mean something. Two keyups arriving
+  over a link on 2026-09-12 produced a `call started` apiece and nothing after
+  it, and an exchange went on whether the audio was reaching the repeater at
+  all.
+
+  Voice is info and a data burst is debug, because info for every burst is the
+  seventeen-lines-per-text defect that dropped `call started` to debug for a
+  data run. There is **no branch for a lost stream**: `Tracker.Update` returns
+  a finished call only for a terminator, the sweep closes the rest, and
+  `expireCalls` has logged those since the text work.
+
+- **`Traffic.Collisions` said it counted contention.** It counts contention,
+  the access lists, an unattached peer, deduplication, and a bridge naming an
+  upstream with no links configured. The comment described one of them. The
+  name is still wider than the word suggests; splitting contention out is a
+  separate decision and wants a number that is actually wrong first.
 
 - **Two health messages told an operator to edit `qsp.json` for something they
   can click.** The IPSC and P25 disabled lines said *set ipsc.enabled* and *set
