@@ -280,26 +280,171 @@ work — the Motorola framing has no standard to read either way.
 **This was nearly decided the wrong way round.** The first write-up of the
 2026-09-12 research argued against QSP owning the repeater interface at all,
 using an argument that was really about where a few hundred lines of serial code
-live. Two questions collapsed into one; see ADR-0057's context. The scope
-question is settled and this one is not.
+live. Two questions collapsed into one; see ADR-0057's context.
 
-Answered from a capture, not from argument. §8a: when a reading is plausible and
-cheap to test, test it rather than arguing for it.
+## Hardware, and how it goes together
 
-## Hardware
+Sources: ZL4JY's *IP link Quantar V.24 systems using Cisco routers* (2012,
+uploaded to the project 2026-09-12), the W9CR wiki, and the DVSwitch
+Quantar-Bridge group.
 
-The operator has Quantars and a Cisco router, so the shopping list is short or
-empty. Recorded for completeness:
+### The chain
 
-| Piece | Notes |
-|---|---|
-| Quantar with wireline card | CLN695x or newer. **Held** |
-| GTR 8000 | Same V.24 pinout as a Quantar; CSS-configured, features licensed. **Held** |
-| V.24 access | Motorola TTN4010 daughtercard, or the W9CR level shifter that replaces it — sold by W3AXL, with a built-in V.24 network tap that is an instrument in its own right. Or direct off J300 at TTL |
-| V.24 to something loggable | Cisco WIC-1T with a CAB-232FC and a CAT-5 to DB-25 cable. **Router and WIC held.** The V.24 card must be set for external clocking for this path |
-| A P25 handheld | To key with. **Held** — an APX, already used for the talkgroup captures |
-| A second Quantar | For the back-to-back configuration the linking work is built around |
-| DVM-V24-V2 | Converts the synchronous 9600-baud HDLC to async serial over USB-C at 115200. **Belongs to the other route** — it feeds dvmhost, which speaks its own network protocol rather than the reflector protocol QSP implements. Not needed for the scaffold |
+```
+APX handheld
+    |  RF
+Quantar - Wireline board (CLN695x+) - V.24 daughtercard - RJ-45
+    |  straight-through Ethernet patch lead
+RJ-45 to DB-25 male adapter hood     [pin 6 -> pin 20 jumper inside]
+    |  CAB-232FC (DB-60) or CAB-SS-232FC (Smart Serial) -- DCE, never DTE
+Cisco serial card - DCE, clockrate 9600, encapsulation stun
+    |  TCP 1994, STUN basic
+QSP
+```
+
+### The parts
+
+| Piece | Notes | Status |
+|---|---|---|
+| Quantar with wireline card | CLN695X or newer | **held** |
+| GTR 8000 | Same V.24 pinout as a Quantar; CSS-configured, features licensed | **held** |
+| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first | **needed** |
+| RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below | **needed** |
+| Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering | **needed** |
+| Router + serial card | A 1841 or 2651XM with a WIC-1T is the documented build, 12.4 adventerprisek9. The operator's 2921 needs an **HWIC-1T** and the **data licence** — see below | 2921 held, card needed |
+| Console cable | Light blue RJ-45 to DB-9 plus a USB serial adapter. One ships with every Cisco router and can often be had for the asking | **needed** |
+| Dummy load | For bench work. Named in every published build | **needed** |
+| RS-232 breakout box | Shows the handshake states and clock activity. Strongly recommended — there is no other instrument for a synchronous serial link | recommended |
+| P25 handheld | An APX, already used for the talkgroup captures | **held** |
+
+**No bridge host.** ADR-0060: no Pi, no second virtual machine.
+
+### The two things that stop it working
+
+**The DTR jumper.** The Cisco serial interface as DCE needs DTR on pin 20
+asserted, and the Motorola RJ-45 has too few pins to carry one. The solution is
+Cisco's own DSR output on pin 6 driving DTR — **link pins 6 to 20 inside the
+DB-25 hood.** ZL4JY built a batch of adapters before discovering this; without
+it everything looks correctly wired and the link never comes up.
+
+**Clocking direction.** The Quantar must take clock from the Cisco, which is
+the "Cisco clocks Quantar TX data" wiring option and `External Transmit Clock:
+ENABLED` in the codeplug, with `clockrate 9600` on the router. Then the
+daughtercard switches:
+
+- **OEM TTN4010:** S101 switch 1 on, the rest off. Often shipped all off.
+- **W9CR board:** DIP 1 and 4 on. Cisco provides clock on TX and RX, sends CTS
+  while the Quantar sends RTS, and needs CD active. Verified 2024-06-26.
+
+**And a port gotcha:** the published adapter table refers to the *top* V.24
+port, but it is the *bottom* port with a real TTN4010 daughter board.
+
+### Codeplug, from the ASTRO tab
+
+`Wireline Interface: V.24 ONLY`, `Analog Idle Link Check: DISABLED`, `Digital
+Idle Link Check: ENABLED`, `External Transmit Clock: ENABLED`, `RT/RT
+Configuration: ENABLED`. Modem input level 0 to -28 dBm, output -14 dBm.
+
+Recorded from ZL4JY's screenshots of the back-to-back case. **Whether RT/RT is
+right when the far end is QSP rather than a second Quantar is not yet known**
+— the DVSwitch group's long "Quantar setup" thread is the likely source and
+groups.io returns 402 to anything past its topic list.
+
+### The Cisco side
+
+STUN is the choice of three candidates — L2TPv3 and circuit emulation over IP
+being the others — because it is well supported in old IOS, needs no special
+hardware and is simple. **It requires the Enterprise feature set**, because
+that is where the old IBM SNA support lives, and SDLC is what HDLC was
+developed from. Minimum 16 MB flash and 64 MB RAM for a 12.2 image.
+
+Working configuration, from the documented build with the far end pointed at
+QSP instead of a second router:
+
+```
+hostname P25R1
+stun peer-name 192.168.1.50
+stun protocol-group 1 basic
+!
+interface FastEthernet0/0
+ description LAN
+ ip address 192.168.1.50 255.255.255.0
+!
+interface Serial0/0
+ mtu 2104
+ no ip address
+ encapsulation stun
+ clockrate 9600
+ stun group 1
+ stun route all tcp <the QSP server>
+```
+
+`show stun` reports the circuit state, and `copy run start` saves it.
+
+**The 2921 question, unresolved.** Legacy WIC-1T and WIC-2T are not supported
+in ISR G2 EHWIC slots — a c2921 boots with
+`%MAINBOARD-1-UNKNOWN_WIC ... unknown id 0x2`. For that chassis it is an
+HWIC-1T plus a CAB-SS-232FC plus the **data licence**, which is what gates STUN
+on ISR G2: a 2901 on 15.1(4)M2 rejected every `stun` and `bstun` command with
+`data None None None`. Three commands **on the router console** settle it:
+`show version`, `show license`, and `stun peer-name` in configuration mode. The
+fallback is a surplus 1841 with 12.4 adventerprisek9, where the feature set is
+the image and there is no licence to activate.
+
+### Bring-up order, each step with a checkpoint
+
+1. Router alone, no radio. Wipe the previous owner's config — break into rommon
+   within 60 seconds of power-on, `confreg 0x2142`, `reset`, then
+   `config-register 0x2102` and `write erase`. **Checkpoint:** `stun peer-name`
+   parses.
+2. Build the adapter. **Checkpoint:** continuity, and the 6-to-20 jumper
+   actually present.
+3. **Loopback test, no second Quantar needed.** Loop TXD to RXD at the far end
+   and take CD from the router to drive RTS and DTR back. Every keepalive the
+   Quantar sends returns over the IP route. **Checkpoint:** the wireline card's
+   LED goes steady — it flashes while the link is down — and `show stun` shows
+   the circuit open.
+4. Point the tunnel at a QSP host and capture. **Checkpoint:** bytes on disk.
+
+Steps 1–3 are all instrument, no QSP code. Step 4 is ADR-0060 phase 1.
+
+## What QSP replaces, and what the existing stack gets wrong
+
+The DVSwitch group's own wiki describes Quantar_Bridge as emulating **the far
+end of the Cisco STUN connection as well as a connected V.24 device**, parsing
+the voice frames out and passing them to MMDVM_Bridge. That is the clearest
+statement of what QSP has to be, and it is two roles rather than one:
+
+- a STUN endpoint that accepts the router's session, and
+- **a V.24 device that behaves like the far end** — answering keepalives and
+  holding the right control state, which is what makes the wireline LED go
+  steady. Not merely a parser.
+
+The chain QSP collapses runs 34103/34100 between Quantar_Bridge and
+MMDVM_Bridge, then 42020/32010 on to P25Gateway, then P25Gateway to the
+reflector. Four processes and six ports become one listener.
+
+**A defect that has outlived three projects.** A group thread titled
+"Transmitted HDU always starts the call with TG=10200 even when TG != 10200"
+concerns the network-to-RF direction: raised in 2018 and still reproducing in
+December 2020 against Quantar_Bridge 1.6.0, MMDVM_Bridge 1.6.2 and both
+P25Gateway builds, by using any talkgroup other than 10200.
+
+**That is a requirement for QSP**: a header sent towards RF carries the
+talkgroup the call is actually on. And it is the four-layer problem exactly as
+ADR-0060 describes it — a defect that survived two years across three projects
+because nobody owned the whole path.
+
+### The implementation is not available, and that is the ideal position
+
+`DVSwitch/Quantar_Bridge` on GitHub is a **filesystem mirror, not source**: a
+README, a logrotate config, a systemd unit, three compiled binaries and an
+`.ini`. Checked 2026-09-12 by listing the repository rather than reading it.
+
+So ADR-0029 has nothing to forbid here. The `.ini` is an interface description
+in the same category as a port number, and it is where `quantarPort = 1994`
+comes from. The framing itself has no public source and no published standard,
+which means QSP learns it the way it learned IPSC: from captures taken here.
 
 ## The plan, in order
 

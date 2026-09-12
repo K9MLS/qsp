@@ -6,6 +6,59 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The Quantar build, researched properly and written down.**
+  `docs/P25-PLANNING.md`'s hardware section was four lines naming a serial card
+  that does not fit the operator's router. It is now the chain, the parts with
+  what is held and what is needed, the codeplug settings, the Cisco
+  configuration, and a bring-up order with a checkpoint at each step.
+
+  **The two things that stop it working, neither obvious.** The Cisco serial
+  interface as DCE needs DTR on pin 20 asserted and the Motorola RJ-45 has too
+  few pins to carry one, so pin 6 jumpers to pin 20 *inside the DB-25 hood* —
+  ZL4JY built a batch of adapters before finding this. And the Quantar must
+  take clock from the Cisco, which is `External Transmit Clock: ENABLED` in the
+  codeplug plus `clockrate 9600` on the router, with S101 switch 1 on for an
+  OEM TTN4010 or DIP 1 and 4 for the W9CR board.
+
+  Also recorded: the adapter table refers to the top V.24 port but it is the
+  bottom one with a real TTN4010; STUN needs the Enterprise feature set because
+  that is where the old IBM SNA support lives and SDLC is what HDLC descends
+  from; and a loopback at the far end tests a single Quantar against itself,
+  with the wireline LED going steady as the instrument.
+
+- **What QSP replaces, from the DVSwitch group's own wiki.** Quantar_Bridge
+  emulates the far end of the Cisco STUN connection **and a connected V.24
+  device** — two roles, not one. QSP has to behave like the far end, answering
+  keepalives and holding control state, not merely parse frames. That is what
+  makes the wireline LED go steady, and it is why ADR-0060's phase 2 is a real
+  milestone.
+
+  Four processes and six ports become one listener.
+
+- **A defect that has outlived three projects, now a requirement.** A group
+  thread reports that a transmitted header always starts the call with TG 10200
+  whatever talkgroup the call is on, in the network-to-RF direction. Raised in
+  2018, still reproducing in December 2020 against Quantar_Bridge 1.6.0,
+  MMDVM_Bridge 1.6.2 and both P25Gateway builds. So: **a header QSP sends
+  towards RF carries the talkgroup the call is actually on**, and it is the
+  four-layer problem exactly as ADR-0060 describes it.
+
+- **`DVSwitch/Quantar_Bridge` holds no source**, checked by listing the
+  repository rather than reading it: a README, a logrotate config, a systemd
+  unit, three compiled binaries and an `.ini`. So ADR-0029 has nothing to
+  forbid here — the `.ini` is an interface description in the same category as
+  a port number, and it is where `quantarPort = 1994` comes from. The framing
+  has no public source and no published standard, so QSP learns it from
+  captures taken here, as it did for IPSC.
+
+- **One thing deliberately left unknown.** Whether `RT/RT Configuration:
+  ENABLED` is correct when the far end is QSP rather than a second Quantar. The
+  codeplug settings recorded are from the back-to-back case; the DVSwitch
+  group's 64-message "Quantar setup" thread is the likely source and groups.io
+  returns 402 to anything past its topic list.
+
+### Documentation
+
 - **`docs/P25-NETWORK.md`: what it takes for P25 to be as capable as the DMR
   side.** Written because the assessment was reached in conversation and would
   otherwise have been lost. It is an assessment and a plan; the decisions stay
