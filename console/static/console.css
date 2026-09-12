@@ -667,56 +667,80 @@ body {
 }
 
 /* ---- Traffic counters ------------------------------------------------ */
-.metrics {
+/* A listener's name, as the first cell of its own row.
+   **This was a band above the row and the band was pure overhead.** Two
+   listeners meant two labels and two grids, which put ~44px of chrome into a
+   panel carrying eight numbers, and separated the two rows so DMR and P25
+   could not be compared at a glance — the one thing having both is for.
+
+   The name now sits in a sunken gutter cell at the left of its row, so the
+   rows are adjacent and the label costs nothing vertical. Reworked 2026-09-12
+   from screenshots: the panel was ~296px to show eight numbers, six of them
+   zero, at the top of the page an operator reads first. */
+.metrics-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  /* A fixed gutter, then the counters. `auto-fit` was what made the first
+     version unreadable: four metrics gave four columns and three gave three
+     wider ones, so the rows did not line up with each other. An explicit
+     count means both rows have the same columns at the same widths whatever
+     each listener counts. */
+  grid-template-columns: 5.5rem repeat(4, minmax(110px, 1fr));
   gap: 1px;
   background: var(--color-border);
+  border-top: 1px solid var(--color-border);
+}
+
+/* The panel head already draws a rule under itself. */
+.metrics-row:first-of-type {
+  border-top: 0;
+}
+
+.metrics-row__mode {
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) var(--space-5);
+  background: var(--color-surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-wide);
+  color: var(--color-foreground-muted);
 }
 
 .metric {
-  padding: var(--space-4) var(--space-5);
+  /* **8px, not 16.** The vertical padding was set when this panel had one row
+     of four; with two rows it put ~77px into each. 8px is inside the
+     dense-dashboard range rather than at the top of it, and takes a row to
+     ~49px without touching the type. */
+  padding: var(--space-2) var(--space-4);
   background: var(--color-surface);
 }
 
 .metric__value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: var(--text-xl);
+  /* One step down from --text-xl, and still the largest thing in the panel. */
+  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tight);
 }
 
 .metric__label {
-  margin-top: var(--space-1);
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);
   text-transform: uppercase;
   color: var(--color-foreground-subtle);
 }
 
-/* A listener's name above its counters.
-   **The traffic panel carries one group per listener**, because DMR and P25
-   count different things and summing them would change what an existing
-   number means. So each group says which listener it is — and *both* do:
-   labelling only P25 made the DMR row above it read as a total for the whole
-   server. Added 2026-09-12, after a screenshot showed exactly that.
-
-   Borrowed from .metric__label and .panel__count rather than invented, so a
-   group label and the labels under it are the same typographic voice. The
-   first group needs no rule above it; the panel head already draws one. */
-.metrics__mode {
-  padding: var(--space-2) var(--space-5);
-  border-top: 1px solid var(--color-border);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--color-foreground-subtle);
-}
-
-.metrics__mode:first-child {
-  border-top: 0;
+/* The gutter becomes a full-width label and the counters go two-up, rather
+   than five columns crushing to 60px each. */
+@media (max-width: 620px) {
+  .metrics-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .metrics-row__mode {
+    grid-column: 1 / -1;
+  }
 }
 
 .metric--muted .metric__value { color: var(--color-foreground-subtle); }
@@ -729,7 +753,22 @@ body {
    was being drawn as a 20px circle with `border-radius: 50%` and `padding: 0`,
    with its text spilling out of it. Neither rule was wrong. Sharing a name was. */
 .inline-note {
-  padding: var(--space-3) var(--space-5);
+  /* **`margin: 0`, because a <p> carries one and nobody had said so.** The
+     reset in this sheet sets `box-sizing` and nothing else, so this paragraph
+     had the browser default `margin: 1em 0` — about 13px at --text-sm — on top
+     of its padding. The panel has `overflow: hidden`, so the bottom margin
+     could not collapse out: the line read 12px above the text and ~25px below
+     it, with a further 13px pushing the divider away from the metrics. Three
+     numbers, none of them chosen. Found from a screenshot on 2026-09-12.
+
+     Every other <p> this console writes has the same unreset margin. Fixed
+     here rather than in the reset because a reset is a wide blast radius on
+     pages nobody is looking at right now; the general case is recorded in
+     PROJECT_MEMORY §8a. */
+  margin: 0;
+  /* 8px, matching the metric rows above, so the note sits in their rhythm
+     rather than in a band of its own. */
+  padding: var(--space-2) var(--space-5);
   border-top: 1px solid var(--color-border);
   color: var(--color-degraded);
   font-size: var(--text-sm);

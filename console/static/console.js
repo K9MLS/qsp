@@ -634,9 +634,14 @@
       /* **Both groups are labelled or neither is.** With only P25 named, the
        * row above it read as a total for the server rather than as one
        * listener's counters — which is the same misreading the separate
-       * objects in the payload exist to prevent. */
-      '<p class="metrics__mode">DMR</p>' +
-      '<div class="metrics">' +
+       * objects in the payload exist to prevent.
+       *
+       * The label is the first cell of the row rather than a band above it:
+       * two bands were ~44px of chrome, and they separated the two rows so
+       * that comparing DMR with P25 — the only reason to show both — took
+       * scanning across a divider. */
+      '<div class="metrics-row">' +
+      '<div class="metrics-row__mode">DMR</div>' +
       metric(inCount, "datagrams in") +
       metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
       metric(t.collisions || 0, "collisions",
@@ -705,10 +710,10 @@
      * been heard, which is how this was found.
      *
      * **Four columns in the same order as DMR**, because a row that does not
-     * line up with the row above it cannot be read across. `.metrics` is an
-     * auto-fit grid, so three metrics beside four is not a style difference —
-     * it is a different number of columns at a different width. Corrected
-     * 2026-09-12 from a screenshot.
+     * line up with the row above it cannot be read across. The grid declares
+     * an explicit column count for exactly that reason: it was `auto-fit`,
+     * so four metrics gave four columns and three gave three wider ones, and
+     * the two rows did not align. Corrected 2026-09-12 from a screenshot.
      *
      * POLLS was a fifth metric and is gone. A five-second keepalive is
      * plumbing, not traffic; "polled 3s ago" on the gateway line is the form
@@ -720,8 +725,8 @@
     if (p25) {
       var p25In = (p25.polls || 0) + (p25.voice_frames || 0) + (p25.unparsed || 0);
       trafficBody.innerHTML +=
-        '<p class="metrics__mode">P25</p>' +
-        '<div class="metrics">' +
+        '<div class="metrics-row">' +
+        '<div class="metrics-row__mode">P25</div>' +
         metric(p25In, "datagrams in") +
         metric(p25.voice_frames || 0, "voice frames",
           (p25.voice_frames || 0) === 0 ? "metric--muted" : "") +

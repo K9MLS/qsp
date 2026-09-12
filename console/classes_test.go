@@ -98,3 +98,126 @@ func definedClasses(t *testing.T) map[string]bool {
 	}
 	return out
 }
+
+// TestParagraphClassesOwnTheirMargin is the defect a screenshot found on
+// 2026-09-12.
+//
+// The reset in `console.css` sets `box-sizing` and nothing else, and `body`
+// gets `margin: 0`. So a `<p class="inline-note">` carried the browser default
+// `margin: 1em 0` — about 13px at `--text-sm` — on top of its own padding, and
+// `.panel` has `overflow: hidden`, so the bottom margin could not collapse
+// out. The note read 12px above its text and ~25px below it, with a further
+// 13px pushing its divider away from the metrics above. Three different
+// numbers, none of them chosen by anybody.
+//
+// **This checks declaration, not value.** `margin: 0` and
+// `margin: var(--space-2) 0` both pass, because either is a decision; what
+// fails is saying nothing and inheriting a number from the user agent.
+//
+// # Two ways the first draft of this was wrong
+//
+// It checked `strings.Contains(rule, "margin")` against the raw rule, and the
+// comment *inside* `.inline-note` contains the words "margin: 1em 0" — so the
+// gate passed on the fixed code and would have passed on the broken code too.
+// A test that cannot fail, seventh instance, caught by deliberately breaking
+// the CSS and watching it stay green for the wrong reason.
+//
+// And it took its class list from a guess — which named `.hint`, a `<button>`
+// in `access.js` where a paragraph margin means nothing. The list is now
+// derived from the markup: whatever class the scripts actually put on a `<p>`.
+func TestParagraphClassesOwnTheirMargin(t *testing.T) {
+	// stripComments is traffic_test.go's, reused rather than rewritten: §8a
+	// records that a rule written into a test does not reach the next command
+	// typed from memory, and the same goes for a helper written twice.
+	css := stripComments(stylesheets(t))
+
+	for _, class := range paragraphClasses(t) {
+		// **A modifier is never used alone.** `.inline-note--neutral` sets a
+		// colour and nothing else, and is always written beside
+		// `.inline-note`, which owns the box. Checking it would demand a
+		// margin that must not be there. This is a property of the naming
+		// convention rather than an exemption list — §8a: an exemption list
+		// is how a gate stops being a gate.
+		if strings.Contains(class, "--") {
+			continue
+		}
+		rule, ok := ruleFor(css, class)
+		if !ok {
+			// A class may be styled by a compound selector or carry no rule of
+			// its own; that is not this gate's business.
+			continue
+		}
+		if !marginDeclared.MatchString(rule) {
+			t.Errorf(".%s is used on a <p> and declares no margin, so it "+
+				"inherits the user agent's `margin: 1em 0`; inside a panel "+
+				"with overflow: hidden that cannot collapse out and reads as "+
+				"lopsided padding", class)
+		}
+	}
+}
+
+// marginDeclared matches a margin declaration, long-hand or specific side.
+var marginDeclared = regexp.MustCompile(`(^|[;{\s])margin(-top|-bottom|-block[a-z-]*)?\s*:`)
+
+// paragraphClass finds a class attribute on a paragraph the scripts write.
+var paragraphClass = regexp.MustCompile(`<p class="([^"']+)"`)
+
+// paragraphClasses lists the classes the scripts put on a <p>.
+func paragraphClasses(t *testing.T) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	entries, err := os.ReadDir("static")
+	if err != nil {
+		t.Fatalf("reading static: %v", err)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".js") {
+			continue
+		}
+		src, err := os.ReadFile("static/" + e.Name())
+		if err != nil {
+			t.Fatalf("reading %s: %v", e.Name(), err)
+		}
+		for _, m := range paragraphClass.FindAllStringSubmatch(string(src), -1) {
+			for _, name := range strings.Fields(m[1]) {
+				seen[name] = true
+			}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for name := range seen {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// stylesheets returns both sheets concatenated.
+func stylesheets(t *testing.T) string {
+	t.Helper()
+	var all strings.Builder
+	for _, sheet := range []string{"static/console.css", "static/tokens.css"} {
+		b, err := os.ReadFile(sheet)
+		if err != nil {
+			t.Fatalf("reading %s: %v", sheet, err)
+		}
+		all.Write(b)
+	}
+	return all.String()
+}
+
+// ruleFor returns the body of the first rule whose selector is exactly this
+// class, which is enough for the single-class selectors this sheet uses.
+func ruleFor(css, class string) (string, bool) {
+	needle := "\n." + class + " {"
+	i := strings.Index(css, needle)
+	if i < 0 {
+		return "", false
+	}
+	rest := css[i+len(needle):]
+	end := strings.Index(rest, "}")
+	if end < 0 {
+		return "", false
+	}
+	return rest[:end], true
+}

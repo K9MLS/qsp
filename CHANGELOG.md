@@ -6,6 +6,61 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Traffic panel was ~296px to show eight numbers, six of them zero**, at
+  the top of the page an operator reads first. Rebuilt from three rendered
+  options the operator compared side by side, and the one chosen takes it to
+  about half that.
+
+  The mode name is now the first cell of its own row rather than a band above
+  it — two bands were ~44px of pure chrome, and they separated the two rows, so
+  comparing DMR with P25 meant scanning across a divider. The rows are now
+  adjacent, which is the only reason to show both.
+
+  `.metric` vertical padding drops from 16px to 8px. The old value was set when
+  this panel had one row of four; with two rows it put ~77px into each. 8px is
+  inside the dense-dashboard range rather than at the top of it.
+
+  **And the grid declares an explicit column count.** It was `auto-fit`, so
+  four metrics gave four columns and three gave three wider ones, and the rows
+  did not line up whatever the padding was.
+
+- **The gateway note was 12px above its text and ~25px below it.** The reset in
+  `console.css` sets `box-sizing` and nothing else, so a `<p class="inline-note">`
+  carried the browser default `margin: 1em 0` — about 13px at `--text-sm` — on
+  top of its padding, and `.panel` has `overflow: hidden`, so the bottom margin
+  could not collapse out. A further 13px was pushing the divider away from the
+  metrics. Three numbers, none of them chosen. Found from a screenshot.
+
+  **Every other `<p>` this console writes has the same unreset margin.** Fixed
+  for the note rather than in the reset, because a reset is a wide blast radius
+  on pages nobody is looking at; the general case is recorded in §8a.
+
+- **`.metrics` was left defined and used by nothing** once the rows replaced
+  it. Removed rather than inherited — "declared and read by nothing" in
+  stylesheet form.
+
+### Testing
+
+- **A sixth check on the console: a class used on a `<p>` must declare its own
+  margin.** Declaration, not value — `margin: 0` and `margin: var(--space-2) 0`
+  both pass, because either is a decision. What fails is saying nothing and
+  taking a number from the user agent.
+
+  **Its first two drafts were both wrong, and both in ways §8a already names.**
+  The check was `strings.Contains(rule, "margin")` against the raw rule, and
+  the comment *inside* `.inline-note` contains the words "margin: 1em 0" — so
+  it passed on the fixed code and would have passed on the broken code too.
+  Seventh instance of a test that cannot fail, caught by breaking the CSS and
+  watching it stay green for the wrong reason. And its class list was a guess
+  that named `.hint`, which is a `<button>` in `access.js`; the list is now
+  derived from the markup, so it covers what the scripts actually put on a
+  paragraph.
+
+  It also reuses `traffic_test.go`'s `stripComments` rather than shipping a
+  second one, which the compiler insisted on before the author noticed.
+
+### Fixed
+
 - **The P25 block did not match the DMR block it sat under.** Found by the
   operator looking at the page, in the patch that had shipped an hour earlier.
 

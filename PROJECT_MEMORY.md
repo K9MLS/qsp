@@ -3191,6 +3191,29 @@ precedent turned out to point the hard way rather than the easy one.
 exists, look.** The check is always cheaper than the correction, and a confident
 wrong answer costs the operator a command run on the wrong machine.
 
+### A stylesheet reset that resets one thing
+
+**2026-09-12.** `console.css` opens with a reset that sets `box-sizing` on
+everything and nothing else, and `body { margin: 0 }`. So every `<p>` the
+console writes carries the user agent's `margin: 1em 0` unless its own class
+says otherwise — and inside `.panel`, which has `overflow: hidden`, the bottom
+margin cannot collapse out of the box.
+
+The visible result was a note reading 12px above its text and ~25px below it,
+with a further 13px pushing its own divider away from the metrics above. Three
+different numbers, none of them chosen by anybody, and the temptation was to
+tune the padding against them.
+
+**A number you did not choose will come back.** Trimming the padding would have
+looked right at one font size and drifted at the next. The fix is to own the
+margin and then choose the padding.
+
+It is fixed for one class rather than in the reset, deliberately: a reset is a
+wide blast radius across pages nobody is looking at, and this was found by
+looking at one. The general case is still open, and the gate in
+`console/classes_test.go` covers the classes that exist today rather than the
+convention.
+
 ### A test that has never failed is a test you do not believe
 
 Three tests written the same day asserted something adjacent to the thing that
