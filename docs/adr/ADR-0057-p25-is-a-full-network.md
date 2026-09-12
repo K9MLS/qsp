@@ -68,7 +68,8 @@ tested rather than argued for.
 ## Consequences
 
 **The Motorola half is now scope, not aspiration.** `docs/P25-PLANNING.md`
-records the route; the health report's `p25` entry stops meaning "hotspots
+records the route and `docs/P25-NETWORK.md` the network work that surrounds it
+— of which the Motorola interface is one row in a table of eleven; the health report's `p25` entry stops meaning "hotspots
 only" once the repeater interface exists.
 
 **Audio is still king and still decides.** Nothing in a P25 voice payload is

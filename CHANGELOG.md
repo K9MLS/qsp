@@ -4,6 +4,53 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`docs/P25-NETWORK.md`: what it takes for P25 to be as capable as the DMR
+  side.** Written because the assessment was reached in conversation and would
+  otherwise have been lost. It is an assessment and a plan; the decisions stay
+  in ADR-0057 and ADR-0060.
+
+  **The headline is a defect, found while writing it.** `voice` in
+  `internal/p25link/serve.go` builds its target list as every gateway except
+  the sender: **the talkgroup is read and then not used for routing.** So QSP
+  today is a single flat reflector — every registered gateway hears every
+  transmission, whatever talkgroup it is on. Adequate for one server and two
+  hotspots, wrong on any real network, and expensive: fifty gateways means
+  forty-nine writes per frame, about 2,450 packets a second for one person
+  talking, most of them to gateways on other talkgroups.
+
+  **A link cannot carry P25, and this was checked rather than assumed.**
+  `upstream.Link.Send` takes an `hbp.Data` and calls `openbridge.Encode`, and
+  an OpenBridge datagram is a fixed 53-byte DMR frame plus a 20-byte signature
+  — 73 bytes, no type field, no room for one, and `Encode` forces
+  `hbp.Timeslot1` because OpenBridge has one slot. Carrying P25 between servers
+  needs a QSP-native link format or a second socket, which is a federation
+  decision rather than an implementation detail.
+
+  **One unsolved problem and one permanent limitation, both stated plainly.**
+  P25 has no stream identifier — the transmission boundary is a terminator, not
+  a value repeated in every frame — so identifying a specific transmission for
+  deduplication or for a link has no known answer yet. And a P25 gateway does
+  not authenticate: a callsign in a poll is a claim, which is a property of the
+  protocol rather than of QSP, so no better code removes it.
+
+  Also recorded: contention is undefined for P25 and two simultaneous keyups on
+  one talkgroup currently interleave to every listener; P25 runs at roughly
+  three times the datagram rate of a DMR timeslot; and running DMR and P25
+  concurrently already works, proven on the test server on 2026-09-12, while
+  running them *interoperably* needs a transcoder and stays outside the binary.
+
+  The staged order of work puts talkgroup routing first because it needs no
+  hardware and reveals what P25 actually needs before anything in the core is
+  generalised.
+
+- **A wrong ADR citation caught before it shipped.** The draft credited the
+  no-vocoder decision to ADR-0041, which is *ipsc-transmit-from-inference*. It
+  is ADR-0034, plus `docs/CAPABILITIES.md` for the mechanism. Found by checking
+  every ADR link in the new file against the filesystem rather than by reading
+  it back — the same habit that caught a stale filename in ADR-0059.
+
 ### Decided
 
 - **[ADR-0060](docs/adr/ADR-0060-qsp-terminates-the-serial-tunnel.md): QSP is a

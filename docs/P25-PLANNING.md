@@ -152,6 +152,20 @@ of scope — ADR-0057 says both are in it — but because it is the same protoco
 behind a worse door, so it teaches nothing the Quantar does not and costs more
 to try. Once the Quantar path works, the GTR 8000 is a cable and a codeplug.
 
+## The network side, which is the larger half
+
+**[docs/P25-NETWORK.md](P25-NETWORK.md)** holds the assessment of what it takes
+for P25 to be as capable as the DMR side: the parity table, the one unsolved
+problem (P25 has no stream identifier), the one permanent limitation (a P25
+gateway does not authenticate), two capacity facts, and the staged order of
+work. Written 2026-09-12.
+
+The short version: the Quantar is one row of that table, everything else is the
+network, and **none of the network work needs hardware.** The first item —
+talkgroup routing and contention inside `internal/p25link` — closes a real
+defect today: the talkgroup is read and then not used for routing, so QSP is
+currently a flat reflector where every gateway hears every transmission.
+
 ## QSP is the repeater's master directly
 
 **Decided 2026-09-12, [ADR-0060](adr/ADR-0060-qsp-terminates-the-serial-tunnel.md).**
