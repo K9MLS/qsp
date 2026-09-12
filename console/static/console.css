@@ -695,6 +695,30 @@ body {
   color: var(--color-foreground-subtle);
 }
 
+/* A listener's name above its counters.
+   **The traffic panel carries one group per listener**, because DMR and P25
+   count different things and summing them would change what an existing
+   number means. So each group says which listener it is — and *both* do:
+   labelling only P25 made the DMR row above it read as a total for the whole
+   server. Added 2026-09-12, after a screenshot showed exactly that.
+
+   Borrowed from .metric__label and .panel__count rather than invented, so a
+   group label and the labels under it are the same typographic voice. The
+   first group needs no rule above it; the panel head already draws one. */
+.metrics__mode {
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--color-foreground-subtle);
+}
+
+.metrics__mode:first-child {
+  border-top: 0;
+}
+
 .metric--muted .metric__value { color: var(--color-foreground-subtle); }
 .metric--warn .metric__value { color: var(--color-degraded); }
 
@@ -1721,7 +1745,13 @@ label.picker__label {
    they caught both ends. */
 /* Removing a link takes a network down, so the control sits with the link it
    removes rather than in a menu, and arms itself before it acts. */
-.link__remove {
+/* **Both controls on a link row, not one.** `.link__save` was written to the
+   same pattern as `.link__remove` on the adjacent button and never got a rule,
+   so Save sat wherever the flow left it while Remove pushed right. Found on
+   2026-09-12 by the first run of the class gate in console/classes_test.go, in
+   a file that patch never opened — which is the argument for the gate. */
+.link__remove,
+.link__save {
   margin-left: auto;
 }
 

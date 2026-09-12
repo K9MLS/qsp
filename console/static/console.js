@@ -631,6 +631,11 @@
 
     trafficNote.textContent = "since start";
     trafficBody.innerHTML =
+      /* **Both groups are labelled or neither is.** With only P25 named, the
+       * row above it read as a total for the server rather than as one
+       * listener's counters — which is the same misreading the separate
+       * objects in the payload exist to prevent. */
+      '<p class="metrics__mode">DMR</p>' +
       '<div class="metrics">' +
       metric(inCount, "datagrams in") +
       metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
@@ -693,65 +698,79 @@
 
     /* **P25, which had nowhere to be shown until 2026-09-12.**
      *
-     * The listener has computed a gateway's talkgroup and the last radio heard
+     * The listener computed a gateway's talkgroup and the last radio heard
      * through it on every voice frame since it was built, and no page read
-     * either: `Gateways()` had exactly one caller in the tree, the health
-     * check. An operator had to curl /healthz to find out whether his own
-     * radio had been heard — which is what happened, and is how this was
-     * found.
+     * either: Gateways() had exactly one caller in the tree, the health check.
+     * An operator had to curl /healthz to find out whether his own radio had
+     * been heard, which is how this was found.
      *
-     * Absent rather than empty when P25 is off, matching the IPSC treatment:
-     * the payload omits the object, so a server not running P25 says nothing
-     * about it instead of showing zeroes. */
+     * **Four columns in the same order as DMR**, because a row that does not
+     * line up with the row above it cannot be read across. `.metrics` is an
+     * auto-fit grid, so three metrics beside four is not a style difference —
+     * it is a different number of columns at a different width. Corrected
+     * 2026-09-12 from a screenshot.
+     *
+     * POLLS was a fifth metric and is gone. A five-second keepalive is
+     * plumbing, not traffic; "polled 3s ago" on the gateway line is the form
+     * of it an operator can act on, and its total is in /healthz.
+     *
+     * Absent rather than empty when P25 is off, matching IPSC: the payload
+     * omits the object, so a server not running P25 says nothing about it
+     * instead of showing zeroes. */
     if (p25) {
+      var p25In = (p25.polls || 0) + (p25.voice_frames || 0) + (p25.unparsed || 0);
       trafficBody.innerHTML +=
-        '<p class="inline-note inline-note--neutral">P25</p>' +
+        '<p class="metrics__mode">P25</p>' +
         '<div class="metrics">' +
+        metric(p25In, "datagrams in") +
         metric(p25.voice_frames || 0, "voice frames",
           (p25.voice_frames || 0) === 0 ? "metric--muted" : "") +
-        /* **Polls are the idle heartbeat and are muted, never amber.** They
-         * were counted as received frames until today, so an idle reflector
-         * reported twelve frames a minute with nobody on the air. Twelve a
-         * minute per gateway is health, not traffic. */
-        metric(p25.polls || 0, "polls", "metric--muted") +
         metric(p25.refused || 0, "refused",
           (p25.refused || 0) > 0 ? "metric--warn" : "metric--muted") +
+        /* Unrecognised datagrams are expected in principle and are not a
+         * fault — three captures are not the whole protocol — so this is
+         * muted rather than amber, matching the health check's reasoning.
+         * Measured at zero against a live P25Gateway. */
+        metric(p25.unparsed || 0, "unparsed", "metric--muted") +
         "</div>";
+
+      var gws = p25.gateways || [];
+      var p25Lines = [];
 
       /* A refusal is named rather than counted: the IPSC listener reached
        * 2,144 unnamed refusals before anybody could say which repeater. */
       if ((p25.refused || 0) > 0 && p25.refused_last) {
-        trafficBody.innerHTML +=
-          '<p class="inline-note">Last refused: ' +
-          escapeText(p25.refused_last) + ".</p>";
+        p25Lines.push("Last refused: " + escapeText(p25.refused_last));
       }
 
-      var gws = p25.gateways || [];
       if (gws.length === 0) {
-        /* Not a fault, and the health check says so too: a reflector nobody
+        /* Not a fault, and the health check says the same: a reflector nobody
          * has linked to is a working reflector waiting. */
-        trafficBody.innerHTML +=
-          '<p class="inline-note">No P25 gateways have linked yet.</p>';
+        p25Lines.push("No P25 gateways have linked yet");
       } else {
+        gws.forEach(function (g) {
+          var bits = [escapeText(g.callsign || "an unnamed gateway")];
+          /* Talkgroup and source are omitted until traffic has been heard.
+           * Zero is not a talkgroup, and printing it would claim a decode
+           * that never happened. */
+          if (g.talkgroup) bits.push("TG " + g.talkgroup);
+          if (g.source_id) bits.push("last heard " + g.source_id);
+          bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
+          /* Withheld from a public view, so printed only when carried. */
+          if (g.address) bits.push(escapeText(g.address));
+          bits.push("polled " + g.last_poll_ago_seconds + "s ago");
+          return p25Lines.push(bits.join(", "));
+        });
+      }
+
+      /* **Neutral, not amber.** `.inline-note` alone is
+       * `var(--color-degraded)`, so the first version of this drew a gateway
+       * working perfectly in the warning colour. Every other amber thing on
+       * this page means something is wrong. */
+      if (p25Lines.length > 0) {
         trafficBody.innerHTML +=
-          '<p class="inline-note">' +
-          gws
-            .map(function (g) {
-              var bits = [escapeText(g.callsign || "an unnamed gateway")];
-              /* Talkgroup and source are omitted until traffic has been
-               * heard, because zero is not a talkgroup and printing it would
-               * claim a decode that never happened. */
-              if (g.talkgroup) bits.push("TG " + g.talkgroup);
-              if (g.source_id) bits.push("last heard " + g.source_id);
-              bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
-              /* The address is withheld from a public view, so it is printed
-               * only when the payload carried one. */
-              if (g.address) bits.push(escapeText(g.address));
-              bits.push("polled " + g.last_poll_ago_seconds + "s ago");
-              return bits.join(", ");
-            })
-            .join(". ") +
-          ".</p>";
+          '<p class="inline-note inline-note--neutral">' +
+          p25Lines.join(". ") + ".</p>";
       }
     }
 

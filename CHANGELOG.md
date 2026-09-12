@@ -4,6 +4,60 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The P25 block did not match the DMR block it sat under.** Found by the
+  operator looking at the page, in the patch that had shipped an hour earlier.
+
+  `.metrics` is `repeat(auto-fit, minmax(120px, 1fr))`, so four metrics give
+  four columns and three give three wider ones — not a style difference but a
+  different number of columns at a different width, and a row that cannot be
+  read across the row above it. Both groups now carry four in the same order:
+  datagrams in, voice frames, refused or collisions, unparsed or ignored. How
+  much arrived, how much was audio, how much was turned away, how much was not
+  understood.
+
+  **POLLS is gone as a headline.** A five-second keepalive is plumbing; "polled
+  3s ago" on the gateway line is the form of it an operator can act on, and the
+  total is in `/healthz`.
+
+  **And the DMR group is labelled too.** Naming only P25 made the row above it
+  read as a total for the server, which is the misreading the separate objects
+  in the payload exist to prevent.
+
+- **A gateway working perfectly was drawn in the warning colour.**
+  `.inline-note` alone is `var(--color-degraded)`; `.inline-note--neutral`
+  exists for information and had been used on the label instead of the line.
+  Every other amber thing on that page means something is wrong.
+
+- **`.link__save` was never styled**, so the Save button on a link row sat
+  where the flow left it while the Remove button beside it pushed right with
+  `margin-left: auto`. Written to the same pattern as its sibling and never
+  given the rule. **Found by the first run of the new class gate**, in a file
+  this patch had no other reason to open.
+
+### Testing
+
+- **A fifth check on the console's JavaScript: a class it writes must exist in
+  a stylesheet.** `class="panel-subhead"` shipped on 2026-09-12 and rendered as
+  unstyled body text in a panel of uppercase mono labels. `gofmt`, `vet`,
+  `staticcheck`, every Go test and all four existing script checks passed,
+  because a class name is a string to every one of them.
+
+  Confirmed red against that exact class before being trusted.
+
+  **Literal attributes only**, and that limit is the gate rather than a
+  weakness: the first draft matched across concatenations, so
+  `class="pill pill--' + kind + '"` reported nonexistent classes named `'`,
+  `+`, `?` and `cls`. A check that cries wolf on its first run is one an author
+  switches off. A class assembled from a variable is not checked and cannot be
+  by name.
+
+- **The design skills were not read before the first version of this UI**, and
+  the guidance that mattered was the plainest line in them: cohesion and
+  consistency are how people learn their way around an interface. The second
+  version came from reading `console.css` and matching what was already there.
+
 ### Decided
 
 - **[ADR-0059](docs/adr/ADR-0059-p25-in-last-heard.md), Proposed: a P25
