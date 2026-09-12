@@ -626,6 +626,7 @@
      * peer arrived on is in the table below, where it belongs. */
     var frames = (t.frames_accepted || 0) + (ipsc ? ipsc.voice_frames || 0 : 0);
     var ignored = (t.ignored || 0) + (ipsc ? ipsc.ignored || 0 : 0);
+    var p25 = t.p25;
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
@@ -687,6 +688,70 @@
       if (lines.length > 0) {
         trafficBody.innerHTML +=
           '<p class="inline-note">' + lines.join(". ") + ".</p>";
+      }
+    }
+
+    /* **P25, which had nowhere to be shown until 2026-09-12.**
+     *
+     * The listener has computed a gateway's talkgroup and the last radio heard
+     * through it on every voice frame since it was built, and no page read
+     * either: `Gateways()` had exactly one caller in the tree, the health
+     * check. An operator had to curl /healthz to find out whether his own
+     * radio had been heard — which is what happened, and is how this was
+     * found.
+     *
+     * Absent rather than empty when P25 is off, matching the IPSC treatment:
+     * the payload omits the object, so a server not running P25 says nothing
+     * about it instead of showing zeroes. */
+    if (p25) {
+      trafficBody.innerHTML +=
+        '<p class="inline-note inline-note--neutral">P25</p>' +
+        '<div class="metrics">' +
+        metric(p25.voice_frames || 0, "voice frames",
+          (p25.voice_frames || 0) === 0 ? "metric--muted" : "") +
+        /* **Polls are the idle heartbeat and are muted, never amber.** They
+         * were counted as received frames until today, so an idle reflector
+         * reported twelve frames a minute with nobody on the air. Twelve a
+         * minute per gateway is health, not traffic. */
+        metric(p25.polls || 0, "polls", "metric--muted") +
+        metric(p25.refused || 0, "refused",
+          (p25.refused || 0) > 0 ? "metric--warn" : "metric--muted") +
+        "</div>";
+
+      /* A refusal is named rather than counted: the IPSC listener reached
+       * 2,144 unnamed refusals before anybody could say which repeater. */
+      if ((p25.refused || 0) > 0 && p25.refused_last) {
+        trafficBody.innerHTML +=
+          '<p class="inline-note">Last refused: ' +
+          escapeText(p25.refused_last) + ".</p>";
+      }
+
+      var gws = p25.gateways || [];
+      if (gws.length === 0) {
+        /* Not a fault, and the health check says so too: a reflector nobody
+         * has linked to is a working reflector waiting. */
+        trafficBody.innerHTML +=
+          '<p class="inline-note">No P25 gateways have linked yet.</p>';
+      } else {
+        trafficBody.innerHTML +=
+          '<p class="inline-note">' +
+          gws
+            .map(function (g) {
+              var bits = [escapeText(g.callsign || "an unnamed gateway")];
+              /* Talkgroup and source are omitted until traffic has been
+               * heard, because zero is not a talkgroup and printing it would
+               * claim a decode that never happened. */
+              if (g.talkgroup) bits.push("TG " + g.talkgroup);
+              if (g.source_id) bits.push("last heard " + g.source_id);
+              bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
+              /* The address is withheld from a public view, so it is printed
+               * only when the payload carried one. */
+              if (g.address) bits.push(escapeText(g.address));
+              bits.push("polled " + g.last_poll_ago_seconds + "s ago");
+              return bits.join(", ");
+            })
+            .join(". ") +
+          ".</p>";
       }
     }
 

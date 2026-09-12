@@ -4,6 +4,73 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The P25 health report counted the keepalive as received audio.** An
+  operator asked what "837 frame(s) received" meant on a reflector with one
+  hotspot linked. `poll()` and `voice()` are separate functions with separate
+  parse paths and both ended in `Received++`, so a five-second registration
+  poll was a frame: twelve a minute per gateway, rising for as long as the link
+  stayed up with nobody on the air.
+
+  **Measured before it was fixed**, which is the part worth keeping. 12 in 60
+  seconds with the radio untouched, and twenty consecutive datagrams captured
+  at one length and a 5.006-second interval — so the poll interval is now
+  confirmed a third time, on a live link into QSP rather than on a capture.
+  `Polls` and `Frames` are separate fields, and the summary says *voice
+  frames*.
+
+  Second counter of that shape found in one day, four hours after COLLISIONS.
+  Both were found by an operator asking what a number meant, and neither by
+  anything in the suite.
+
+- **A gateway's talkgroup and source radio were computed and shown nowhere.**
+  `Gateway.Talkgroup` and `Gateway.SourceID` are written on every voice frame
+  and `Gateways()` had exactly one caller in the tree: the health check. There
+  is no P25 page — patch 0333's "console panel" was the settings block on
+  Network — so the decode that took two captures and a deliberate talkgroup
+  ordering to establish was being performed on live traffic and discarded.
+
+  The traffic panel now carries a P25 block: voice frames, polls, refusals, and
+  a line per gateway with its talkgroup, the last radio heard through it, its
+  frame count and how long since it polled. Absent rather than empty when P25
+  is off, matching the IPSC treatment. Addresses are withheld from an
+  unauthenticated view, where the drop reasons already were.
+
+  **This is the fifth instance in a week of building the half that is named and
+  forgetting the half that is called**, and the first one found by an operator
+  having to `curl /healthz` to learn whether his own radio had been heard.
+
+### Proven on a running system
+
+- **P25 against a real gateway.** The Pi-Star's P25Gateway registered to the
+  test server at 11:52 UTC on 2026-09-12 and a keyup on the operator's APX put
+  roughly 573 voice frames through it — about eleven seconds of audio. The
+  largest untested P25 claim on the handover list, closed with no hardware, no
+  purchase and no code.
+- **Zero unparsed datagrams**, against a listener built from three captures.
+  The health check carries a comment saying some are expected because three
+  captures are not the whole protocol; a live gateway sent 837 datagrams and
+  the frame layer read every one. Better than the code predicted, and a
+  stronger claim than the capture tests make, because the captures and the
+  decoder shared a source and this did not.
+- **Voice matched to a gateway by source address.** P25Gateway sends voice from
+  the same socket it polls from, so `refused` stayed at zero. This was raised
+  as the most likely failure mode and was not one.
+
+### Deferred, with a reason
+
+- **P25 does not reach Last heard.** `internal/p25link` has no reference to the
+  call tracker, the routing core or `observe`, so a radio heard through a
+  gateway is not a station on the network as far as ADR-0033 is concerned —
+  the same gap that once made a talker on the far end of a link invisible while
+  their audio was being relayed.
+
+  Not fixed here because it is a design question rather than an omission: the
+  tracker keys on a repeater ID, a stream ID and a timeslot, and a P25 call has
+  none of those. Forcing one shape into the other at the end of a long session
+  is how the console defects of 2026-09-09 happened. It wants a record first.
+
 ### Decided
 
 - **The P25 side is a full network** ([ADR-0057](docs/adr/ADR-0057-p25-is-a-full-network.md),

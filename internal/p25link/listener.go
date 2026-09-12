@@ -80,9 +80,25 @@ type Gateway struct {
 	Talkgroup uint16
 	// SourceID is the last radio heard through it.
 	SourceID uint32
-	// Received and Sent count frames each way.
-	Received uint64
-	Sent     uint64
+	// Polls counts the gateway's registration polls, and Frames the voice
+	// frames it has sent. Sent counts frames relayed to it.
+	//
+	// **These were one field called Received, and it counted both.**
+	// `poll()` and `voice()` are separate functions with separate parse
+	// paths and both ended in `Received++`, so the health report's "frame(s)
+	// received" included the five-second poll — twelve a minute on an idle
+	// reflector with one gateway linked, rising for as long as it stayed up
+	// with nobody on the air.
+	//
+	// Measured on the test server on 2026-09-12 rather than reasoned about:
+	// 12 in 60 seconds with the radio untouched, and a tcpdump of twenty
+	// consecutive datagrams showing one length and one 5.006-second
+	// interval. The second defect of that shape found in one day — a counter
+	// whose name is wider than what it counts, rising when nothing is
+	// happening — and the first was COLLISIONS, four hours earlier.
+	Polls  uint64
+	Frames uint64
+	Sent   uint64
 }
 
 // Listener serves P25 gateways.

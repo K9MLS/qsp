@@ -173,6 +173,59 @@ type IPSCTraffic struct {
 	Unparsed uint64 `json:"unparsed"`
 }
 
+// P25Traffic is what the P25 listener can report.
+//
+// Like IPSCTraffic it is deliberately short: it reports what the listener
+// keeps, and inventing a figure it does not measure would be a panel showing a
+// number nobody counted.
+type P25Traffic struct {
+	// VoiceFrames is voice frames received from registered gateways, summed.
+	//
+	// **Not polls.** The listener counted both into one field until
+	// 2026-09-12, so an idle reflector reported twelve received frames a
+	// minute. Polls are below and separate.
+	VoiceFrames uint64 `json:"voice_frames"`
+	// Polls is registration polls received. A gateway sends one every five
+	// seconds and QSP echoes it back verbatim; a steady count with no voice
+	// frames is a healthy idle link rather than a fault.
+	Polls uint64 `json:"polls"`
+	// Refused is datagrams from callsigns not on the allow list, and voice
+	// from an address that has not polled.
+	Refused uint64 `json:"refused"`
+	// RefusedLast names the most recent refused callsign, because a refusal
+	// is worth naming rather than counting — the IPSC listener learned that
+	// with 2,144 unnamed refusals on 2026-09-02.
+	RefusedLast string `json:"refused_last,omitempty"`
+	// Unparsed is datagrams this build does not recognise. Expected to be
+	// non-zero in principle: three captures are not the whole protocol.
+	// Measured at zero against a live P25Gateway on 2026-09-12.
+	Unparsed uint64 `json:"unparsed"`
+	// Gateways is one row per registered gateway.
+	Gateways []P25GatewayView `json:"gateways,omitempty"`
+}
+
+// P25GatewayView is one registered gateway as the console sees it.
+type P25GatewayView struct {
+	// Callsign is what the gateway announced. Asserted, never verified —
+	// there is no login on this protocol, so this is a claim.
+	Callsign string `json:"callsign"`
+	// Address is where its polls came from, which is where frames go back.
+	Address string `json:"address"`
+	// Talkgroup is the last talkgroup it sent traffic on, or zero. Read from
+	// frame 0x65.
+	Talkgroup uint16 `json:"talkgroup,omitempty"`
+	// SourceID is the last radio heard through it, or zero. Read from frame
+	// 0x66, confirmed against the operator's APX across four talkgroups.
+	SourceID uint32 `json:"source_id,omitempty"`
+	// Polls, Frames and Sent are this gateway's own counters.
+	Polls  uint64 `json:"polls"`
+	Frames uint64 `json:"frames"`
+	Sent   uint64 `json:"sent"`
+	// LastPollAgoSeconds is how long since its last poll. A gateway is
+	// forgotten after five missed polls.
+	LastPollAgoSeconds int `json:"last_poll_ago_seconds"`
+}
+
 // CallView is one transmission as the console sees it.
 type CallView struct {
 	// Source is the radio ID that keyed up. Unlike the peer ID this survives
@@ -263,6 +316,15 @@ type Traffic struct {
 	// the honest shape: the two listeners do not count the same things, and a
 	// single total would imply they do.
 	IPSC *IPSCTraffic `json:"ipsc,omitempty"`
+	// P25 carries the P25 listener's figures, when that listener is running.
+	// Nil when it is not.
+	//
+	// **A separate object for the same reason IPSC is one**: the three
+	// listeners do not count the same things and a single total would imply
+	// they do. It also carries what no page has ever shown — a gateway's
+	// talkgroup and the last radio heard through it, both computed on every
+	// voice frame since 2026-09-11 and read by nothing until now.
+	P25 *P25Traffic `json:"p25,omitempty"`
 	// FramesAccepted is voice frames accepted from registered peers.
 	FramesAccepted uint64 `json:"frames_accepted"`
 	// FramesForwarded is frames relayed to another peer.
@@ -421,6 +483,12 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		body.Recent = append(body.Recent, r...)
 	}
 
+	// The P25 gateways, on the same terms as IPSC: kept beside the DMR
+	// listener's counters rather than folded into them.
+	if s.opts.P25Gateways != nil {
+		body.Traffic.P25 = s.opts.P25Gateways.Traffic().P25
+	}
+
 	if !signedIn {
 		for i := range body.Peers {
 			body.Peers[i].Address = ""
@@ -438,6 +506,15 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		// free prose would be a regular expression standing between a member's
 		// home connection and a public page, which is not a thing to rely on.
 		body.Traffic.RecentDrops = nil
+		// **And a P25 gateway's address.** The same disclosure as a peer's,
+		// one field further down a different object; the callsign and the
+		// counters stay, because a public view showing who is linked is the
+		// point of it.
+		if body.Traffic.P25 != nil {
+			for i := range body.Traffic.P25.Gateways {
+				body.Traffic.P25.Gateways[i].Address = ""
+			}
+		}
 	}
 
 	// One list, ordered as each was ordered alone: peers by ID, recent calls

@@ -150,7 +150,7 @@ func (l *Listener) poll(raw []byte, from *net.UDPAddr) {
 	}
 	g.Address = from
 	g.LastPoll = now
-	g.Received++
+	g.Polls++
 	l.publish()
 	l.mu.Unlock()
 
@@ -194,7 +194,7 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 		l.refused.Add(1)
 		return
 	}
-	sender.Received++
+	sender.Frames++
 	sender.LastPoll = now
 
 	if tg, high, err := frame.Talkgroup(); err == nil && high == 0 {

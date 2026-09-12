@@ -38,18 +38,24 @@ func (h HealthCheck) Check(context.Context) health.Result {
 	refused, refusedWho := h.Listener.Refused()
 	unparsed := h.Listener.Unparsed()
 
-	var frames uint64
+	// **Polls are not frames.** Summing one field called Received reported
+	// the five-second registration poll as received audio, so a reflector
+	// nobody had spoken through counted twelve frames a minute for as long
+	// as it was up. Measured, not inferred: see Gateway.Polls.
+	var polls, frames uint64
 	for _, g := range gateways {
-		frames += g.Received
+		polls += g.Polls
+		frames += g.Frames
 	}
 
-	summary := fmt.Sprintf("%d gateway(s) registered, %d frame(s) received",
+	summary := fmt.Sprintf("%d gateway(s) registered, %d voice frame(s) received",
 		len(gateways), frames)
 
 	res := health.Healthy(summary)
 	res.Detail = map[string]string{
 		"gateways": strconv.Itoa(len(gateways)),
 		"frames":   strconv.FormatUint(frames, 10),
+		"polls":    strconv.FormatUint(polls, 10),
 	}
 
 	// **Unrecognised datagrams are expected and are not a fault.** Three

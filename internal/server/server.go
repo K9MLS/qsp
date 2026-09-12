@@ -72,6 +72,13 @@ type Options struct {
 	// enabled independently, and an operator running only one should not have
 	// to reason about an empty slot in a list.
 	IPSCPeers PeerSource
+	// P25Gateways supplies the P25 listener's figures and its registered
+	// gateways. Nil when P25 is disabled.
+	//
+	// A PeerSource like the others so that internal/server does not depend
+	// on internal/p25link; only Traffic() is consulted, because a P25
+	// gateway is not a DMR peer and does not belong in the peer table.
+	P25Gateways PeerSource
 	// Auth is the login flow. Nil means this instance has no administrator
 	// accounts, which is a working state rather than a fault: QSP exposed no
 	// endpoint that changes anything for its first several phases, and an

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"runtime/debug"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -638,6 +639,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		IPSCPeers:           ipscPeerSource(a.ipsc, a.names),
+		P25Gateways:         p25Source(a.p25),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
 		// The first administrator comes from the setup page (ADR-0056) and
@@ -1251,6 +1253,79 @@ func (p ipscPeerViews) Traffic() server.Traffic {
 		VoiceFrames: frames,
 		Ignored:     ignored,
 		Unparsed:    unparsed,
+	}}
+}
+
+// p25GatewaySource adapts the P25 listener to the console's traffic view.
+//
+// **The projection lives here for the same reason ipscPeerSource does**, so
+// internal/server does not depend on internal/p25link and the fields the
+// console can see are chosen in one obvious place.
+//
+// It answers Traffic() and nothing else. A P25 gateway is not a DMR peer — it
+// has no repeater ID, no timeslot and no login — so putting one in the peer
+// table would make the console lie about what it is. PeerViews and CallViews
+// return nothing deliberately, and that is a statement rather than a stub:
+// once P25 reaches the call tracker (see docs/P25-PLANNING.md) CallViews is
+// where it arrives.
+type p25GatewaySource struct{ listener *p25link.Listener }
+
+// p25Source returns nil when P25 is disabled, so the payload omits the object
+// entirely rather than carrying zeroes. **A nil interface, not a nil
+// pointer**: a typed nil inside an interface is non-nil at the call site, which
+// would make the console show an empty P25 panel on a server that is not
+// running P25 at all.
+func p25Source(l *p25link.Listener) server.PeerSource {
+	if l == nil {
+		return nil
+	}
+	return p25GatewaySource{listener: l}
+}
+
+func (p p25GatewaySource) PeerViews(time.Time) []server.PeerView { return nil }
+
+func (p p25GatewaySource) CallViews(time.Time) (active, recent []server.CallView) {
+	return nil, nil
+}
+
+func (p p25GatewaySource) Traffic() server.Traffic {
+	gateways := p.listener.Gateways()
+	refused, refusedWho := p.listener.Refused()
+
+	var polls, frames uint64
+	rows := make([]server.P25GatewayView, 0, len(gateways))
+	for _, g := range gateways {
+		polls += g.Polls
+		frames += g.Frames
+		addr := ""
+		if g.Address != nil {
+			addr = g.Address.String()
+		}
+		rows = append(rows, server.P25GatewayView{
+			Callsign:  g.Callsign,
+			Address:   addr,
+			Talkgroup: g.Talkgroup,
+			SourceID:  g.SourceID,
+			Polls:     g.Polls,
+			Frames:    g.Frames,
+			Sent:      g.Sent,
+			// Rounded to whole seconds: a poll arrives every five and
+			// sub-second precision would imply a measurement nobody wants.
+			LastPollAgoSeconds: int(time.Since(g.LastPoll).Round(time.Second).Seconds()),
+		})
+	}
+	// Sorted by callsign so the list does not reorder itself between polls:
+	// the map it comes from has no order, and a table that reshuffles every
+	// five seconds is unreadable.
+	sort.Slice(rows, func(i, j int) bool { return rows[i].Callsign < rows[j].Callsign })
+
+	return server.Traffic{P25: &server.P25Traffic{
+		VoiceFrames: frames,
+		Polls:       polls,
+		Refused:     refused,
+		RefusedLast: refusedWho,
+		Unparsed:    p.listener.Unparsed(),
+		Gateways:    rows,
 	}}
 }
 
