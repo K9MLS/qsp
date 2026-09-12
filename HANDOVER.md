@@ -1,4 +1,4 @@
-# Handover, 2026-09-11
+# Handover, 2026-09-12
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside, then **ADR-0053** (three names
@@ -8,19 +8,82 @@ the last session.
 **The history was rewritten on 2026-09-09** to remove a product name from every
 commit, message and path, and force-pushed. **Every commit hash in this document
 and in the changelog predates that and no longer resolves** — they are a record
-of what happened, not something to look up. `origin/main` is `ad1acc8`. Both
+of what happened, not something to look up. `origin/main` was `ad1acc8` and reached `4000442` on 2026-09-12; 0335–0337 are unpushed. Both
 servers and this repository are on the rewritten history; nothing else has a
 copy.
 
-Version **0.1.176**, patches 0261–0334. **Both servers should be on 0.1.175** —
-check, because deploys have silently not taken several times, every one a pasted
-block eaten by the `sudo` password prompt. `sudo -v` first, always.
+Version **0.1.179**, patches 0261–0337. **Both servers are on 0.1.179**,
+deployed 2026-09-12.
 
 Check a deploy by asking the running process: the `starting` log line on
 production, a string unique to the build in the container. Run `cat VERSION`
-after every `git am`. And **`sudo -v` before any block containing `sudo`** — the
-password prompt eats the next pasted line, which happened four times today and
-was caught by the version check every time.
+after every `git am`.
+
+**`sudo -v` was retired on 2026-09-12**, at the operator's request. A `sudo`
+prompt can still eat the next pasted line, and the mitigation is the version
+check rather than a prophylactic paste — it caught the failure all four times
+it happened and costs nothing, while `sudo -v` made every deploy two pastes
+against a standing preference for one block. See NEW-SESSION.md.
+
+## What 2026-09-12 did: two counters that counted nothing happening
+
+**Both were found by the operator asking what a number meant, four hours
+apart, and neither by anything in the suite.**
+
+- **0335 — COLLISIONS counted the link working.** 20 on the test server, then
+  88 after two keyups on the far end of its link. `repeat` offers a group call
+  to every QSP link including the one it arrived on, the loop rule refuses that
+  one, and every refusal was counted and rendered amber. `routing.Drop.
+  NotAJudgement` had already classified these correctly and had one reader of
+  the two it needed. **Pete's server would have gone amber on its first day for
+  working correctly.**
+
+  The same patch gave the Homebrew side a `call ended` line. `"call ended"`
+  existed in `internal/ipsclink` and nowhere else in the tree, so the Motorola
+  side reported both halves of a transmission and the Homebrew side reported
+  only the first — on every server, since the tracker was written. That breaks
+  §8a's primary diagnostic in the direction that matters: a missing end line
+  meant nothing, so it could not mean something.
+
+- **0336 — ADR-0057, the P25 side is a full network**, carrying Motorola
+  repeaters natively. Decided by the operator against a research write-up that
+  recommended the opposite; see that ADR's context, because the error is
+  instructive. ADR-0058 (the TIA-102.BAHA-A permission) is **Proposed and needs
+  a yes** — 0057 depends on it.
+
+- **0337 — a P25 poll was counted as received audio.** Twelve a minute per
+  gateway on an idle reflector. Measured before it was fixed: 12 in 60 seconds
+  with the radio untouched, and twenty datagrams at one length and a
+  5.006-second interval, which confirms the poll interval a third time on a
+  live link. And a gateway's talkgroup and source radio were computed on every
+  voice frame and displayed nowhere — `Gateways()` had one caller, the health
+  check. **There is no P25 page**; 0333's "console panel" was the settings
+  block on Network. The traffic panel now carries P25 beside IPSC.
+
+**P25 met a real gateway.** The Pi-Star's P25Gateway registered to the test
+server at 11:52 UTC and the operator's APX put roughly 573 voice frames through
+it — about eleven seconds of audio. Zero unparsed datagrams out of 837, against
+a decoder built from three captures, which is better than the code's own
+comment predicts. Largest untested P25 claim on this list, closed with no
+hardware and no code.
+
+**Start here: P25 in Last heard.** ADR-0059 is Proposed and records the
+decision so the next session does not make it while writing. A P25 call has no
+repeater ID, no stream ID and no timeslot, so it cannot be observed into the
+shared tracker without minting all three — and the IPSC adapter contributes
+nothing to call views on purpose, because doing so once put every Motorola
+transmission in Last heard twice with disagreeing frame counts.
+
+**And the Quantar.** The shopping list is in `docs/P25-PLANNING.md`. One
+correction worth carrying: **WIC-1T does not work in the operator's 2921** —
+legacy WICs are unsupported in ISR G2 EHWIC slots, and a c2921 boots with
+`%MAINBOARD-1-UNKNOWN_WIC`. For that chassis it is an HWIC-1T plus a
+CAB-SS-232FC plus the **data licence**, which gates STUN; the alternative is a
+surplus 1841 with 12.4 adventerprisek9, which is the documented configuration.
+Three commands on the **router console** settle it: `show version`,
+`show license`, and `stun peer-name` in configuration mode. Those are a fourth
+machine this brief has never had a label for, and a block headed ambiguously
+was run on the Ubuntu production server instead.
 
 ## What 2026-09-11 did: P25 over IP, complete
 

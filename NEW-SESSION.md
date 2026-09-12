@@ -122,11 +122,18 @@ git log --oneline -1
 cat VERSION
 ```
 
-**And `sudo -v` on its own before any block containing `sudo`.** The password
-prompt reads standard input, so the next pasted line goes in as the password and
-one command silently does not run. It happened four times on 2026-09-09 and the
-version check caught it every time — which is the argument for the check, not
-for the habit that made it necessary.
+**A `sudo` prompt can eat the next pasted line**, because it reads standard
+input: the block appears to run, one command silently does not, and it surfaces
+later as `Permission denied, please try again`. It happened four times on
+2026-09-09.
+
+**The mitigation is the version check, not a prophylactic.** `sudo -v` on its
+own line was added as one and retired on 2026-09-12 at the operator's request:
+it makes every deploy two pastes instead of one, against a standing preference
+for a single block, and it only helps on a cold sudo timestamp. The check
+caught the failure all four times and costs nothing, so it is what this brief
+asks for — the `starting` log line after every deploy, read for the version
+that was meant.
 
 **And run `cat VERSION` again after `git am`, before building.** On 2026-09-08 a
 patch file never reached the machine: `git am` said so, the gates then passed,

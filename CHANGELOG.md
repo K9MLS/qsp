@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **[ADR-0059](docs/adr/ADR-0059-p25-in-last-heard.md), Proposed: a P25
+  transmission reaches Last heard through a tracker of its own.** P25 met a
+  real gateway on 2026-09-12 and none of it appeared in Last heard, which
+  ADR-0033 makes the record of who has been on the network.
+
+  It cannot simply be observed into the shared tracker. `calls.Key` is a
+  repeater ID, a stream ID and a timeslot, and a P25 call has none of the three
+  — there is no login, the transmission boundary is a terminator rather than an
+  identifier, and P25 is FDMA. And the IPSC adapter contributes nothing to call
+  views **on purpose**: doing so once put every Motorola transmission in Last
+  heard twice, a fraction of a second apart, with frame counts of 8 against 10.
+
+  The recommendation is a second tracker whose views are appended, which does
+  not breach that rule — the rule forbids two records of one event, and a P25
+  call is in no tracker at all. The mode-agnostic key is named as the refactor
+  this defers. Recorded rather than built, so the next session starts with the
+  decision made instead of making it while writing.
+
+### Documentation
+
+- **`sudo -v` retired from the standing brief**, at the operator's request. The
+  password prompt can still eat a pasted line, and the mitigation is the
+  version check rather than a prophylactic paste: it caught the failure all
+  four times it happened and costs nothing, while `sudo -v` made every deploy
+  two pastes against a standing preference for one block.
+
+- **The handover rewritten for 2026-09-12**, and `origin/main` corrected — it
+  was recorded as `ad1acc8` and had reached `4000442`, so the note about the
+  history rewrite was pointing at a hash two days stale.
+
+- **§8a: six claims written from a picture instead of from the tree**, in one
+  day — a non-existent endpoint, a serial card that does not fit the operator's
+  router, a command block headed for no particular machine and run on the wrong
+  one, a console page described in detail that does not exist, a CSS class not
+  in the stylesheet, and an anomaly that was a sloppy test rather than a
+  mystery.
+
+  §8o already diagnosed this shape for the misdirected commands of 2026-09-08:
+  written from the handover's picture of the estate rather than from the estate.
+  Four of these six are the same failure with the tree in place of the estate,
+  and the tree was one grep away each time.
+
 ### Fixed
 
 - **The P25 health report counted the keepalive as received audio.** An

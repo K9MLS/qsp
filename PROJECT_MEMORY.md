@@ -3154,6 +3154,43 @@ arrived at from the authoring side, where nothing is broken to draw attention to
 it. **Before writing a branch for a state, ask what produces that state and
 whether it arrives here.** In both cases the answer was one function away.
 
+### Six claims written from a picture instead of from the tree, in one day
+
+**2026-09-12.** The session found two real defects, both by the operator asking
+what a number meant, and both confirmed by measurement before a line changed.
+Alongside that, six assertions were made that a single command would have
+falsified:
+
+- An endpoint at `/api/health`, which does not exist — the route is `/healthz`,
+  and `apiRoutes` is the one place endpoints are declared.
+- A WIC-1T for the operator's 2921, taken from a 2019 amateur build list. Legacy
+  WICs are unsupported in ISR G2 slots.
+- A command block headed for "QSP-SERVER or wherever the console is", which is
+  not a machine label. It was run on the Ubuntu production server, where `show`
+  and `configure` do not exist.
+- A P25 console panel described in detail, including what it would show. There
+  is no P25 page; the changelog phrase "console panel" meant a settings block.
+- A CSS class, `panel-subhead`, which is not in the stylesheet.
+- An anomalous counter delta treated as unexplained when the arithmetic had been
+  right and the test design had two variables in it.
+
+**The common shape is not carelessness about facts, it is writing from a model
+of the estate rather than from the estate.** §8o already diagnosed exactly this
+for the three misdirected commands of 2026-09-08: the documentation described
+one deploy and there were three, so commands were written from the handover's
+picture. Four of the six above are the same failure with the tree in place of
+the estate, and the tree was one `grep` away each time.
+
+The habit that caught three of them before they shipped is worth naming too:
+checking a linked filename against the filesystem, checking a CSS class against
+the stylesheet, and checking a design assumption against the adapter that
+already solved it — the last of which reversed a conclusion, because the IPSC
+precedent turned out to point the hard way rather than the easy one.
+
+**So: before asserting that a path, endpoint, page, class or part number
+exists, look.** The check is always cheaper than the correction, and a confident
+wrong answer costs the operator a command run on the wrong machine.
+
 ### A test that has never failed is a test you do not believe
 
 Three tests written the same day asserted something adjacent to the thing that
