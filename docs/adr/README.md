@@ -70,3 +70,4 @@ conclusion.
 | [0058](ADR-0058-the-p25-fixed-station-interface-is-specified.md) | The P25 fixed station interface is specified, and the Motorola framing above it is not | Proposed |
 | [0059](ADR-0059-p25-in-last-heard.md) | A P25 transmission reaches Last heard through a tracker of its own | Proposed |
 | [0060](ADR-0060-qsp-terminates-the-serial-tunnel.md) | QSP terminates the serial tunnel itself, and there is no bridge host | Accepted |
+| [0061](ADR-0061-qsp-speaks-to-a-transcoder.md) | QSP speaks to a transcoder and stops there | Accepted |

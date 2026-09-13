@@ -4,6 +4,60 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **[ADR-0061](docs/adr/ADR-0061-qsp-speaks-to-a-transcoder.md): QSP speaks
+  AMBE_AUDIO to a transcoder it does not own, and that is the end of its
+  involvement in the audio.** It never opens the dongle, never links a vocoder,
+  and never sees PCM or Opus.
+
+  **Written because it looks like the arrangement ADR-0060 rejected two days
+  earlier**, and the next person to read both will otherwise think the project
+  contradicted itself. ADR-0060 collapsed the Quantar chain because one of its
+  links spoke a protocol QSP already implemented and the rest existed only to
+  reach it. Here the links are a vocoder and a codec, and collapsing them means
+  shipping one — which ADR-0034 forbids.
+
+  QSP owns the link, the capacity, the policy and the identity. It does not own
+  the codec, the dongle, the Zello account, the Opus stream or the WebSocket.
+
+### Documentation
+
+- **`docs/ZELLO.md`, written the day before the hardware arrives** so it meets a
+  plan rather than a question. The chain, what each process does, the dongle's
+  specifics, and the part that is a licensing question rather than a wiring one.
+
+  **Both QSP servers are virtual machines.** `lsusb` on 192.168.1.247 shows a
+  VMware virtual USB hub and mouse and nothing else, and the test server is on
+  `ens192`. So the stick cannot simply be plugged into a QSP server: it goes
+  into the VMware host, which must pass it through to the guest — a layer above
+  the Docker USB passthrough BLUEPRINT already names as a silent-failure
+  source. Two passthroughs, each of which fails by the device quietly not being
+  there. Baseline recorded: no `/dev/ttyUSB*` or `/dev/ttyACM*` beforehand.
+
+  **A config key that is accepted and ignored.** A DVSwitch issue records the
+  shipped `.ini` using `address` and `baud` where the program wanted `server`
+  and `port`; it logged `Unknown section/name in .ini file` and carried on.
+  Read the log on first start rather than trusting the file.
+
+  **And the licensing point, which is the real design constraint.**
+  BrandMeister bridges one talkgroup to one Zello channel and requires
+  moderated channels — SELECT or SELECT+ — explicitly because of radio
+  regulations. A Zello user is not necessarily a licensed operator and their
+  audio reaches RF, which makes BLUEPRINT §7's per-repeater refusal of
+  transcoded audio the mechanism by which a repeater owner consents. Off by
+  default, always.
+
+  Recorded as not known: the AMBE_AUDIO frame on the wire. Ports and directions
+  are documented, the bytes are not, and under ADR-0029 that is a capture job —
+  available the moment Analog_Bridge runs, on a LAN, with a known-good
+  reference beside it.
+
+- **The DVstick 30 has no part in the Quantar work.** It is an AMBE-3000 and
+  does not do P25 full rate; PROJECT_MEMORY §8i recorded that when the operator
+  was looking at a DVSI USB-3003-P25, noting it would otherwise have been
+  discovered months later. Now stated where the Zello work will look for it.
+
 ### Documentation
 
 - **The Quantar build, researched properly and written down.**
