@@ -6,6 +6,42 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The router question is settled, on hardware the operator already owns.** A
+  CISCO2921/K9 on 15.4(3)M3 `universalk9` runs STUN: `stun peer-name` was
+  accepted at the console on 2026-09-13, which on IOS means the feature exists.
+
+  The data licence was the blocker and it is **self-activating**. `show license
+  feature` listed `datak9` with `RightToUse yes`, so one command, an EULA
+  prompt, `write memory` and a reload took `data` from `None None None` to
+  `datak9 EvalRightToUse datak9`.
+
+  **The shopping list drops to three items**: the V.24 daughtercard, an
+  **HWIC-1T** — legacy WICs do not fit an ISR G2 — and a **CAB-SS-232FC**.
+  `show inventory` shows slots 0/2 and 0/3 free.
+
+  **And a correction, recorded rather than quietly fixed.** This document said
+  the data licence "gates STUN on ISR G2" and offered a surplus 1841 as the
+  fallback, citing a 2901 that rejected every `stun` command. The citation was
+  true and the conclusion was wrong. The difference between "buy a different
+  router" and "type one command" is exactly what this project is supposed to
+  check before asserting — and the check was three commands at a console that
+  had been sitting in the plan since the day before.
+
+  **Sixty days, from 2026-09-13.** `EvalRightToUse` is a timer rather than a
+  grant: the EULA states payment is due beyond the evaluation period and that
+  knowing when it ends is the user's responsibility. Around 12 November 2026.
+  If the link becomes permanent, a surplus 1841 with 12.4 `adventerprisek9` has
+  the feature in the image with no licence and no clock.
+
+  Two smaller findings from the same session: the `VWIC3-2MFT-T1/E1` in slot
+  0/0 cannot do this job — RJ-48 trunks, not V.24 synchronous RS-232 — but the
+  `EHWIC-4ESG` four-port switch gives the router its own LAN segment for the
+  tunnel. And **set the clock**: that unit logged `*Jan 2 00:00:03` until
+  corrected, and a router capture that cannot be lined up with a QSP log by
+  timestamp defeats the whole method.
+
+### Documentation
+
 - **The DVstick 30 in detail, from working installations rather than the
   datasheet**, because every failure worth knowing about lives in the gap
   between the two. Added to `docs/ZELLO.md` the day before the hardware

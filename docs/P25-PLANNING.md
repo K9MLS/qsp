@@ -311,7 +311,8 @@ QSP
 | V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first | **needed** |
 | RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below | **needed** |
 | Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering | **needed** |
-| Router + serial card | A 1841 or 2651XM with a WIC-1T is the documented build, 12.4 adventerprisek9. The operator's 2921 needs an **HWIC-1T** and the **data licence** — see below | 2921 held, card needed |
+| Router | **Settled: the operator's CISCO2921/K9**, 15.4(3)M3 universalk9, STUN verified at the console 2026-09-13 after self-activating the `datak9` right-to-use licence. Sixty days from that date | **held** |
+| Serial card | **HWIC-1T** — Smart Serial. Legacy WICs do not fit an ISR G2. Slots 0/2 and 0/3 are free | **needed** |
 | Console cable | Light blue RJ-45 to DB-9 plus a USB serial adapter. One ships with every Cisco router and can often be had for the asking | **needed** |
 | Dummy load | For bench work. Named in every published build | **needed** |
 | RS-232 breakout box | Shows the handshake states and clock activity. Strongly recommended — there is no other instrument for a synchronous serial link | recommended |
@@ -381,15 +382,59 @@ interface Serial0/0
 
 `show stun` reports the circuit state, and `copy run start` saves it.
 
-**The 2921 question, unresolved.** Legacy WIC-1T and WIC-2T are not supported
-in ISR G2 EHWIC slots — a c2921 boots with
-`%MAINBOARD-1-UNKNOWN_WIC ... unknown id 0x2`. For that chassis it is an
-HWIC-1T plus a CAB-SS-232FC plus the **data licence**, which is what gates STUN
-on ISR G2: a 2901 on 15.1(4)M2 rejected every `stun` and `bstun` command with
-`data None None None`. Three commands **on the router console** settle it:
-`show version`, `show license`, and `stun peer-name` in configuration mode. The
-fallback is a surplus 1841 with 12.4 adventerprisek9, where the feature set is
-the image and there is no licence to activate.
+### The router: settled on the operator's own 2921, 2026-09-13
+
+**A CISCO2921/K9 on 15.4(3)M3 `universalk9` runs STUN.** Verified at the
+console rather than inferred: `stun peer-name 198.51.100.1` was accepted in
+configuration mode, which on IOS means it exists.
+
+The licence was the blocker and it is **self-activating**:
+
+```
+data   None    None            None       <- before
+data   datak9  EvalRightToUse  datak9     <- after
+```
+
+`show license feature` had listed `datak9` with `Enforcement yes`,
+`Evaluation yes`, `Enabled no`, **`RightToUse yes`** — the feature is present
+in the universal image and the operator can enable it. One command, an EULA
+prompt, `write memory` and a reload:
+
+```
+license boot module c2900 technology-package datak9
+```
+
+**Sixty days, from 2026-09-13.** `EvalRightToUse` is a timer, not a grant: the
+EULA states payment is due to Cisco beyond the evaluation period, and that it
+is the user's responsibility to know when the period ends. That date is around
+**12 November 2026**. If the Quantar link becomes permanent, a surplus 1841
+with 12.4 `adventerprisek9` has the feature in the image with no licence and no
+clock, and costs about what a serial card does — moving the configuration
+across is a ten-minute job.
+
+**A correction, recorded rather than quietly fixed.** This document previously
+said the data licence "gates STUN on ISR G2" and offered a surplus 1841 as the
+fallback, citing a 2901 that rejected every `stun` command. The citation was
+true and the conclusion was wrong: the feature is in the image, and the
+difference between "buy a different router" and "type one command" is exactly
+the sort of thing this project is supposed to check before asserting.
+
+**What is still true about the chassis.** Legacy WIC-1T and WIC-2T are *not*
+supported in ISR G2 EHWIC slots — a c2921 boots with
+`%MAINBOARD-1-UNKNOWN_WIC ... unknown id 0x2`. So it is an **HWIC-1T** with a
+**CAB-SS-232FC**, not the WIC-1T and CAB-232FC of the published builds.
+
+**And the slots are free.** `show inventory` on the operator's unit lists
+`VWIC3-2MFT-T1/E1` in 0/0 and `EHWIC-4ESG` in 0/1, leaving 0/2 and 0/3 empty.
+The T1/E1 card cannot do this job — RJ-48 trunks, not V.24 synchronous RS-232
+— but the four-port gigabit switch is useful: it gives the router its own LAN
+segment for the tunnel, which is what the published builds do with a second
+Ethernet interface.
+
+**Set the clock.** That unit logged `*Jan 2 00:00:03` until a console
+configuration corrected it. A router capture and a QSP log that cannot be lined
+up by timestamp cost real time, and the whole diagnostic method here is two
+readings of one event. Point it at NTP before the first capture.
 
 ### Bring-up order, each step with a checkpoint
 
