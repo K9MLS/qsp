@@ -4,6 +4,40 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The DVstick 30 in detail, from working installations rather than the
+  datasheet**, because every failure worth knowing about lives in the gap
+  between the two. Added to `docs/ZELLO.md` the day before the hardware
+  arrives.
+
+  **It is an FTDI FT230X**, so `ftdi_sio` and `/dev/ttyUSB0` — but the config
+  should name the `/dev/serial/by-id/` path instead, which carries the device's
+  serial number and does not renumber. On an ESXi guest, where the device is
+  attached after boot and again after every reboot, `ttyUSB0` is a guess.
+
+  **Baud is 460800 and AMBEServer defaults to 230400.** Early ThumbDVs really
+  are 230400, which is why the default is what it is and why half the guides
+  online say the other number.
+
+  **Stock AMBEServer may not drive a DVMEGA board at all.** Forks exist for
+  exactly this: they send `RESETSOFTCFG` instead of `RESET` to override the
+  chip's hardware configuration, because these boards are not in the correct
+  mode at boot. If the stock build opens the port and then does nothing useful,
+  that is the reason — not the cabling, not ESXi, and not a config value.
+
+  **And if the AMBE chip reboots, AMBEServer must be restarted.** On ESXi that
+  is every detach, re-attach and guest reboot. Without handling it the service
+  is up and deaf: running, logging nothing wrong, passing no audio — the
+  failure shape this project distrusts most.
+
+  **AMBE3000R and AMBE3000F are different** and the chip says which on its
+  first response, so read the line rather than assuming.
+
+  A five-rung bring-up ladder with one variable each, using `AMBEtest3.py` for
+  the dongle and `ambesocktest.py` for the server — and a note to stop
+  AMBEServer before the direct test, since only one process can hold the port.
+
 ### Decided
 
 - **[ADR-0061](docs/adr/ADR-0061-qsp-speaks-to-a-transcoder.md): QSP speaks

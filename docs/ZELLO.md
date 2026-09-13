@@ -48,7 +48,88 @@ returned `stream_id`, then `stop_stream`. It needs an account and API keys from
 Zello's developer portal, and **it is documented as beta and subject to
 change** — a dependency risk to record rather than ignore.
 
-## The dongle
+## The dongle, in detail
+
+Researched 2026-09-13, the day before it arrived. Everything here is from
+working installations rather than from the datasheet, because the failures are
+all in the gap between the two.
+
+### What it presents to Linux
+
+An **FTDI FT230X**, so the driver is `ftdi_sio` and the device appears as
+`/dev/ttyUSB0`. A working AMBEServer reports it as:
+
+```
+/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DO011ZUX-if00-port0 at 460800 baud
+```
+
+**Use the `by-id` path, not `ttyUSB0`.** It carries the device's own serial
+number and does not renumber. On a VMware guest, where ESXi may attach the
+device after the guest has booted and again after every reboot, `ttyUSB0` is a
+guess and `by-id` is a fact.
+
+### Baud is 460800, and the default is the other one
+
+DVMEGA's own product page says to set 460800. **AMBEServer defaults to 230400**
+— its `-s` flag — so an unconfigured start talks to the stick at the wrong
+rate. Early ThumbDVs really are 230400, which is why the default is what it is
+and why half the guides on the internet say the other number.
+
+### Stock AMBEServer may not drive a DVMEGA board at all
+
+Forks exist for this specific reason: they add support for the DVMEGA AMBE 3000
+board and others that are not in the correct mode at boot because of their
+hardware configuration, by sending a `RESETSOFTCFG` packet instead of `RESET`
+to override the chip's hardware configuration. `marrold/AMBEServer` and
+`FRS077/AMBEserver` both describe the same fix.
+
+**So if stock AMBEServer opens the port and then does nothing useful, that is
+the reason** — not the cabling, not ESXi, and not a config value. The fix is a
+different build.
+
+### And the chip has to be reset after it reboots
+
+A known issue: **if the AMBE chip reboots, AMBEServer must be restarted.** On
+ESXi that happens every time the device is detached and re-attached, and on
+every guest reboot. Without handling it the service is up and deaf — running,
+logging nothing wrong, and passing no audio. Exactly the failure this project
+distrusts most.
+
+### Which chip, read rather than assumed
+
+The device announces itself on the first exchange:
+
+```
+AMBE device response -> Type: 0x0, Length: 11, Data: 0AMBE3000R
+```
+
+**AMBE3000R and AMBE3000F are different**, and DVSwitch publishes separate
+images for each. Read that line. The second response carries the full firmware
+string, worth recording in the handover once it exists — it is the kind of
+detail that explains behaviour six months later.
+
+### Test tools, and the order to use them
+
+`AMBEtest3.py` exercises the dongle directly and `ambesocktest.py` exercises
+AMBEServer over its socket, both from NW Digital Radio's install repository.
+**Stop AMBEServer before the direct test**: only one process can hold the port.
+
+That gives a bring-up ladder with one variable per rung:
+
+| | Step | Instrument |
+|---|---|---|
+| 1 | Device present | `lsusb`, `ls /dev/serial/by-id/` |
+| 2 | Chip answers | `AMBEtest3.py`, and the `AMBE3000x` line |
+| 3 | Server answers | AMBEServer at 460800, then `ambesocktest.py` |
+| 4 | Transcoder connects | Analog_Bridge `[DV3000]` at 127.0.0.1:2460 |
+| 5 | Zello | the USRP side, and the Channels API |
+
+Baseline taken before the hardware arrived: `lsusb` on 192.168.1.247 shows only
+a VMware virtual hub and mouse, and there is no `/dev/ttyUSB*` or
+`/dev/ttyACM*` on either server. Afterwards there should be exactly one new
+device.
+
+### Capacity and codec
 
 **AMBE-3000, one channel, one call at a time.** BLUEPRINT §7 is explicit that a
 club bridge with four simultaneous transcoded talkgroups needs four vocoder
@@ -88,7 +169,7 @@ a VMware virtual USB hub and mouse, and nothing else. The test server is on
 `ens192`, likewise VMware.
 
 **So the stick cannot simply be plugged into a QSP server.** It goes into the
-VMware host, which must pass it through to the guest — a layer above the Docker
+ESXi host, which passes it through to the guest — a layer above the Docker
 USB passthrough BLUEPRINT already names as a silent-failure source. Two
 passthroughs to declare, each of which fails by the device quietly not being
 there.
