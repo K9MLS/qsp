@@ -400,6 +400,14 @@ type Listener struct {
 	refusedID atomic.Uint32
 	refusedAt atomic.Int64
 
+	// refusalsMu guards refusals, which records when each kind of refusal was
+	// last logged so that one line stands for the ones after it.
+	//
+	// **Not an atomic like the two above**, because this is a map keyed by
+	// sender and message type rather than a single most-recent value.
+	refusalsMu sync.Mutex
+	refusals   map[string]time.Time
+
 	// unparsed counts datagrams this build does not recognise. It is expected
 	// to be non-zero: eight message types are known and IPSC has more.
 	unparsed atomic.Uint64
@@ -757,6 +765,55 @@ func (l *Listener) Counters() (ignored, unparsed uint64) {
 // shorter than anything an operator would call history.
 const RefusalWindow = 60 * time.Second
 
+// refusalWindow is how long one refusal stands for the ones after it.
+//
+// Ten seconds, matching routingDropWindow in internal/peers: long enough to
+// cover a repeater's poll cycle and a transmission, short enough that an
+// operator who fixes the allow list and keys up again is told promptly that it
+// is still refused.
+const refusalWindow = 10 * time.Second
+
+// maxRefusals bounds how many distinct refusals are remembered at once.
+//
+// A refusal names one sender and one message type, so a working network
+// produces a handful. Sixty-four matches maxRoutingDrops and is small enough
+// that the memory is never worth attacking.
+const maxRefusals = 64
+
+// noteRefusal reports whether this refusal should be logged.
+//
+// Keyed on sender **and** message type, so a repeater that is refused for both
+// its keepalive and its voice says so once for each rather than merging them:
+// those are different facts about what it is trying to do, and the 2–3
+// September flood carried 0x90 and 0xf0 alternating.
+func (l *Listener) noteRefusal(sender uint32, kind byte, now time.Time) bool {
+	key := fmt.Sprintf("%d|%#02x", sender, kind)
+
+	l.refusalsMu.Lock()
+	defer l.refusalsMu.Unlock()
+	if l.refusals == nil {
+		l.refusals = make(map[string]time.Time)
+	}
+	if at, seen := l.refusals[key]; seen && now.Sub(at) < refusalWindow {
+		return false
+	}
+	// Expired entries go first; if that is not enough the map is emptied
+	// rather than trimmed, because the cost is one duplicate line and the
+	// alternative is memory a stranger controls.
+	if len(l.refusals) >= maxRefusals {
+		for k, at := range l.refusals {
+			if now.Sub(at) >= refusalWindow {
+				delete(l.refusals, k)
+			}
+		}
+		if len(l.refusals) >= maxRefusals {
+			clear(l.refusals)
+		}
+	}
+	l.refusals[key] = now
+	return true
+}
+
 // LastRefused reports a radio ID turned away within RefusalWindow.
 //
 // **It reports a condition rather than a total**, which is the difference
@@ -800,8 +857,26 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 		l.ignored.Add(1)
 		l.refusedID.Store(msg.SenderID)
 		l.refusedAt.Store(now.UnixNano())
-		l.log.Warn("ignoring peer not on the allow list", "from", from.String(),
-			"sender_id", msg.SenderID, "type", fmt.Sprintf("%#02x", byte(msg.Kind)))
+		// **Once per window, not once per datagram** (2026-09-14).
+		//
+		// A repeater that is not on the allow list keeps polling, and each
+		// poll was a warning: production logged thousands of identical lines
+		// from one sender, every ten seconds, for hours across 2–3 September.
+		// The operator went looking for five refused datagrams and had to read
+		// past all of them.
+		//
+		// The counter is unaffected — `ignored` still rises per datagram, and
+		// LastRefused still names the most recent sender — so nothing an
+		// operator reads on the console changes. It is the journal that was
+		// lying about how much was happening.
+		//
+		// `internal/peers` learned this for routing drops and P25 counts
+		// refusals rather than logging each; this listener got neither. §8a's
+		// recurring shape, in the logging direction.
+		if l.noteRefusal(msg.SenderID, byte(msg.Kind), now) {
+			l.log.Warn("ignoring peer not on the allow list", "from", from.String(),
+				"sender_id", msg.SenderID, "type", fmt.Sprintf("%#02x", byte(msg.Kind)))
+		}
 		return
 	}
 

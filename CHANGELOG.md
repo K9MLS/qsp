@@ -4,6 +4,68 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A refused IPSC peer wrote a warning for every datagram.** A repeater not on
+  the allow list keeps polling, and each poll was a line: production carried
+  thousands of identical `ignoring peer not on the allow list` warnings from
+  one sender, every ten seconds, for hours across 2–3 September, alternating
+  `0x90` and `0xf0`.
+
+  **Found while looking for something else.** An operator asked what five
+  turned-away datagrams on the *Homebrew* listener were, and finding the two
+  lines that answered it meant reading past the flood.
+
+  One line per sender and message type per ten seconds now, matching
+  `routingDropWindow` in `internal/peers`. Keyed on both, because a repeater
+  refused for its keepalive and for its voice is making two different
+  statements. Bounded at 64 like `maxRoutingDrops`, since the key comes off the
+  wire.
+
+  **Nothing an operator reads on the console changes**: `ignored` still counts
+  every datagram and `LastRefused` still names the most recent sender. It was
+  the journal that was misrepresenting how much was happening.
+
+  `internal/peers` learned this for routing drops and the P25 listener counts
+  refusals rather than logging each one. This listener had neither — §8a's
+  recurring shape, in the logging direction.
+
+### Testing
+
+- Four gates, two of them watched failing first: a refused peer is logged once
+  per window; a different sender or message type is its own fact; the window
+  expires, because a refusal logged once and never again would look fixed; and
+  the map is bounded, because its key comes off the wire.
+
+### Not defects, recorded so they are not chased twice
+
+- **`198.51.100.172` is KB9TYC, not a scanner.** The five turned-away datagrams
+  at 04:48 UTC on 2026-09-14 were that hotspot recovering from a NAT rebind:
+  `configured peer is logging in from a new address`, two authentication
+  failures with `no challenge was outstanding`, then a clean login from a third
+  port twenty seconds later. Self-healing. The first reading of this — an
+  internet scanner — was a guess presented as a conclusion, and the journal had
+  the answer.
+
+  Two of the five datagrams are accounted for by those log lines and three are
+  not. Probably frames from the stale port between the rebind and the
+  reconnect; not established, and left unestablished rather than guessed at
+  twice.
+
+- **The console on production binds to `192.168.1.247:8080`**, not `0.0.0.0` or
+  `127.0.0.1`, so `curl localhost:8080` correctly refuses. `ss -lntp` shows no
+  owning process without `sudo`, which is what made it look like nothing was
+  listening at all.
+
+### Open, with evidence attached
+
+- **`ipsc: no capture contains this message type: leading byte 0x81`** — about
+  fifty datagrams of 52 to 66 bytes from radio 999998 on 2026-09-03 at 22:23:59
+  through 22:24:05, immediately after it registered. Sized like voice or
+  control rather than a keepalive. A gap in the protocol knowledge with a
+  timestamp and a sender attached, and worth a capture the next time it
+  happens.
+
 ### Documentation
 
 - **The router question is settled, on hardware the operator already owns.** A
