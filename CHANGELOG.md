@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Decided
+
+- **[ADR-0062](docs/adr/ADR-0062-as-much-as-possible-in-qsp.md): as much as
+  possible is built into QSP.** A thing leaves QSP only when keeping it would
+  break a property QSP has decided to hold — not because a package already
+  exists that does it, and not because assembling is faster than building.
+
+  **The operator's rule, adopted as the record's.** The documented way to
+  bridge DMR to Zello is four processes; installing it alongside QSP was
+  proposed and refused. Two of those four were pure overhead: MMDVM_Bridge
+  exists to turn a DMR network connection into AMBE frames and QSP *is* the DMR
+  network, and Analog_Bridge is plumbing around a socket QSP can open itself.
+
+  **Two things stay outside, and each reason was checked rather than assumed.**
+  The vocoder, per ADR-0034. And Opus — because Zello's API says the codec
+  **must be `opus`** with no PCM option, and the Go reference client
+  `jcmurray/monitor` states its cost: a wrapper around the OPUS libraries,
+  which must be installed on the machine. That is cgo, and cgo costs
+  `CGO_ENABLED=0`, cross-compilation to ARM without a C toolchain, and an
+  install with no development headers. Three properties for one optional
+  feature is the wrong trade.
+
+  If a pure-Go Opus encoder good enough for voice appears, that half should be
+  revisited. Nothing else about it is load-bearing.
+
+### Documentation
+
+- **`docs/ZELLO.md` now opens with the recovery path**, because it was learned
+  last: if the dongle stops answering, unplug it physically for ten seconds. A
+  software reset cannot clear a chip left mid-field, and neither can detaching
+  and re-attaching the USB device in ESXi — the device node comes back new and
+  the chip is still lost.
+
+  The four-process chain stays in the document, marked superseded, because it
+  is what the published builds do and remains the thing to compare against.
+
 ### Fixed
 
 - **Patch 0351 was wrong and is reverted.** The AMBE-3000F manual: §6.7 *Input

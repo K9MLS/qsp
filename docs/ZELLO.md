@@ -6,7 +6,27 @@ the hardware meets a plan rather than a question.
 Nothing here is built. `AMBE_AUDIO` appears in this repository only in prose —
 README, BLUEPRINT and PROJECT_MEMORY — and in no Go file.
 
+## Recovery, first, because it was needed
+
+**If the dongle stops answering, unplug it physically for ten seconds.**
+
+On 2026-09-14 a malformed control packet — field `0x0a` sent with one argument
+byte where it takes eleven — left the chip mid-field permanently. AMBEserver
+reported `Couldn't find start byte in serial data` on every start afterwards. A
+software reset could not clear it, and **neither could detaching and
+re-attaching the USB device in ESXi**: the device node came back new and the
+chip was still lost. Only removing power did it.
+
+This is written first because it was learned last, after the experiment rather
+than before it. A device that can be wedged by a malformed packet needs its
+recovery path known in advance.
+
 ## The chain
+
+**Superseded by [ADR-0062](adr/ADR-0062-as-much-as-possible-in-qsp.md)** — the
+four-process chain below was refused, and QSP speaks to AMBEserver directly.
+Kept because it is what the published builds do and is still the thing to
+compare against.
 
 ```
 QSP (DMR, AMBE frames)
