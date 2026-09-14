@@ -87,6 +87,17 @@ func main() {
 		"the test signal: sine is a steady 1 kHz tone, which a reset-state "+
 			"encoder codes as a tone rather than as speech; sweep runs 300 Hz to "+
 			"3 kHz across the run and cannot be a single tone descriptor")
+	capture := flag.String("capture", "",
+		"decode the voice frames in this IPSC capture through the dongle; "+
+			"testdata/ipsc/ipsc-master-voice.pcap is real audio off the "+
+			"operator's own repeater, which is the only thing that can say how "+
+			"this chip handles a voice")
+	frameForm := flag.String("frame-form", "onair",
+		"how a 72-bit frame is assembled from a capture's 49-bit parameters: "+
+			"onair adds ETSI's error correction, params sends the parameters "+
+			"with 23 zeros behind them and lets the chip object")
+	wav := flag.String("wav", "", "write the decoded audio here as an 8 kHz 16-bit WAV")
+	limit := flag.Int("limit", 0, "stop after this many frames; 0 means all of them")
 	roundtrip := flag.Int("roundtrip", 0,
 		"encode this many consecutive 20 ms frames and decode them back in "+
 			"order, reporting each frame compactly; a vocoder carries state and "+
@@ -135,6 +146,11 @@ func main() {
 	// away, which is the whole of section 8p's last entry.
 	if _, out := ask(conn, *wait, "get config", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldGetCfg))); out == unreachable {
 		refused(*server)
+	}
+
+	if *capture != "" {
+		decodeCapture(conn, *wait, *capture, *frameForm, *wav, *limit, *rate, *server)
+		return
 	}
 
 	if *roundtrip > 0 {
@@ -346,31 +362,8 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, signal strin
 	if !toneDetect {
 		ecmode &^= ambe.ECToneDetect
 	}
-
-	for _, step := range []struct {
-		what  string
-		field byte
-		args  []byte
-	}{
-		{"decoder flags", 0x16, ambe.SpchFmtAlwaysDCMode},
-		{"encoder control word", 0x05, []byte{byte(ecmode >> 8), byte(ecmode)}},
-		{"rate index", 0x09, []byte{byte(rate)}},
-	} {
-		pkt, err := ambe.Build(ambe.TypeControl, ambe.Val(step.field, step.args...))
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
-			os.Exit(1)
-		}
-		reply, out := quiet(conn, wait, pkt)
-		if out == unreachable {
-			refused(server)
-		}
-		field, status, ok := ambe.AckedField(reply)
-		if out != answered || !ok || field != step.field || status != 0x00 {
-			fmt.Fprintf(os.Stderr, "ambe-probe: the %s was not accepted: %x\n",
-				step.what, reply)
-			os.Exit(1)
-		}
+	if !configureFor(conn, wait, rate, ecmode, server) {
+		return
 	}
 
 	wantBits, ok := ambe.FrameBitsForRate(rate)
@@ -489,6 +482,168 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, signal strin
 		"climbs toward the in column the round trip works. Frames that never " +
 		"change are the encoder describing a tone rather than coding speech, " +
 		"whatever the amplitude says.\n")
+}
+
+// decodeCapture decodes a capture's voice frames through the dongle.
+//
+// **This is the Zello direction, end to end.** DMR frames in, PCM out, and
+// nothing synthetic anywhere in it. The frames come off the operator's own
+// XPR8300 through a Motorola master; the chip is the operator's; the only new
+// part is the twenty lines that carry one to the other.
+//
+// It reports what the decoder says about the frames rather than only what the
+// samples look like, because a run of DATA_INVALID would mean the 72-bit form
+// is wrong and no amount of listening to the output would say which form to
+// try instead.
+func decodeCapture(conn net.Conn, wait time.Duration, path, form, wav string, limit, rate int, server string) {
+	frames, err := vocoderFramesFromCapture(path, form)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	if limit > 0 && limit < len(frames) {
+		frames = frames[:limit]
+	}
+
+	// The same preconditions the round trip sets, for the same reason: a rate
+	// nobody set is a rate nobody knows, and flags nobody asked for cannot
+	// answer anything.
+	if !configureFor(conn, wait, rate, ambe.ECModeAtReset, server) {
+		return
+	}
+	wantBits, _ := ambe.FrameBitsForRate(rate)
+
+	fmt.Printf("\n--- %d frames from %s, %s form, rate index %d ---\n\n",
+		len(frames), path, form, rate)
+
+	samples := make([]int16, 0, len(frames)*samplesPerFrame)
+	var invalid, comfort, tones, decoded int
+	peak := 0
+
+	for i, data := range frames {
+		chand, err := ambe.Chand(wantBits, data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: frame %d: %v\n", i+1, err)
+			return
+		}
+		pkt, err := ambe.Build(ambe.TypeChannel, ambe.Val(fieldChannel0), chand)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: frame %d: %v\n", i+1, err)
+			return
+		}
+		reply, out := quiet(conn, wait, pkt)
+		if out == unreachable {
+			refused(server)
+		}
+		if out != answered {
+			fmt.Printf("  frame %d got no reply; %d decoded before it\n", i+1, decoded)
+			break
+		}
+		speech, ok := ambe.SpeechReplyFromResponse(reply)
+		if !ok {
+			fmt.Printf("  frame %d was answered by %d bytes this build does not "+
+				"decode\n", i+1, len(reply))
+			break
+		}
+		decoded++
+		samples = append(samples, speech.Samples...)
+		if p := speech.Peak(); p > peak {
+			peak = p
+		}
+		if speech.Reported {
+			if speech.Flags&ambe.DataInvalid != 0 {
+				invalid++
+			}
+			if speech.Flags&ambe.VoiceActive == 0 {
+				comfort++
+			}
+			if speech.Flags&ambe.ToneFrame != 0 {
+				tones++
+			}
+		}
+	}
+
+	fmt.Printf("  %-30s %d\n", "frames decoded", decoded)
+	fmt.Printf("  %-30s %.2f seconds at 20 ms a frame\n", "audio",
+		float64(decoded)*0.02)
+	fmt.Printf("  %-30s %d\n", "peak sample", peak)
+	fmt.Printf("  %-30s %d\n", "data invalid", invalid)
+	fmt.Printf("  %-30s %d\n", "comfort noise", comfort)
+	fmt.Printf("  %-30s %d\n", "tone frames", tones)
+
+	// **The counts decide whether listening is worth doing.** A run that is
+	// mostly invalid or mostly comfort noise means the 72-bit form is wrong,
+	// and the other -frame-form is the next thing to try rather than the
+	// speaker.
+	switch {
+	case decoded == 0:
+		fmt.Printf("\n  nothing decoded; the frame form is the thing to change\n")
+		return
+	case invalid*2 > decoded:
+		fmt.Printf("\n  **more than half the frames were rejected**, so this is "+
+			"not the form the chip wants; try -frame-form %s\n", otherForm(form))
+	case comfort*2 > decoded:
+		fmt.Printf("\n  **more than half came back as comfort noise**, which is the "+
+			"decoder finding too many errors; try -frame-form %s\n", otherForm(form))
+	default:
+		fmt.Printf("\n  the decoder accepted these frames. **Listen to the file** — " +
+			"a voice means the whole path works, and noise at a healthy peak " +
+			"means the bits are in the wrong order rather than rejected\n")
+	}
+
+	if wav == "" {
+		fmt.Printf("  pass -wav out.wav to write the audio somewhere you can play it\n")
+		return
+	}
+	if err := writeWAV(wav, samples); err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("  %-30s %s\n", "written", wav)
+}
+
+// otherForm names the candidate not being tried, so a failure suggests the
+// experiment rather than leaving it to be remembered.
+func otherForm(form string) string {
+	if form == "params" {
+		return "onair"
+	}
+	return "params"
+}
+
+// configureFor sends the preconditions a run needs and reports whether every
+// one was accepted.
+//
+// **Shared because a precondition a code path can skip is not a
+// precondition.** The round trip learned that by running fifty frames at the
+// board's boot rate after its own output had said the rate must be set.
+func configureFor(conn net.Conn, wait time.Duration, rate int, ecmode ambe.ECMode, server string) bool {
+	for _, step := range []struct {
+		what  string
+		field byte
+		args  []byte
+	}{
+		{"decoder flags", 0x16, ambe.SpchFmtAlwaysDCMode},
+		{"encoder control word", 0x05, []byte{byte(ecmode >> 8), byte(ecmode)}},
+		{"rate index", 0x09, []byte{byte(rate)}},
+	} {
+		pkt, err := ambe.Build(ambe.TypeControl, ambe.Val(step.field, step.args...))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
+		reply, out := quiet(conn, wait, pkt)
+		if out == unreachable {
+			refused(server)
+		}
+		field, status, ok := ambe.AckedField(reply)
+		if out != answered || !ok || field != step.field || status != 0x00 {
+			fmt.Fprintf(os.Stderr, "ambe-probe: the %s was not accepted: %x\n",
+				step.what, reply)
+			return false
+		}
+	}
+	return true
 }
 
 // frameOf builds one 20 ms frame of a named test signal.

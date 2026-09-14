@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 
@@ -269,5 +271,192 @@ func TestToneDetectionIsTheOnlyBitSetAtReset(t *testing.T) {
 	if bits := uint16(on) ^ uint16(off); bits != uint16(ambe.ECToneDetect) {
 		t.Errorf("the differential moves %#04x, want only TD_ENABLE %#04x",
 			bits, uint16(ambe.ECToneDetect))
+	}
+}
+
+// TestTheCaptureYieldsRealVocoderFramesInBothForms is the extraction, checked
+// without a dongle.
+//
+// **It reads the operator's own capture** —
+// testdata/ipsc/ipsc-master-voice.pcap, a Motorola master sending real audio
+// off an XPR8300 — because a synthetic signal cannot say how a speech model
+// handles a voice, and no amount of reasoning replaces the frames.
+//
+// The two forms differ only in what occupies the 23 bits behind the 49
+// parameter bits, and which one the chip wants is the open question. What this
+// checks is that both are well formed, that they differ, and that the
+// parameters survive the trip — so a bench run that fails is the chip's
+// answer rather than a defect here.
+func TestTheCaptureYieldsRealVocoderFramesInBothForms(t *testing.T) {
+	const path = "../../testdata/ipsc/ipsc-master-voice.pcap"
+
+	onair, err := vocoderFramesFromCapture(path, "onair")
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	params, err := vocoderFramesFromCapture(path, "params")
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+
+	// The capture's companion document records 288 voice packets, and each
+	// carries three vocoder frames.
+	if len(onair) != len(params) {
+		t.Fatalf("the two forms give %d and %d frames", len(onair), len(params))
+	}
+	if len(onair)%3 != 0 {
+		t.Errorf("%d frames is not a whole number of bursts of three", len(onair))
+	}
+	// **An exact count, not a floor.** A lower bound passes with the IP
+	// header read from the wrong offset: most payloads then fail to parse as
+	// IPSC and are skipped, enough survive to clear a loose threshold, and
+	// the run reaches the dongle with the wrong bytes. This capture is
+	// Ethernet-framed and holds 276 voice frames of three vocoder frames
+	// each, so the number is 828 and anything else is a defect in the
+	// extraction rather than a difference of opinion.
+	if got, want := len(onair), 828; got != want {
+		t.Errorf("the capture yielded %d vocoder frames, want %d — %.2f seconds "+
+			"of audio against %.2f", got, want,
+			float64(got)*0.02, float64(want)*0.02)
+	}
+
+	for i, f := range onair {
+		if len(f) != 9 {
+			t.Fatalf("on-air frame %d is %d bytes, want 9 for 72 bits", i, len(f))
+		}
+	}
+
+	// **The forms must differ, or one of them is not being built.** They
+	// share their first 49 bits and differ in the 23 behind them, so a run
+	// where every frame matched would mean the error correction was never
+	// added.
+	same := 0
+	for i := range onair {
+		if string(onair[i]) == string(params[i]) {
+			same++
+		}
+	}
+	if same == len(onair) {
+		t.Error("every frame is identical in both forms, so the error " +
+			"correction is not being added and the differential tests nothing")
+	}
+
+	// The parameters survive: the first 49 bits of the params form are the
+	// parameters themselves, and a frame of all zeros would mean the
+	// extraction silently produced nothing.
+	nonZero := 0
+	for _, f := range params {
+		for _, b := range f[:7] {
+			if b != 0 {
+				nonZero++
+				break
+			}
+		}
+	}
+	if nonZero*4 < len(params) {
+		t.Errorf("only %d of %d frames carry any parameter bits; the extraction "+
+			"is producing empty frames", nonZero, len(params))
+	}
+
+	// Every frame must be one the builder accepts, because a frame this tool
+	// cannot send is a frame the bench run would die on rather than report.
+	for i, f := range onair {
+		if _, err := ambe.Chand(72, f); err != nil {
+			t.Fatalf("on-air frame %d cannot be sent: %v", i, err)
+		}
+	}
+}
+
+// TestACaptureThisToolCannotReadIsRefused keeps a wrong offset from becoming
+// plausible frames.
+//
+// A link type this tool does not know means the IP header is somewhere else,
+// and an offset guessed wrong yields payloads that parse as something. That is
+// worse than refusing, because the frames would reach the dongle and its
+// answer would be about the wrong bytes.
+func TestACaptureThisToolCannotReadIsRefused(t *testing.T) {
+	dir := t.TempDir()
+
+	for name, header := range map[string][]byte{
+		"not a pcap":       {0xde, 0xad, 0xbe, 0xef},
+		"unknown linktype": append(pcapHeader(999), 0),
+	} {
+		path := filepath.Join(dir, "x.pcap")
+		if err := os.WriteFile(path, header, 0o644); err != nil {
+			t.Fatalf("writing a fixture: %v", err)
+		}
+		if _, err := readPcapUDP(path); err == nil {
+			t.Errorf("a file that is %s was read", name)
+		}
+	}
+
+	// A well-formed header with no packets is not an error about the format,
+	// but it is still nothing to decode.
+	path := filepath.Join(dir, "empty.pcap")
+	if err := os.WriteFile(path, pcapHeader(1), 0o644); err != nil {
+		t.Fatalf("writing a fixture: %v", err)
+	}
+	if _, err := readPcapUDP(path); err == nil {
+		t.Error("an empty capture was accepted; there is nothing in it to decode")
+	}
+}
+
+// pcapHeader builds a little-endian pcap file header for a link type.
+func pcapHeader(linkType uint32) []byte {
+	h := make([]byte, 24)
+	binary.LittleEndian.PutUint32(h[0:], 0xa1b2c3d4)
+	binary.LittleEndian.PutUint16(h[4:], 2)
+	binary.LittleEndian.PutUint16(h[6:], 4)
+	binary.LittleEndian.PutUint32(h[16:], 65535)
+	binary.LittleEndian.PutUint32(h[20:], linkType)
+	return h
+}
+
+// TestTheWavIsAWavThatPlays checks the container rather than the audio.
+//
+// A file the operator cannot open answers nothing, and the point of writing
+// one is that a person listens to it. Forty-four bytes of RIFF header with
+// the wrong sample rate would play at the wrong speed and sound like a
+// different defect.
+func TestTheWavIsAWavThatPlays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.wav")
+	samples := sineFrom(1000, 0)
+	if err := writeWAV(path, samples); err != nil {
+		t.Fatalf("writing a wav: %v", err)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading it back: %v", err)
+	}
+
+	if got, want := len(raw), 44+len(samples)*2; got != want {
+		t.Fatalf("the file is %d bytes, want %d", got, want)
+	}
+	if string(raw[0:4]) != "RIFF" || string(raw[8:12]) != "WAVE" {
+		t.Fatalf("the file does not begin RIFF/WAVE")
+	}
+	if got := binary.LittleEndian.Uint16(raw[22:24]); got != 1 {
+		t.Errorf("the file claims %d channels, want 1", got)
+	}
+	if got := binary.LittleEndian.Uint32(raw[24:28]); got != 8000 {
+		t.Errorf("the file claims %d Hz, want 8000; the wrong rate plays at the "+
+			"wrong speed and sounds like a different defect", got)
+	}
+	if got := binary.LittleEndian.Uint16(raw[34:36]); got != 16 {
+		t.Errorf("the file claims %d bits a sample, want 16", got)
+	}
+	if got := binary.LittleEndian.Uint32(raw[4:8]); got != uint32(36+len(samples)*2) {
+		t.Errorf("the RIFF size is %d, want %d", got, 36+len(samples)*2)
+	}
+	if got := binary.LittleEndian.Uint32(raw[40:44]); got != uint32(len(samples)*2) {
+		t.Errorf("the data size is %d, want %d", got, len(samples)*2)
+	}
+	// And the samples come back, little-endian as a WAV requires, which is the
+	// other way round from every 16-bit value in an AMBE packet.
+	for i, want := range samples {
+		got := int16(binary.LittleEndian.Uint16(raw[44+i*2:]))
+		if got != want {
+			t.Fatalf("sample %d reads %d, want %d", i, got, want)
+		}
 	}
 }

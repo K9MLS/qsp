@@ -6,6 +6,54 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`-capture`: real audio from the operator's own repeater, decoded through
+  the dongle and written as a WAV.** `testdata/ipsc/ipsc-master-voice.pcap` is
+  a Motorola master sending real voice off an XPR8300, and its frames carry the
+  49-bit vocoder parameters this chip codes at rate index 33 — the rate
+  Table 115 gives as interoperable with DMR. **828 vocoder frames, 16.5 seconds
+  of audio**, needing no new capture and no new hardware.
+
+  **This is the Zello direction end to end**: DMR frames in, PCM out. It is
+  also the only thing that can answer the question the synthetic signals could
+  not. A sine proved the round trip and then proved the tone path; turning tone
+  detection off gave the voice path at about a third of the input amplitude,
+  which is what a speech model does with something that is not speech. How the
+  chip handles a *voice* cannot be reached that way at all.
+
+  **The open question is what occupies the 23 bits behind the parameters**, so
+  `-frame-form` offers both candidates and the dongle decides: `onair` adds
+  ETSI's error correction, `params` sends 23 zeros and lets the chip object.
+  The run counts `DATA_INVALID` and comfort-noise frames and names the other
+  form when more than half come back rejected — so a failure suggests the next
+  experiment rather than leaving it to be remembered.
+
+  **And it writes a WAV, because the operator has ears and this project has no
+  metric for voice quality.** Every other question about this chip was settled
+  by a differential or a byte count. "Does it sound like a person" is settled
+  by listening.
+
+### Changed
+
+- **The precondition setter is shared between the round trip and the capture
+  decoder**, since the round trip already learned once what happens when a code
+  path can skip it.
+
+### Fixed
+
+- **A frame count checked as a floor rather than a number.** Reading the IP
+  header from the wrong offset makes most payloads fail to parse as IPSC and be
+  skipped — but enough survive to clear a loose threshold, and the run reaches
+  the dongle with the wrong bytes while the test says nothing. The count is now
+  exact at 828. Proved by reading Ethernet's header as sixteen bytes and
+  watching it fail.
+
+  Two of the five deliberate breaks in this patch were invalid on the first
+  attempt: one changed a link type this capture does not use, and one did not
+  compile. Neither tested anything, and both read as passes.
+
+
+### Added
+
 - **`-signal sweep` and `-tone-detect`, because the sine proved the wrong
   thing.** The fifty-frame run at the DMR rate worked — 72-bit frames, peaks
   of 8548 to 8611 against an input of 8000 — and frame 1 came back bit for bit
