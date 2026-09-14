@@ -37,7 +37,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -45,75 +44,32 @@ import (
 	"net"
 	"os"
 	"time"
+
+	"github.com/k9mls/qsp/internal/ambe"
 )
 
-// The AMBE-3000 packet: a start byte, a big-endian length, and a type.
+// The packet framing, the field table and the builder now live in
+// internal/ambe, built from the AMBE-3000F users manual version 3.7 and
+// proved against the four worked example packets the manufacturer prints in
+// its section 6.11.
 //
-// **The length counts the payload and not the type byte**, which is the first
-// thing this program got wrong and the first thing the record corrected. The
-// observed exchange is `61` `00 01` `00` `30`: one byte of payload, `30`, with
-// the type `00` outside the count. The first draft here emitted `61 00 02 00
-// 33` and would have been refused by the dongle for a reason that looked like
-// a dead device.
+// **Nothing here constructs a packet by hand any more, and that is the fix.**
+// The gate that existed after the dongle was wedged checked that the field
+// constants held the right values. They did. The call site passed the wrong
+// one, every constant stayed correct, and the gate passed. A builder that
+// consults the table is the only version of that check which cannot be walked
+// past — see internal/ambe and its tests, which also record the incident.
 //
-// The reply is `61` `00 0b` `00` `30` then ten bytes of text, and 0x0b is
-// eleven: the field byte plus `AMBE3000F` plus a terminator. Consistent, and
-// consistent both ways.
-const (
-	startByte = 0x61
-
-	typeControl = 0x00
-	// **Speech is 0x02 and channel is 0x01**, from the manual rather than from
-	// a guess: §6.7 is "Input Speech Packet Format (Packet Type 0x02)" and
-	// §6.9 is "Input Channel Packet Format (Packet Type 0x01)". The chip
-	// outputs a speech packet whenever it receives a channel packet, which is
-	// the decode direction.
-	//
-	// These were right, then swapped on 2026-09-14 on the theory that a wrong
-	// type explained the chip's silence, then swapped back when the manual was
-	// finally read. **Two wrong readings in one evening, one of which was
-	// shipped as a correction** — the lesson being that "this explains the
-	// symptom" is a hypothesis and a contents page is evidence.
-	typeChannel = 0x01 // compressed audio, the AMBE side
-	typeSpeech  = 0x02 // uncompressed audio, the PCM side
-)
-
-// Control fields, of which two are confirmed by the exchange already run.
-const (
-	fieldReset   = 0x33 // confirmed: answers 0x39
-	fieldProdID  = 0x30 // confirmed: answers 0AMBE3000F
-	fieldVersion = 0x31 // confirmed: answers V121.E100...
-	// **fieldRateIndex takes one byte; fieldRateParams takes eleven.** Getting
-	// these the wrong way round is what wedged the operator's dongle on
-	// 2026-09-14, and it wedged it in a way no software reset could clear.
-	//
-	// The probe sent `61 00 02 00 0a 21`: field 0x0a, one byte. But 0x0a is
-	// the full rate-parameters block, and a working session elsewhere shows it
-	// as `61 00 0c 00 0a 01 30 07 63 40 00 00 00 00 00 48` — twelve bytes.
-	// So the chip was told eleven bytes were coming, given one, and consumed
-	// the first ten bytes of the next packet as the remainder. From then on it
-	// was mid-field forever, and AMBEserver reported exactly that:
-	// "Couldn't find start byte in serial data".
-	//
-	// Recovery was a physical unplug. A soft reset could not do it, and
-	// neither could detaching and re-attaching the USB device in ESXi.
-	fieldRateIndex  = 0x09 // one byte: an index into the rate table
-	fieldRateParams = 0x0a // eleven bytes: the full rate word
-)
-
-// samplesPerFrame is 20 ms at 8 kHz, which is what the AMBE-3000 takes for one
+// samplesPerFrame is 20 ms at 8 kHz, which is what the part takes for one
 // compressed frame.
 const samplesPerFrame = 160
 
 func main() {
 	server := flag.String("server", "127.0.0.1:2460", "AMBEserver address")
 	tone := flag.Bool("tone", false, "send one frame of 1 kHz tone and print the reply")
-	rate := flag.Int("rate", 33, "rate index for the mode packet; 33 is DMR/NXDN 2450+1150")
+	rate := flag.Int("rate", ambe.RateIndexDMR,
+		"built-in rate index for PKT_RATET; 33 is 3600/2450/1150, the DMR and P25 half-rate one")
 	wait := flag.Duration("wait", 2*time.Second, "how long to wait for each reply")
-	// Overridable because a reading is a hypothesis and the dongle decides.
-	// It was added to test the theory that the type byte explained the
-	// silence; the manual says it did not, and the rate field did.
-	speechType := flag.Int("speech-type", typeSpeech, "packet type for a PCM frame")
 	flag.Parse()
 
 	conn, err := net.Dial("udp", *server)
@@ -124,12 +80,35 @@ func main() {
 	defer conn.Close()
 	fmt.Printf("talking to %s\n\n", *server)
 
-	// The three confirmed exchanges first, so that a run always says whether
-	// the dongle is there before it says anything uncertain.
-	ask(conn, *wait, "reset", control(fieldReset))
+	// The queries that carry no arguments, so that a run always says whether
+	// the dongle is there before it says anything uncertain. Three of these
+	// are exchanges this project has already seen answered.
+	ask(conn, *wait, "reset", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldReset)))
 	time.Sleep(500 * time.Millisecond)
-	ask(conn, *wait, "product id", control(fieldProdID))
-	ask(conn, *wait, "version", control(fieldVersion))
+	ask(conn, *wait, "product id", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldProdID)))
+	ask(conn, *wait, "version", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldVersion)))
+
+	// PKT_GETCFG reports the configuration pins as they were latched at boot,
+	// and **CFG2 bit 4 is PARITY_ENABLE**. It runs with the confirmed group
+	// rather than behind -tone because it takes no arguments and changes
+	// nothing: it is the safest packet in the table, and it replaces an
+	// inference this project has been carrying.
+	//
+	// The inference was sound — parity is enabled by default, a chip with it
+	// enabled discards every packet that lacks a valid parity field, and this
+	// board answered three packets that carried none, so parity must be off.
+	// Sound reasoning has been wrong here before while the data was one query
+	// away, which is the whole of section 8p's last entry.
+	if reply, got := ask(conn, *wait, "get config", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldGetCfg))); got {
+		if cfg, ok := ambe.ConfigFromResponse(reply); ok {
+			fmt.Printf("  %-30s cfg0=%#02x cfg1=%#02x cfg2=%#02x\n", "configuration pins at boot",
+				cfg[0], cfg[1], cfg[2])
+			fmt.Printf("  %-30s %v (CFG2 bit 4)\n\n", "parity enabled",
+				ambe.ParityEnabledIn(cfg))
+		} else {
+			fmt.Printf("  not a configuration response; the bytes above are the result\n\n")
+		}
+	}
 
 	if !*tone {
 		fmt.Println("\nnothing further attempted; pass -tone to try an audio frame")
@@ -137,40 +116,46 @@ func main() {
 	}
 
 	// **From here the packets are a reading, not a recording.**
+	//
+	// The rate goes through PKT_RATET, the one-byte index, and not through
+	// PKT_RATEP. Sending a one-byte index to PKT_RATEP is what wedged this
+	// operator's dongle on 2026-09-14, and PKT_RATEP's own length is the one
+	// number in the table the manual and the software that circulates around
+	// it disagree about — twelve against eleven. The index avoids the question
+	// entirely and rate 33 is the rate that was wanted all along.
 	fmt.Println("\n--- beyond what has been observed ---")
-	ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate),
-		control(fieldRateIndex, byte(*rate)))
-	ask(conn, *wait, fmt.Sprintf("20 ms of 1 kHz tone as type %#02x", *speechType),
-		packet(byte(*speechType), speechBody(sine(1000))))
-}
-
-// control builds a control packet: type 0x00, then a field and its arguments.
-func control(field byte, args ...byte) []byte {
-	return packet(typeControl, append([]byte{field}, args...))
-}
-
-// speechBody is 160 samples of 8 kHz 16-bit PCM, with the field and count
-// that precede them.
-//
-// The field byte and sample count precede the samples, which is the shape the
-// register map describes and the part this program exists to test.
-func speechBody(samples []int16) []byte {
-	body := make([]byte, 0, 2+len(samples)*2)
-	body = append(body, 0x00, byte(len(samples)))
-	for _, s := range samples {
-		body = binary.BigEndian.AppendUint16(body, uint16(s))
+	ratePacket, err := ambe.Build(ambe.TypeControl, ambe.Val(fieldRateIndex, byte(*rate)))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
 	}
-	return body
+	ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate), ratePacket)
+
+	speech, err := ambe.SpeechD(sine(1000))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	framePacket, err := ambe.Build(ambe.TypeSpeech, ambe.Val(fieldChannel0), speech)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket)
 }
 
-// packet wraps a body in the start byte, length and type.
-func packet(kind byte, body []byte) []byte {
-	out := make([]byte, 0, 4+len(body))
-	out = append(out, startByte)
-	out = binary.BigEndian.AppendUint16(out, uint16(len(body)))
-	out = append(out, kind)
-	return append(out, body...)
-}
+// The field identifiers this program sends, named here so that a call site
+// reads as the manual does. Their lengths are not repeated — internal/ambe
+// holds those, and repeating them is how the two got out of step in the first
+// place.
+const (
+	fieldReset     = 0x33 // PKT_RESET, confirmed on the bench: answers 0x39
+	fieldProdID    = 0x30 // PKT_PRODID, confirmed: answers AMBE3000F
+	fieldVersion   = 0x31 // PKT_VERSTRING, confirmed: answers V121.E100...
+	fieldGetCfg    = 0x36 // PKT_GETCFG, three bytes of configuration pins
+	fieldRateIndex = 0x09 // PKT_RATET, one byte: an index into Table 115
+	fieldChannel0  = 0x40 // PKT_CHANNEL0, a bare identifier
+)
 
 // sine is one frame of a tone, loud enough to be unambiguous and quiet enough
 // not to clip.
@@ -186,13 +171,13 @@ func sine(hz float64) []int16 {
 //
 // **Everything is printed, including the parts that mean nothing yet.** A
 // summary is a reading, and a reading is what this program exists to check.
-func ask(conn net.Conn, wait time.Duration, label string, out []byte) {
+func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, bool) {
 	fmt.Printf("%-32s sent %d bytes\n", label, len(out))
 	fmt.Printf("%s\n", indent(hex.Dump(out)))
 
 	if _, err := conn.Write(out); err != nil {
 		fmt.Printf("  write failed: %v\n\n", err)
-		return
+		return nil, false
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(wait))
@@ -201,7 +186,7 @@ func ask(conn net.Conn, wait time.Duration, label string, out []byte) {
 	if err != nil {
 		fmt.Printf("  no reply within %v: %v\n", wait, err)
 		fmt.Printf("  (silence is a result: the packet was refused or misread)\n\n")
-		return
+		return nil, false
 	}
 
 	fmt.Printf("%-32s got  %d bytes\n", "", n)
@@ -210,6 +195,9 @@ func ask(conn net.Conn, wait time.Duration, label string, out []byte) {
 		fmt.Printf("  text %q\n", text)
 	}
 	fmt.Println()
+	reply := make([]byte, n)
+	copy(reply, buf[:n])
+	return reply, true
 }
 
 func indent(s string) string {

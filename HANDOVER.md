@@ -88,9 +88,11 @@ A **DVMEGA DVstick 30** is passed through ESXi to the production server.
 ## What broke, and why it matters
 
 **The probe wedged the chip by sending `61 00 02 00 0a 21`** — field `0x0a`
-(`PKT_RATEP`, eleven bytes) with one argument byte. The chip waited for ten
-more, consumed the head of the next packet, and sat mid-field permanently.
-`PKT_RATET` (`0x09`) is the one-byte index.
+(`PKT_RATEP`, **twelve** bytes) with one argument byte. The chip waited for
+eleven more, consumed the head of the next packet, and sat mid-field
+permanently. `PKT_RATET` (`0x09`) is the one-byte index, and rate index 33 is
+the DMR one — so the `21` in that packet was right all along and only the field
+was wrong.
 
 **Two wrong readings of the same bytes in one evening, one shipped as a
 correction.** 0351 swapped the speech and channel types on a hypothesis; the
@@ -104,21 +106,51 @@ malformed packet must be known before the first experiment.
 
 ## Where the next session starts
 
-**1. Finish reading the AMBE-3000 manual.** `https://www.qsl.net/kb9mwr/projects/dv/codec/AMBE-3000R_manual.pdf`
-— pages 52 to 85. Today's fetch stopped at §5.1.5. What is needed:
+**1. The manual is read, and the field table is in the tree.** Done in 0355.
+`internal/ambe` holds every control, speech and channel field with its data
+length, and `testdata/ambe/manual-examples.hex` holds the manufacturer's four
+worked example packets. `cmd/ambe-probe` no longer builds a packet by hand.
 
-- **§6.6, Tables 32–97**: every control field's ID and argument count. The
-  missing one of these is what cost a dongle.
-- **§6.11, Tables 111–114**: two speech and two channel packets spelled out byte
-  by byte by the manufacturer. Better than any reconstruction.
-- **§6.5.5 and Tables 28–29**: **parity is enabled by default**, set by the
-  `PARITY_ENABLE` hardware pin at boot, and adds a field to every packet. The
-  control exchanges work without it on this board, so it is off — but nothing
-  checked that, and it would make every packet malformed invisibly.
-- **§7.2, Table 115**: the rate index for DMR.
+**Read the F manual, not the R.** This document previously pointed at
+`AMBE-3000R_manual.pdf` and pages 52 to 85. The board is an **AMBE3000F** and
+the manuals differ where this work touches: `SK_ENABLE` and `TX_RQST` exist only
+on the F, the RESET pin is an I/O on the F so a soft-reset packet pulls it low
+for about 20 µs, and on the F the echo canceller and echo suppressor are
+documented as **unsupported in packet mode**. The copy in use is
+**version 3.7, October 2016**, `md5 f20fd488960efdfbf2ba51165c6c7718`, 111
+pages, and in it printed page *N* is PDF page *N*+10. The material is on printed
+pages 58 to 92, not 52 to 85.
 
-Write the field table into the tree as a fixture, then `cmd/ambe-probe` sends
-packets that can be justified byte by byte.
+**It cannot be fetched, only attached.** Three attempts across two documents and
+three hosts all truncated at the same point — about 55 KB of extracted text,
+ending mid-sentence in §5.1.5 — and the token limit made no difference. §6.6 is
+not reachable from a container by fetching. The operator downloaded it on Fedora
+and attached it, which is the only path that works. `doc.platan.ru` does not
+answer from Denton at all; `datasheet.datasheetarchive.com` does.
+
+**What the manual settled**, beyond the field table: parity is the exclusive-or
+of every byte except the start byte and the parity byte, the identifier `0x2f`
+is part of that sum, and the two parity bytes **count toward the length**
+(§6.5.2). `PKT_GETCFG` (`0x36`, no arguments) returns the configuration pins as
+latched at boot and **CFG2 bit 4 is `PARITY_ENABLE`** (Table 74), so parity is
+now measurable rather than inferred — the probe asks on every run. Rate index
+**33** is 3600/2450/1150 and Table 115's note says it is the rate interoperable
+with DMR and APCO P25 half rate. Reset release to `PKT_READY` is 20 ms maximum
+and 17 ms typical; a soft reset is about 7 ms; `TX_RDY` reads high for about
+1 ms after a reset and must be ignored. And §4.4: send `PKT_INIT` between
+unrelated audio streams to clear vocoder state, which matters for one dongle
+serving consecutive transmissions from different radios.
+
+**The manual contradicts itself in four places**, all recorded in
+`internal/ambe` rather than resolved silently. `PKT_RTSTHRESH` is the one row in
+Table 32 whose length column is a total and not a data length. `SAMPLES` is
+`0x30` in Table 106 and `0x03` in Table 109 — Channel Packet Example 2 prints
+`03 A1`, which settles it. `PKT_CHANNEL0` is given no data bytes, one, and two
+in three different places; the examples' lengths only add up if it is a bare
+identifier. And the prose beneath two of the four examples disagrees with the
+table above it by exactly one byte in each case — `0x0144` against `0x0143` and
+`0x0010` against `0x000F` — where the tables are right and all four compute
+exactly. Prefer the tables.
 
 **2. Confirmed on the wire, keep these.** Reset `61 00 01 00 33` → `...39`.
 Product `61 00 01 00 30` → `0AMBE3000F`. Version `61 00 01 00 31` → the string

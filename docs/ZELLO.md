@@ -11,11 +11,26 @@ README, BLUEPRINT and PROJECT_MEMORY — and in no Go file.
 **If the dongle stops answering, unplug it physically for ten seconds.**
 
 On 2026-09-14 a malformed control packet — field `0x0a` sent with one argument
-byte where it takes eleven — left the chip mid-field permanently. AMBEserver
+byte where it takes twelve — left the chip mid-field permanently. AMBEserver
 reported `Couldn't find start byte in serial data` on every start afterwards. A
 software reset could not clear it, and **neither could detaching and
 re-attaching the USB device in ESXi**: the device node came back new and the
 chip was still lost. Only removing power did it.
+
+**The field lengths that make a packet malformed are now held in one place**:
+`internal/ambe`, from the AMBE-3000F users manual version 3.7 (October 2016,
+`md5 f20fd488960efdfbf2ba51165c6c7718`), with the manufacturer's four worked
+example packets as a fixture in `testdata/ambe/manual-examples.hex`. Nothing in
+this project builds an AMBE packet by hand. A field whose declared length
+disagrees with the manual is refused before it reaches a socket, which is the
+only form of that check that survives a change to the call site.
+
+**Read the F manual and not the R.** The board answers `PKT_PRODID` with
+`AMBE3000F`. The two manuals differ where this work touches: the RESET pin is an
+I/O on the F, and the echo canceller and echo suppressor are documented as
+unsupported in packet mode there. The manual cannot be fetched into a container
+— every attempt truncates well before §6.6 — so it has to be downloaded and
+attached.
 
 This is written first because it was learned last, after the experiment rather
 than before it. A device that can be wedged by a malformed packet needs its

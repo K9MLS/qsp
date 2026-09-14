@@ -1911,10 +1911,20 @@ callsign and no talkgroups invites the reading that it is misconfigured, and
 Supersedes nothing; adds to §8a's catalogue and to §8i's hardware notes.
 
 **A malformed packet can cost you the hardware.** `cmd/ambe-probe` sent field
-`0x0a` — the eleven-byte rate word — with one argument byte. The chip waited for
-ten more, consumed the head of the next packet, and sat mid-field permanently.
-Recovery was a **physical unplug**; a software reset could not do it and neither
-could an ESXi detach and re-attach.
+`0x0a` — the twelve-byte rate word — with one argument byte. The chip waited for
+eleven more, consumed the head of the next packet, and sat mid-field
+permanently. Recovery was a **physical unplug**; a software reset could not do
+it and neither could an ESXi detach and re-attach.
+
+**Amended 2026-09-14, from the manual rather than from a transcript.** This
+entry and three other documents said eleven. `PKT_RATEP` takes **twelve** —
+Table 44 of the AMBE-3000F manual gives the field as six rate control words and
+Table 45 prints all six, which is why the field is thirteen bytes including its
+identifier. Eleven came from a byte string that circulates with other software,
+and it is one byte short of six words. The count is now held once, in
+`internal/ambe`, with a test built on Table 45's own example — because the first
+gate written after this incident asserted eleven and would have kept asserting
+it.
 
 **The rule**: for a device that can be wedged by a malformed packet, establish
 the recovery path *before* the first experiment. The fork's README had said so,

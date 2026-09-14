@@ -4,6 +4,69 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`internal/ambe`: the AMBE-3000F field table, and a builder that refuses a
+  malformed packet.** Every control, speech and channel field with its data
+  length, from the AMBE-3000F users manual version 3.7, cross-checked entry by
+  entry against its own format table. `testdata/ambe/manual-examples.hex` holds
+  the manufacturer's four worked example packets from §6.11, and the builder is
+  proved against all four byte for byte.
+
+  **The gate is on the call site, not on a constant.** The check written after
+  the dongle was wedged on 2026-09-14 asserted that the field constants held
+  the right values. They did — the call site passed the wrong one, every
+  constant stayed correct, and the gate passed. Building a packet now goes
+  through a function that consults the table, so a field whose data length
+  disagrees with the manual cannot reach a socket.
+
+  **Two holes were found by breaking the table rather than by reading it.**
+  Setting `PKT_RATEP` back to eleven data bytes left every test passing, because
+  nothing pinned the twelve; and giving `PKT_CHANNEL0` a data byte in the
+  control table left every test passing, because nothing built a control packet
+  containing it. Both now fail, the first against Table 45's own printed rate
+  words. That is the tenth and eleventh recorded instance in this project of a
+  test that could not fail.
+
+- **`PKT_GETCFG` in `cmd/ambe-probe`, run on every invocation.** It takes no
+  arguments and changes nothing, and **CFG2 bit 4 is `PARITY_ENABLE`**
+  (Table 74), so the probe now reads the parity state off the hardware instead
+  of inferring it from three replies that carried no parity field.
+
+### Changed
+
+- **`cmd/ambe-probe` sets the rate with `PKT_RATET` and no longer touches
+  `PKT_RATEP`.** Rate index 33 is 3600/2450/1150, which Table 115's note gives
+  as the rate interoperable with DMR and APCO P25 half rate — so the `21` in the
+  packet that wedged the chip was the right rate all along and only the field
+  was wrong. The one-byte index also keeps `PKT_RATEP`'s disputed length off the
+  path entirely.
+
+- **The `-speech-type` flag is gone.** It existed to test the theory that a
+  swapped packet type explained the chip's silence. The manual closed that
+  question: speech is `0x02` and channel is `0x01`, which is what the code had
+  before the theory.
+
+- **The source-text gate on `main.go` is gone.** It searched the file for one
+  spelling of one call, so it would have passed on any rewording and failed on a
+  harmless one. The builder replaces it.
+
+### Fixed
+
+- **`PKT_RATEP` takes twelve data bytes, not eleven**, corrected in
+  `PROJECT_MEMORY.md` §8p, `HANDOVER.md` and `docs/ZELLO.md`. Table 44 gives the
+  field as six rate control words and Table 45 prints all six. The eleven came
+  from a byte string that circulates with other software and is one byte short
+  of six words; a primary source beats a transcript.
+
+- **The handover pointed at the AMBE-3000R manual and the wrong page range.**
+  The board is an AMBE3000F and the manuals differ where this work touches it.
+  The F manual also cannot be fetched into the development container — three
+  attempts across two documents and three hosts truncated at the same point,
+  and the token limit made no difference — so it has to be downloaded and
+  attached, which is now written down.
+
+
 ### Documentation
 
 - **Handover rewritten for 2026-09-14**, and PROJECT_MEMORY §8p added: the
