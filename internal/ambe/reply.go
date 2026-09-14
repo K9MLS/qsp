@@ -106,6 +106,37 @@ func ChannelFrameFromResponse(pkt []byte) (ChannelFrame, bool) {
 	return ChannelFrame{Bits: bits, Data: data}, true
 }
 
+// SpeechFromResponse reads a speech packet containing a single SPEECHD field,
+// which is what the chip returns for a channel packet.
+//
+// **Not yet observed from hardware.** Table 99 and §6.8: the identifier, a
+// sample count, then two bytes per sample most significant first. The count is
+// checked against the data that follows it, and the bounds are skew control's
+// 156 to 164. Everything else in this file decodes bytes this project has seen;
+// this one decodes bytes it has reasoned about, and it says so.
+func SpeechFromResponse(pkt []byte) ([]int16, bool) {
+	body, ok := header(pkt, TypeSpeech)
+	if !ok {
+		return nil, false
+	}
+	if len(body) > 0 && body[0] == 0x40 {
+		body = body[1:]
+	}
+	if len(body) < 2 || body[0] != 0x00 {
+		return nil, false
+	}
+	count := int(body[1])
+	data := body[2:]
+	if count < 156 || count > 164 || len(data) != count*2 {
+		return nil, false
+	}
+	out := make([]int16, count)
+	for i := range out {
+		out[i] = int16(uint16(data[i*2])<<8 | uint16(data[i*2+1]))
+	}
+	return out, true
+}
+
 // Mode names the operating mode and packet interface the IF_SELECT pins chose
 // at boot, from the three configuration bytes a PKT_GETCFG returns.
 //

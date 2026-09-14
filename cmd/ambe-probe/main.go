@@ -73,6 +73,9 @@ const samplesPerFrame = 160
 func main() {
 	server := flag.String("server", "127.0.0.1:2460", "AMBEserver address")
 	tone := flag.Bool("tone", false, "send one frame of 1 kHz tone and print the reply")
+	decode := flag.String("decode", "",
+		"send these channel bits back for decoding, as hex; try 954be6500310b00777, "+
+			"the frame this dongle produced on 2026-09-14")
 	rate := flag.Int("rate", ambe.RateIndexDMR,
 		"built-in rate index for PKT_RATET; 33 is 3600/2450/1150, the DMR and P25 half-rate one")
 	wait := flag.Duration("wait", 2*time.Second, "how long to wait for each reply")
@@ -115,8 +118,9 @@ func main() {
 		refused(*server)
 	}
 
-	if !*tone {
-		fmt.Println("\nnothing further attempted; pass -tone to try an audio frame")
+	if !*tone && *decode == "" {
+		fmt.Println("\nnothing further attempted; pass -tone to try an audio frame, " +
+			"or -decode with a hex channel frame to try the other direction")
 		return
 	}
 
@@ -148,8 +152,40 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
 		os.Exit(1)
 	}
-	if _, out := ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket); out == unreachable {
-		refused(*server)
+	if *tone {
+		if _, out := ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket); out == unreachable {
+			refused(*server)
+		}
+	}
+
+	// **The decode direction has never been observed.** The bench run of
+	// 2026-09-14 captured speech in and a channel frame out; this is the
+	// mirror, built from §6.8 and §6.9, and internal/ambe marks it unproved
+	// for exactly that reason. A channel frame in should produce a speech
+	// packet out — 160 samples of whatever the dongle makes of those bits.
+	//
+	// The frame worth sending is the one this dongle produced, so that a
+	// success is a round trip rather than a guess about somebody else's bits.
+	if *decode != "" {
+		bits, err := hex.DecodeString(*decode)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: -decode is not hex: %v\n", err)
+			os.Exit(1)
+		}
+		chand, err := ambe.Chand(len(bits)*8, bits)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
+		channelPacket, err := ambe.Build(ambe.TypeChannel, ambe.Val(fieldChannel0), chand)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
+		label := fmt.Sprintf("%d bits of channel data for decoding", len(bits)*8)
+		if _, out := ask(conn, *wait, label, channelPacket); out == unreachable {
+			refused(*server)
+		}
 	}
 }
 
@@ -298,6 +334,18 @@ func describe(reply []byte) {
 		if frame.Rate() != 3600 {
 			fmt.Printf("  %-30s 3600 bps was expected; the rate did not take\n", "")
 		}
+		return
+	}
+	if samples, ok := ambe.SpeechFromResponse(reply); ok {
+		var peak int16
+		for _, v := range samples {
+			if v > peak {
+				peak = v
+			}
+		}
+		fmt.Printf("  %-30s %d samples, peak %d\n", "speech frame", len(samples), peak)
+		fmt.Printf("  %-30s the decode direction answered; internal/ambe can "+
+			"stop calling it unproved\n", "")
 		return
 	}
 	if field, status, ok := ambe.AckedField(reply); ok {

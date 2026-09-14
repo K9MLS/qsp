@@ -6,6 +6,57 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A vocoder client in `internal/ambe`: QSP speaks to an AMBEserver.** This is the piece
+  ADR-0062 says QSP builds — a UDP client to an AMBEserver, holding one
+  AMBE-3000F. It brings the chip to a known state at startup, encodes a 20 ms
+  frame of PCM to a DMR channel frame, decodes the other way, and holds exactly
+  one call at a time.
+
+  **The startup sequence is five exchanges, all of them observed.** Reset
+  answered by PKT_READY; the product and version queries, which are the
+  manual's own recommendation for proving a link (§6.6.1); PKT_GETCFG; and the
+  rate index, because on this board every RATE pin reads low and the chip does
+  not boot at the DMR rate.
+
+  **Parity is a refusal, not a warning.** Parity is enabled by default and a
+  chip with it enabled silently discards every packet lacking a parity field,
+  which this client does not send — so the failure would look exactly like a
+  dead dongle. Open says so instead, and names what it would look like.
+
+  **One chip is one channel, per BLUEPRINT §7.** A second call is refused and
+  told what holds the channel: the reason, the radio and the talkgroup, with
+  the time it started. A count alone cannot answer an operator's question,
+  which is what COLLISIONS taught this project. Acquire also sends a PKT_INIT,
+  because §4.4 says to clear vocoder state between unrelated streams and one
+  chip serving consecutive transmissions from different radios is exactly that.
+
+- **`ambe-probe -decode`**, for the one direction still unproved. A channel
+  frame in should produce a speech packet out. Sending back the frame this
+  dongle produced makes a success a round trip rather than a guess about
+  somebody else's bits, and the probe reports the sample count and peak.
+
+### Fixed
+
+- **A test that could not fail, found by breaking the code it tested.** The
+  first version of `TestConcurrentEncodesDoNotInterleaveOnTheWire` ran eight
+  goroutines that all sent the same tone and all expected the same frame, so a
+  reply delivered to the wrong caller was invisible — removing the client's
+  mutex entirely left it passing, and the race detector found nothing because
+  the contention is over a socket rather than over memory.
+
+  **The test double was the other half of the problem.** Its read loop was
+  serial, so a second request waited in the socket buffer until the first reply
+  had gone out and the in-flight window was never observed. It now answers each
+  datagram on its own goroutine and counts anything arriving while another
+  exchange is in flight, which is what an unserialised client actually does
+  wrong. Both breaks now fail, and the race detector catches the second one.
+
+  That is the eleventh recorded instance of this shape, and the third found in
+  two sessions by trying the break rather than assuming it.
+
+
+### Added
+
 - **`testdata/ambe/observed-exchanges.hex`: the first AMBE exchange this
   project owns.** Six packets and six replies from a DVstick 30 on the
   operator's bench, 2026-09-14 — reset, product identifier, version,
