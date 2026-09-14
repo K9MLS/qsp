@@ -184,7 +184,24 @@ type reservation struct {
 // channel — BrandMeister carries several talkgroups concurrently over one. This
 // asymmetry is deliberate; the ADR is the reasoning to read before unifying
 // them for tidiness.
+//
+// **A transcoder drops the talkgroup, like a peer and unlike a link.** One
+// AMBE-3000 is one channel: BLUEPRINT §7 says a club wanting four simultaneous
+// transcoded talkgroups needs four chips, and the chip itself answers one
+// packet at a time. So it is ADR-0022's timeslot case — a thing that can
+// physically do one job — rather than its link case, and ADR-0063 records why
+// that decided the endpoint kind rather than the endpoint kind deciding this.
+//
+// It drops the timeslot too. A vocoder has no timeslots; the field is carried
+// on a transcoder endpoint only so that the talkgroup it serves keeps the slot
+// it came from, and two talkgroups reaching one chip on different slots are
+// still two calls for one channel.
 func contend(e Endpoint) Endpoint {
+	if e.Transcoder != "" {
+		e.Talkgroup = 0
+		e.Timeslot = 0
+		return e
+	}
 	if e.Upstream != "" {
 		return e
 	}

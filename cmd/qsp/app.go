@@ -1069,10 +1069,11 @@ func buildTable(cfg config.Config, sched *scheduler.Schedule, triggers *routing.
 		endpoints := make([]routing.Endpoint, 0, len(b.Endpoints))
 		for _, e := range b.Endpoints {
 			endpoints = append(endpoints, routing.Endpoint{
-				Peer:      hbp.RepeaterID(e.Peer),
-				Upstream:  e.Upstream,
-				Talkgroup: e.Talkgroup,
-				Timeslot:  timeslot(e.Timeslot),
+				Peer:       hbp.RepeaterID(e.Peer),
+				Upstream:   e.Upstream,
+				Transcoder: e.Transcoder,
+				Talkgroup:  e.Talkgroup,
+				Timeslot:   timeslot(e.Timeslot),
 			})
 		}
 		enabled := b.Enabled

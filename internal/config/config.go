@@ -260,6 +260,15 @@ type DMR struct {
 	Schedule []Window `json:"schedule"`
 	// Upstreams are links to other DMR networks over OpenBridge.
 	Upstreams []Upstream `json:"upstreams"`
+
+	// Transcoders are vocoder channels QSP can route a talkgroup to.
+	//
+	// **QSP does not own a vocoder** (ADR-0034, ADR-0061): each of these is
+	// an AMBEserver holding a chip, reached over UDP, and the operator's
+	// hardware stays the operator's. One entry is one chip and therefore one
+	// channel, which is why a second simultaneous call on the same name is
+	// refused rather than interleaved — BLUEPRINT §7 and ADR-0063.
+	Transcoders []Transcoder `json:"transcoders,omitempty"`
 	// Subscription decides which peers receive which talkgroups.
 	//
 	// Absent, or present and disabled, every peer receives every talkgroup —
@@ -690,6 +699,41 @@ type Bridge struct {
 	Endpoints []Endpoint `json:"endpoints"`
 }
 
+// Transcoder is one vocoder channel: an AMBEserver holding one chip.
+type Transcoder struct {
+	// Name identifies it to an operator and is what a bridge endpoint names.
+	// It must be unique.
+	Name string `json:"name"`
+	// Enabled reports whether QSP should use it.
+	Enabled bool `json:"enabled"`
+	// Address is the AMBEserver, host:port. Conventionally port 2460.
+	//
+	// **A socket rather than a serial device, deliberately.** One process may
+	// hold a serial port, and AMBEserver holding it is what keeps the dongle
+	// available to whatever else the operator runs — and it means QSP need
+	// not run on the machine the hardware is plugged into. See ADR-0061.
+	Address string `json:"address"`
+	// Rate is the built-in rate index to set on the chip. Zero selects 33,
+	// which Table 115 of the AMBE-3000F manual gives as the rate
+	// interoperable with DMR and APCO P25 half rate.
+	//
+	// **It has to be set.** The operator's DVstick 30 boots with every RATE
+	// pin low and therefore not at the DMR rate, so this is a precondition
+	// for audio rather than a refinement — see PROJECT_MEMORY §8q.
+	Rate int `json:"rate,omitempty"`
+}
+
+// DefaultTranscoderRate is the rate index used when a transcoder names none.
+const DefaultTranscoderRate = 33
+
+// RateIndex is the rate this transcoder should be set to.
+func (t Transcoder) RateIndex() int {
+	if t.Rate == 0 {
+		return DefaultTranscoderRate
+	}
+	return t.Rate
+}
+
 // Join describes what a club member needs in order to point a hotspot at this
 // network, and is served by GET /api/join.
 //
@@ -742,7 +786,8 @@ func (t JoinTalkgroup) Target() uint32 {
 	return t.Dialled
 }
 
-// Endpoint is one talkgroup on one timeslot, at one peer or at one link.
+// Endpoint is one talkgroup on one timeslot, at one peer, one link or one
+// transcoder channel.
 type Endpoint struct {
 	// Peer is the peer's repeater ID, or 0 for every connected peer.
 	Peer uint32 `json:"peer"`
@@ -758,6 +803,21 @@ type Endpoint struct {
 	// Ignored when Peer is set, and the two together are an error: a link is
 	// not a peer.
 	Upstream string `json:"upstream,omitempty"`
+	// Transcoder names a vocoder channel, empty for anything else.
+	//
+	// **This is how a talkgroup reaches the vocoder**, and it is a bridge
+	// endpoint rather than a setting of its own because that is what a
+	// talkgroup-to-channel mapping is: a bridge joining a talkgroup on a
+	// timeslot to a chip. Nothing new had to be invented for scheduling it
+	// either — a transcoded link that should only run in the evenings is a
+	// bridge whose Enabled flips, like every other.
+	//
+	// One AMBE-3000 is one channel, so two talkgroups bridged to the same
+	// name contend and the second is refused with a reason. See ADR-0063 and
+	// BLUEPRINT §7.
+	//
+	// Mutually exclusive with Peer and Upstream: an endpoint is one kind.
+	Transcoder string `json:"transcoder,omitempty"`
 	// Talkgroup is the talkgroup ID.
 	Talkgroup uint32 `json:"talkgroup"`
 	// Timeslot is 1 or 2.
@@ -1325,6 +1385,50 @@ func (c Config) Validate() error {
 		}
 		reached := map[string]bool{}
 
+		// Transcoder names, validated here rather than in their own block so
+		// that a bridge naming one that does not exist is refused at startup.
+		//
+		// **A bridge that cannot carry is worse than no bridge**, which is
+		// the lesson the upstream check above records: a socket that opens
+		// and carries nothing sends an operator to look at somebody else's
+		// address. A talkgroup bridged to a vocoder that was never
+		// configured is the same fault with a different name on it.
+		vocoders := map[string]bool{}
+		reachedVocoder := map[string]bool{}
+		for i, t := range c.DMR.Transcoders {
+			tf := fmt.Sprintf("dmr.transcoders[%d]", i)
+			key := strings.ToLower(strings.TrimSpace(t.Name))
+			switch {
+			case key == "":
+				v.add(tf+".name", "must not be empty",
+					"name it something you will recognise on the console, such as \"dvstick\"")
+			case vocoders[key]:
+				v.add(tf+".name", fmt.Sprintf("%q is used by more than one transcoder", t.Name),
+					"transcoder names must be unique; rename one of them")
+			default:
+				if t.Enabled {
+					vocoders[key] = true
+				}
+			}
+			if addr := strings.TrimSpace(t.Address); addr == "" {
+				v.add(tf+".address", "must not be empty",
+					"give the AMBEserver as host:port, for example \"192.168.1.247:2460\"")
+			} else if _, _, err := net.SplitHostPort(addr); err != nil {
+				v.add(tf+".address", fmt.Sprintf("%q is not a host:port address", t.Address),
+					"include a port; AMBEserver conventionally uses 2460")
+			}
+			// Table 115 of the AMBE-3000F manual has 62 rate indices, and
+			// index 33 is the one interoperable with DMR. A rate outside the
+			// table is refused rather than clamped: the chip would take it,
+			// produce frames of a width nothing expects, and the failure
+			// would look like bad audio.
+			if t.Rate < 0 || t.Rate > 61 {
+				v.add(tf+".rate", fmt.Sprintf("is %d", t.Rate),
+					"the AMBE-3000F has rate indices 0 to 61; leave it unset for 33, "+
+						"which is the rate interoperable with DMR")
+			}
+		}
+
 		for i, b := range c.DMR.Bridges {
 			field := fmt.Sprintf("dmr.bridges[%d]", i)
 			if strings.TrimSpace(b.Name) == "" {
@@ -1350,6 +1454,22 @@ func (c Config) Validate() error {
 					v.add(ef+".timeslot", fmt.Sprintf("is %d", e.Timeslot),
 						"DMR has two timeslots; use 1 or 2")
 				}
+				vocoder := strings.ToLower(strings.TrimSpace(e.Transcoder))
+				switch {
+				case vocoder == "":
+				case e.Peer != 0:
+					v.add(ef, "names both a peer and a transcoder",
+						"a vocoder is not a peer; set one or the other")
+				case strings.TrimSpace(e.Upstream) != "":
+					v.add(ef, "names both a link and a transcoder",
+						"an endpoint is one kind; set one of peer, upstream or transcoder")
+				case !vocoders[vocoder]:
+					v.add(ef+".transcoder", fmt.Sprintf("%q does not match any enabled transcoder", e.Transcoder),
+						"check the spelling against dmr.transcoders, and that it is enabled")
+				default:
+					reachedVocoder[vocoder] = true
+				}
+
 				link := strings.ToLower(strings.TrimSpace(e.Upstream))
 				switch {
 				case link == "":
@@ -1378,6 +1498,25 @@ func (c Config) Validate() error {
 					}
 				}
 			}
+		}
+
+		// **A transcoder nothing routes to is the same fault.** The client
+		// opens, the chip answers its handshake, the console says a vocoder
+		// is ready, and no configuration on this side could ever have put a
+		// frame on it. Said at startup with the fix in it, rather than
+		// discovered by an operator wondering why nothing is transcoded.
+		for i, t := range c.DMR.Transcoders {
+			if !t.Enabled {
+				continue
+			}
+			key := strings.ToLower(strings.TrimSpace(t.Name))
+			if key == "" || reachedVocoder[key] {
+				continue
+			}
+			v.add(fmt.Sprintf("dmr.transcoders[%d].name", i),
+				fmt.Sprintf("%q is enabled and no bridge routes a talkgroup to it", t.Name),
+				"add a bridge with one endpoint naming this transcoder and another naming "+
+					"the talkgroup and timeslot to carry, or disable it")
 		}
 
 		// **A link nothing routes to is the fault that cost an afternoon.**

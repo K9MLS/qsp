@@ -6,6 +6,62 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Talkgroup to channel mapping: a transcoder is a routing destination**
+  ([ADR-0063](docs/adr/ADR-0063-a-transcoder-is-a-routing-destination.md)).
+  ADR-0062's third item. `routing.Endpoint` gains a `Transcoder` field beside
+  `Peer` and `Upstream`, so a mapping is a bridge joining a talkgroup on a
+  timeslot to a chip — which is what a talkgroup-to-channel mapping *is*.
+
+  **Three mechanisms came for free.** A transcoded link that should run only
+  during a net is a bridge whose `Enabled` flips, which is how schedules and
+  PTT triggers already work. Contention already refuses a busy destination,
+  names what holds it and counts the drop. And `Decision.Reason` already
+  answers "why did this call go nowhere". A subscription list hanging off the
+  transcoder would have reimplemented all three, and created the second code
+  path ADR-0052 warns about.
+
+  **But it is a third kind, not a variety of the other two, and the reason is
+  contention.** ADR-0022 reserves a peer by `(peer, timeslot)` because a DMR
+  timeslot can physically carry one call, and keeps the talkgroup for an
+  upstream because an OpenBridge link is an IP socket carrying several. One
+  AMBE-3000 is one channel, so a transcoder is the physical-constraint case:
+  its key drops the talkgroup exactly as a peer's does, **and the timeslot
+  too**, because a vocoder has no timeslots. Reusing `Upstream` would have
+  given it an IP socket's key and delivered two talkgroups to one chip — the
+  bug ADR-0022 was written after, in a new place.
+
+- **`dmr.transcoders`: name, address and rate index**, so the mapping is
+  reachable from a configuration a person can write rather than existing only
+  in the routing model.
+
+  **Both halves of a mismatch are refused.** A bridge naming a transcoder that
+  is absent or disabled, and **a transcoder that is enabled and that no bridge
+  routes anything to**. The second matters as much as the first: a link
+  nothing routed to cost this project an afternoon, during which the socket
+  opened, the far end authenticated, the health report said no traffic had
+  arrived, and the advice sent an operator to check somebody else's address.
+
+  **The rate index is refused outside Table 115 rather than clamped.** The chip
+  accepts an out-of-range index and then produces frames of a width nothing
+  expects, so the failure presents as bad audio rather than as a configuration
+  error. Unset means 33, the rate interoperable with DMR — and it has to be
+  set at all, because the operator's board boots with every RATE pin low.
+
+### Not in this patch, deliberately
+
+- **Nothing acts on the mapping yet.** Opening the client at startup and
+  feeding it frames is next, and until then the health report must say a
+  configured transcoder is not carrying rather than letting it look like a
+  working one.
+- **The per-repeater permission** is a rule about what leaves the vocoder for
+  the network, so it belongs with the delivery path. Until it exists nothing
+  delivers transcoded audio to a repeater, which is the safe order.
+- **Identity** — ADR-0062's fourth item — has an open question in it: what a
+  Zello username is in a system keyed on DMR radio IDs. Its own record.
+
+
+### Added
+
 - **A voice came out of the dongle.** 828 vocoder frames of real DMR audio off
   the operator's XPR8300, decoded at rate index 33 and listened to: **0 of 828
   rejected**, zero tone frames, peak 7191, and forty comfort-noise frames that

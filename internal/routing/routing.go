@@ -53,6 +53,19 @@ type Endpoint struct {
 	// frame leaves, which is the caller's business rather than this package's.
 	// See docs/adr/ADR-0018-openbridge.md.
 	Upstream string
+	// Transcoder names a vocoder channel, empty for anything else.
+	//
+	// **A transcoder is a third kind of destination and not a variety of the
+	// first two**, because it contends like a peer and configures like a
+	// link. ADR-0063 is the reasoning; the short version is that an
+	// AMBE-3000 is one channel and can physically carry one call, which is
+	// ADR-0022's timeslot case rather than its link case. Reusing Upstream
+	// would have given it an OpenBridge link's contention key and delivered
+	// two talkgroups to one chip.
+	//
+	// Mutually exclusive with Peer and Upstream: an endpoint is one of the
+	// three.
+	Transcoder string
 	// Talkgroup is the talkgroup ID.
 	Talkgroup uint32
 	// Timeslot is the DMR timeslot.
@@ -61,6 +74,9 @@ type Endpoint struct {
 
 // String implements fmt.Stringer.
 func (e Endpoint) String() string {
+	if e.Transcoder != "" {
+		return fmt.Sprintf("transcoder %s TG%d TS%d", e.Transcoder, e.Talkgroup, e.Timeslot)
+	}
 	if e.Upstream != "" {
 		return fmt.Sprintf("upstream %s TG%d TS%d", e.Upstream, e.Talkgroup, e.Timeslot)
 	}
@@ -81,25 +97,58 @@ func (e Endpoint) Matches(actual Endpoint) bool {
 		return false
 	}
 
-	// A link and a peer are never each other, whatever their talkgroups.
+	// The three kinds are never each other, whatever their talkgroups.
 	//
-	// Without this, an upstream endpoint carries AnyPeer by default, AnyPeer
+	// Without this, a non-peer endpoint carries AnyPeer by default, AnyPeer
 	// matches everything, and the routing table concludes that the link *is*
 	// the peer that just transmitted — so it declines to send the frame there,
 	// on the grounds that a call is never sent back where it came from. The
-	// bridge then appears configured and carries nothing.
-	if (e.Upstream == "") != (actual.Upstream == "") {
+	// bridge then appears configured and carries nothing. That shipped once
+	// for links, and a transcoder endpoint has exactly the same default.
+	if e.kind() != actual.kind() {
 		return false
 	}
-	if e.Upstream != "" {
+	switch {
+	case e.Transcoder != "":
+		return e.Transcoder == actual.Transcoder
+	case e.Upstream != "":
 		return e.Upstream == actual.Upstream
 	}
 
 	return e.Peer == AnyPeer || e.Peer == actual.Peer
 }
 
+// kind names which of the three sorts of destination this is, so that the
+// comparison is one switch rather than a chain of exclusions that has to be
+// extended correctly every time a kind is added.
+type endpointKind uint8
+
+const (
+	kindPeer endpointKind = iota
+	kindUpstream
+	kindTranscoder
+)
+
+func (e Endpoint) kind() endpointKind {
+	switch {
+	case e.Transcoder != "":
+		return kindTranscoder
+	case e.Upstream != "":
+		return kindUpstream
+	}
+	return kindPeer
+}
+
 // Validate reports whether the endpoint is usable.
 func (e Endpoint) Validate() error {
+	if e.Upstream != "" && e.Transcoder != "" {
+		return fmt.Errorf("endpoint names both upstream %q and transcoder %q; an endpoint is one kind",
+			e.Upstream, e.Transcoder)
+	}
+	if e.Transcoder != "" && e.Peer != AnyPeer {
+		return fmt.Errorf("endpoint names both transcoder %q and peer %d; an endpoint is one kind",
+			e.Transcoder, e.Peer)
+	}
 	if e.Upstream != "" && e.Peer != AnyPeer {
 		return fmt.Errorf("endpoint names both upstream %q and peer %d; an endpoint is one or the other",
 			e.Upstream, e.Peer)
