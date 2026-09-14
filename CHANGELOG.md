@@ -4,6 +4,54 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`server.session_lifetime`.** How long a console login lasts, defaulting to
+  the twelve hours it has always been, so a configuration that says nothing
+  behaves exactly as before.
+
+  **The operator was right and the first diagnosis was wrong.** He said he was
+  being logged out on leaving the browser; the reply was that the cookie sets
+  `Expires`, sessions live in the database, and something else must be at
+  fault. The database settled it: one session row, expiring
+  `2026-09-14T12:30:44Z`, exactly twelve hours after a login at 00:30. Twelve
+  hours is a good default that happens to span a night — log in one evening,
+  return the next morning, expired. A single session row also disproved the
+  leading hypothesis, that the browser was silently re-authenticating.
+
+  **And it had never been reachable.** All three places that built an auth
+  policy constructed `auth.Policy{}`, so `DefaultSessionLifetime` was the only
+  value QSP could have. A number that exists only as a constant is one no
+  operator can own.
+
+  Bounded at a minute and a week, and not for symmetry: this console can add
+  administrators, change access lists and restart the server. An operator who
+  wants longer than a week wants no login at all and should have to say so.
+
+### Testing
+
+- Four gates. The default is twelve hours; 24h is accepted, which is what was
+  asked for; **zero means the default rather than immediate expiry**, because
+  every `qsp.json` in the field predates this field and unmarshals to zero; and
+  absurd values are refused with an error that says which end.
+
+- **A fifth covers the join, which is the half that is easy to leave out.** The
+  field, its default and its validation can all be right while the running
+  server still builds `auth.Policy{}` and ignores them — which is precisely
+  what it did. A setting an operator can write and the server does not read is
+  worse than no setting, because the file claims it is configured. Confirmed
+  red against the old construction.
+
+### Not done, deliberately
+
+- **No console control yet.** The Network page configures the radio listeners,
+  so a session setting belongs on Administration, which means a new surface.
+  §8a is explicit that a console surface begun at the end of a long session is
+  how the defects of 2026-09-09 happened, and three shipped this week. It is
+  the next thing, not this patch — and until then this is a file-only setting,
+  which the rule about health messages sending an operator to `qsp.json`
+  applies to just as much.
+
 ### Fixed
 
 - **The other three flooding warnings in the IPSC listener.** Patch 0347 fixed

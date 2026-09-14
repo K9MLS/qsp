@@ -809,6 +809,20 @@ type Server struct {
 	IdleTimeout Duration `json:"idle_timeout"`
 	// ShutdownTimeout bounds graceful shutdown before connections are forced closed.
 	ShutdownTimeout Duration `json:"shutdown_timeout"`
+	// SessionLifetime is how long a console login lasts before it must be
+	// repeated. Zero selects auth.DefaultSessionLifetime, twelve hours.
+	//
+	// **Configurable since 2026-09-14, because the trade-off is the
+	// operator's.** Twelve hours is the right default — long enough that an
+	// administrator setting up a club network is not logged out mid-task,
+	// short enough that a browser left open in a shared shack stops being a
+	// way in by the next day — but it happens to span a night, so an operator
+	// who logs in one evening is logged out the next morning. That was
+	// diagnosed on this project's own production server: one session row,
+	// expiring exactly twelve hours after the last login.
+	//
+	// A number that only exists as a constant is one no operator can own.
+	SessionLifetime Duration `json:"session_lifetime"`
 	// BehindProxy indicates the console is served behind a reverse proxy that
 	// terminates TLS. It affects which forwarding headers are trusted.
 	BehindProxy bool `json:"behind_proxy"`
@@ -893,6 +907,7 @@ func Default() Config {
 			WriteTimeout:      Duration(30 * time.Second),
 			IdleTimeout:       Duration(120 * time.Second),
 			ShutdownTimeout:   Duration(15 * time.Second),
+			SessionLifetime:   Duration(12 * time.Hour),
 			BehindProxy:       false,
 			Map: Map{
 				TileURL:     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -1120,6 +1135,23 @@ func (c Config) Validate() error {
 
 	v.positiveDuration("server.shutdown_timeout", c.Server.ShutdownTimeout,
 		"use \"15s\"; this bounds how long in-flight requests may finish during shutdown")
+
+	// **Bounded at both ends, and the reason is not symmetry.** A minute is
+	// long enough that nobody sets it by accident and short enough to be
+	// obviously deliberate; a week is where "convenient" stops being the word
+	// for a console that can add administrators and restart the server. An
+	// operator who wants longer than a week wants no login at all, and should
+	// have to say so rather than reach it by typing a large number.
+	if c.Server.SessionLifetime != 0 {
+		switch d := time.Duration(c.Server.SessionLifetime); {
+		case d < time.Minute:
+			v.add("server.session_lifetime", "is shorter than a minute",
+				"use \"12h\", or \"24h\" to stay logged in overnight; leave it out for the default")
+		case d > 7*24*time.Hour:
+			v.add("server.session_lifetime", "is longer than a week",
+				"use \"24h\" or \"168h\"; this console can add administrators and restart the server")
+		}
+	}
 
 	if strings.TrimSpace(c.Database.Driver) == "" {
 		v.add("database.driver", "must not be empty",

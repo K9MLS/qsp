@@ -585,7 +585,14 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		if rerr != nil {
 			return nil, rerr
 		}
-		svc, serr := auth.NewService(repo, auth.Policy{}, nil)
+		// **The policy comes from the configuration now.** It was
+		// `auth.Policy{}` here and in the two account commands, so
+		// DefaultSessionLifetime was the only value QSP could have and no
+		// operator could change it. Zero still selects the default, so a
+		// configuration that says nothing behaves exactly as before.
+		svc, serr := auth.NewService(repo, auth.Policy{
+			SessionLifetime: time.Duration(a.cfg.Server.SessionLifetime),
+		}, nil)
 		if serr != nil {
 			return nil, serr
 		}
