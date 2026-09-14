@@ -63,22 +63,42 @@ const (
 	startByte = 0x61
 
 	typeControl = 0x00
-	// **Speech is 0x01 and channel is 0x02**, corrected 2026-09-14 after the
-	// first run. They were written the other way round, so 320 bytes of a
-	// 1 kHz tone went to the chip labelled as compressed audio to be decoded.
-	// AMBEserver forwarded it and the chip said nothing — which is what a
-	// wrong type byte looks like, and is indistinguishable from a dead device
-	// until the bytes are on the screen.
-	typeSpeech  = 0x01 // uncompressed audio, the PCM side
-	typeChannel = 0x02 // compressed audio, the AMBE side
+	// **Speech is 0x02 and channel is 0x01**, from the manual rather than from
+	// a guess: §6.7 is "Input Speech Packet Format (Packet Type 0x02)" and
+	// §6.9 is "Input Channel Packet Format (Packet Type 0x01)". The chip
+	// outputs a speech packet whenever it receives a channel packet, which is
+	// the decode direction.
+	//
+	// These were right, then swapped on 2026-09-14 on the theory that a wrong
+	// type explained the chip's silence, then swapped back when the manual was
+	// finally read. **Two wrong readings in one evening, one of which was
+	// shipped as a correction** — the lesson being that "this explains the
+	// symptom" is a hypothesis and a contents page is evidence.
+	typeChannel = 0x01 // compressed audio, the AMBE side
+	typeSpeech  = 0x02 // uncompressed audio, the PCM side
 )
 
 // Control fields, of which two are confirmed by the exchange already run.
 const (
-	fieldReset     = 0x33 // confirmed: answers 0x39
-	fieldProdID    = 0x30 // confirmed: answers 0AMBE3000F
-	fieldVersion   = 0x31 // confirmed: answers V121.E100...
-	fieldRateTable = 0x0a // a rate index rather than a full rate word
+	fieldReset   = 0x33 // confirmed: answers 0x39
+	fieldProdID  = 0x30 // confirmed: answers 0AMBE3000F
+	fieldVersion = 0x31 // confirmed: answers V121.E100...
+	// **fieldRateIndex takes one byte; fieldRateParams takes eleven.** Getting
+	// these the wrong way round is what wedged the operator's dongle on
+	// 2026-09-14, and it wedged it in a way no software reset could clear.
+	//
+	// The probe sent `61 00 02 00 0a 21`: field 0x0a, one byte. But 0x0a is
+	// the full rate-parameters block, and a working session elsewhere shows it
+	// as `61 00 0c 00 0a 01 30 07 63 40 00 00 00 00 00 48` — twelve bytes.
+	// So the chip was told eleven bytes were coming, given one, and consumed
+	// the first ten bytes of the next packet as the remainder. From then on it
+	// was mid-field forever, and AMBEserver reported exactly that:
+	// "Couldn't find start byte in serial data".
+	//
+	// Recovery was a physical unplug. A soft reset could not do it, and
+	// neither could detaching and re-attaching the USB device in ESXi.
+	fieldRateIndex  = 0x09 // one byte: an index into the rate table
+	fieldRateParams = 0x0a // eleven bytes: the full rate word
 )
 
 // samplesPerFrame is 20 ms at 8 kHz, which is what the AMBE-3000 takes for one
@@ -90,9 +110,9 @@ func main() {
 	tone := flag.Bool("tone", false, "send one frame of 1 kHz tone and print the reply")
 	rate := flag.Int("rate", 33, "rate index for the mode packet; 33 is DMR/NXDN 2450+1150")
 	wait := flag.Duration("wait", 2*time.Second, "how long to wait for each reply")
-	// **Overridable, because this is the field that was wrong.** A reading of
-	// a register map is a hypothesis; the dongle decides. Trying the other
-	// value should cost a flag, not a rebuild and a deploy.
+	// Overridable because a reading is a hypothesis and the dongle decides.
+	// It was added to test the theory that the type byte explained the
+	// silence; the manual says it did not, and the rate field did.
 	speechType := flag.Int("speech-type", typeSpeech, "packet type for a PCM frame")
 	flag.Parse()
 
@@ -119,7 +139,7 @@ func main() {
 	// **From here the packets are a reading, not a recording.**
 	fmt.Println("\n--- beyond what has been observed ---")
 	ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate),
-		control(fieldRateTable, byte(*rate)))
+		control(fieldRateIndex, byte(*rate)))
 	ask(conn, *wait, fmt.Sprintf("20 ms of 1 kHz tone as type %#02x", *speechType),
 		packet(byte(*speechType), speechBody(sine(1000))))
 }

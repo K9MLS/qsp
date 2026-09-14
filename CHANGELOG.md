@@ -6,6 +6,59 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Patch 0351 was wrong and is reverted.** The AMBE-3000F manual: §6.7 *Input
+  Speech Packet Format (Packet Type 0x02)*, §6.9 *Input Channel Packet Format
+  (Packet Type 0x01)*. **Speech is 0x02 and channel is 0x01**, which is what
+  the probe had originally. 0351 swapped them on the theory that a wrong type
+  explained the chip's silence, and shipped the guess as a correction.
+
+- **And the wrong rate field is what wedged the operator's dongle.** The probe
+  sent `61 00 02 00 0a 21`: field `0x0a` with one argument byte. `0x0a` is
+  `PKT_RATEP`, the eleven-byte rate word; a working session elsewhere shows it
+  as `61 00 0c 00 0a 01 30 07 63 40 00 00 00 00 00 48`. A one-byte index is
+  `PKT_RATET`, `0x09`.
+
+  So the chip was told eleven bytes were coming, given one, and consumed the
+  first ten bytes of the next packet as the remainder. It sat mid-field from
+  then on, and AMBEserver reported exactly that on every subsequent start:
+  `Couldn't find start byte in serial data`.
+
+  **Recovery was a physical unplug.** A software reset could not clear it, and
+  neither could detaching and re-attaching the USB device in ESXi. That is now
+  the first thing recorded about this device, because it is the thing worth
+  knowing before the first experiment rather than after.
+
+### Testing
+
+- **A control field must carry the number of bytes it promises**, which is the
+  class of bug that costs a device rather than a test run — and is checkable
+  with no hardware at all.
+
+- **And the call site is checked, not only the constant.** The first version of
+  that gate proved `fieldRateIndex` is `0x09` and nothing more: changing the
+  call site to the eleven-byte field, with the constants left correct, passed
+  every test. Same shape as a configuration field the server never reads —
+  right value, wrong caller — and caught by trying the break rather than
+  assuming it.
+
+  Found in the same session: a break that produced a *compile* error read as a
+  pass, because the grep pattern watching for failures matched `--- FAIL` and
+  indented output but not `FAIL ... [build failed]`.
+
+### The method, honestly
+
+Two wrong readings of the same bytes in one evening, one of them shipped as a
+correction, and a piece of the operator's hardware left unusable until it was
+physically unplugged. The probe was built to learn the protocol from the device
+rather than from prose, which was right — but **the recovery path for a device
+that can be wedged by a malformed packet has to be known before the first
+experiment, not discovered after it.**
+
+Nothing beyond the three confirmed control exchanges goes near the dongle again
+until the field tables come from the DVSI manual rather than a reconstruction.
+
+### Fixed
+
 - **The speech and channel packet types were the wrong way round.** The probe's
   first run on the operator's bench sent a 1 kHz tone as type `0x02`.
   AMBEserver forwarded 322 bytes to the chip and the chip said nothing: the

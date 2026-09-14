@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/hex"
+	"os"
+	"strings"
 	"testing"
 )
 
@@ -64,27 +66,99 @@ func TestASpeechFrameIsTwentyMillisecondsAtEightKilohertz(t *testing.T) {
 	}
 }
 
-// TestSpeechIsTypeOneAndChannelIsTypeTwo is the correction the dongle made.
+// TestSpeechIsTypeTwoAndChannelIsTypeOne is the manual, after two wrong
+// readings in one evening.
 //
-// The first run sent a 1 kHz tone as type 0x02. AMBEserver forwarded 322 bytes
-// to the chip and the chip said nothing: the type byte said "here is
-// compressed audio, decode it", so 320 bytes of a sine wave were read as AMBE
-// and discarded.
+// AMBE-3000F users manual §6.7 "Input Speech Packet Format (Packet Type 0x02)"
+// and §6.9 "Input Channel Packet Format (Packet Type 0x01)". The chip outputs
+// a speech packet whenever it receives a channel packet.
 //
-// **Silence from a vocoder is indistinguishable from a dead vocoder** until
-// the bytes are on the screen. The mode packet in the same run was
-// acknowledged — `61 00 02 00 0a 21` answered by `61 00 02 00 0a 00` — which
-// is what narrowed it to the type rather than the framing, the socket or the
-// audio.
-func TestSpeechIsTypeOneAndChannelIsTypeTwo(t *testing.T) {
-	if typeSpeech != 0x01 {
-		t.Errorf("speech is %#02x, want 0x01; PCM sent as 0x02 is read as "+
-			"compressed audio and silently dropped", typeSpeech)
+// These were right, swapped on the theory that a wrong type explained the
+// chip's silence, and swapped back when the manual was read. **The swap was
+// shipped as a correction**, which is the part worth remembering: "this
+// explains the symptom" is a hypothesis, and a contents page is evidence.
+func TestSpeechIsTypeTwoAndChannelIsTypeOne(t *testing.T) {
+	if typeSpeech != 0x02 {
+		t.Errorf("speech is %#02x, want 0x02 per the manual", typeSpeech)
 	}
-	if typeChannel != 0x02 {
-		t.Errorf("channel is %#02x, want 0x02", typeChannel)
+	if typeChannel != 0x01 {
+		t.Errorf("channel is %#02x, want 0x01 per the manual", typeChannel)
 	}
-	if typeSpeech == typeChannel {
-		t.Error("speech and channel are the same value")
+}
+
+// TestAControlFieldCarriesTheNumberOfBytesItPromises is the gate for the bug
+// that wedged a dongle.
+//
+// On 2026-09-14 the probe sent `61 00 02 00 0a 21`: field 0x0a with one
+// argument byte. 0x0a is the full rate-parameters block and takes eleven. The
+// chip was told eleven bytes were coming, given one, and consumed the first
+// ten bytes of the following packet as the remainder — leaving its parser
+// mid-field permanently. AMBEserver then reported "Couldn't find start byte in
+// serial data" on every subsequent start, and **recovery took a physical
+// unplug**: neither a software reset nor detaching the USB device in ESXi
+// cleared it.
+//
+// **This is checkable with no hardware at all**, which is the point. A field
+// whose argument count is wrong is a class of bug that costs a device rather
+// than a test run, and it can be caught before anything is plugged in.
+func TestAControlFieldCarriesTheNumberOfBytesItPromises(t *testing.T) {
+	// The count each control field requires, from the manual and from a
+	// working session: PKT_RATET takes an index, PKT_RATEP takes a rate word.
+	args := map[byte]int{
+		fieldReset:      0,
+		fieldProdID:     0,
+		fieldVersion:    0,
+		fieldRateIndex:  1,
+		fieldRateParams: 11,
+	}
+
+	for field, want := range args {
+		// Every control packet this program can build, checked against the
+		// count its field requires.
+		if want != 1 {
+			continue // only the rate index is constructed with an argument
+		}
+		p := control(field, 0x21)
+		// Header is start byte, two length bytes, type. The length counts the
+		// field byte and its arguments.
+		if got := int(p[1])<<8 | int(p[2]); got != want+1 {
+			t.Errorf("field %#02x declares length %d for %d argument(s); a "+
+				"field that promises more bytes than it sends leaves the chip "+
+				"mid-parse and needs a physical unplug", field, got, want)
+		}
+	}
+
+	// And the one that was actually wrong: a rate index must not be sent with
+	// the rate-parameters field.
+	if fieldRateIndex == fieldRateParams {
+		t.Fatal("the one-byte and eleven-byte rate fields are the same value")
+	}
+	if got := control(fieldRateIndex, 33); got[4] != 0x09 {
+		t.Errorf("the rate index uses field %#02x, want 0x09; 0x0a is the "+
+			"eleven-byte rate word and sending one byte to it wedges the chip",
+			got[4])
+	}
+}
+
+// TestTheRateFieldSentIsTheOneByteOne closes the gap the constants leave.
+//
+// The checks above prove `fieldRateIndex` is 0x09. They do not prove the
+// program sends it — and changing the call site to `fieldRateParams` while
+// leaving the constants correct passes every one of them. That is the same
+// shape as a configuration field the server never reads: right value, wrong
+// caller.
+//
+// **The call site is what wedged the dongle**, so the call site is what this
+// reads. Source inspection, with its limit stated: it proves which constant is
+// passed, not that the chip likes it.
+func TestTheRateFieldSentIsTheOneByteOne(t *testing.T) {
+	src, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatalf("reading main.go: %v", err)
+	}
+	if !strings.Contains(string(src), "control(fieldRateIndex, byte(*rate))") {
+		t.Error("the rate packet is not built with fieldRateIndex; a one-byte " +
+			"index sent to the eleven-byte rate field leaves the chip " +
+			"mid-parse and needs a physical unplug to clear")
 	}
 }
