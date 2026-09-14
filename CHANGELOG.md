@@ -6,6 +6,61 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`cmd/ambe-probe`, an instrument for the transcoder link.** It talks to an
+  AMBEserver over UDP and prints every byte in both directions, so the
+  AMBE-3000 framing is learned from a dongle on a bench rather than assumed
+  from prose. Same shape as `cmd/ipsc-probe`, and for the same reason: **the
+  dongle is the oracle.**
+
+  **The operator chose to build the path into QSP rather than assemble one.**
+  The alternative was four processes — MMDVM_Bridge logging into QSP over the
+  protocol QSP already speaks, Analog_Bridge, AMBEserver, a Zello bridge — and
+  his objection was that a club installing QSP should not then install
+  somebody else's chain. Two of those four are pure overhead: MMDVM_Bridge
+  exists to turn a DMR network connection into AMBE frames, and QSP *is* the
+  DMR network.
+
+  **AMBEserver stays**, and that is not a compromise. ADR-0034 and ADR-0061:
+  QSP ships no vocoder and speaks to one it does not own. One process may hold
+  a serial port, and a socket is what keeps the operator's dongle available to
+  the operator.
+
+  **Opus is the open question.** Zello's Channels API carries it, every Go
+  binding is cgo, and QSP is a `CGO_ENABLED=0` static binary that
+  cross-compiles to ARM. Whether the last hop can be QSP's depends on what that
+  API will accept, which is research not yet done — and it is the fact that
+  decides the architecture, so no ADR is written until it is known.
+
+### Testing
+
+- **The framing is gated against the exchange that actually happened.** An
+  AMBE3000F answered `61 00 01 00 30` with
+  `61 00 0b 00 30 41 4d 42 45 33 30 30 30 46 00` on the operator's server on
+  2026-09-14.
+
+  **The first draft of the probe emitted `61 00 02 00 33`**, because the length
+  was written to include the type byte. It does not: `00 01` for one payload
+  byte outgoing, `00 0b` for eleven incoming, type outside the count both ways.
+  Caught by printing the bytes and comparing them with the record — which is
+  the entire point of the program — and now a test, because **a dongle refusing
+  a malformed packet looks exactly like a dead dongle.**
+
+### Recorded from the bench, 2026-09-14
+
+- **The stick is an AMBE3000F, not the R variant** every published example
+  shows, at version `V121.E100.XXXX.C110.G514.R014.A0030608.C0020208` rather
+  than the `V120 ... R009` the R part reports. DVSwitch publishes separate
+  images per variant; following a guide would have cost a day.
+- **FTDI FT230X, `0403:6015`, serial DT04S20J**, bound by `ftdi_sio` with no
+  configuration, through ESXi passthrough, first attempt. The review claiming
+  the device is Windows-only is wrong.
+- **460800 baud**, correct first time. AMBEserver's own default is 230400.
+- **AMBEserver binds `0.0.0.0:2460` and has no bind-address flag.** An
+  unauthenticated vocoder on every interface, including a public one, on a
+  server with no host firewall. Worth knowing before it becomes a service.
+
+### Added
+
 - **`server.session_lifetime`.** How long a console login lasts, defaulting to
   the twelve hours it has always been, so a configuration that says nothing
   behaves exactly as before.
