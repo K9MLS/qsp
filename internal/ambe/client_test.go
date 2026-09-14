@@ -470,18 +470,21 @@ func TestTheDecodeDirectionRoundTripsItsFraming(t *testing.T) {
 	}
 	f.answerWith(hex.EncodeToString(request), reply)
 
-	samples, err := c.Decode(frame)
+	speechReply, err := c.Decode(frame)
 	if err != nil {
 		t.Fatalf("decoding a frame: %v", err)
 	}
-	if len(samples) != 160 {
-		t.Fatalf("decoded %d samples, want 160", len(samples))
+	if len(speechReply.Samples) != 160 {
+		t.Fatalf("decoded %d samples, want 160", len(speechReply.Samples))
 	}
 	want := tone()
-	for i := range samples {
-		if samples[i] != want[i] {
-			t.Fatalf("sample %d decoded as %d, want %d", i, samples[i], want[i])
+	for i := range speechReply.Samples {
+		if speechReply.Samples[i] != want[i] {
+			t.Fatalf("sample %d decoded as %d, want %d", i, speechReply.Samples[i], want[i])
 		}
+	}
+	if speechReply.Reported {
+		t.Error("flags read as present in a reply that carried none")
 	}
 	if _, decoded, _, _ := c.Counters(); decoded != 1 {
 		t.Errorf("decoded reads %d, want 1", decoded)

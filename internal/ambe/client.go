@@ -339,38 +339,63 @@ func (c *Client) Encode(samples []int16) (ChannelFrame, error) {
 
 // Decode turns one compressed frame into 20 ms of PCM.
 //
-// **This direction has not been proved on hardware.** The encode direction was
-// captured on 2026-09-14; the decode direction is built from §6.9 and §6.8 and
-// from the fact that packet mode answers a channel packet with a speech
-// packet. The shape is the mirror of the one that works, and the test below
-// drives it against the framing rather than against a dongle. Prove it with
-// `ambe-probe -decode` before anything depends on it.
-func (c *Client) Decode(frame ChannelFrame) ([]int16, error) {
+// **The framing is proved and the audio is not.** On 2026-09-14 the dongle's
+// own channel frame was sent back with `ambe-probe -decode` and a 326-byte
+// output speech packet came out, 160 samples, correctly framed. Its peak
+// sample was 3, where the frame had encoded a 1 kHz tone at amplitude 8000 —
+// so something produced comfort noise or nothing.
+//
+// Four things look identical in the samples: comfort noise, a frame repeat, a
+// tone frame decoded out of context, and a decoder that has not ramped up. The
+// reply's DCMODE_OUT flags distinguish three of them, which is why Decode
+// returns them rather than only the samples, and why AskForDecoderFlags exists.
+// **Until that reading is taken, nothing should depend on decoded audio.**
+func (c *Client) Decode(frame ChannelFrame) (SpeechReply, error) {
 	if c.holder.Load() == nil {
-		return nil, ErrNotHeld
+		return SpeechReply{}, ErrNotHeld
 	}
 	chand, err := Chand(frame.Bits, frame.Data)
 	if err != nil {
-		return nil, err
+		return SpeechReply{}, err
 	}
 	pkt, err := Build(TypeChannel, Val(0x40), chand)
 	if err != nil {
-		return nil, err
+		return SpeechReply{}, err
 	}
 
 	reply, err := c.exchange(pkt)
 	if err != nil {
 		c.failed.Add(1)
-		return nil, fmt.Errorf("ambe: decoding a frame: %w", err)
+		return SpeechReply{}, fmt.Errorf("ambe: decoding a frame: %w", err)
 	}
-	samples, ok := SpeechFromResponse(reply)
+	speech, ok := SpeechReplyFromResponse(reply)
 	if !ok {
 		c.failed.Add(1)
-		return nil, fmt.Errorf("ambe: a channel packet was answered by %x, "+
+		return SpeechReply{}, fmt.Errorf("ambe: a channel packet was answered by %x, "+
 			"which is not a speech frame", reply)
 	}
 	c.decoded.Add(1)
-	return samples, nil
+	return speech, nil
+}
+
+// AskForDecoderFlags configures the chip to report DCMODE_OUT in every output
+// speech packet, so that Decode can say what the decoder did rather than
+// leaving a caller to infer it from near-silent samples.
+//
+// PKT_SPCHFMT, field 0x16, Table 65. It is a separate call rather than part of
+// Open because it changes the shape of every subsequent speech reply, and a
+// caller that does not read the flags should not be paying three bytes a frame
+// for them.
+func (c *Client) AskForDecoderFlags() error {
+	reply, err := c.exchange(MustBuild(TypeControl, Val(0x16, SpchFmtAlwaysDCMode...)))
+	if err != nil {
+		return fmt.Errorf("ambe: cannot ask for the decoder flags: %w", err)
+	}
+	field, status, ok := AckedField(reply)
+	if !ok || field != 0x16 || status != 0x00 {
+		return fmt.Errorf("ambe: PKT_SPCHFMT was answered by %x rather than accepted", reply)
+	}
+	return nil
 }
 
 // Counters reports what the link has carried, for a health report.

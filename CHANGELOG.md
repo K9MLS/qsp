@@ -6,6 +6,49 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The decode direction is proved on the wire, and the audio is not.**
+  `ambe-probe -decode 954be6500310b00777` sent the dongle's own channel frame
+  back on 2026-09-14 and a 326-byte output speech packet came out: 160
+  samples, correctly framed, `61 01 42 02 00 a0`. So the framing works in both
+  directions. **Its peak sample was 3**, where that frame had encoded a 1 kHz
+  tone at amplitude 8000 — comfort noise, or nothing.
+
+  Four things look identical in near-silent samples: comfort noise, a frame
+  repeat, a tone frame decoded out of context, and a decoder that has not
+  ramped up. **So the chip is asked instead of argued with.** `PKT_SPCHFMT`
+  (field 0x16) makes every output speech packet carry the decoder's own
+  DCMODE_OUT word, and Table 16 gives three of those four directly:
+  `VOICE_ACTIVE` clear means comfort noise, `DATA_INVALID` set means a frame
+  repeat or errors, `TONE_FRAME` set means a tone. `Decode` now returns that
+  verdict alongside the samples, and the probe prints it.
+
+- **`ambe-probe -repeat`**, because an AMBE decoder carries state and the first
+  frame after an init is commonly ramped or muted. One frame cannot tell a
+  silent decoder from a cold one; ten in a row can.
+
+- **A length gate over the observed capture**, so every record in it stays a
+  whole datagram. A truncated packet added for illustration would fail that
+  rather than sit waiting for something to misread it.
+
+### Fixed
+
+- **Three more tests that could not fail, all found by breaking the code.** The
+  decoder-flag test wrote `byte(DataInvalid)` into its own fixture and then
+  asserted `DataInvalid`, so moving the constant to the wrong bit left it
+  passing — the bit positions are now literals from Table 16. Nothing pinned
+  the `PKT_SPCHFMT` data, so asking for no flags at all passed. And the
+  unrecognised-field refusal was tested with a packet where stepping over the
+  field by one byte fell off the end, so the broken parser refused it for a
+  different reason; the packet is now built by hand so that a one-byte skip
+  would land on what looks like a complete SPEECHD field and return 160
+  samples nobody sent.
+
+  Twelve, thirteen and fourteen. Every one of them found the same way, and
+  none of them by reading the test.
+
+
+### Added
+
 - **A vocoder client in `internal/ambe`: QSP speaks to an AMBEserver.** This is the piece
   ADR-0062 says QSP builds — a UDP client to an AMBEserver, holding one
   AMBE-3000F. It brings the chip to a known state at startup, encodes a 20 ms

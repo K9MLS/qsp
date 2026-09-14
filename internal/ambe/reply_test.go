@@ -3,6 +3,7 @@ package ambe
 import (
 	"encoding/hex"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -63,6 +64,172 @@ func TestTheBenchExchangeIsReproducedAndDecoded(t *testing.T) {
 	if want := fx["speech-request"]; hex.EncodeToString(got) != hex.EncodeToString(want) {
 		t.Errorf("the speech packet is built as\n  %s\nand was sent as\n  %s",
 			hex.EncodeToString(got), hex.EncodeToString(want))
+	}
+}
+
+// TestEveryObservedPacketObeysTheLengthRule reads the rule off the capture.
+//
+// Section 6.5.2 in both directions, and this file is where the reply direction
+// is evidenced. It also keeps the fixture honest: every record here is a whole
+// datagram, so a partial packet added for illustration would fail this rather
+// than sit waiting for something to misread it.
+func TestEveryObservedPacketObeysTheLengthRule(t *testing.T) {
+	for name, pkt := range observed(t) {
+		if len(pkt) < 5 {
+			t.Errorf("%s is %d bytes, which is not a whole packet", name, len(pkt))
+			continue
+		}
+		if pkt[0] != StartByte {
+			t.Errorf("%s starts with %#02x, want %#02x", name, pkt[0], StartByte)
+		}
+		if declared, got := int(pkt[1])<<8|int(pkt[2]), len(pkt)-4; declared != got {
+			t.Errorf("%s declares %d field bytes and carries %d", name, declared, got)
+		}
+	}
+}
+
+// TestTheDecodeRequestIsTheFrameTheDongleMade covers the packet that proved
+// the decode direction.
+//
+// `ambe-probe -decode 954be6500310b00777` sent the dongle's own channel frame
+// back, and a 326-byte speech packet came out. Sending back a frame this chip
+// produced is what makes a success a round trip rather than a guess about
+// somebody else's bits.
+func TestTheDecodeRequestIsTheFrameTheDongleMade(t *testing.T) {
+	fx := observed(t)
+	frame, ok := ChannelFrameFromResponse(fx["channel-reply"])
+	if !ok {
+		t.Fatal("the observed channel reply was not decoded")
+	}
+	chand, err := Chand(frame.Bits, frame.Data)
+	if err != nil {
+		t.Fatalf("building CHAND: %v", err)
+	}
+	got, err := Build(TypeChannel, Val(0x40), chand)
+	if err != nil {
+		t.Fatalf("building the channel packet: %v", err)
+	}
+	if want := fx["decode-request"]; hex.EncodeToString(got) != hex.EncodeToString(want) {
+		t.Errorf("the decode request is built as %s and was sent as %s",
+			hex.EncodeToString(got), hex.EncodeToString(want))
+	}
+}
+
+// TestADecoderFlagWordSaysWhatTheDecoderDid is the reading that settles a
+// near-silent reply.
+//
+// The first decode round trip came back with a peak sample of 3 where the
+// frame had encoded a tone at amplitude 8000. Comfort noise, a frame repeat, a
+// tone frame out of context and a decoder that has not ramped up all look the
+// same in the samples, and Table 16 distinguishes three of them — so the chip
+// is asked rather than reasoned about. **Not yet observed**: the flags are
+// absent unless PKT_SPCHFMT requests them, and nothing has requested them on
+// hardware yet.
+func TestADecoderFlagWordSaysWhatTheDecoderDid(t *testing.T) {
+	for _, tc := range []struct {
+		flags DecoderFlags
+		want  string
+	}{
+		{VoiceActive, "voice or tone synthesised"},
+		{0, "comfort noise synthesised"},
+		{DataInvalid, "data invalid"},
+		{VoiceActive | ToneFrame, "tone frame"},
+	} {
+		if got := tc.flags.String(); !strings.Contains(got, tc.want) {
+			t.Errorf("flags %#04x describe as %q, want it to mention %q",
+				uint16(tc.flags), got, tc.want)
+		}
+	}
+
+	// **The bit positions are literals here on purpose.** Writing
+	// byte(DataInvalid) into the fixture and then asserting DataInvalid is a
+	// test that encodes the same assumption as the code it tests: moving the
+	// constant to the wrong bit left it passing. Table 16 gives DATA_INVALID
+	// as bit 5, which is 0x20, and TONE_FRAME as bit 15, and those are the
+	// numbers written below.
+	if uint16(DataInvalid) != 0x0020 {
+		t.Errorf("DATA_INVALID is %#04x, want 0x0020 — Table 16 bit 5",
+			uint16(DataInvalid))
+	}
+	if uint16(VoiceActive) != 0x0002 {
+		t.Errorf("VOICE_ACTIVE is %#04x, want 0x0002 — Table 16 bit 1",
+			uint16(VoiceActive))
+	}
+	if uint16(ToneFrame) != 0x8000 {
+		t.Errorf("TONE_FRAME is %#04x, want 0x8000 — Table 16 bit 15",
+			uint16(ToneFrame))
+	}
+
+	// Table 65: bits 1 and 0 are the dcmode setting and 01 is "always contain
+	// dcmode field"; every reserved bit must be zero or the manual warns of
+	// unexpected results.
+	if got, want := hex.EncodeToString(SpchFmtAlwaysDCMode), "0001"; got != want {
+		t.Errorf("PKT_SPCHFMT asks for %s, want %s; %s would ask for no flags "+
+			"at all and the reply would look the same as one that had none",
+			got, want, got)
+	}
+
+	// A speech reply with a CMODE field carrying the flags, per Tables 16
+	// and 65.
+	samples := make([]int16, 160)
+	speech, err := SpeechD(samples)
+	if err != nil {
+		t.Fatalf("building SPEECHD: %v", err)
+	}
+	pkt, err := Build(TypeSpeech, speech, Val(0x02, 0x00, 0x20))
+	if err != nil {
+		t.Fatalf("building a speech reply with flags: %v", err)
+	}
+	reply, ok := SpeechReplyFromResponse(pkt)
+	if !ok {
+		t.Fatal("a speech reply carrying a CMODE field was not decoded")
+	}
+	if !reply.Reported {
+		t.Error("the reply carried a CMODE field and the flags read as absent")
+	}
+	if reply.Flags&DataInvalid == 0 {
+		t.Errorf("the flags read %#04x, want DATA_INVALID set", uint16(reply.Flags))
+	}
+	if len(reply.Samples) != 160 {
+		t.Errorf("the reply carries %d samples, want 160", len(reply.Samples))
+	}
+	if reply.Peak() != 0 {
+		t.Errorf("a silent reply has peak %d, want 0", reply.Peak())
+	}
+
+	// And the shape actually observed: samples, no flags.
+	plain, err := Build(TypeSpeech, speech)
+	if err != nil {
+		t.Fatalf("building a plain speech reply: %v", err)
+	}
+	got, ok := SpeechReplyFromResponse(plain)
+	if !ok {
+		t.Fatal("a speech reply without a CMODE field was not decoded")
+	}
+	if got.Reported {
+		t.Error("flags read as present in a reply that carried none; absent and " +
+			"zero mean different things here, and zero means comfort noise")
+	}
+
+	// A field this build does not decode must be refused rather than stepped
+	// over, and **this packet is built by hand because the shape is the whole
+	// point.** Its fields are a three-byte TONE field whose data happens to be
+	// 0x00 0xA0, followed by 320 bytes of samples — so a parser that stepped
+	// over the unrecognised identifier one byte at a time would land exactly
+	// on what looks like a complete SPEECHD field and return 160 samples that
+	// were never sent.
+	//
+	// A reply built from any other shape does not distinguish the two: the
+	// first version of this used TONE with 0x03 0x00 and the skip fell off the
+	// end, so the broken parser refused it for a different reason and the test
+	// passed either way.
+	body := append([]byte{0x08, 0x00, 0xA0}, make([]byte, 320)...)
+	hand := append([]byte{StartByte, byte(len(body) >> 8), byte(len(body)), TypeSpeech}, body...)
+	if _, ok := SpeechReplyFromResponse(hand); ok {
+		t.Error("a speech reply carrying a field this build does not decode was " +
+			"accepted; an unrecognised field has to be refused, because " +
+			"stepping over it by a guessed length reads the next field from " +
+			"the middle of this one and returns samples nobody sent")
 	}
 }
 

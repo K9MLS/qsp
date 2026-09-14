@@ -11,6 +11,8 @@ package ambe
 // fifth is captured it gets a decoder; until then a packet that matches none
 // of these is reported as unrecognised rather than guessed at.
 
+import "strings"
+
 // header checks the three bytes every packet starts with, and that the
 // declared length matches what arrived. A short read is not a reply.
 func header(pkt []byte, kind byte) ([]byte, bool) {
@@ -186,4 +188,135 @@ func CompandingEnabledIn(cfg [3]byte) bool {
 // the wrong route.
 func RateControlWordIn(cfg [3]byte) int {
 	return int(cfg[1] & 0x3F)
+}
+
+// DecoderFlags is the DCMODE_OUT word the decoder reports for a frame.
+//
+// **This is how the chip answers a question about its own output.** A speech
+// reply that comes back near silent could be comfort noise, a frame repeat, a
+// tone frame decoded out of context, or a decoder that has not ramped up —
+// and reasoning between those from the samples alone is guessing. Table 16
+// names three of them directly.
+//
+// The flags are not present by default. PKT_SPCHFMT (field 0x16) with
+// SpchFmtAlwaysDCMode asks for them in every output speech packet.
+type DecoderFlags uint16
+
+// The DCMODE_OUT bits that mean something, from Table 16, printed page 37.
+const (
+	// VoiceActive is set when the decoder synthesised a voice frame or a tone
+	// frame, and clear when it synthesised comfort noise — which it does for a
+	// received silence frame, for FEC finding too many errors, or after more
+	// than two consecutive frame repeats.
+	VoiceActive DecoderFlags = 1 << 1
+	// DataInvalid is set whenever the decoder performed a frame repeat, or
+	// inserted comfort noise because of channel errors or missing frames. It
+	// is clear when a valid voice, silence or tone frame arrived.
+	DataInvalid DecoderFlags = 1 << 5
+	// ToneFrame is set whenever the decoder decodes a tone frame.
+	ToneFrame DecoderFlags = 1 << 15
+)
+
+// String describes the flags in the words the manual uses.
+func (f DecoderFlags) String() string {
+	parts := make([]string, 0, 3)
+	if f&VoiceActive != 0 {
+		parts = append(parts, "voice or tone synthesised")
+	} else {
+		parts = append(parts, "comfort noise synthesised")
+	}
+	if f&DataInvalid != 0 {
+		parts = append(parts, "data invalid: a frame repeat or comfort noise for errors or missing frames")
+	}
+	if f&ToneFrame != 0 {
+		parts = append(parts, "decoded as a tone frame")
+	}
+	return strings.Join(parts, "; ")
+}
+
+// SpchFmtAlwaysDCMode is the PKT_SPCHFMT data that asks for DCMODE_OUT in
+// every output speech packet.
+//
+// Table 65: bits 1 and 0 are the dcmode setting, and 01 is "always contain
+// dcmode field". Every reserved bit must be zero or the manual warns of
+// unexpected results.
+var SpchFmtAlwaysDCMode = []byte{0x00, 0x01}
+
+// SpeechReply is an output speech packet, with the decoder's own account of
+// what it produced when that was asked for.
+type SpeechReply struct {
+	Samples []int16
+	// Flags is the decoder's DCMODE_OUT word, and Reported says whether it was
+	// present. It is absent unless PKT_SPCHFMT asked for it.
+	Flags    DecoderFlags
+	Reported bool
+}
+
+// Peak is the largest absolute sample, which is the quickest way to see that a
+// reply is silence.
+func (r SpeechReply) Peak() int {
+	peak := 0
+	for _, s := range r.Samples {
+		v := int(s)
+		if v < 0 {
+			v = -v
+		}
+		if v > peak {
+			peak = v
+		}
+	}
+	return peak
+}
+
+// SpeechReplyFromResponse reads an output speech packet, including a CMODE
+// field carrying DCMODE_OUT if one is present.
+//
+// **Observed on 2026-09-14**: a channel packet of 72 bits produced
+// `61 01 42 02 00 a0` and 320 bytes, with no CMODE field because none had been
+// asked for. The flags path is built from Tables 16 and 65 and is not yet
+// observed; the sample path is.
+func SpeechReplyFromResponse(pkt []byte) (SpeechReply, bool) {
+	body, ok := header(pkt, TypeSpeech)
+	if !ok {
+		return SpeechReply{}, false
+	}
+	if len(body) > 0 && body[0] == 0x40 {
+		body = body[1:]
+	}
+
+	var out SpeechReply
+	for len(body) > 0 {
+		switch body[0] {
+		case 0x00: // SPEECHD
+			if len(body) < 2 {
+				return SpeechReply{}, false
+			}
+			count := int(body[1])
+			if count < 156 || count > 164 || len(body) < 2+count*2 {
+				return SpeechReply{}, false
+			}
+			data := body[2 : 2+count*2]
+			out.Samples = make([]int16, count)
+			for i := range out.Samples {
+				out.Samples[i] = int16(uint16(data[i*2])<<8 | uint16(data[i*2+1]))
+			}
+			body = body[2+count*2:]
+		case 0x02: // CMODE, carrying DCMODE_OUT
+			if len(body) < 3 {
+				return SpeechReply{}, false
+			}
+			out.Flags = DecoderFlags(uint16(body[1])<<8 | uint16(body[2]))
+			out.Reported = true
+			body = body[3:]
+		default:
+			// A field this build does not know. Reported as unrecognised
+			// rather than skipped by a guessed length, because a wrong length
+			// here would read the next field from the middle of this one.
+			return SpeechReply{}, false
+		}
+	}
+	if out.Samples == nil {
+		return SpeechReply{}, false
+	}
+	return out, true
 }

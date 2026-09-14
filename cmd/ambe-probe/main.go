@@ -73,6 +73,10 @@ const samplesPerFrame = 160
 func main() {
 	server := flag.String("server", "127.0.0.1:2460", "AMBEserver address")
 	tone := flag.Bool("tone", false, "send one frame of 1 kHz tone and print the reply")
+	repeat := flag.Int("repeat", 1,
+		"send the frame this many times; an AMBE decoder carries state and the "+
+			"first frame after an init is commonly ramped or muted, so one frame "+
+			"cannot tell a silent decoder from a cold one")
 	decode := flag.String("decode", "",
 		"send these channel bits back for decoding, as hex; try 954be6500310b00777, "+
 			"the frame this dongle produced on 2026-09-14")
@@ -133,6 +137,25 @@ func main() {
 	// it disagree about — twelve against eleven. The index avoids the question
 	// entirely and rate 33 is the rate that was wanted all along.
 	fmt.Println("\n--- beyond what has been observed ---")
+
+	// **Ask the decoder to say what it did.** The first decode round trip came
+	// back with a peak sample of 3 where the frame had encoded a tone at
+	// amplitude 8000. Comfort noise, a frame repeat, a tone frame decoded out
+	// of context and a decoder that has not ramped up all look identical in
+	// the samples, and Table 16's DCMODE_OUT distinguishes three of them.
+	//
+	// So this is a reading rather than an argument, which is what §8a says to
+	// reach for: the flags are absent by default and PKT_SPCHFMT asks for them
+	// in every output speech packet.
+	spchfmt, err := ambe.Build(ambe.TypeControl,
+		ambe.Val(0x16, ambe.SpchFmtAlwaysDCMode...))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	if _, out := ask(conn, *wait, "ask for the decoder's own flags", spchfmt); out == unreachable {
+		refused(*server)
+	}
 	ratePacket, err := ambe.Build(ambe.TypeControl, ambe.Val(fieldRateIndex, byte(*rate)))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
@@ -152,8 +175,12 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
 		os.Exit(1)
 	}
-	if *tone {
-		if _, out := ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket); out == unreachable {
+	for i := 0; *tone && i < *repeat; i++ {
+		label := "20 ms of 1 kHz tone as a speech packet"
+		if *repeat > 1 {
+			label = fmt.Sprintf("%s (%d of %d)", label, i+1, *repeat)
+		}
+		if _, out := ask(conn, *wait, label, framePacket); out == unreachable {
 			refused(*server)
 		}
 	}
@@ -182,9 +209,14 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
 			os.Exit(1)
 		}
-		label := fmt.Sprintf("%d bits of channel data for decoding", len(bits)*8)
-		if _, out := ask(conn, *wait, label, channelPacket); out == unreachable {
-			refused(*server)
+		for i := 0; i < *repeat; i++ {
+			label := fmt.Sprintf("%d bits of channel data for decoding", len(bits)*8)
+			if *repeat > 1 {
+				label = fmt.Sprintf("%s (%d of %d)", label, i+1, *repeat)
+			}
+			if _, out := ask(conn, *wait, label, channelPacket); out == unreachable {
+				refused(*server)
+			}
 		}
 	}
 }
@@ -336,16 +368,19 @@ func describe(reply []byte) {
 		}
 		return
 	}
-	if samples, ok := ambe.SpeechFromResponse(reply); ok {
-		var peak int16
-		for _, v := range samples {
-			if v > peak {
-				peak = v
-			}
+	if speech, ok := ambe.SpeechReplyFromResponse(reply); ok {
+		fmt.Printf("  %-30s %d samples, peak %d\n", "speech frame",
+			len(speech.Samples), speech.Peak())
+		if speech.Reported {
+			fmt.Printf("  %-30s %s\n", "decoder says", speech.Flags)
+		} else {
+			fmt.Printf("  %-30s no flags in this reply; PKT_SPCHFMT asks for "+
+				"them and absent is not the same as zero\n", "decoder says")
 		}
-		fmt.Printf("  %-30s %d samples, peak %d\n", "speech frame", len(samples), peak)
-		fmt.Printf("  %-30s the decode direction answered; internal/ambe can "+
-			"stop calling it unproved\n", "")
+		if speech.Peak() < 100 {
+			fmt.Printf("  %-30s near silence — read the decoder's flags above "+
+				"rather than the samples\n", "")
+		}
 		return
 	}
 	if field, status, ok := ambe.AckedField(reply); ok {
