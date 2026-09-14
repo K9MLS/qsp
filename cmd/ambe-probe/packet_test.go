@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -356,6 +357,35 @@ func TestTheCaptureYieldsRealVocoderFramesInBothForms(t *testing.T) {
 	if nonZero*4 < len(params) {
 		t.Errorf("only %d of %d frames carry any parameter bits; the extraction "+
 			"is producing empty frames", nonZero, len(params))
+	}
+
+	// **The first frame is the silence frame this project already knew.** The
+	// params form reads f801a99f8ce08..., whose top 49 bits are
+	// 0x1F003533F19C1 — the value internal/dmrfec documents as silence,
+	// established from a different capture on a different protocol. An
+	// extraction landing on known ground is worth asserting: if the packing
+	// ever slips, this is the value that moves.
+	if got, want := fmt.Sprintf("%x", params[0][:7]), "f801a99f8ce080"; got != want {
+		t.Errorf("the capture's first parameter frame is %s, want %s — the "+
+			"silence frame 0x1F003533F19C1 that internal/dmrfec documents",
+			got, want)
+	}
+
+	// Frames the dongle accepted on 2026-09-14, kept so that the frame-form
+	// question stays settled by evidence rather than by memory. All 828 came
+	// back with DATA_INVALID clear in the on-air form.
+	for _, tc := range []struct {
+		index int
+		want  string
+	}{
+		{0, "b9e881526173002a6b"},
+		{300, "e0f78315242ab44524"},
+		{301, "f0d683177558a11507"},
+		{400, "9da5e737173b8c9407"},
+	} {
+		if got := fmt.Sprintf("%x", onair[tc.index]); got != tc.want {
+			t.Errorf("on-air frame %d is %s, want %s", tc.index, got, tc.want)
+		}
 	}
 
 	// Every frame must be one the builder accepts, because a frame this tool

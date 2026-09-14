@@ -150,3 +150,33 @@ decode-request 61000C01400148954BE6500310B00777
 #
 # Neither run has been taken yet. The frames are not stored: fifty copies of
 # one tone descriptor is one fact, and it is written above.
+
+# ---------------------------------------------------------------------------
+# Real audio, decoded and heard, 2026-09-14.
+#
+# **The DMR-to-PCM path works on real voice, and the operator listened to it.**
+# 828 vocoder frames from testdata/ipsc/ipsc-master-voice.pcap -- a Motorola
+# master sending real audio off the operator's own XPR8300 -- decoded through
+# the dongle at rate index 33 and written as an 8 kHz WAV.
+#
+#   frames decoded  828        16.56 seconds
+#   peak sample     7191       real speech dynamics, not a tone's flat 8600
+#   data invalid    0          every frame accepted
+#   comfort noise   40         silence frames received, which is a pause
+#   tone frames     0          the voice path throughout
+#
+# **The frame-form question is closed: the on-air form is what the chip wants.**
+# ETSI's 23 correction bits behind the 49 parameter bits, which is why rate
+# index 33 exists. Zero rejections out of 828 is not a marginal result, and the
+# -frame-form params candidate was never needed.
+#
+# The 40 comfort-noise frames are not errors. Table 16's case (a): the decoder
+# reports comfort noise when it *receives* a silence frame, and 0.8 seconds of
+# silence in a 16.5-second transmission is somebody drawing breath.
+#
+# Four of those frames are asserted in cmd/ambe-probe's tests rather than
+# stored here, since they are derived from a capture already in the tree and a
+# second copy would be a second thing to keep true. Frame 0 is the silence
+# frame 0x1F003533F19C1 that internal/dmrfec documents from an unrelated
+# capture on an unrelated protocol -- two independent paths to the same 49 bits.
+

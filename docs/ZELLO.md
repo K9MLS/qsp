@@ -235,6 +235,14 @@ transcoded audio on their machine.
 
 ## What QSP has to build
 
+**Items 1 and 2 are built and proved on hardware** (0355 to 0362, §8q and
+§8r). `internal/ambe` holds the AMBE-3000F field table, the rate table, a
+builder that refuses a malformed packet, and a client that brings the chip up,
+holds one call at a time and carries frames both ways. Real DMR audio has been
+decoded to speech and listened to. What follows is the original list; items 3
+and 4 are the remaining QSP-side work and neither needs a Zello account.
+
+
 1. **An AMBE_AUDIO link.** TLV frames over UDP to Analog_Bridge, with the
    talkgroup and source identity a transcoded call carries.
 2. **Capacity, as a first-class concept.** One dongle is one channel; a second

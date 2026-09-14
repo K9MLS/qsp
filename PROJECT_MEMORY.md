@@ -2053,6 +2053,69 @@ than a wrong case value, a wrong bit, a wrong byte. All four then failed as
 test failures. This is the same trap as §8p's ninth instance, one level up: the
 break itself needs the same scepticism as the code.
 
+## 8r. The vocoder carries a voice, 2026-09-14 night
+
+Supersedes nothing. Closes the transcoder question §8q opened.
+
+**Real DMR audio went through the dongle and came out as speech the operator
+heard.** 828 vocoder frames from `testdata/ipsc/ipsc-master-voice.pcap`, the
+XPR8300's own RF through a Motorola master, decoded at rate index 33 and
+written as a WAV: **zero rejections, zero tone frames, peak 7191**, and forty
+comfort-noise frames that are silence in the transmission rather than errors.
+That is ADR-0061's boundary working on real audio, and the Zello direction end
+to end.
+
+**The frame form is settled: ETSI's on-air 72 bits.** The 49 parameter bits
+with ETSI's 23 correction bits behind them, which is the reason rate index 33
+exists. Both candidates were built and only one was needed; 0 of 828 rejected
+is not a marginal result.
+
+### Four signals, and only the fourth could answer the question
+
+This took four runs and each one answered a different question, which is worth
+recording as a sequence because three of them looked like failures:
+
+1. **One frame of a sine**: peak 3. Looked broken. `DCMODE_OUT` said valid
+   voice, faithfully decoded — an encoder carries state and the first frame out
+   of a reset encodes nothing.
+2. **Fifty frames of a sine**: peaks 8548 to 8611, and frames 2 to 50
+   byte-identical with the decoder calling every one a tone frame. The round
+   trip proved, the **tone path** proved, the voice path untouched. `TD_ENABLE`
+   is 1 at reset whatever the pins say.
+3. **A sweep, and separately tone detection off**: the sweep was still a tone
+   per frame; clearing one bit gave the voice path at a third of the input
+   amplitude, which is a speech model fitting something that is not speech.
+4. **Real voice from a capture already in the tree.** The only signal that
+   could answer it, and it needed no new hardware and no new capture.
+
+**A synthetic signal cannot test a model fitted to human speech**, and three
+runs went into learning that. The generalisation: where a system is a model of
+something specific, the test input has to be that thing, and a signal
+generator's convenience is not evidence about it.
+
+### An extraction that lands on known ground
+
+The first parameter frame out of the capture is `0x1F003533F19C1` — the value
+§8's own FEC package documents as silence, established from Homebrew captures
+off an MMDVM hotspot. **A Motorola repeater over IPSC and a hotspot over
+Homebrew produce the identical 49 bits for silence**, and this is the third
+independent path to it. When an extraction reproduces a number established
+elsewhere, that number is worth asserting: it is what moves first if the
+packing slips.
+
+### Two invalid breaks in one patch, both reading as passes
+
+Of five deliberate breaks, one changed a link type the capture does not use
+and one did not compile. Neither exercised anything and both looked like the
+suite catching them. **A break needs the same scepticism as the code** — §8q
+records the same trap from the evening before, and it recurred within hours.
+
+The specific hole it hid: a frame count asserted as a floor rather than a
+number. Reading the IP header from the wrong offset makes most payloads fail to
+parse and be skipped, enough survive to clear a threshold, and the run reaches
+the dongle with the wrong bytes while the test says nothing. Exact counts where
+an exact count exists.
+
 ## 8i. Where the next session starts, as of 2026-09-04
 
 Read §0, then §6b and §6c, then this. It supersedes §8g; everything §8g settled

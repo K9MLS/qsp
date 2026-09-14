@@ -6,6 +6,36 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A voice came out of the dongle.** 828 vocoder frames of real DMR audio off
+  the operator's XPR8300, decoded at rate index 33 and listened to: **0 of 828
+  rejected**, zero tone frames, peak 7191, and forty comfort-noise frames that
+  are silence in the transmission rather than errors. ADR-0061's boundary
+  working on real audio, and the Zello direction end to end.
+
+  **The frame-form question is closed.** ETSI's on-air 72 bits — the 49
+  parameter bits with ETSI's 23 correction bits behind them, which is why rate
+  index 33 exists. The other candidate was built and never needed.
+
+  **And the extraction lands on known ground.** The capture's first parameter
+  frame is 0x1F003533F19C1, the value `internal/dmrfec` documents as silence
+  from Homebrew captures off an MMDVM hotspot. A Motorola repeater over IPSC
+  and a hotspot over Homebrew produce the identical 49 bits, and this is a
+  third independent path to it — so four of the accepted frames are now
+  asserted, because that is the number that moves first if the packing slips.
+
+### Documentation
+
+- **PROJECT_MEMORY §8r**, and the generalisation worth keeping: **a synthetic
+  signal cannot test a model fitted to human speech.** Four runs, three of
+  which looked like failures and each of which answered a different question —
+  one frame proved a cold encoder, fifty proved the tone path, a cleared bit
+  proved the voice path, and only real voice could answer what the chip does
+  with a voice. Where a system models something specific, the test input has to
+  be that thing.
+
+
+### Added
+
 - **`-capture`: real audio from the operator's own repeater, decoded through
   the dongle and written as a WAV.** `testdata/ipsc/ipsc-master-voice.pcap` is
   a Motorola master sending real voice off an XPR8300, and its frames carry the

@@ -66,6 +66,30 @@ ARM cross-build and a dependency-free install).
 
 ---
 
+## The dongle, proven — and a voice through it
+
+**Real DMR audio decoded to speech the operator heard**, 2026-09-14 night. 828
+vocoder frames from `testdata/ipsc/ipsc-master-voice.pcap` — the XPR8300's own
+RF through a Motorola master — through the dongle at rate index 33: **zero
+rejections, zero tone frames, peak 7191**, and forty comfort-noise frames that
+are pauses in the transmission rather than errors. See §8r.
+
+```sh
+go run ./cmd/ambe-probe -server 192.168.1.247:2460 \
+  -capture testdata/ipsc/ipsc-master-voice.pcap -wav /tmp/onair.wav
+paplay /tmp/onair.wav
+```
+
+**The frame form is settled: ETSI's on-air 72 bits**, the 49 parameter bits
+with ETSI's 23 correction bits behind them, which is the reason rate index 33
+exists. `-frame-form params` was built as the other candidate and never needed.
+
+**Three synthetic runs could not answer this and the fourth signal did.** A
+sine proves the round trip and then the tone path, because `TD_ENABLE` is 1 at
+reset whatever the pins say; clearing it gives the voice path at a third of the
+input amplitude, which is a speech model fitting something that is not speech.
+A model of human speech has to be tested with human speech.
+
 ## The dongle, proven — and the audio path with it
 
 **A speech packet in produces a channel frame out.** On the evening of
