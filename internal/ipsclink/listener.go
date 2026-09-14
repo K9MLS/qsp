@@ -400,8 +400,9 @@ type Listener struct {
 	refusedID atomic.Uint32
 	refusedAt atomic.Int64
 
-	// refusalsMu guards refusals, which records when each kind of refusal was
-	// last logged so that one line stands for the ones after it.
+	// refusalsMu guards refusals, which records when each repeating warning
+	// was last logged so that one line stands for the ones after it. Four
+	// sites use it; see shouldSay.
 	//
 	// **Not an atomic like the two above**, because this is a map keyed by
 	// sender and message type rather than a single most-recent value.
@@ -662,6 +663,13 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		l.log.Info("relaying transmission", attrs...)
 	}
 	for _, id := range encodedNothing {
+		// Once per window per repeater and frame shape: a transmission that
+		// cannot be read fails this way for every frame in it, seventeen a
+		// second for as long as somebody talks.
+		if !l.shouldSay(fmt.Sprintf("norelay|%d|%d|%d", id,
+			int(frame.FrameType), int(frame.DataType)), time.Now()) {
+			continue
+		}
 		l.log.Warn("nothing to relay: the frame could not be read",
 			"radio_id", id, "source", frame.SourceID,
 			"destination", uint32(frame.TargetID),
@@ -677,7 +685,12 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		}
 		for _, m := range o.msgs {
 			if _, err := l.conn.WriteToUDP(m.Marshal(), addr); err != nil {
-				l.log.Warn("could not send to an IPSC peer", "address", o.addr, "error", err)
+				// A repeater that has gone away fails every frame of every
+				// transmission. The address and the error are the fact; the
+				// repetition is not.
+				if l.shouldSay("send|"+o.addr+"|"+err.Error(), time.Now()) {
+					l.log.Warn("could not send to an IPSC peer", "address", o.addr, "error", err)
+				}
 				break
 			}
 		}
@@ -780,15 +793,38 @@ const refusalWindow = 10 * time.Second
 // that the memory is never worth attacking.
 const maxRefusals = 64
 
-// noteRefusal reports whether this refusal should be logged.
+// refusalKey names one refusal for shouldSay.
 //
-// Keyed on sender **and** message type, so a repeater that is refused for both
-// its keepalive and its voice says so once for each rather than merging them:
-// those are different facts about what it is trying to do, and the 2–3
-// September flood carried 0x90 and 0xf0 alternating.
-func (l *Listener) noteRefusal(sender uint32, kind byte, now time.Time) bool {
-	key := fmt.Sprintf("%d|%#02x", sender, kind)
+// Sender **and** message type, so a repeater refused for both its keepalive
+// and its voice says so once for each rather than merging them: those are
+// different facts about what it is trying to do, and the 2–3 September flood
+// carried 0x90 and 0xf0 alternating.
+//
+// **A key builder rather than a wrapper around shouldSay**, so that every
+// rate-limited warning in this file calls shouldSay by name. The gate in
+// refusal_test.go reads the source, and a second entry point would mean
+// teaching it two names — which is how a check starts collecting exceptions.
+func refusalKey(sender uint32, kind byte) string {
+	return fmt.Sprintf("refused|%d|%#02x", sender, kind)
+}
 
+// shouldSay reports whether a repeating warning should be logged this time.
+//
+// # Four sites, not one
+//
+// The first version of this covered the allow-list refusal only, and
+// `unrecognised datagram` was the line directly above it — flooding harder, at
+// about fifty warnings in six seconds from one radio on 2026-09-03. Fixing one
+// and walking past its neighbour is the shape §8a keeps recording, so this is
+// a helper rather than a special case: every warning a peer can provoke at the
+// frame rate goes through it.
+//
+// **The key carries the fact, not the event.** Two refusals of the same sender
+// and message type are one fact repeated; a refusal of a different sender is a
+// new one. Callers build a key that distinguishes what an operator would want
+// told apart and nothing finer, because a key that includes a timestamp or a
+// frame number defeats the whole thing.
+func (l *Listener) shouldSay(key string, now time.Time) bool {
 	l.refusalsMu.Lock()
 	defer l.refusalsMu.Unlock()
 	if l.refusals == nil {
@@ -849,8 +885,18 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 	if err != nil {
 		l.unparsed.Add(1)
 		id, _ := ipsc.SenderIDOf(raw)
-		l.log.Warn("unrecognised datagram", "from", from.String(), "sender_id", id,
-			"bytes", len(raw), "error", err)
+		// **Once per window** (2026-09-14). A repeater sending a message type
+		// this build does not know sends it at the frame rate: radio 999998
+		// produced about fifty of these in six seconds on 2026-09-03, all
+		// `leading byte 0x81`.
+		//
+		// Keyed on the sender and the error, so a *second* unknown type from
+		// the same radio is still reported — that is a new fact, and it is
+		// exactly the kind this project learns protocols from.
+		if l.shouldSay(fmt.Sprintf("unparsed|%d|%v", id, err), now) {
+			l.log.Warn("unrecognised datagram", "from", from.String(), "sender_id", id,
+				"bytes", len(raw), "error", err)
+		}
 		return
 	}
 	if allowed := l.allowedSet(); len(allowed) > 0 && !allowed[msg.SenderID] {
@@ -873,7 +919,7 @@ func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now t
 		// `internal/peers` learned this for routing drops and P25 counts
 		// refusals rather than logging each; this listener got neither. §8a's
 		// recurring shape, in the logging direction.
-		if l.noteRefusal(msg.SenderID, byte(msg.Kind), now) {
+		if l.shouldSay(refusalKey(msg.SenderID, byte(msg.Kind)), now) {
 			l.log.Warn("ignoring peer not on the allow list", "from", from.String(),
 				"sender_id", msg.SenderID, "type", fmt.Sprintf("%#02x", byte(msg.Kind)))
 		}

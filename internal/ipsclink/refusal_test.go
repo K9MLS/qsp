@@ -1,6 +1,8 @@
 package ipsclink
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -21,7 +23,7 @@ func TestARefusedPeerIsLoggedOncePerWindow(t *testing.T) {
 	l := &Listener{}
 	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 
-	if !l.noteRefusal(3155412, 0x90, at) {
+	if !l.shouldSay(refusalKey(3155412, 0x90), at) {
 		t.Fatal("the first refusal was not logged; a refusal an operator has "+
 			"never seen must always be reported", 0)
 	}
@@ -29,7 +31,7 @@ func TestARefusedPeerIsLoggedOncePerWindow(t *testing.T) {
 	// A repeater polls every ten seconds and QSP sees several message types
 	// between polls. None of these is news.
 	for i := 1; i < 60; i++ {
-		if l.noteRefusal(3155412, 0x90, at.Add(time.Duration(i)*100*time.Millisecond)) {
+		if l.shouldSay(refusalKey(3155412, 0x90), at.Add(time.Duration(i)*100*time.Millisecond)) {
 			t.Fatalf("refusal %d in six seconds was logged again; one line "+
 				"stands for the window", i)
 		}
@@ -46,14 +48,14 @@ func TestADifferentMessageTypeIsItsOwnFact(t *testing.T) {
 	l := &Listener{}
 	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 
-	if !l.noteRefusal(3155412, 0x90, at) {
+	if !l.shouldSay(refusalKey(3155412, 0x90), at) {
 		t.Fatal("the first refusal was not logged")
 	}
-	if !l.noteRefusal(3155412, 0xf0, at.Add(time.Second)) {
+	if !l.shouldSay(refusalKey(3155412, 0xf0), at.Add(time.Second)) {
 		t.Error("a different message type was swallowed by the window for the " +
 			"first; they are different facts")
 	}
-	if !l.noteRefusal(999998, 0x90, at.Add(time.Second)) {
+	if !l.shouldSay(refusalKey(999998, 0x90), at.Add(time.Second)) {
 		t.Error("a different sender was swallowed by the window for the first; " +
 			"a second unauthorised repeater must be reported")
 	}
@@ -68,15 +70,61 @@ func TestTheWindowExpires(t *testing.T) {
 	l := &Listener{}
 	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 
-	if !l.noteRefusal(3155412, 0x90, at) {
+	if !l.shouldSay(refusalKey(3155412, 0x90), at) {
 		t.Fatal("the first refusal was not logged")
 	}
-	if l.noteRefusal(3155412, 0x90, at.Add(refusalWindow-time.Millisecond)) {
+	if l.shouldSay(refusalKey(3155412, 0x90), at.Add(refusalWindow-time.Millisecond)) {
 		t.Error("a refusal just inside the window was logged")
 	}
-	if !l.noteRefusal(3155412, 0x90, at.Add(refusalWindow)) {
+	if !l.shouldSay(refusalKey(3155412, 0x90), at.Add(refusalWindow)) {
 		t.Error("a refusal after the window was not logged; a peer that is " +
 			"still refused must keep saying so")
+	}
+}
+
+// TestEveryWarningAPeerCanProvokeIsRateLimited is the check that stops this
+// being fixed one line at a time.
+//
+// The first version of the window covered the allow-list refusal and left
+// `unrecognised datagram` — the line directly above it in the same function,
+// flooding harder. This reads the source and requires that any warning inside
+// a per-datagram or per-frame path is guarded.
+//
+// **Source inspection, with its limits stated.** It cannot tell whether a
+// guard is correct, only that one is there. A wrong key would pass this and
+// still flood. The named set is what a peer can provoke at the frame rate;
+// per-call warnings like a lost terminator are deliberately absent, because
+// one line per transmission is the right amount.
+func TestEveryWarningAPeerCanProvokeIsRateLimited(t *testing.T) {
+	src, err := os.ReadFile("listener.go")
+	if err != nil {
+		t.Fatalf("reading listener.go: %v", err)
+	}
+	text := string(src)
+
+	for _, msg := range []string{
+		"ignoring peer not on the allow list",
+		"unrecognised datagram",
+		"nothing to relay: the frame could not be read",
+		"could not send to an IPSC peer",
+	} {
+		// **The log call, not the first mention.** This looked for the
+		// message text anywhere, and the first hit was prose rather than the
+		// `log.Warn` — so removing a guard left the check green. Caught by
+		// deliberately breaking the `unrecognised datagram` site and watching
+		// nothing happen: the ninth instance of a test that cannot fail.
+		i := strings.Index(text, `l.log.Warn("`+msg+`"`)
+		if i < 0 {
+			t.Errorf("no log.Warn emits %q; this test needs rewriting", msg)
+			continue
+		}
+		// The guard is the nearest shouldSay above the line.
+		before := text[max(0, i-700):i]
+		if !strings.Contains(before, "shouldSay") {
+			t.Errorf("%q is logged without a rate limit; a peer can provoke it "+
+				"at the frame rate and one sender produced thousands of lines "+
+				"on 2026-09-02", msg)
+		}
 	}
 }
 
@@ -89,7 +137,7 @@ func TestTheRefusalMapIsBounded(t *testing.T) {
 	at := time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)
 
 	for i := range uint32(maxRefusals * 4) {
-		l.noteRefusal(i, 0x90, at)
+		l.shouldSay(refusalKey(i, 0x90), at)
 	}
 
 	l.refusalsMu.Lock()

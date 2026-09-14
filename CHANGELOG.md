@@ -6,6 +6,48 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The other three flooding warnings in the IPSC listener.** Patch 0347 fixed
+  the allow-list refusal and walked past `unrecognised datagram` — **the line
+  directly above it, in the same function, flooding harder**: about fifty
+  warnings in six seconds from radio 999998 on 2026-09-03, all
+  `leading byte 0x81`.
+
+  Two more can do the same. `nothing to relay: the frame could not be read`
+  fires per frame per repeater, so an unreadable transmission writes seventeen
+  lines a second for as long as somebody talks. `could not send to an IPSC
+  peer` fires per frame per peer, so a repeater that has gone away fails every
+  frame of every transmission.
+
+  All four now go through one helper. Each key carries the fact rather than the
+  event: sender and message type for a refusal, sender and error for an
+  unparsed datagram, repeater and frame shape for an unreadable frame, address
+  and error for a failed send. **Fixing one site and leaving its neighbour is
+  §8a's shape**, so this is a helper rather than four special cases.
+
+### Testing
+
+- **A gate that stops this being fixed one line at a time.** It reads the
+  source and requires a rate limit around every warning a peer can provoke at
+  the frame rate. Per-call warnings — a lost terminator, an over-long
+  transmission — are deliberately outside it, because one line per transmission
+  is the right amount.
+
+  **Its first version could not fail.** It searched for the message text
+  anywhere in the file and the first hit was prose rather than the `log.Warn`,
+  so removing a guard left it green. Caught by deliberately breaking the
+  `unrecognised datagram` site and watching nothing happen — the ninth recorded
+  instance of a test that cannot fail, and the second in two days found only
+  because the break was tried rather than assumed.
+
+  It now matches the log call itself, and both breaking experiments go red.
+
+- **`noteRefusal` became `refusalKey`.** The wrapper meant the refusal site did
+  not call `shouldSay` by name, so the source-reading gate reported it as
+  unguarded. Teaching the check a second name is how a check starts collecting
+  exceptions; removing the indirection was the smaller change.
+
+### Fixed
+
 - **A refused IPSC peer wrote a warning for every datagram.** A repeater not on
   the allow list keeps polling, and each poll was a line: production carried
   thousands of identical `ignoring peer not on the allow list` warnings from
