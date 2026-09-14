@@ -247,3 +247,40 @@ func lookup(kind byte, id byte) (Field, bool) {
 	}
 	return Field{}, false
 }
+
+// TotalRates is the total bit rate each built-in rate index selects, in bits
+// per second, from Table 115 (printed pages 89 and 90).
+//
+// **It exists so that a frame can be checked against the rate that was asked
+// for.** An acknowledgement to PKT_RATET says a field arrived; the size of the
+// frame that comes back says what rate is actually in effect. On 2026-09-14 a
+// probe run encoded fifty frames of 48 bits — 2400 bps, index 0, the board's
+// boot rate — because the code path taken had skipped the rate packet
+// entirely, and nothing noticed until the frame widths were read by eye.
+//
+// Indices 0 to 15 are the AMBE-1000 rates, 16 to 32 the AMBE-2000 rates, and
+// 33 to 61 the AMBE-3000's own. Index 33 is the one interoperable with DMR and
+// APCO P25 half rate.
+var TotalRates = [62]int{
+	2400, 3600, 4800, 4800, 9600, 2400, 9600, 4800,
+	4800, 7200, 6400, 3600, 8000, 8000, 4000, 4000,
+	3600, 4000, 4800, 6400, 8000, 9600, 4000, 4800,
+	4800, 4800, 6400, 7200, 8000, 9600, 9600, 2000,
+	6400, 3600, 2450, 3400, 2250, 2400, 3000, 3600,
+	4000, 4400, 4800, 6400, 7200, 8000, 9600, 2700,
+	3600, 4000, 4800, 4400, 4800, 6000, 7200, 4000,
+	4800, 4800, 6400, 7200, 8000, 9600,
+}
+
+// FrameBitsForRate returns how many channel bits a 20 ms frame carries at a
+// built-in rate index, and whether the index is one the manual defines.
+//
+// A frame is 20 ms, so the count is the total rate divided by fifty. Every
+// rate in Table 115 divides exactly, including the odd ones — 2450 bps is 49
+// bits and 2250 is 45.
+func FrameBitsForRate(index int) (int, bool) {
+	if index < 0 || index >= len(TotalRates) {
+		return 0, false
+	}
+	return TotalRates[index] / 50, true
+}

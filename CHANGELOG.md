@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The audio round trip works.** Fifty consecutive frames encoded and decoded
+  back in order: peaks of 683, 7293, 8080 and then 7944 to 8796 against an
+  input of 8000. **Warm-up is two frames**, which is the whole explanation of
+  the near-silent single-frame result — an AMBE encoder carries state and one
+  isolated frame out of a freshly reset one encodes approximately nothing.
+
+- **Table 115's rate table, as `TotalRates` and `FrameBitsForRate`.** A frame
+  is 20 ms, so its bit count is the total rate divided by fifty, and every rate
+  in the table divides exactly — 2450 bps is 49 bits, 2250 is 45.
+
+### Fixed
+
+- **The round trip skipped the precondition the same program prints.** The
+  `-roundtrip` path returned before the block that sends `PKT_RATET` and
+  `PKT_SPCHFMT`, so a fifty-frame run went out at 2400 bps — 48-bit frames,
+  Table 115 index 0, the board's boot rate with every RATE pin low — and every
+  reply came back with no decoder flags. Four lines earlier the same output had
+  said that setting the rate is a precondition for audio and not a refinement.
+
+  **A precondition a code path can skip is not a precondition**, so it now
+  lives with the thing that needs it: the round trip sends both packets itself
+  and verifies each is accepted.
+
+  **And the acknowledgement could never have caught it.** `09 00` says a field
+  arrived. The width of the frame that comes back is the only evidence of the
+  rate in effect, which is why that is now derived from Table 115 and checked
+  on every frame rather than read by eye off a column of hex.
+
+
 ### Fixed
 
 - **A flaky test, and the flake was in the test double.** The concurrency

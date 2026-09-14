@@ -96,3 +96,32 @@ channel-reply 61000B010148954BE6500310B00777
 # a transmission. `ambe-probe -roundtrip N` does that.
 
 decode-request 61000C01400148954BE6500310B00777
+
+# ---------------------------------------------------------------------------
+# The audio round trip, 2026-09-14, fifty consecutive frames.
+#
+# **It works.** `ambe-probe -roundtrip 50` encoded fifty 20 ms frames of a
+# 1 kHz tone at amplitude 8000 as a continuous stream, then decoded them back
+# in the order they were produced. Output peaks: 683, 7293, 8080, and then
+# between 7944 and 8796 for the remaining forty-seven. **Warm-up is two
+# frames**, which is what the near-silent single-frame result was all along.
+# The slight overshoot above 8000 is a lossy resynthesis reconstructing a
+# spectral model, and it is nowhere near the 32767 that would clip.
+#
+# **And the run was at the wrong rate, because the probe skipped its own
+# precondition.** The frames were six bytes -- 48 bits, 2400 bps, Table 115
+# index 0, which is this board's boot rate with every RATE pin low. The
+# -roundtrip code path returned before the block that sent PKT_RATET and
+# PKT_SPCHFMT, which is why every row read "no flags requested" too. The same
+# program had printed, four lines earlier, that setting the rate is a
+# precondition for audio and not a refinement.
+#
+# The rate acknowledgement could not have caught it: `09 00` says a field
+# arrived. **The frame width is the only evidence of the rate in effect**, so
+# Table 115 is now in the tree as TotalRates and the round trip refuses a frame
+# whose width disagrees with the index it asked for.
+#
+# Frames are not stored here. Fifty six-byte frames at a rate nobody wants are
+# not a fixture; the two frames worth keeping are channel-reply above, at 72
+# bits, and whatever the first correct 72-bit run produces.
+

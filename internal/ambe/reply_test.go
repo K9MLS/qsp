@@ -398,3 +398,69 @@ func TestTheConfigurationBytesFromTheBenchDecode(t *testing.T) {
 		t.Error("parity read as enabled; CFG2 0xec has bit 4 low")
 	}
 }
+
+// TestAFrameWidthIdentifiesTheRateInEffect is the check that would have caught
+// a probe run at the wrong rate.
+//
+// **A rate acknowledgement says a field arrived and nothing more.** On
+// 2026-09-14 fifty frames were encoded at 48 bits — 2400 bps, index 0, the
+// board's boot rate — because the code path taken had skipped PKT_RATET, and
+// the only evidence was the width of the frames. Table 115 makes that width a
+// derivable number rather than something to notice by eye.
+func TestAFrameWidthIdentifiesTheRateInEffect(t *testing.T) {
+	// The two rates this project has now seen on the wire.
+	for _, tc := range []struct {
+		index int
+		bits  int
+		why   string
+	}{
+		{RateIndexDMR, 72, "3600 bps, the DMR and P25 half-rate index"},
+		{0, 48, "2400 bps, this board's boot rate with every RATE pin low"},
+	} {
+		got, ok := FrameBitsForRate(tc.index)
+		if !ok {
+			t.Errorf("rate index %d is not in Table 115", tc.index)
+			continue
+		}
+		if got != tc.bits {
+			t.Errorf("rate index %d gives %d bits per frame, want %d — %s",
+				tc.index, got, tc.bits, tc.why)
+		}
+	}
+
+	// The observed channel frame at index 33 is 72 bits, and that is the
+	// evidence tying the table to the hardware.
+	frame, ok := ChannelFrameFromResponse(observed(t)["channel-reply"])
+	if !ok {
+		t.Fatal("the observed channel reply was not decoded")
+	}
+	want, _ := FrameBitsForRate(RateIndexDMR)
+	if frame.Bits != want {
+		t.Errorf("the dongle returned %d bits at rate index %d and Table 115 "+
+			"gives %d", frame.Bits, RateIndexDMR, want)
+	}
+	if frame.Rate() != TotalRates[RateIndexDMR] {
+		t.Errorf("the frame is %d bps and Table 115 gives %d for index %d",
+			frame.Rate(), TotalRates[RateIndexDMR], RateIndexDMR)
+	}
+
+	// Every rate in the table divides into whole bits per 20 ms frame. A rate
+	// that did not would mean the table had been mistyped.
+	for i, total := range TotalRates {
+		if total%50 != 0 {
+			t.Errorf("rate index %d is %d bps, which is not a whole number of "+
+				"bits in a 20 ms frame", i, total)
+		}
+		if total < 2000 || total > 9600 {
+			t.Errorf("rate index %d is %d bps, outside the 2000 to 9600 the "+
+				"part supports", i, total)
+		}
+	}
+
+	if _, ok := FrameBitsForRate(62); ok {
+		t.Error("rate index 62 was accepted; Table 115 stops at 61")
+	}
+	if _, ok := FrameBitsForRate(-1); ok {
+		t.Error("a negative rate index was accepted")
+	}
+}

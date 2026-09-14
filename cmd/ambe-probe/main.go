@@ -128,7 +128,7 @@ func main() {
 	}
 
 	if *roundtrip > 0 {
-		roundTrip(conn, *wait, *roundtrip, *server)
+		roundTrip(conn, *wait, *roundtrip, *rate, *server)
 		return
 	}
 
@@ -325,9 +325,48 @@ func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, o
 // fifty frames a second for the length of a transmission. This does that and
 // prints one line per frame, because a hundred hex dumps of 329 bytes is not a
 // result anybody reads.
-func roundTrip(conn net.Conn, wait time.Duration, frames int, server string) {
-	fmt.Printf("\n--- %d frames, encoded then decoded in order ---\n\n", frames)
-	fmt.Printf("  %-6s %-20s %8s %8s  %s\n", "frame", "channel data", "in", "out", "decoder says")
+func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, server string) {
+	// **This sets the rate and the flags itself.** The first version of this
+	// returned before the block that sent them, so a fifty-frame run went out
+	// at the board's boot rate of 2400 bps and every reply came back with no
+	// decoder flags — after the same program had printed that setting the rate
+	// is a precondition for audio. A precondition that a code path can skip is
+	// not a precondition, so it lives with the thing that needs it.
+	for _, step := range []struct {
+		what  string
+		field byte
+		args  []byte
+	}{
+		{"decoder flags", 0x16, ambe.SpchFmtAlwaysDCMode},
+		{"rate index", 0x09, []byte{byte(rate)}},
+	} {
+		pkt, err := ambe.Build(ambe.TypeControl, ambe.Val(step.field, step.args...))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
+		reply, out := quiet(conn, wait, pkt)
+		if out == unreachable {
+			refused(server)
+		}
+		field, status, ok := ambe.AckedField(reply)
+		if out != answered || !ok || field != step.field || status != 0x00 {
+			fmt.Fprintf(os.Stderr, "ambe-probe: the %s was not accepted: %x\n",
+				step.what, reply)
+			os.Exit(1)
+		}
+	}
+
+	wantBits, ok := ambe.FrameBitsForRate(rate)
+	if !ok {
+		fmt.Fprintf(os.Stderr, "ambe-probe: rate index %d is not in Table 115\n", rate)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n--- %d frames at rate index %d, %d bps, %d bits a frame ---\n\n",
+		frames, rate, ambe.TotalRates[rate], wantBits)
+	fmt.Printf("  %-6s %-20s %5s %8s %8s  %s\n",
+		"frame", "channel data", "bits", "in", "out", "decoder says")
 
 	samples := sine(1000)
 	speech, err := ambe.SpeechD(samples)
@@ -365,6 +404,16 @@ func roundTrip(conn net.Conn, wait time.Duration, frames int, server string) {
 			fmt.Printf("  %-6d a speech packet was answered by %x\n", i+1, reply)
 			return
 		}
+		// **The frame width is the only evidence of the rate in effect.** The
+		// acknowledgement above says a field arrived; 48 bits where 72 was
+		// asked for says the rate did not take, and that is what a run at the
+		// boot rate looked like before anything checked.
+		if frame.Bits != wantBits {
+			fmt.Printf("  %-6d %-20x %5d  the rate did not take: %d bps where "+
+				"index %d is %d\n", i+1, frame.Data, frame.Bits,
+				frame.Rate(), rate, ambe.TotalRates[rate])
+			return
+		}
 		encoded = append(encoded, frame)
 	}
 
@@ -386,21 +435,23 @@ func roundTrip(conn net.Conn, wait time.Duration, frames int, server string) {
 			refused(server)
 		}
 		if out != answered {
-			fmt.Printf("  %-6d %-20x %8d %8s\n", i+1, frame.Data, inPeak, "no reply")
+			fmt.Printf("  %-6d %-20x %5d %8d %8s\n",
+				i+1, frame.Data, frame.Bits, inPeak, "no reply")
 			continue
 		}
 		speechReply, ok := ambe.SpeechReplyFromResponse(reply)
 		if !ok {
-			fmt.Printf("  %-6d %-20x %8d  a channel packet was answered by %d bytes "+
-				"this build does not decode\n", i+1, frame.Data, inPeak, len(reply))
+			fmt.Printf("  %-6d %-20x %5d %8d  a channel packet was answered by "+
+				"%d bytes this build does not decode\n",
+				i+1, frame.Data, frame.Bits, inPeak, len(reply))
 			continue
 		}
 		says := "no flags requested"
 		if speechReply.Reported {
 			says = speechReply.Flags.String()
 		}
-		fmt.Printf("  %-6d %-20x %8d %8d  %s\n",
-			i+1, frame.Data, inPeak, speechReply.Peak(), says)
+		fmt.Printf("  %-6d %-20x %5d %8d %8d  %s\n",
+			i+1, frame.Data, frame.Bits, inPeak, speechReply.Peak(), says)
 	}
 
 	fmt.Printf("\n  **Read the out column across the run, not any one row.** If it " +
