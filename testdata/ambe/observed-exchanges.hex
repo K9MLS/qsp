@@ -125,3 +125,28 @@ decode-request 61000C01400148954BE6500310B00777
 # not a fixture; the two frames worth keeping are channel-reply above, at 72
 # bits, and whatever the first correct 72-bit run produces.
 
+# ---------------------------------------------------------------------------
+# The same run at the DMR rate, 2026-09-14, and what it actually proved.
+#
+# Fifty frames at rate index 33: 72 bits each, output peaks 8548 to 8611
+# against an input of 8000 from frame 2 onward. **The round trip works at the
+# rate QSP wants**, and frame 1 came back as `954be6500310b00777` -- bit for
+# bit the frame captured hours earlier from the same input. The chip is
+# deterministic from a reset, which makes every future capture comparable.
+#
+# **But frames 2 to 50 were byte-identical**, `ece88ce928ac00c442`, and the
+# decoder reported `decoded as a tone frame` on every one. TD_ENABLE is
+# initialised to 1 at reset whatever the configuration pins say (Table 13), so
+# the encoder recognised the steady 1 kHz sine as a tone and emitted a tone
+# descriptor. Speech coded at 3600 bps changes every 20 ms; a descriptor does
+# not.
+#
+# So the tone path is proved and **the voice path is not**. A steady sine is
+# the wrong signal for a speech coder, which the bench showed rather than
+# anybody arguing. Two ways to separate them, one variable each:
+# `-signal sweep` changes the input and no setting, and `-tone-detect=false`
+# changes one bit -- 0x1000 to 0x0000 on this board, since every pin-derived
+# bit is already low -- and no input.
+#
+# Neither run has been taken yet. The frames are not stored: fifty copies of
+# one tone descriptor is one fact, and it is written above.

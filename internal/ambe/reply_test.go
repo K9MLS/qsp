@@ -464,3 +464,76 @@ func TestAFrameWidthIdentifiesTheRateInEffect(t *testing.T) {
 		t.Error("a negative rate index was accepted")
 	}
 }
+
+// TestTheEncoderControlWordNamesTheBitsTableThirteenGives is the word that
+// explains fifty identical frames.
+//
+// On 2026-09-14 a run of fifty frames of a 1 kHz sine came back byte-identical
+// from frame 2 onward, the decoder reporting a tone frame each time. Tone
+// detection is initialised to 1 at reset whatever the pins say (Table 13), so
+// the encoder was emitting a tone descriptor rather than coding speech — the
+// round trip was proved and the voice path was not.
+//
+// The bit positions are literals from Table 13 rather than expressions over
+// the constants, because a test that builds its fixture from the value it
+// asserts is the shape this project has now found fourteen times.
+func TestTheEncoderControlWordNamesTheBitsTableThirteenGives(t *testing.T) {
+	for _, tc := range []struct {
+		bit  ECMode
+		want uint16
+		name string
+	}{
+		{ECNoiseSuppressor, 0x0040, "NS_ENABLE, bit 6"},
+		{ECCompandALaw, 0x0080, "CP_SELECT, bit 7"},
+		{ECCompand, 0x0100, "CP_ENABLE, bit 8"},
+		{ECEchoSuppressor, 0x0200, "ES_ENABLE, bit 9"},
+		{ECDiscontinuous, 0x0800, "DTX_ENABLE, bit 11"},
+		{ECToneDetect, 0x1000, "TD_ENABLE, bit 12"},
+		{ECEchoCanceller, 0x2000, "EC_ENABLE, bit 13"},
+		{ECToneSend, 0x4000, "TS_ENABLE, bit 14"},
+	} {
+		if uint16(tc.bit) != tc.want {
+			t.Errorf("%s is %#04x, want %#04x", tc.name, uint16(tc.bit), tc.want)
+		}
+	}
+
+	// The reserved bits must stay clear, or the manual warns of unexpected
+	// results.
+	const reserved = 0x843F
+	for _, m := range []ECMode{ECModeAtReset, ECToneDetect | ECNoiseSuppressor} {
+		if uint16(m)&reserved != 0 {
+			t.Errorf("control word %#04x sets a reserved bit", uint16(m))
+		}
+	}
+
+	// This board's reset state: every pin-derived bit low, tone detection on.
+	if ECModeAtReset != ECToneDetect {
+		t.Errorf("the reset control word is %#04x, want tone detection alone; "+
+			"CFG0 0x05 and CFG1 0x00 leave every pin-derived bit clear",
+			uint16(ECModeAtReset))
+	}
+
+	// The field on the wire: identifier then the word, most significant byte
+	// first, which is the convention for every 16-bit value in a packet.
+	pkt, err := Build(TypeControl, ECModeField(ECToneDetect))
+	if err != nil {
+		t.Fatalf("building PKT_ECMODE: %v", err)
+	}
+	if got, want := hex.EncodeToString(pkt), "6100030005"+"1000"; got != want {
+		t.Errorf("a tone-detection control packet is %s, want %s", got, want)
+	}
+	off, err := Build(TypeControl, ECModeField(0))
+	if err != nil {
+		t.Fatalf("building PKT_ECMODE: %v", err)
+	}
+	if got, want := hex.EncodeToString(off), "6100030005"+"0000"; got != want {
+		t.Errorf("a control packet with nothing enabled is %s, want %s", got, want)
+	}
+
+	if got := ECModeAtReset.String(); !strings.Contains(got, "tone detection") {
+		t.Errorf("the reset word describes as %q", got)
+	}
+	if got := ECMode(0).String(); got != "nothing enabled" {
+		t.Errorf("an empty word describes as %q", got)
+	}
+}

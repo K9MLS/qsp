@@ -41,6 +41,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -77,6 +78,15 @@ func main() {
 		"send the frame this many times; an AMBE decoder carries state and the "+
 			"first frame after an init is commonly ramped or muted, so one frame "+
 			"cannot tell a silent decoder from a cold one")
+	toneDetect := flag.Bool("tone-detect", true,
+		"leave the encoder's tone detection on, as a reset leaves it; false sends "+
+			"PKT_ECMODE with TD_ENABLE cleared, which is the one-variable "+
+			"differential that separates the vocoder's speech path from its "+
+			"tone path")
+	signal := flag.String("signal", "sine",
+		"the test signal: sine is a steady 1 kHz tone, which a reset-state "+
+			"encoder codes as a tone rather than as speech; sweep runs 300 Hz to "+
+			"3 kHz across the run and cannot be a single tone descriptor")
 	roundtrip := flag.Int("roundtrip", 0,
 		"encode this many consecutive 20 ms frames and decode them back in "+
 			"order, reporting each frame compactly; a vocoder carries state and "+
@@ -128,7 +138,7 @@ func main() {
 	}
 
 	if *roundtrip > 0 {
-		roundTrip(conn, *wait, *roundtrip, *rate, *server)
+		roundTrip(conn, *wait, *roundtrip, *rate, *signal, *toneDetect, *server)
 		return
 	}
 
@@ -325,19 +335,25 @@ func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, o
 // fifty frames a second for the length of a transmission. This does that and
 // prints one line per frame, because a hundred hex dumps of 329 bytes is not a
 // result anybody reads.
-func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, server string) {
+func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, signal string, toneDetect bool, server string) {
 	// **This sets the rate and the flags itself.** The first version of this
 	// returned before the block that sent them, so a fifty-frame run went out
 	// at the board's boot rate of 2400 bps and every reply came back with no
 	// decoder flags — after the same program had printed that setting the rate
 	// is a precondition for audio. A precondition that a code path can skip is
 	// not a precondition, so it lives with the thing that needs it.
+	ecmode := ambe.ECModeAtReset
+	if !toneDetect {
+		ecmode &^= ambe.ECToneDetect
+	}
+
 	for _, step := range []struct {
 		what  string
 		field byte
 		args  []byte
 	}{
 		{"decoder flags", 0x16, ambe.SpchFmtAlwaysDCMode},
+		{"encoder control word", 0x05, []byte{byte(ecmode >> 8), byte(ecmode)}},
 		{"rate index", 0x09, []byte{byte(rate)}},
 	} {
 		pkt, err := ambe.Build(ambe.TypeControl, ambe.Val(step.field, step.args...))
@@ -363,34 +379,34 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, server strin
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n--- %d frames at rate index %d, %d bps, %d bits a frame ---\n\n",
+	fmt.Printf("\n--- %d frames at rate index %d, %d bps, %d bits a frame ---\n",
 		frames, rate, ambe.TotalRates[rate], wantBits)
+	fmt.Printf("    signal %s, encoder: %s\n\n", signal, ecmode)
 	fmt.Printf("  %-6s %-20s %5s %8s %8s  %s\n",
 		"frame", "channel data", "bits", "in", "out", "decoder says")
 
-	samples := sine(1000)
-	speech, err := ambe.SpeechD(samples)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
-		os.Exit(1)
-	}
-	speechPacket, err := ambe.Build(ambe.TypeSpeech, ambe.Val(fieldChannel0), speech)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
-		os.Exit(1)
-	}
-
-	inPeak := 0
-	for _, v := range samples {
-		if int(v) > inPeak {
-			inPeak = int(v)
-		}
-	}
-
 	// Encode the whole run first, so the encoder sees a continuous stream
 	// rather than an encode and a decode alternating on one chip.
+	inPeak := 0
+	identical := 0
 	encoded := make([]ambe.ChannelFrame, 0, frames)
 	for i := 0; i < frames; i++ {
+		samples := frameOf(signal, i, frames)
+		for _, v := range samples {
+			if int(v) > inPeak {
+				inPeak = int(v)
+			}
+		}
+		speech, err := ambe.SpeechD(samples)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
+		speechPacket, err := ambe.Build(ambe.TypeSpeech, ambe.Val(fieldChannel0), speech)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+			os.Exit(1)
+		}
 		reply, out := quiet(conn, wait, speechPacket)
 		if out == unreachable {
 			refused(server)
@@ -413,6 +429,9 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, server strin
 				"index %d is %d\n", i+1, frame.Data, frame.Bits,
 				frame.Rate(), rate, ambe.TotalRates[rate])
 			return
+		}
+		if n := len(encoded); n > 0 && bytes.Equal(encoded[n-1].Data, frame.Data) {
+			identical++
 		}
 		encoded = append(encoded, frame)
 	}
@@ -454,11 +473,61 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, server strin
 			i+1, frame.Data, frame.Bits, inPeak, speechReply.Peak(), says)
 	}
 
+	// **Identical consecutive frames are the tell.** Speech coded at 3600 bps
+	// changes every 20 ms; a tone descriptor does not. Fifty frames of a
+	// steady sine came back byte-identical from frame 2 onward on 2026-09-14,
+	// with the decoder reporting a tone frame each time, which is the encoder
+	// describing a tone rather than coding speech.
+	fmt.Printf("\n  %-30s %d of %d consecutive frames were byte-identical\n",
+		"repetition", identical, len(encoded)-1)
+	if len(encoded) > 2 && identical > len(encoded)/2 {
+		fmt.Printf("  %-30s that is a tone descriptor rather than coded speech; "+
+			"try -signal sweep, or -tone-detect=false to code the same input "+
+			"as voice\n", "")
+	}
 	fmt.Printf("\n  **Read the out column across the run, not any one row.** If it " +
-		"climbs toward the in column the vocoder is warming up and the round " +
-		"trip works; if it stays near zero with the decoder reporting valid " +
-		"voice frames, the encoder is producing silence and the input is the " +
-		"thing to change.\n")
+		"climbs toward the in column the round trip works. Frames that never " +
+		"change are the encoder describing a tone rather than coding speech, " +
+		"whatever the amplitude says.\n")
+}
+
+// frameOf builds one 20 ms frame of a named test signal.
+//
+// **A steady sine is the wrong signal for a speech coder**, which the bench
+// showed rather than argued: a reset-state encoder has tone detection on and
+// codes 1 kHz as a tone descriptor. A sweep cannot be one descriptor, so it
+// exercises the path a voice would take without changing any setting — the
+// signal and the configuration are two separate variables and this project
+// changes one at a time.
+func frameOf(signal string, index, frames int) []int16 {
+	switch signal {
+	case "sweep":
+		// 300 Hz to 3 kHz across the run, which spans the voice band the
+		// front end is specified for.
+		span := float64(frames - 1)
+		if span < 1 {
+			span = 1
+		}
+		hz := 300 + (3000-300)*float64(index)/span
+		return sineFrom(hz, index)
+	default:
+		return sineFrom(1000, index)
+	}
+}
+
+// sineFrom is one frame of a tone, continuous with the frames before it so
+// that a run does not restart its phase every 20 ms.
+//
+// A phase discontinuity every frame is a click, and a click is a transient the
+// coder would spend bits on — a second variable nobody asked for.
+func sineFrom(hz float64, index int) []int16 {
+	out := make([]int16, samplesPerFrame)
+	base := index * samplesPerFrame
+	for i := range out {
+		t := float64(base+i) / 8000
+		out[i] = int16(8000 * math.Sin(2*math.Pi*hz*t))
+	}
+	return out
 }
 
 // quiet sends one packet and returns its reply without printing anything.

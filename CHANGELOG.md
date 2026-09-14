@@ -6,6 +6,42 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`-signal sweep` and `-tone-detect`, because the sine proved the wrong
+  thing.** The fifty-frame run at the DMR rate worked — 72-bit frames, peaks
+  of 8548 to 8611 against an input of 8000 — and frame 1 came back bit for bit
+  identical to the frame captured hours earlier from the same input, so the
+  chip is deterministic from a reset.
+
+  **Frames 2 to 50 were byte-identical and the decoder called every one a tone
+  frame.** `TD_ENABLE` is initialised to 1 at reset whatever the pins say
+  (Table 13), so the encoder recognised a steady 1 kHz sine as a tone and
+  emitted a descriptor. Speech at 3600 bps changes every 20 ms; a descriptor
+  does not. The tone path is proved and the voice path is not.
+
+  Two separations, one variable each: a sweep from 300 Hz to 3 kHz changes the
+  input and no setting, and clearing tone detection changes one bit — 0x1000 to
+  0x0000 on this board — and no input. The round trip now counts identical
+  consecutive frames and says which to try.
+
+- **`ECMode`: the encoder control word from Table 13**, with the reset state
+  this board actually has, so the differential moves exactly one bit and can be
+  shown to.
+
+### Fixed
+
+- **A phase-continuity check that could not fail.** The signal generator has to
+  carry phase across frames or every boundary is a click the coder spends bits
+  on — and at 1 kHz a 20 ms frame is exactly twenty cycles, so a generator that
+  restarts each frame produces identical bytes and the check passed with the
+  phase deliberately broken. Every multiple of 50 Hz has the same property. It
+  is now checked at 1025 Hz, twenty and a half cycles, where a continuous frame
+  cannot repeat.
+
+  Fifteen, and found the same way as the rest.
+
+
+### Added
+
 - **The audio round trip works.** Fifty consecutive frames encoded and decoded
   back in order: peaks of 683, 7293, 8080 and then 7944 to 8796 against an
   input of 8000. **Warm-up is two frames**, which is the whole explanation of

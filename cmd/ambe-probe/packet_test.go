@@ -174,3 +174,100 @@ func TestAPortUnreachableIsNotSilence(t *testing.T) {
 		}
 	}
 }
+
+// TestASweepIsNotASingleToneAndASineIs is the difference the bench needs.
+//
+// A reset-state encoder codes a steady 1 kHz sine as a tone descriptor, which
+// is what fifty byte-identical frames on 2026-09-14 turned out to be. A sweep
+// cannot be one descriptor, so it exercises the path a voice takes without
+// changing a single setting on the chip — signal and configuration are two
+// variables and this project changes one at a time.
+func TestASweepIsNotASingleToneAndASineIs(t *testing.T) {
+	const frames = 50
+
+	// The sine holds its frequency, so consecutive frames are the same wave.
+	a, b := frameOf("sine", 0, frames), frameOf("sine", 1, frames)
+	if len(a) != samplesPerFrame || len(b) != samplesPerFrame {
+		t.Fatalf("a frame is %d and %d samples, want %d", len(a), len(b), samplesPerFrame)
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			t.Fatalf("sample %d of consecutive 1 kHz frames differs (%d, %d)",
+				i, a[i], b[i])
+		}
+	}
+
+	// **Phase continuity has to be checked at a frequency that does not divide
+	// the frame**, and 1 kHz does: a 20 ms frame at 8 kHz holds exactly twenty
+	// cycles, so a generator that restarts its phase every frame produces the
+	// identical bytes and the check above passes either way. Breaking the
+	// phase deliberately proved that — the test noticed nothing.
+	//
+	// Every multiple of 50 Hz is a whole number of cycles in 20 ms, so this
+	// uses 1025 Hz, which is twenty and a half. A continuous second frame
+	// starts half a cycle out and cannot match the first; a restarted one
+	// matches it exactly. Without this, a frame boundary is a click, and a
+	// click is a transient the coder would spend bits on.
+	c, d := sineFrom(1025, 0), sineFrom(1025, 1)
+	same := true
+	for i := range c {
+		if c[i] != d[i] {
+			same = false
+			break
+		}
+	}
+	if same {
+		t.Error("consecutive 1025 Hz frames are identical, so the generator " +
+			"restarts its phase every frame; at twenty and a half cycles a " +
+			"continuous frame cannot repeat, and every boundary is a click")
+	}
+
+	// The sweep changes frequency across the run, so its first and last
+	// frames cannot be the same wave.
+	first, last := frameOf("sweep", 0, frames), frameOf("sweep", frames-1, frames)
+	sweepSame := true
+	for i := range first {
+		if first[i] != last[i] {
+			sweepSame = false
+			break
+		}
+	}
+	if sweepSame {
+		t.Error("the first and last frames of a sweep are identical; a sweep " +
+			"that does not sweep tests nothing the sine did not")
+	}
+
+	// And it stays inside the range, at both ends of the sweep.
+	for _, index := range []int{0, frames / 2, frames - 1} {
+		for i, v := range frameOf("sweep", index, frames) {
+			if v > 8000 || v < -8000 {
+				t.Fatalf("sample %d of sweep frame %d is %d, outside ±8000", i, index, v)
+			}
+		}
+	}
+}
+
+// TestToneDetectionIsTheOnlyBitSetAtReset pins what the differential changes.
+//
+// The probe's -tone-detect=false sends an encoder control word with TD_ENABLE
+// cleared and everything else as a reset leaves it. On this board that means
+// the word goes from 0x1000 to 0x0000, because CFG0 0x05 and CFG1 0x00 leave
+// every pin-derived bit clear — so exactly one bit moves, which is what makes
+// the run a differential rather than two changes at once.
+func TestToneDetectionIsTheOnlyBitSetAtReset(t *testing.T) {
+	on := ambe.ECModeAtReset
+	off := on &^ ambe.ECToneDetect
+
+	if uint16(on) != 0x1000 {
+		t.Errorf("the reset control word is %#04x, want 0x1000", uint16(on))
+	}
+	if uint16(off) != 0x0000 {
+		t.Errorf("clearing tone detection gives %#04x, want 0x0000; anything "+
+			"else means a second bit moved and the run is not a differential",
+			uint16(off))
+	}
+	if bits := uint16(on) ^ uint16(off); bits != uint16(ambe.ECToneDetect) {
+		t.Errorf("the differential moves %#04x, want only TD_ENABLE %#04x",
+			bits, uint16(ambe.ECToneDetect))
+	}
+}

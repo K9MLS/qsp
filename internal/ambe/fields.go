@@ -29,6 +29,8 @@
 // table rather than resolved silently. See Field.Disputed.
 package ambe
 
+import "strings"
+
 // The packet header. A start byte, a big-endian length, and a type.
 //
 // **The length counts the field bytes and the parity bytes, and excludes the
@@ -283,4 +285,71 @@ func FrameBitsForRate(index int) (int, bool) {
 		return 0, false
 	}
 	return TotalRates[index] / 50, true
+}
+
+// ECMode is the ECMODE_IN control word passed to the encoder, Table 13
+// (printed page 36).
+//
+// **The bit that matters most here is tone detection, and it is on at reset.**
+// On 2026-09-14 fifty frames of a 1 kHz sine came back byte-identical from
+// frame 2 onward, with the decoder reporting a tone frame each time: the
+// encoder had recognised the sine as a tone and was emitting a tone
+// descriptor rather than coding speech. That proved the round trip and the
+// DTMF path, and said nothing about the voice path.
+//
+// Features set here override the corresponding hardware configuration pin, and
+// the word retains its value until it is changed.
+type ECMode uint16
+
+// The ECMODE_IN bits, Table 13. Bits 0 to 5, 10 and 15 are reserved and must
+// be zero.
+const (
+	ECNoiseSuppressor ECMode = 1 << 6  // NS_ENABLE
+	ECCompandALaw     ECMode = 1 << 7  // CP_SELECT: set selects a-law, clear µ-law
+	ECCompand         ECMode = 1 << 8  // CP_ENABLE
+	ECEchoSuppressor  ECMode = 1 << 9  // ES_ENABLE, not supported in packet mode
+	ECDiscontinuous   ECMode = 1 << 11 // DTX_ENABLE: silence frames
+	ECToneDetect      ECMode = 1 << 12 // TD_ENABLE, initialised to 1 at reset
+	ECEchoCanceller   ECMode = 1 << 13 // EC_ENABLE, not supported in packet mode
+	ECToneSend        ECMode = 1 << 14 // TS_ENABLE
+)
+
+// ECModeAtReset is the encoder control word this board starts with.
+//
+// Every pin-derived bit reads low on the operator's DVstick 30 — CFG0 0x05 has
+// noise suppression, companding and DTX clear, and CFG1 0x00 has both echo
+// bits clear — so the only bit set is tone detection, which Table 13 says is
+// initialised to 1 at reset regardless of any pin.
+const ECModeAtReset = ECToneDetect
+
+// ECModeField builds a PKT_ECMODE field carrying an encoder control word.
+func ECModeField(m ECMode) FieldValue {
+	return Val(0x05, byte(m>>8), byte(m))
+}
+
+// String names the features a control word enables, for a log line.
+func (m ECMode) String() string {
+	named := []struct {
+		bit  ECMode
+		name string
+	}{
+		{ECNoiseSuppressor, "noise suppressor"},
+		{ECCompand, "companding"},
+		{ECCompandALaw, "a-law"},
+		{ECEchoSuppressor, "echo suppressor"},
+		{ECDiscontinuous, "discontinuous transmission"},
+		{ECToneDetect, "tone detection"},
+		{ECEchoCanceller, "echo canceller"},
+		{ECToneSend, "tone send"},
+	}
+	on := make([]string, 0, len(named))
+	for _, n := range named {
+		if m&n.bit != 0 {
+			on = append(on, n.name)
+		}
+	}
+	if len(on) == 0 {
+		return "nothing enabled"
+	}
+	return strings.Join(on, ", ")
 }
