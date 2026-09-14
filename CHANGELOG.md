@@ -4,6 +4,40 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A flaky test, and the flake was in the test double.** The concurrency
+  check closed its in-flight window *after* writing the reply, so the sequence
+  reply-out, client-receives, client-sends-next left the flag still set from an
+  exchange already answered. It passed on a single core and failed twice in
+  fourteen exchanges on the operator's machine. The window now closes before
+  the write; the break it exists to catch still fails 20 runs out of 20, and
+  the full suite passes 30 runs out of 30.
+
+  §7 says verification code deserves more suspicion than the code it checks,
+  and this was a check measuring the wrong interval.
+
+### Added
+
+- **`ambe-probe -roundtrip N`: encode a run of frames and decode the run
+  back.** One frame says nothing about audio, which the bench proved by
+  answering the question we had actually asked.
+
+  **The decoder's flags settled it.** With `PKT_SPCHFMT` requesting DCMODE_OUT,
+  the near-silent reply came back carrying `02 00 02` — `VOICE_ACTIVE` set,
+  `DATA_INVALID` and `TONE_FRAME` clear. That is the chip reporting a valid
+  voice frame faithfully decoded, which eliminates comfort noise, frame
+  repeats, FEC errors and tone detection in one reading. Nothing was broken:
+  an AMBE encoder carries state, the frame was the first out of a freshly reset
+  one, and it is a valid encoding of silence. Decoded ten times running it gave
+  peaks of 3, 1, then zero.
+
+  So the method was wrong rather than the code, and the right method is the one
+  QSP will use anyway — fifty frames a second, continuously. The run is printed
+  one line per frame, because a hundred hex dumps of 329 bytes is not a result
+  anybody reads.
+
+
 ### Added
 
 - **The decode direction is proved on the wire, and the audio is not.**

@@ -78,5 +78,21 @@ channel-reply 61000B010148954BE6500310B00777
 # complete datagram, and a length test over this file depends on that. Its
 # header was `61 01 42 02 00 a0`: 0x0142 field bytes, which is the SPEECHD
 # identifier, a count of 0xa0, and 320 bytes of samples.
+#
+# **Settled later the same evening, by asking the chip.** PKT_SPCHFMT was set
+# so that output speech packets carry DCMODE_OUT, and the reply's tail became
+# `02 00 02`: a CMODE field with VOICE_ACTIVE set, DATA_INVALID clear and
+# TONE_FRAME clear. The chip is reporting a valid voice frame faithfully
+# decoded -- not comfort noise, not a frame repeat, not FEC errors, not a tone.
+#
+# So nothing was broken. An AMBE encoder carries state, the frame above was the
+# first out of a freshly reset one, and `954be6500310b00777` is a valid
+# encoding of approximately silence. Decoding it ten times running gave peaks
+# of 3, 1 and then zero for the remaining eight, which is the decoder settling
+# on the silence it was given.
+#
+# **The method was wrong rather than the code.** A vocoder is tested with a
+# stream, which is also what QSP sends: fifty frames a second for the length of
+# a transmission. `ambe-probe -roundtrip N` does that.
 
 decode-request 61000C01400148954BE6500310B00777

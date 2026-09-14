@@ -77,6 +77,11 @@ func main() {
 		"send the frame this many times; an AMBE decoder carries state and the "+
 			"first frame after an init is commonly ramped or muted, so one frame "+
 			"cannot tell a silent decoder from a cold one")
+	roundtrip := flag.Int("roundtrip", 0,
+		"encode this many consecutive 20 ms frames and decode them back in "+
+			"order, reporting each frame compactly; a vocoder carries state and "+
+			"one isolated frame encodes approximately nothing, so this is the "+
+			"only shape of test that says anything about audio")
 	decode := flag.String("decode", "",
 		"send these channel bits back for decoding, as hex; try 954be6500310b00777, "+
 			"the frame this dongle produced on 2026-09-14")
@@ -120,6 +125,11 @@ func main() {
 	// away, which is the whole of section 8p's last entry.
 	if _, out := ask(conn, *wait, "get config", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldGetCfg))); out == unreachable {
 		refused(*server)
+	}
+
+	if *roundtrip > 0 {
+		roundTrip(conn, *wait, *roundtrip, *server)
+		return
 	}
 
 	if !*tone && *decode == "" {
@@ -298,6 +308,131 @@ func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, o
 	copy(reply, buf[:n])
 	describe(reply)
 	fmt.Println()
+	return reply, answered
+}
+
+// roundTrip encodes a run of frames and decodes the run back in order.
+//
+// **One frame says nothing about audio.** On 2026-09-14 a single 20 ms frame
+// of a 1 kHz tone was encoded and decoded back, and it came out with a peak
+// sample of 3 — and the decoder's own DCMODE_OUT flags said VOICE_ACTIVE with
+// DATA_INVALID clear, which is the chip reporting a valid voice frame
+// faithfully decoded. So nothing was broken: an AMBE encoder carries state,
+// and the first frame out of a freshly reset one encodes approximately
+// nothing. The frame was a valid encoding of silence.
+//
+// A vocoder is tested with a stream, and a stream is also what QSP will send —
+// fifty frames a second for the length of a transmission. This does that and
+// prints one line per frame, because a hundred hex dumps of 329 bytes is not a
+// result anybody reads.
+func roundTrip(conn net.Conn, wait time.Duration, frames int, server string) {
+	fmt.Printf("\n--- %d frames, encoded then decoded in order ---\n\n", frames)
+	fmt.Printf("  %-6s %-20s %8s %8s  %s\n", "frame", "channel data", "in", "out", "decoder says")
+
+	samples := sine(1000)
+	speech, err := ambe.SpeechD(samples)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+	speechPacket, err := ambe.Build(ambe.TypeSpeech, ambe.Val(fieldChannel0), speech)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+		os.Exit(1)
+	}
+
+	inPeak := 0
+	for _, v := range samples {
+		if int(v) > inPeak {
+			inPeak = int(v)
+		}
+	}
+
+	// Encode the whole run first, so the encoder sees a continuous stream
+	// rather than an encode and a decode alternating on one chip.
+	encoded := make([]ambe.ChannelFrame, 0, frames)
+	for i := 0; i < frames; i++ {
+		reply, out := quiet(conn, wait, speechPacket)
+		if out == unreachable {
+			refused(server)
+		}
+		if out != answered {
+			fmt.Printf("  %-6d no reply to a speech packet\n", i+1)
+			return
+		}
+		frame, ok := ambe.ChannelFrameFromResponse(reply)
+		if !ok {
+			fmt.Printf("  %-6d a speech packet was answered by %x\n", i+1, reply)
+			return
+		}
+		encoded = append(encoded, frame)
+	}
+
+	// Then decode the run in the order it was produced, which is the order a
+	// receiver would get it in.
+	for i, frame := range encoded {
+		chand, err := ambe.Chand(frame.Bits, frame.Data)
+		if err != nil {
+			fmt.Printf("  %-6d %v\n", i+1, err)
+			return
+		}
+		pkt, err := ambe.Build(ambe.TypeChannel, ambe.Val(fieldChannel0), chand)
+		if err != nil {
+			fmt.Printf("  %-6d %v\n", i+1, err)
+			return
+		}
+		reply, out := quiet(conn, wait, pkt)
+		if out == unreachable {
+			refused(server)
+		}
+		if out != answered {
+			fmt.Printf("  %-6d %-20x %8d %8s\n", i+1, frame.Data, inPeak, "no reply")
+			continue
+		}
+		speechReply, ok := ambe.SpeechReplyFromResponse(reply)
+		if !ok {
+			fmt.Printf("  %-6d %-20x %8d  a channel packet was answered by %d bytes "+
+				"this build does not decode\n", i+1, frame.Data, inPeak, len(reply))
+			continue
+		}
+		says := "no flags requested"
+		if speechReply.Reported {
+			says = speechReply.Flags.String()
+		}
+		fmt.Printf("  %-6d %-20x %8d %8d  %s\n",
+			i+1, frame.Data, inPeak, speechReply.Peak(), says)
+	}
+
+	fmt.Printf("\n  **Read the out column across the run, not any one row.** If it " +
+		"climbs toward the in column the vocoder is warming up and the round " +
+		"trip works; if it stays near zero with the decoder reporting valid " +
+		"voice frames, the encoder is producing silence and the input is the " +
+		"thing to change.\n")
+}
+
+// quiet sends one packet and returns its reply without printing anything.
+//
+// The full dump is what ask does and what a protocol question needs. A run of
+// a hundred frames needs a table instead, so this is the same exchange with
+// the transcript left out.
+func quiet(conn net.Conn, wait time.Duration, out []byte) ([]byte, outcome) {
+	if _, err := conn.Write(out); err != nil {
+		if isUnreachable(err) {
+			return nil, unreachable
+		}
+		return nil, silent
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(wait))
+	buf := make([]byte, 2048)
+	n, err := conn.Read(buf)
+	if err != nil {
+		if isUnreachable(err) {
+			return nil, unreachable
+		}
+		return nil, silent
+	}
+	reply := make([]byte, n)
+	copy(reply, buf[:n])
 	return reply, answered
 }
 

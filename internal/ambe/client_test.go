@@ -122,14 +122,24 @@ func (f *fakeVocoder) answer(req []byte, from *net.UDPAddr) {
 	// request arriving before this reply leaves is a client with two exchanges
 	// in flight, and a reply carries nothing saying which request it answers —
 	// so one of the two callers would read the other's frame.
+	//
+	// **The window closes before the write, not after it.** Closing it
+	// afterwards made this flaky in the operator's favour and mine: the reply
+	// goes out, the client receives it and sends its next request
+	// immediately, and the flag was still set from an exchange that had
+	// already been answered. It passed on a single core and failed twice in
+	// fourteen exchanges on a real machine. A check whose window includes the
+	// moment the answer is already on the wire is measuring the wrong
+	// interval, and §7 says verification code deserves more suspicion than
+	// the code it checks rather than less.
 	if !f.inFlight.CompareAndSwap(false, true) {
 		f.overlaps.Add(1)
 	}
 	if d := time.Duration(f.hold.Load()); d > 0 {
 		time.Sleep(d)
 	}
-	_, _ = f.conn.WriteToUDP(out, from)
 	f.inFlight.Store(false)
+	_, _ = f.conn.WriteToUDP(out, from)
 }
 
 func (f *fakeVocoder) address() string { return f.conn.LocalAddr().String() }
