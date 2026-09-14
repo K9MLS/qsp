@@ -4,6 +4,33 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The speech and channel packet types were the wrong way round.** The probe's
+  first run on the operator's bench sent a 1 kHz tone as type `0x02`.
+  AMBEserver forwarded 322 bytes to the chip and the chip said nothing: the
+  type byte said *here is compressed audio, decode it*, so 320 bytes of a sine
+  wave were read as AMBE and discarded.
+
+  **Speech is `0x01`, channel is `0x02`.** And the type is now a flag, because
+  it is the field that was wrong: a reading of a register map is a hypothesis
+  and the dongle decides, so trying the other value should cost a flag rather
+  than a rebuild and a deploy.
+
+### Learned from the bench, 2026-09-14
+
+- **The mode packet works.** `61 00 02 00 0a 21` was answered by
+  `61 00 02 00 0a 00` — rate index 33 accepted, status zero. That is the first
+  exchange beyond the three already known, and it settles the framing: the
+  start byte, the length convention, the type and the acknowledgement are all
+  confirmed by a device rather than inferred.
+
+- **And it is what narrowed the failure.** With the mode packet acknowledged in
+  the same run, the silence that followed could not be the socket, the length,
+  the sample count or the audio — 8 samples per cycle is exactly 1 kHz at
+  8 kHz. One field was left, and the probe exists to make that kind of
+  elimination possible.
+
 ### Added
 
 - **`cmd/ambe-probe`, an instrument for the transcoder link.** It talks to an

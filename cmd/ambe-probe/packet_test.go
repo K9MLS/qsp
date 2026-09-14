@@ -59,7 +59,32 @@ func TestASpeechFrameIsTwentyMillisecondsAtEightKilohertz(t *testing.T) {
 		t.Fatalf("a frame is %d samples, want 160", len(s))
 	}
 	// Header, type, field, count, then two bytes per sample.
-	if got, want := len(speech(s)), 4+2+320; got != want {
+	if got, want := len(packet(typeSpeech, speechBody(s))), 4+2+320; got != want {
 		t.Errorf("a speech packet is %d bytes, want %d", got, want)
+	}
+}
+
+// TestSpeechIsTypeOneAndChannelIsTypeTwo is the correction the dongle made.
+//
+// The first run sent a 1 kHz tone as type 0x02. AMBEserver forwarded 322 bytes
+// to the chip and the chip said nothing: the type byte said "here is
+// compressed audio, decode it", so 320 bytes of a sine wave were read as AMBE
+// and discarded.
+//
+// **Silence from a vocoder is indistinguishable from a dead vocoder** until
+// the bytes are on the screen. The mode packet in the same run was
+// acknowledged — `61 00 02 00 0a 21` answered by `61 00 02 00 0a 00` — which
+// is what narrowed it to the type rather than the framing, the socket or the
+// audio.
+func TestSpeechIsTypeOneAndChannelIsTypeTwo(t *testing.T) {
+	if typeSpeech != 0x01 {
+		t.Errorf("speech is %#02x, want 0x01; PCM sent as 0x02 is read as "+
+			"compressed audio and silently dropped", typeSpeech)
+	}
+	if typeChannel != 0x02 {
+		t.Errorf("channel is %#02x, want 0x02", typeChannel)
+	}
+	if typeSpeech == typeChannel {
+		t.Error("speech and channel are the same value")
 	}
 }

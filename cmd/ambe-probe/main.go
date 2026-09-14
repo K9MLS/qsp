@@ -63,8 +63,14 @@ const (
 	startByte = 0x61
 
 	typeControl = 0x00
-	typeChannel = 0x01 // compressed audio, the AMBE side
-	typeSpeech  = 0x02 // uncompressed audio, the PCM side
+	// **Speech is 0x01 and channel is 0x02**, corrected 2026-09-14 after the
+	// first run. They were written the other way round, so 320 bytes of a
+	// 1 kHz tone went to the chip labelled as compressed audio to be decoded.
+	// AMBEserver forwarded it and the chip said nothing — which is what a
+	// wrong type byte looks like, and is indistinguishable from a dead device
+	// until the bytes are on the screen.
+	typeSpeech  = 0x01 // uncompressed audio, the PCM side
+	typeChannel = 0x02 // compressed audio, the AMBE side
 )
 
 // Control fields, of which two are confirmed by the exchange already run.
@@ -84,6 +90,10 @@ func main() {
 	tone := flag.Bool("tone", false, "send one frame of 1 kHz tone and print the reply")
 	rate := flag.Int("rate", 33, "rate index for the mode packet; 33 is DMR/NXDN 2450+1150")
 	wait := flag.Duration("wait", 2*time.Second, "how long to wait for each reply")
+	// **Overridable, because this is the field that was wrong.** A reading of
+	// a register map is a hypothesis; the dongle decides. Trying the other
+	// value should cost a flag, not a rebuild and a deploy.
+	speechType := flag.Int("speech-type", typeSpeech, "packet type for a PCM frame")
 	flag.Parse()
 
 	conn, err := net.Dial("udp", *server)
@@ -110,7 +120,8 @@ func main() {
 	fmt.Println("\n--- beyond what has been observed ---")
 	ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate),
 		control(fieldRateTable, byte(*rate)))
-	ask(conn, *wait, "one 20 ms frame of 1 kHz tone", speech(sine(1000)))
+	ask(conn, *wait, fmt.Sprintf("20 ms of 1 kHz tone as type %#02x", *speechType),
+		packet(byte(*speechType), speechBody(sine(1000))))
 }
 
 // control builds a control packet: type 0x00, then a field and its arguments.
@@ -118,17 +129,18 @@ func control(field byte, args ...byte) []byte {
 	return packet(typeControl, append([]byte{field}, args...))
 }
 
-// speech builds a speech packet: 160 samples of 8 kHz 16-bit PCM.
+// speechBody is 160 samples of 8 kHz 16-bit PCM, with the field and count
+// that precede them.
 //
 // The field byte and sample count precede the samples, which is the shape the
 // register map describes and the part this program exists to test.
-func speech(samples []int16) []byte {
+func speechBody(samples []int16) []byte {
 	body := make([]byte, 0, 2+len(samples)*2)
 	body = append(body, 0x00, byte(len(samples)))
 	for _, s := range samples {
 		body = binary.BigEndian.AppendUint16(body, uint16(s))
 	}
-	return packet(typeSpeech, body)
+	return body
 }
 
 // packet wraps a body in the start byte, length and type.
