@@ -1906,6 +1906,49 @@ callsign and no talkgroups invites the reading that it is misconfigured, and
 
 ---
 
+## 8p. The vocoder, the router, and a device wedged, 2026-09-14
+
+Supersedes nothing; adds to §8a's catalogue and to §8i's hardware notes.
+
+**A malformed packet can cost you the hardware.** `cmd/ambe-probe` sent field
+`0x0a` — the eleven-byte rate word — with one argument byte. The chip waited for
+ten more, consumed the head of the next packet, and sat mid-field permanently.
+Recovery was a **physical unplug**; a software reset could not do it and neither
+could an ESXi detach and re-attach.
+
+**The rule**: for a device that can be wedged by a malformed packet, establish
+the recovery path *before* the first experiment. The fork's README had said so,
+and it was read as a fact about their software rather than a constraint on ours.
+
+**Two wrong readings of the same bytes in one evening, one shipped as a
+correction.** Patch 0351 swapped the speech and channel packet types on the
+theory that it explained the chip's silence. The manual says speech is `0x02`
+and channel is `0x01` — what the code already had. "This explains the symptom"
+is a hypothesis; a contents page is evidence.
+
+**A gate that proves a constant is not a gate that proves the call site.** The
+field-length check passed while the program could still send the packet that
+wedged the chip, because changing only the call site left every constant right.
+Same shape as `server.session_lifetime`, where the field, its default and its
+validation were all correct and all three places building an auth policy
+constructed `auth.Policy{}` and read none of them. **Twice in one day.**
+
+**A break that produces a compile error can read as a pass.** The grep watching
+for failures matched `--- FAIL` and indented output, but not
+`FAIL ... [build failed]`. The ninth recorded instance of a test that cannot
+fail, found only because the break was tried rather than assumed.
+
+**Fixing one site and walking past its neighbour.** Patch 0347 rate-limited the
+IPSC allow-list refusal and left `unrecognised datagram` — the line directly
+above it, in the same function, flooding harder. 0348 fixed all four warnings
+through one helper plus a gate that reads the source.
+
+**And the operator was right when the reasoning said otherwise.** He said the
+session lifetime was logging him out; the reply was that the cookie sets
+`Expires` and sessions live in the database, so it must be something else. One
+row in `sessions` settled it: created 00:30, expired 12:30. Sound reasoning,
+wrong conclusion, and the data was one query away the whole time.
+
 ## 8i. Where the next session starts, as of 2026-09-04
 
 Read §0, then §6b and §6c, then this. It supersedes §8g; everything §8g settled

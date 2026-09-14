@@ -4,6 +4,14 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Handover rewritten for 2026-09-14**, and PROJECT_MEMORY §8p added: the
+  vocoder, the router, and a device wedged. Four entries for §8a's catalogue,
+  two of them the same defect in one day — a gate that proves a constant while
+  the call site can still be wrong.
+
+
 ### Decided
 
 - **[ADR-0062](docs/adr/ADR-0062-as-much-as-possible-in-qsp.md): as much as
