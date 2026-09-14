@@ -6,6 +6,64 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`testdata/ambe/observed-exchanges.hex`: the first AMBE exchange this
+  project owns.** Six packets and six replies from a DVstick 30 on the
+  operator's bench, 2026-09-14 — reset, product identifier, version,
+  configuration read, rate set, and a 20 ms speech frame. Every request is
+  rebuilt from `internal/ambe` and compared byte for byte; every reply is
+  decoded.
+
+  **A speech packet in produced a channel packet out**, `61 00 0b 01 01 48`
+  and nine bytes: 72 bits in 20 ms, which is 3600 bps, which is DMR. That is
+  ADR-0061's boundary with an exchange behind it instead of a reading, and it
+  closes by observation the packet-type question that 0351 swapped on a
+  hypothesis and 0352 swapped back from a contents page.
+
+- **Reply decoders for the four shapes that were captured**, and nothing else.
+  An acknowledgement, a null-terminated text reply, a configuration read, and a
+  channel frame. There is deliberately no general response parser: Table 32's
+  response-length column says "none" for fields the chip acknowledges with a
+  status byte, so a parser built on it would be built on a contradiction. A
+  reply matching no decoder is reported as undecoded rather than guessed at.
+
+- **The probe decodes the whole configuration on every run.** Mode, companding,
+  parity and the boot rate control word. CFG1 reads `0x00` on this board, so
+  every RATE pin is low and it does not boot at the DMR rate — the probe now
+  says plainly that setting the rate is a precondition for audio rather than a
+  refinement. A field being acknowledged is not a setting having taken effect;
+  what proved the rate was the size of the frame that came back.
+
+### Fixed
+
+- **A refused port no longer prints as a refused packet.** Two bench runs went
+  into this. Six packets were fired at a host with nothing listening on 2460 —
+  including a 327-byte audio frame — and each was reported as "the packet was
+  refused or misread", when no datagram had left the sending host's stack.
+  `ECONNREFUSED` on a connected UDP socket is an ICMP port-unreachable and says
+  nothing about AMBE. The probe now stops at the first refusal and names the
+  cause, which is the same correction as a health status naming its subject.
+
+- **Replies are decoded rather than sieved for printable characters.** The old
+  output read `a0AMBE3000F` and `a11V121.E100...`: the start byte as `a`, the
+  field identifier `0x30` as `0`, and the version reply's length byte `0x31` as
+  a stray `1` inside its own text. Framing bytes read as payload is the same
+  class of error as a byte read by eye.
+
+### Documentation
+
+- **PROJECT_MEMORY §8q**, the evening the dongle answered. The audio path, the
+  three assumptions that became measurements, stock AMBEserver driving a DVMEGA
+  against the research, `-v` versus `-x` costing two starts, and three
+  deliberate breaks that produced compile errors and so tested nothing — the
+  break needs the same scepticism as the code.
+
+- **The handover records how to start AMBEserver for a bench session**, and why
+  there is no unit for it: it binds `0.0.0.0:2460`, has no bind-address flag,
+  and `ufw` is inactive on that host.
+
+
+### Added
+
 - **`internal/ambe`: the AMBE-3000F field table, and a builder that refuses a
   malformed packet.** Every control, speech and channel field with its data
   length, from the AMBE-3000F users manual version 3.7, cross-checked entry by

@@ -10,13 +10,14 @@ import (
 	"testing"
 )
 
-// fixtures reads the manufacturer's example packets.
+// records reads a fixture file of named hex packets.
 //
-// They live in a file rather than in this source so that they can be compared
-// against a printed page without reading Go.
-func fixtures(t *testing.T) map[string][]byte {
+// They live in files rather than in this source so that they can be compared
+// against a printed page, or against a terminal transcript, without reading
+// Go.
+func records(t *testing.T, name string) map[string][]byte {
 	t.Helper()
-	path := filepath.Join("..", "..", "testdata", "ambe", "manual-examples.hex")
+	path := filepath.Join("..", "..", "testdata", "ambe", name)
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("opening %s: %v", path, err)
@@ -31,15 +32,15 @@ func fixtures(t *testing.T) map[string][]byte {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		name, body, ok := strings.Cut(line, " ")
+		recName, body, ok := strings.Cut(line, " ")
 		if !ok {
 			t.Fatalf("%s: %q is not a name and a hex string", path, line)
 		}
 		b, err := hex.DecodeString(strings.TrimSpace(body))
 		if err != nil {
-			t.Fatalf("%s: record %s: %v", path, name, err)
+			t.Fatalf("%s: record %s: %v", path, recName, err)
 		}
-		out[name] = b
+		out[recName] = b
 	}
 	if err := scan.Err(); err != nil {
 		t.Fatalf("reading %s: %v", path, err)
@@ -48,6 +49,12 @@ func fixtures(t *testing.T) map[string][]byte {
 		t.Fatalf("%s holds no records", path)
 	}
 	return out
+}
+
+// fixtures reads the manufacturer's four worked example packets.
+func fixtures(t *testing.T) map[string][]byte {
+	t.Helper()
+	return records(t, "manual-examples.hex")
 }
 
 // ramp is the 160-sample sequence the manual's speech examples carry, which

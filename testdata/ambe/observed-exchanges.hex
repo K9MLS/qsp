@@ -1,0 +1,62 @@
+# AMBE-3000F exchanges observed on the operator's bench, 2026-09-14.
+#
+# A DVMEGA DVstick 30 passed through ESXi to the production server
+# (192.168.1.247), served by stock AMBEserver version 2015-07-11 at 460800
+# baud on the by-id path, spoken to over UDP 2460 by cmd/ambe-probe from the
+# Fedora development machine.
+#
+# One record per line: a name, then the packet as hex. Comments start with '#'.
+#
+# **These are recordings, not readings.** Everything in manual-examples.hex is
+# the manufacturer's printed bytes; everything here is what this chip actually
+# sent and received. Where the two agree, a claim is settled twice over.
+#
+# What this capture proved, none of it inferable:
+#
+#   - Speech in as type 0x02 produces a channel packet out as type 0x01.
+#     Patch 0351 swapped those on a hypothesis and 0352 swapped them back on
+#     the strength of a contents page. This is the wire.
+#   - The length rule holds in the reply direction: channel-reply declares
+#     0x000B field bytes and the whole packet is fifteen.
+#   - PKT_RATET with index 33 took effect. CFG1 reads 0x00, so all six RATE
+#     pins are low and the board boots at whatever Table 116 gives for a rate
+#     control word of zero, which is not index 33. The returned frame carries
+#     0x48 bits: 72 bits in 20 ms, which is 3600 bps. The rate was set by the
+#     packet and the evidence is the frame size rather than the
+#     acknowledgement.
+#   - A control field is acknowledged by its own identifier followed by 0x00,
+#     as Table 43 says.
+#   - The configuration response parses. CFG0 0x05 is packet mode over UART
+#     with companding disabled, so 16-bit linear samples. CFG2 0xec has
+#     PARITY_ENABLE low, so parity is off -- and that pin has an internal
+#     pullup, so floating it would read high and parity would be on. Reading
+#     zero means the DVMEGA board ties it low deliberately, which is why stock
+#     AMBEserver works on it at all.
+#
+# speech-request is 160 samples of a 1 kHz sine at amplitude 8000, generated
+# by cmd/ambe-probe's own sine(). Its data repeats every eight samples, which
+# is one cycle at 8 kHz.
+
+reset-request 6100010033
+
+reset-reply 6100010039
+
+prodid-request 6100010030
+
+prodid-reply 61000B0030414D4245333030304600
+
+version-request 6100010031
+
+version-reply 6100310031563132312E453130302E585858582E433131302E473531342E523031342E41303033303630382E433030323032303800
+
+getcfg-request 6100010036
+
+getcfg-reply 61000400360500EC
+
+ratet-request 610002000921
+
+ratet-reply 610002000900
+
+speech-request 610143024000A0000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8000016181F4016180000E9E8E0C0E9E8
+
+channel-reply 61000B010148954BE6500310B00777

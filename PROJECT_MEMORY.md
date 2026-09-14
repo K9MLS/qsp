@@ -1959,6 +1959,100 @@ session lifetime was logging him out; the reply was that the cookie sets
 row in `sessions` settled it: created 00:30, expired 12:30. Sound reasoning,
 wrong conclusion, and the data was one query away the whole time.
 
+## 8q. The dongle answered, 2026-09-14 evening
+
+Supersedes nothing. Confirms by observation several things §8p and earlier
+sections held on the strength of a manual, and adds three entries to §8a's
+catalogue.
+
+**The transcoder exchange works, and it is a recording now.** A 20 ms speech
+packet of 160 linear samples went in as type `0x02`; a channel packet came back
+as type `0x01` carrying `0x48` bits — 72 bits in 20 ms, which is 3600 bps,
+which is DMR. `61 00 0b 01 01 48` and nine bytes. The whole run is in
+`testdata/ambe/observed-exchanges.hex` and every request in it is rebuilt from
+`internal/ambe` and compared byte for byte. **This is the first AMBE exchange
+the project owns rather than reads about**, and it is ADR-0061's boundary with
+evidence behind it.
+
+**The packet types were right, and now they are right on the wire.** 0351
+swapped speech and channel on a hypothesis; 0352 swapped them back on the
+strength of a contents page. The reply to a speech packet is a channel packet.
+Closed.
+
+**The rate had to be set, and the acknowledgement is not what proves it.**
+`PKT_GETCFG` reports CFG1 `0x00`: every RATE pin low, so the board boots at
+whatever Table 116 gives for a rate control word of zero, which is not the DMR
+rate. `PKT_RATET` answered `09 00`, which says only that a field arrived. What
+says the rate took effect is that the returned frame is 72 bits. **A field was
+accepted is not the same claim as a setting took effect**, and the second one
+needs a measurement downstream of it.
+
+**Parity is off, and the reason is the board rather than luck.** CFG2 `0xec`
+has PARITY_ENABLE low. That pin carries an internal pullup, so a floating pin
+would read high and parity would be enabled — and a chip with parity enabled
+silently discards every packet without it. Reading zero means DVMEGA ties it
+low deliberately, which is why stock AMBEserver works on this board at all. The
+inference from three unanswered-if-wrong replies was sound; the measurement is
+one zero-argument packet and now runs every time.
+
+**Stock AMBEserver drives a DVMEGA board.** The research said the DVMEGA needs
+the `RESETSOFTCFG` fork. `/usr/local/sbin/AMBEserver` is stock — zero
+`RESETSOFTCFG` strings — and it initialised the chip, reported its version, and
+carried six exchanges. Evidence beats research. **The fork exists only in
+`/tmp/ambefork` on the production server and `/tmp` does not survive a
+reboot**; it should be moved somewhere durable with a version in its name, not
+because it is needed but because losing the only copy silently would cost a
+rebuild nobody would know was needed.
+
+### A port that refuses is not a packet that was refused
+
+**Two bench runs went into this.** `cmd/ambe-probe` fired six packets — four
+queries, a rate set, and a 327-byte audio frame — at a host with nothing
+listening on 2460, and printed "the packet was refused or misread" six times.
+No datagram had left the sending host's stack: `ECONNREFUSED` on a connected
+UDP socket is an ICMP port-unreachable, and it says nothing about AMBE at all.
+
+The transcript then looked exactly like a protocol result, and reading it as
+one is what the sentence invited. **Same shape as the health status that did
+not name its subject in §8f**: a message about the wrong layer sends the reader
+to the wrong layer. The probe now stops at the first refusal and says nothing
+is listening, which also stops it firing an audio frame into a closed port for
+a transcript somebody will later try to read.
+
+### A flag letter is not a guess to make on hardware that can be wedged
+
+`AMBEserver -v` prints its version and exits. `-x` is the debug flag. The usage
+line gives letters with no meanings, and two starts were lost to reading `-v`
+the way it usually goes rather than the way it goes here — the second one
+looking exactly like the first failure, because the server was never running
+either time. The source was on the machine the whole time: one `sed` over the
+`getopt` block gives every letter, including that `-d` is daemonise and `-r`
+sets a reset flag whose behaviour is still unread. **On a device that a
+malformed packet can cost you, a flag is derived and not guessed** — the same
+rule §8p states about packet fields, applied one layer out.
+
+### Printable characters are not a decoder
+
+The probe's reply line read `a0AMBE3000F` and `a11V121.E100...`. The `a` is the
+`0x61` start byte; the `0` is the `0x30` field identifier; and in the version
+reply one of those `1`s is the length byte `0x31`. A printable-character sieve
+over a whole datagram puts framing bytes inside the payload, which is the same
+class of error as a byte read by eye — nine times now — with the difference
+that it prints confidently. Replies are decoded field by field, and a shape
+with no decoder says so instead of being guessed at.
+
+### Three breaks that produced compile errors read as three passes
+
+While proving the new tests could fail, three of five deliberate breaks left an
+import unused or duplicated a switch case, so the package did not build and the
+tests never ran. The grep caught it — `FAIL [build failed]` is watched for
+since 0354 — but **a break that does not compile has tested nothing**, and the
+first reading of that output was that the suite had caught all five. Each was
+rewritten to compile: `EHOSTUNREACH` for `ECONNREFUSED`, a wrong string rather
+than a wrong case value, a wrong bit, a wrong byte. All four then failed as
+test failures. This is the same trap as §8p's ninth instance, one level up: the
+break itself needs the same scepticism as the code.
+
 ## 8i. Where the next session starts, as of 2026-09-04
 
 Read §0, then §6b and §6c, then this. It supersedes §8g; everything §8g settled

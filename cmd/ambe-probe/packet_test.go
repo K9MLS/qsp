@@ -2,6 +2,10 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
+	"net"
+	"os"
+	"syscall"
 	"testing"
 
 	"github.com/k9mls/qsp/internal/ambe"
@@ -130,6 +134,43 @@ func TestTheToneStaysInsideTheSampleRange(t *testing.T) {
 			if s > 8000 || s < -8000 {
 				t.Fatalf("sample %d of a %g Hz frame is %d, outside ±8000", i, hz, s)
 			}
+		}
+	}
+}
+
+// TestAPortUnreachableIsNotSilence is the classification that cost two bench
+// runs.
+//
+// On 2026-09-14 this program sent six packets — four queries, a rate set and a
+// 327-byte audio frame — at a host with nothing listening on 2460, and
+// reported every one as "the packet was refused or misread". No datagram had
+// reached the chip; ECONNREFUSED on a connected UDP socket is an ICMP
+// port-unreachable, and it says nothing about AMBE. **A status that does not
+// name its subject sends the reader to the wrong layer**, which is what §8f
+// records about a health report and what happened here twice in an hour.
+//
+// The socket behaviour was confirmed by running the program against a closed
+// port. What is checked here is the classification, because that is the part
+// that decides which sentence gets printed.
+func TestAPortUnreachableIsNotSilence(t *testing.T) {
+	refusedErr := &net.OpError{
+		Op:  "read",
+		Net: "udp",
+		Err: os.NewSyscallError("read", syscall.ECONNREFUSED),
+	}
+	if !isUnreachable(refusedErr) {
+		t.Error("a wrapped ECONNREFUSED was not recognised as a port " +
+			"unreachable; the run would report a closed port as a refused packet")
+	}
+
+	for name, err := range map[string]error{
+		"a timeout":     os.ErrDeadlineExceeded,
+		"a bare string": errors.New("no reply"),
+		"host down": &net.OpError{Op: "write", Net: "udp",
+			Err: os.NewSyscallError("write", syscall.EHOSTUNREACH)},
+	} {
+		if isUnreachable(err) {
+			t.Errorf("%s was recognised as a port unreachable", name)
 		}
 	}
 }

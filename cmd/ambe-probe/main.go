@@ -4,14 +4,18 @@
 // so that the AMBE-3000 packet framing can be learned from a dongle on a bench
 // rather than assumed from prose.
 //
-// **The dongle is the oracle.** The control exchange is already known, because
-// it has been run: `61 00 01 00 30` in, `61 00 0b 00 30 41 4d 42 45 33 30 30
-// 30 46 00` back, which is a product identifier of AMBE3000F. Everything this
-// program does beyond that — the mode packet, the speech packet, the channel
-// packet — is a reading of a published register map applied to a device nobody
-// here has driven yet. If it answers, the reading is right; if it does not,
-// the way it fails narrows which field is wrong. Neither answer is available
-// by thinking harder.
+// **The dongle is the oracle, and on 2026-09-14 it answered everything.** A
+// reset, a product identifier, a version string, a configuration read, a rate
+// set and a 20 ms speech frame — the last of which came back as a channel
+// packet carrying 72 bits, which is 3600 bps, which is DMR. The whole run is
+// in testdata/ambe/observed-exchanges.hex and the tests in internal/ambe
+// rebuild every request in it and decode every reply.
+//
+// So this program is no longer applying a register map to a device nobody has
+// driven. What it does now is report what a board says about itself, which is
+// worth doing on every run: the configuration pins are read rather than
+// assumed, and the rate is confirmed by the size of the frame that comes back
+// rather than by the acknowledgement, which only says a field arrived.
 //
 // It is deliberately not part of cmd/qsp. QSP ships no transcoder link until
 // one exists that was built from an exchange this project has seen, per
@@ -38,11 +42,13 @@ package main
 
 import (
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"math"
 	"net"
 	"os"
+	"syscall"
 	"time"
 
 	"github.com/k9mls/qsp/internal/ambe"
@@ -83,10 +89,16 @@ func main() {
 	// The queries that carry no arguments, so that a run always says whether
 	// the dongle is there before it says anything uncertain. Three of these
 	// are exchanges this project has already seen answered.
-	ask(conn, *wait, "reset", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldReset)))
+	if _, out := ask(conn, *wait, "reset", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldReset))); out == unreachable {
+		refused(*server)
+	}
 	time.Sleep(500 * time.Millisecond)
-	ask(conn, *wait, "product id", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldProdID)))
-	ask(conn, *wait, "version", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldVersion)))
+	if _, out := ask(conn, *wait, "product id", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldProdID))); out == unreachable {
+		refused(*server)
+	}
+	if _, out := ask(conn, *wait, "version", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldVersion))); out == unreachable {
+		refused(*server)
+	}
 
 	// PKT_GETCFG reports the configuration pins as they were latched at boot,
 	// and **CFG2 bit 4 is PARITY_ENABLE**. It runs with the confirmed group
@@ -99,15 +111,8 @@ func main() {
 	// board answered three packets that carried none, so parity must be off.
 	// Sound reasoning has been wrong here before while the data was one query
 	// away, which is the whole of section 8p's last entry.
-	if reply, got := ask(conn, *wait, "get config", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldGetCfg))); got {
-		if cfg, ok := ambe.ConfigFromResponse(reply); ok {
-			fmt.Printf("  %-30s cfg0=%#02x cfg1=%#02x cfg2=%#02x\n", "configuration pins at boot",
-				cfg[0], cfg[1], cfg[2])
-			fmt.Printf("  %-30s %v (CFG2 bit 4)\n\n", "parity enabled",
-				ambe.ParityEnabledIn(cfg))
-		} else {
-			fmt.Printf("  not a configuration response; the bytes above are the result\n\n")
-		}
+	if _, out := ask(conn, *wait, "get config", ambe.MustBuild(ambe.TypeControl, ambe.Val(fieldGetCfg))); out == unreachable {
+		refused(*server)
 	}
 
 	if !*tone {
@@ -129,7 +134,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
 		os.Exit(1)
 	}
-	ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate), ratePacket)
+	if _, out := ask(conn, *wait, fmt.Sprintf("set rate index %d", *rate), ratePacket); out == unreachable {
+		refused(*server)
+	}
 
 	speech, err := ambe.SpeechD(sine(1000))
 	if err != nil {
@@ -141,7 +148,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
 		os.Exit(1)
 	}
-	ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket)
+	if _, out := ask(conn, *wait, "20 ms of 1 kHz tone as a speech packet", framePacket); out == unreachable {
+		refused(*server)
+	}
 }
 
 // The field identifiers this program sends, named here so that a call site
@@ -167,37 +176,146 @@ func sine(hz float64) []int16 {
 	return out
 }
 
+// An outcome distinguishes the three things that can happen, because two of
+// them used to print the same sentence.
+type outcome int
+
+const (
+	answered    outcome = iota // the chip replied
+	silent                     // the packet reached a listener and got nothing back
+	unreachable                // nothing is listening; no packet reached the chip
+)
+
 // ask sends one packet and prints what comes back, in full.
 //
 // **Everything is printed, including the parts that mean nothing yet.** A
 // summary is a reading, and a reading is what this program exists to check.
-func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, bool) {
+//
+// **A refused port is not silence, and conflating them cost two bench runs.**
+// On 2026-09-14 this program fired six packets at a host with nothing
+// listening on 2460 and reported each one as "the packet was refused or
+// misread" — a sentence about the packet format, when the truth was that no
+// datagram had left the sending host's stack. ECONNREFUSED on a connected UDP
+// socket is an ICMP port-unreachable coming back, and it says nothing about
+// AMBE at all. A status that does not name its subject sends the reader to the
+// wrong layer, which is the same defect the health report had.
+func ask(conn net.Conn, wait time.Duration, label string, out []byte) ([]byte, outcome) {
 	fmt.Printf("%-32s sent %d bytes\n", label, len(out))
 	fmt.Printf("%s\n", indent(hex.Dump(out)))
 
 	if _, err := conn.Write(out); err != nil {
+		if isUnreachable(err) {
+			return nil, unreachable
+		}
 		fmt.Printf("  write failed: %v\n\n", err)
-		return nil, false
+		return nil, silent
 	}
 
 	_ = conn.SetReadDeadline(time.Now().Add(wait))
 	buf := make([]byte, 2048)
 	n, err := conn.Read(buf)
 	if err != nil {
+		if isUnreachable(err) {
+			return nil, unreachable
+		}
 		fmt.Printf("  no reply within %v: %v\n", wait, err)
-		fmt.Printf("  (silence is a result: the packet was refused or misread)\n\n")
-		return nil, false
+		fmt.Printf("  (silence is a result: the packet reached a listener and " +
+			"was refused or misread)\n\n")
+		return nil, silent
 	}
 
 	fmt.Printf("%-32s got  %d bytes\n", "", n)
 	fmt.Printf("%s", indent(hex.Dump(buf[:n])))
-	if text := printable(buf[:n]); text != "" {
-		fmt.Printf("  text %q\n", text)
-	}
-	fmt.Println()
 	reply := make([]byte, n)
 	copy(reply, buf[:n])
-	return reply, true
+	describe(reply)
+	fmt.Println()
+	return reply, answered
+}
+
+// isUnreachable reports whether an error is a port-unreachable rather than a
+// timeout.
+//
+// On a connected UDP socket an ICMP port-unreachable surfaces as ECONNREFUSED,
+// wrapped in a *net.OpError, on either the write or the following read
+// depending on timing — so the classification is by errors.Is and not by which
+// call returned it.
+func isUnreachable(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED)
+}
+
+// refused reports that nothing is listening and stops.
+//
+// It stops rather than continuing because the remaining packets would each
+// print the same thing, and because one of them is an audio frame: sending 327
+// bytes at a closed port is noise in a transcript that somebody will later try
+// to read as a protocol result.
+func refused(server string) {
+	fmt.Printf("  nothing is listening on %s\n", server)
+	fmt.Printf("  (ICMP port unreachable — no packet reached the dongle, and " +
+		"this says nothing about the packet format)\n\n")
+	fmt.Printf("start AMBEserver on the host holding the dongle and run this " +
+		"again; -x is its debug flag and -v only prints a version\n")
+	os.Exit(1)
+}
+
+// describe decodes a reply into the fields it carries.
+//
+// **It decodes rather than sieves.** This used to print the printable
+// characters of the whole datagram, which rendered the product reply as
+// "a0AMBE3000F" — the start byte as 'a' and the field identifier 0x30 as '0' —
+// and put the version reply's length byte in the middle of its text as a stray
+// '1'. Framing bytes read as payload is the same class of error as a byte read
+// by eye, and this project has been wrong that way nine times.
+//
+// Only the four reply shapes this project has captured are decoded. Anything
+// else says so rather than being guessed at; the bytes are above it either
+// way.
+func describe(reply []byte) {
+	if field, text, ok := ambe.TextFromResponse(reply); ok {
+		fmt.Printf("  %-30s %q (field %#02x)\n", "text", text, field)
+		return
+	}
+	if cfg, ok := ambe.ConfigFromResponse(reply); ok {
+		fmt.Printf("  %-30s cfg0=%#02x cfg1=%#02x cfg2=%#02x\n",
+			"configuration pins at boot", cfg[0], cfg[1], cfg[2])
+		fmt.Printf("  %-30s %s\n", "mode", ambe.Mode(cfg))
+		fmt.Printf("  %-30s %v\n", "companding enabled", ambe.CompandingEnabledIn(cfg))
+		fmt.Printf("  %-30s %v (CFG2 bit 4)\n", "parity enabled", ambe.ParityEnabledIn(cfg))
+		fmt.Printf("  %-30s %d\n", "boot rate control word", ambe.RateControlWordIn(cfg))
+		if ambe.RateControlWordIn(cfg) == 0 {
+			fmt.Printf("  %-30s the RATE pins are all low, so this board does "+
+				"not boot at the DMR rate\n", "")
+			fmt.Printf("  %-30s setting it with PKT_RATET is a precondition "+
+				"for audio, not a refinement\n", "")
+		}
+		return
+	}
+	if frame, ok := ambe.ChannelFrameFromResponse(reply); ok {
+		fmt.Printf("  %-30s %d bits in 20 ms, so %d bps\n", "channel frame",
+			frame.Bits, frame.Rate())
+		fmt.Printf("  %-30s %x\n", "channel data", frame.Data)
+		if frame.Rate() != 3600 {
+			fmt.Printf("  %-30s 3600 bps was expected; the rate did not take\n", "")
+		}
+		return
+	}
+	if field, status, ok := ambe.AckedField(reply); ok {
+		if status == 0x00 {
+			fmt.Printf("  %-30s field %#02x accepted\n", "acknowledged", field)
+		} else {
+			fmt.Printf("  %-30s field %#02x answered %#02x, which is an error\n",
+				"acknowledged", field, status)
+		}
+		return
+	}
+	if len(reply) > 4 && reply[3] == ambe.TypeControl && reply[4] == 0x39 {
+		fmt.Printf("  %-30s PKT_READY; the chip has reset and re-read its "+
+			"configuration pins\n", "ready")
+		return
+	}
+	fmt.Printf("  %-30s no decoder for this reply shape; the bytes above are "+
+		"the result\n", "undecoded")
 }
 
 func indent(s string) string {
@@ -220,16 +338,4 @@ func splitLines(s string) []string {
 		}
 	}
 	return append(out, s[start:])
-}
-
-// printable pulls the readable characters out, which is how the product
-// identifier and version were read in the first place.
-func printable(b []byte) string {
-	out := make([]byte, 0, len(b))
-	for _, c := range b {
-		if c >= 32 && c < 127 {
-			out = append(out, c)
-		}
-	}
-	return string(out)
 }

@@ -9,7 +9,7 @@ commit, message and path, and force-pushed. **Every commit hash predating that
 no longer resolves** — they are a record of what happened, not something to look
 up.
 
-**VERSION 0.1.195.** Production (192.168.1.247, systemd) runs **0.1.193**; the
+**VERSION 0.1.198.** Production (192.168.1.247, systemd) runs **0.1.193**; the
 test server (192.168.1.27, Docker) runs 0.1.191. Patches 0344 through 0353 were
 applied on Fedora today; 0350 onward are a bench tool and documentation, so the
 servers are correct where they are.
@@ -66,6 +66,47 @@ ARM cross-build and a dependency-free install).
 
 ---
 
+## The dongle, proven — and the audio path with it
+
+**A speech packet in produces a channel frame out.** On the evening of
+2026-09-14: 160 linear samples as type `0x02`, and back came
+`61 00 0b 01 01 48` with nine bytes — a channel packet, 72 bits, 3600 bps, the
+DMR rate. Every packet of that run is in
+`testdata/ambe/observed-exchanges.hex`, rebuilt and decoded by tests in
+`internal/ambe`. **ADR-0061's boundary now has an exchange behind it rather
+than a reading.** See §8q.
+
+**Three things that were assumptions are now measurements**, all from one
+zero-argument `PKT_GETCFG` that the probe sends on every run. CFG0 `0x05` is
+packet mode over the UART with companding disabled, so 16-bit linear samples.
+CFG2 `0xec` has PARITY_ENABLE low, so **parity is off** — and that pin has an
+internal pullup, so DVMEGA ties it low deliberately, which is why stock
+AMBEserver works on this board. CFG1 `0x00` means every RATE pin is low, so
+**the board does not boot at the DMR rate and setting it is a precondition for
+audio, not a refinement.**
+
+**Stock AMBEserver drives the DVMEGA.** The research said it needs the
+`RESETSOFTCFG` fork. `/usr/local/sbin/AMBEserver` has none of it and carried
+six exchanges. **The fork exists only at `/tmp/ambefork` on the production
+server and `/tmp` does not survive a reboot** — move it somewhere durable with
+a version in its name.
+
+**`AMBEserver -x` is the debug flag. `-v` prints a version and exits**, which
+cost two runs that looked identical to a dead dongle. `-d` is daemonise. `-r`
+sets a reset flag nobody has read yet, and the probe already sends its own
+`PKT_RESET`, so two resets would be two variables. To start it for a bench
+session, in the foreground:
+
+```sh
+/usr/local/sbin/AMBEserver -x -s 460800 \
+  -i /dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_DT04S20J-if00-port0
+```
+
+**There is no unit and nothing starts it at boot**, which is deliberate: it
+binds `0.0.0.0:2460`, has no bind-address flag, and `ufw` is inactive on that
+box. An unauthenticated vocoder on every interface is not something to leave
+listening, and that has to be dealt with before it becomes a service.
+
 ## The dongle, proven
 
 A **DVMEGA DVstick 30** is passed through ESXi to the production server.
@@ -106,7 +147,17 @@ malformed packet must be known before the first experiment.
 
 ## Where the next session starts
 
-**1. The manual is read, and the field table is in the tree.** Done in 0355.
+**1. The manual is read, the field table is in the tree, and the dongle has
+answered.** Done in 0355 and 0356. The audio path is proved end to end — see
+§8q and the section on the dongle above — so the next work here is the
+transcoder link proper, not more reading.
+
+**What is still unproven in `internal/ambe`, and marked as such**: the parity
+byte's composition (the manual prints no worked example with parity and this
+board has it disabled), `PKT_RATEP`'s twelve-versus-eleven, and the `CHAND4`
+soft-decision field. Everything else is now backed by either the
+manufacturer's printed bytes or this board's own.
+
 `internal/ambe` holds every control, speech and channel field with its data
 length, and `testdata/ambe/manual-examples.hex` holds the manufacturer's four
 worked example packets. `cmd/ambe-probe` no longer builds a packet by hand.
