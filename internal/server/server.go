@@ -23,6 +23,7 @@ import (
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/peers"
+	"github.com/k9mls/qsp/internal/secrets"
 )
 
 // Options configures a Server.
@@ -98,6 +99,13 @@ type Options struct {
 	Config ConfigManager
 	// Audit records administrative actions. Nil records nothing.
 	Audit audit.Recorder
+	// Secrets stores credentials an operator types into the console.
+	//
+	// Nil when the server was started without a database, in which case the
+	// credential endpoints say so rather than accepting a value and storing
+	// nothing — an operator who typed a password into a page that discarded
+	// it would believe the link was configured.
+	Secrets *secrets.Store
 	// Restart stops QSP so that its supervisor starts it again.
 	//
 	// **Nil is a working state**, and the console says so rather than showing a
@@ -250,6 +258,11 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"DELETE /api/links/{name}", s.requireSession(s.handleRemoveLink)},
 		{"DELETE /api/links/inbound/{id}", s.requireSession(s.handleRefuseInbound)},
 		{"PUT /api/links/{name}/address", s.requireSession(s.handleLinkAddress)},
+		{"GET /api/secrets", s.requireSession(s.handleSecrets)},
+		{"PUT /api/secrets/{name}", s.requireSession(s.handleSetSecret)},
+		// **Anything a page creates it must be able to remove.** A credential
+		// entered by mistake should not need the database opening to undo.
+		{"DELETE /api/secrets/{name}", s.requireSession(s.handleRemoveSecret)},
 		{"GET /api/config", s.requireSession(s.handleGetConfig)},
 		{"POST /api/config", s.requireSession(s.handleSaveConfig)},
 		{"GET /api/config/versions", s.requireSession(s.handleConfigVersions)},

@@ -129,6 +129,49 @@ goroutine that owns the routing core — in that order, so that a change which
 fails to reach the disk is still one an operator can find and attribute. See
 [ADR-0027](docs/adr/ADR-0027-configuration-writes.md).
 
+### Credential endpoints
+
+`/api/secrets` lists the credentials an operator has entered, and
+`/api/secrets/{name}` stores one on PUT and removes it on DELETE. All require a
+logged-in administrator and refuse a cross-origin write.
+
+**There is no endpoint that returns a credential.** Not an omission — a page
+that displays a password leaks it to whoever is looking at the screen, and an
+operator who needs the value has it elsewhere or should replace it. The listing
+names each credential and says when and by whom it changed, and answers that
+**without decrypting anything**, so it cannot leak a value even if the page
+rendering it is wrong. The type it returns has no field for one.
+
+**The name travels in the path and the value in the body.** A query string is
+logged by every proxy in the way, written into an access log, and kept in a
+browser's history.
+
+**Why these exist separately from the configuration endpoints.**
+[ADR-0065](docs/adr/ADR-0065-a-full-backup-encrypted.md) settles that all
+configuration is entered in the console, including secrets — and that a secret
+still lives outside the configuration document. Those are not in tension: the
+first is about where an operator types, the second about where the value is
+kept. A password written into configuration would appear in every version
+snapshot, every diff and every version the console shows, in plain text, with
+an author's name attached, because `configuration_versions` stores the whole
+document for every save.
+
+Credentials are stored AES-256-GCM under a key in a file beside the database,
+created on first use. **What that protects and what it does not**: a copy of
+the database without the key file yields nothing, which matters because a
+SQLite file is handed around in ways a configuration file is not — sent for
+diagnosis, caught in a storage snapshot. It does **not** protect a compromised
+host, since whoever can read the database can usually read the key beside it.
+Losing the key loses every credential, and the recovery is re-entering them.
+
+An instance started without a database has nowhere to keep a credential and
+**says so** rather than accepting one and discarding it, which would leave an
+operator believing a link was configured.
+
+The audit trail records who changed which credential and when, **by name and
+never by value**: a trail is read, exported and kept far longer than a session,
+and a password in it is a password in every copy of it.
+
 Reading the configuration needs a session too. The document is not a set of
 secrets — the peer password lives in a file it merely names — but it is a map of
 the host, and an unauthenticated reader has no business with it.

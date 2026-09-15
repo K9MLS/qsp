@@ -6,6 +6,52 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Credential endpoints, so a secret can be entered in the console without
+  going into the configuration document.** `GET /api/secrets` lists,
+  `PUT /api/secrets/{name}` stores, `DELETE` removes. ADR-0065 settles that all
+  configuration is entered in the console **including secrets**, and that a
+  secret still lives outside the configuration — not in tension, because the
+  first is about where an operator types and the second about where the value
+  is kept.
+
+  **Less was missing than expected.** `POST /api/config` already validates,
+  records a version, writes and applies a whole configuration, so
+  `dmr.transcoders` was reachable from the console all along. The genuine gap
+  was narrow: there was no way to enter a credential, because a password in
+  configuration would appear in every snapshot, every diff and every version
+  the console shows, in plain text, with an author's name on it.
+
+  **There is no endpoint that returns a credential**, and the test asserts that
+  from the route table rather than from a reading of the handlers — so adding
+  one has to break a test. The listing type has no field for a value either,
+  which is the guarantee rather than a convention: a handler cannot be changed
+  to include one without changing the type. Nothing decrypts, so a listing
+  cannot leak a value even if the page rendering it is wrong.
+
+  The name travels in the path and the value in the body, because a query
+  string is logged by every proxy in the way and kept in a browser's history.
+  An instance with no database **says so** rather than accepting a credential
+  and discarding it — which would leave an operator believing a link was
+  configured. And the audit trail records the name and never the value, since a
+  trail outlives every session and is exported.
+
+### Fixed
+
+- **A test that confused a field name for a value.** It searched the marshalled
+  credential record for "password" and failed on the perfectly correct record
+  for a secret *named* `dmr.password` — the value had never been there. It
+  checks the object's field names now, and requires the set to be exactly the
+  three a listing may carry.
+
+### Documentation
+
+- **`SECURITY.md` covers the new endpoints**, which the documentation gate
+  required before the tests would pass — the accuracy check caught the half
+  that would otherwise have been forgotten.
+
+
+### Added
+
 - **The encrypted full backup, ADR-0065's second format.** Configuration and
   the secrets, AES-256-GCM with the key derived from a passphrase by
   PBKDF2-HMAC-SHA256 at OWASP's recommended 600 000 iterations — a number with

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"github.com/k9mls/qsp/console"
@@ -36,6 +37,7 @@ import (
 	"github.com/k9mls/qsp/internal/protocol/homebrew"
 	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/scheduler"
+	"github.com/k9mls/qsp/internal/secrets"
 	"github.com/k9mls/qsp/internal/server"
 	"github.com/k9mls/qsp/internal/upstream"
 )
@@ -52,6 +54,7 @@ type app struct {
 	bus       *events.Bus
 	db        *database.DB
 	audit     audit.Recorder
+	secrets   *secrets.Store
 	callStore *calls.Store
 	srv       *server.Server
 	dmr       *peers.Listener
@@ -173,6 +176,26 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// view source captured a.names, so the view held nil, no radio ID was ever
 	// queued, and the cache stayed empty on a working instance with lookups
 	// enabled and logging that they were.
+	// Credentials an operator types into the console.
+	//
+	// **Only with a database**, because there is nowhere else to keep them —
+	// and the endpoints say so rather than accepting a password and storing
+	// nothing. The key lives beside the database file for the same reason the
+	// database does: one directory to back up, one to give the right
+	// permissions.
+	if a.db != nil {
+		keyPath := filepath.Join(filepath.Dir(cfg.Database.DSN), "secrets.key")
+		store, serr := secrets.Open(secrets.Options{
+			DB:      a.db.SQL(),
+			KeyPath: keyPath,
+		})
+		if serr != nil {
+			return nil, serr
+		}
+		a.secrets = store
+		log.Info("credential store ready", "key", keyPath)
+	}
+
 	// Radio ID lookups. Off unless configured, and refused without a contact
 	// address — the registry asks automated clients to identify themselves and
 	// QSP has no business inventing one. See ADR-0030.
@@ -687,6 +710,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Accounts: accountsOrNil(accountService),
 		Config:   manager,
 		Audit:    a.audit,
+		Secrets:  a.secrets,
 		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
 		// takes exactly the path systemctl restart already takes, so the audit
 		// record, the shutdown timeout and every subsystem's close run as they
