@@ -4,6 +4,47 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **ADR-0065: a full backup, encrypted, alongside the shareable export** —
+  reopening ADR-0054 explicitly rather than quietly widening it, because that
+  record was accepted with reasoning and a reversal without a record is one
+  somebody reinstates later from the argument still written down.
+
+  **The operator's argument answers the strongest objection there.** ADR-0054
+  rejected an encrypted export because every copy of the file becomes a
+  credential; the reply is that credential rotation is the standard response to
+  exposure, is available for every secret QSP holds, and is cheaper than
+  reconstructing a server from memory. The record weighed the exposure and did
+  not weigh the rotation.
+
+  **Two of its points survive and shape the decision.** The passphrase problem
+  is real: an encrypted backup is exactly as recoverable as its key, and a full
+  backup nobody can decrypt is worse than a partial one because of what the
+  operator believes about it — so QSP states, when it creates the file and not
+  in a manual, that the passphrase is theirs to keep and that losing it makes
+  the file useless. And the shareable export **cannot be replaced**, because
+  being safe to email to somebody helping with a broken server is the reason it
+  exists. So this is a second kind, with different words on the button, not a
+  widened one.
+
+  **One objection turned out weaker than expected.** Restoring a peer password
+  onto a clone of a dead machine affects the far end rather than only the
+  operator — but ADR-0054 already requires an import to confirm it is a
+  replacement and that the original is not running, because two servers holding
+  one identifier is a collision class this project has met repeatedly. That
+  confirmation covers the credentials too.
+
+  **And all configuration is entered in the console, including secrets**, per
+  the operator's preference and ADR-0055. That is a change of entry point, not
+  of storage: a secret typed into a page still lives outside the versioned
+  document, because `configuration_versions` holds the full JSON for every save
+  and a secret written there would appear in every snapshot, diff and console
+  view in plain text with an author's name on it.
+
+  ADR-0054 now carries a note saying what was reopened and what stands.
+
+
 ### Added
 
 - **`internal/zello`: the Channels API wire protocol**, from the Zello Channel

@@ -74,3 +74,4 @@ conclusion.
 | [0062](ADR-0062-as-much-as-possible-in-qsp.md) | As much as possible in QSP | Accepted |
 | [0063](ADR-0063-a-transcoder-is-a-routing-destination.md) | A transcoder is a routing destination, and a third kind of one | Accepted |
 | [0064](ADR-0064-a-zello-user-borrows-the-gateway-identity.md) | A Zello user borrows the gateway's identity, and identifies by voice | Accepted |
+| [0065](ADR-0065-a-full-backup-encrypted.md) | A full backup, encrypted, alongside the shareable export | Accepted |

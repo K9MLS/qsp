@@ -1,6 +1,19 @@
 # ADR-0054: A backup restores a server, not its secrets
 
-**Status:** accepted, 2026-09-08
+**Status:** accepted, 2026-09-08; **partly reopened by
+[ADR-0065](ADR-0065-a-full-backup-encrypted.md), 2026-09-15**
+
+> **What 0065 changed.** Everything below about the shareable export stands
+> unaltered, including its refusal to carry secrets. What 0065 adds is a
+> **second** export — encrypted, carrying secrets, for an operator recovering
+> their own server — on the argument that credential rotation answers exposure
+> while nothing answers a server reconstructed from memory. This record weighed
+> the exposure and did not weigh the rotation.
+>
+> Two points below survive and shape 0065 rather than blocking it: the
+> passphrase problem, which 0065 handles by stating plainly at creation time
+> what losing it means; and the fact that this export cannot be replaced,
+> because being safe to email is the reason it exists.
 
 ## Context
 
