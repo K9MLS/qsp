@@ -6,6 +6,52 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The encrypted full backup, ADR-0065's second format.** Configuration and
+  the secrets, AES-256-GCM with the key derived from a passphrase by
+  PBKDF2-HMAC-SHA256 at OWASP's recommended 600 000 iterations — a number with
+  a source rather than one that felt large. Per-file salt, so the same server
+  backed up twice under one passphrase yields two unrelated files.
+
+  **Argon2id would be better and is not in the standard library.** It is
+  memory-hard and resists a GPU attack far better than PBKDF2 for the same
+  elapsed time; it lives in `golang.org/x/crypto`, and this project's
+  dependency rule is the standard library. So the honest position is PBKDF2
+  with a high count, and a note in the code saying what would be preferable if
+  that rule changes.
+
+  **The cleartext header is authenticated**, which is what stops an attacker
+  rewriting the iteration count down to 1 and handing the file back for a
+  cheaper attack. There is a test for exactly that rewrite.
+
+  **A wrong passphrase and an altered file fail identically** under GCM, and
+  the error says so rather than claiming to know which — a guess presented as
+  a diagnosis is worse than an honest "it could be either".
+
+  The two formats must not be confusable, because **mailing the wrong one
+  publishes every password on the server**: different magic, and an import of
+  the shareable export says it found a different format rather than only
+  complaining. A newer format is refused entirely, for ADR-0054's reason.
+
+### Fixed
+
+- **A full backup would have told an operator that credentials it carries are
+  missing.** `NewBackup` fills `Missing` with every secret the *shareable*
+  export cannot hold — the right answer for that file, embedded in one that
+  does hold them. An import would have said "the peer password was not
+  restored" over a file containing it, sending somebody to re-enter a
+  credential that already worked.
+
+  Narrowing the list was the obvious fix and is wrong: the shareable export
+  identifies a secret by the path it lived at and the store keys them by the
+  name configuration uses, so correlating them means guessing — and **a list
+  that is wrong about a credential is worse than no list.** It is cleared, and
+  `SecretNames` is the positive statement that replaces it: what came back,
+  which a restore can say truthfully. A secret the store never held surfaces
+  where it already does, in configuration validation on the restored server.
+
+
+### Added
+
 - **`internal/secrets`: where a console-entered credential lives.** ADR-0012
   keeps secrets out of the configuration document and ADR-0065 keeps that rule
   while moving where an operator types one — the console, not a text editor. So
