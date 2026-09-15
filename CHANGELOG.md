@@ -4,6 +4,47 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A capture that settled two open questions at once**,
+  `testdata/hbp/hbp-emb-colourcode-4.pcap` — seven transmissions from two
+  peers at two different colour codes, taken on the production server.
+
+  **The EMB's colour-code axis is now observed rather than predicted.** The
+  generator was recovered by searching all 256 degree-eight candidates under a
+  fifteen-bit-plus-parity model, with exactly one surviving every captured EMB
+  — but every capture held colour code 11, so nothing had ever moved those four
+  bits. Repeater 3132913 transmits at **colour code 4**, and `EMBFor`
+  reproduced all four of its EMBs — `411e`, `436d`, `45fb`, `4788` — on the
+  first attempt. Four unseen values predicted correctly.
+
+  **And annex B is a recording rather than a reading.** 0371 built the embedded
+  Link Control carriage from TS 102 361-1 and said plainly that nothing had
+  compared it against a radio. The capture holds 68 complete groups from both
+  peers, and every one decodes with its checksum verifying. Both directions
+  match byte for byte: `LinkControlFor(2, 3132910, false)` gives the same nine
+  octets the radio built, `EncodeEmbeddedLC` gives the same four fragments it
+  transmitted, and decoding its fragments gives the nine octets back. FLCO
+  `0x00`, talkgroup 2, source 3132910 — which is what the DMRD headers in the
+  same file say, so the two layers agree about who was talking.
+
+  **Reading EMBs off a capture needs burst A skipped.** Two values in the file
+  are not EMBs: `75f7` is burst A's sync pattern and appears exactly one burst
+  in six, and `df5d` is the voice LC header and terminator, twice per
+  transmission. The first pass reported three colour codes per transmission
+  because of it, and the sixth-of-all-bursts arithmetic is what gave it away. A
+  fixture recording one of those as an observation would have poisoned the
+  generator this capture confirms.
+
+### Fixed
+
+- **`EMB-CAPTURE-REQUEST.md` claimed `EMBFor` served only colour code 11 and
+  refused the rest.** It never did — it serves all sixteen from the recovered
+  generator and refuses only values above 15. The refusal described in that
+  document was considered and not taken, because a bridge serving one colour
+  code would be useless. The document now says what the code does.
+
+
 ### Fixed
 
 - **One peak for a whole run hid where the audio was.** A 150-frame run of the

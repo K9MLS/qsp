@@ -1,5 +1,18 @@
 # What one more capture would unlock: the EMB for every colour code
 
+**Partly answered on 2026-09-15.** A second repeater transmitting at **colour
+code 4** was captured, and `EMBFor` reproduced all four of its EMBs on the
+first attempt — see `hbp-emb-colourcode-4.md`. The colour code axis is
+therefore observed rather than predicted, and the same capture also promoted
+the embedded Link Control carriage from a reading of annex B to a recording.
+
+**What remains is completeness, not confidence.** 11 is `1011` and 4 is
+`0100`: two vectors where spanning four bits needs four, so colour codes 1, 2
+and 8 would finish the job. The method below is unchanged and still takes two
+minutes.
+
+---
+
 **Two minutes at a radio, and it completes the last unknown in the audio path
 between Motorola and this network.**
 
@@ -24,11 +37,15 @@ So the four observed values differ only in their two LCSS bits, and only the
 contribution of those two bits can be derived. Nothing has ever moved the colour
 code bits, so nothing about them can be honestly inferred.
 
-The `EMBFor` function in [`internal/dmrfec`](../../internal/dmrfec) therefore
-serves colour code 11 and refuses the rest.
-That refusal is deliberate: a wrong EMB produces a burst a radio **silently
-drops**. Audio that goes nowhere with nothing in a log is the worst failure
-available here, and much worse than an error naming the fix.
+The `EMBFor` function in [`internal/dmrfec`](../../internal/dmrfec) serves
+every colour code from the recovered generator, and refuses only values above
+15. **An earlier version of this document said it served 11 and refused the
+rest, which was never true of the code** — the refusal described here was
+considered and not taken, because a bridge serving one colour code would be
+useless. The stakes named below are why the prediction was worth corroborating
+rather than assuming: a wrong EMB produces a burst a radio **silently drops**,
+and audio that goes nowhere with nothing in a log is the worst failure
+available here.
 
 ## The capture
 

@@ -42,13 +42,21 @@ const (
 // four independent nine-bit observations is not a coincidence that needs
 // entertaining.
 //
-// **What the captures directly confirm is the LCSS axis**, because every burst
-// in testdata/hbp/ carries colour code 11 and nothing ever moved those four
-// bits. The model predicts the colour code axis rather than demonstrating it.
-// The prediction is worth far more than a refusal — a bridge that served one
-// colour code would be useless — but it is a prediction, and
-// testdata/hbp/EMB-CAPTURE-REQUEST.md sets out the two-minute capture that
-// turns it into an observation.
+// **The colour code axis was a prediction and is now an observation.** Until
+// 2026-09-15 every burst this project held carried colour code 11, nothing had
+// ever moved those four bits, and the model predicted that axis rather than
+// demonstrating it.
+//
+// testdata/hbp/hbp-emb-colourcode-4.pcap holds a second repeater transmitting
+// at **colour code 4**, and this generator reproduces all four of its EMBs —
+// 411e, 436d, 45fb and 4788. Four unseen values predicted correctly on the
+// first attempt, against a generator chosen because it was the only one of 256
+// to fit the first colour code.
+//
+// **It is still not every colour code.** 11 is 1011 and 4 is 0100, two vectors
+// where spanning four bits needs four, so codes 1, 2 and 8 would complete it —
+// see testdata/hbp/EMB-CAPTURE-REQUEST.md. But a generator this well
+// corroborated is one to rely on rather than refuse.
 const embGenerator = 0x139
 
 // EMBFor computes the sixteen-bit EMB for a colour code and LCSS.
