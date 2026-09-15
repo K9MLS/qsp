@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **ADR-0062's Opus premise expired within a day, and the decision survived
+  the test.** The record justified keeping Opus outside QSP on the grounds that
+  every Go binding is cgo, and invited a revisit "if a pure-Go Opus encoder
+  good enough for voice appears". Several pure-Go implementations now exist, so
+  the revisit was carried out by running them.
+
+  **The decoder is real**: `selawe/go-opus-codec` has no dependencies, builds
+  with `CGO_ENABLED=0`, passes all twelve RFC 8251 vectors, and decoded a
+  libopus file at peak 6417 and mean 2217 against an original of 6005 and 2237.
+
+  **The encoder is not.** Driven at 8 kHz mono VoIP it produced packets its own
+  decoder rendered as −32768 on every sample; repeated at 48 kHz through its
+  own tool and handed to **libopus**, an input of peak 6149 and mean 2240 came
+  back as peak 32761 and mean 23132. The reference implementation decodes those
+  packets as full-scale noise, so it is neither an API misuse nor a
+  sample-rate problem. The other candidates are decoder-only or CELT-only,
+  which is the music mode rather than the speech one.
+
+  **So Opus stays outside for a better reason than the one written down**: not
+  that no pure-Go binding exists, but that no pure-Go encoder yet produces
+  packets a standard decoder can use — and the Zello direction needs encoding.
+  The decoder half could be pure Go today, and splitting one codec across two
+  processes to save cgo in one direction is worse than keeping it whole.
+
+  A decision resting on an expired reason is one somebody reopens wrongly. This
+  one now rests on a measurement, and the measurement is four commands anybody
+  can repeat.
+
+
 ### Added
 
 - **`internal/audio`: QSP speaks USRP.** The boundary ADR-0062 leaves open —

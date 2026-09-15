@@ -70,6 +70,46 @@ same reasoning as ADR-0034 applied to a different codec. If a pure-Go Opus
 encoder good enough for voice appears, this part of the decision should be
 revisited: nothing else about it is load-bearing.
 
+### Revisited 2026-09-15: the premise expired and the decision stands
+
+**"A wrapper around a C library is cgo" is no longer the whole picture.**
+Pure-Go Opus implementations now exist — `tphakala/go-opus`,
+`selawe/go-opus-codec`, `kazzmir/opus-go`, `darui3018823/opus` — several
+published in mid-2026, all claiming `CGO_ENABLED=0`. The sentence above
+invited this revisit and it was carried out by running them rather than
+reading about them.
+
+**The decoder is real.** `selawe/go-opus-codec` has no dependencies at all,
+builds with `CGO_ENABLED=0`, and publishes a decoder conformance matrix
+passing all twelve RFC 8251 vectors at every rate and channel count. Decoding
+a libopus-encoded file through it returned peak 6417 and mean |sample| 2217
+against an original of 6005 and 2237 — correct.
+
+**The encoder is not.** The same library's encoder, driven at 8 kHz mono VoIP
+with the bitrate set to 16 kbps, produced packets its own decoder rendered as
+−32768 on every sample. Its own command-line tool refuses anything but 48 kHz,
+so the test was repeated there and the output handed to **libopus itself**:
+input peak 6149 and mean 2240 came back as peak 32761 and mean 23132. Not an
+API misuse and not a sample-rate problem — the reference implementation
+decodes those packets as full-scale noise.
+
+None of the others is a candidate either: `pion/opus` is decoder-only by its
+own README, and `tphakala/go-opus` and `darui3018823/opus` both describe their
+encoders as CELT-only, which is the music mode rather than the speech one.
+
+**So the decision holds, and its reason is now better than the one it was
+written with.** It is not that no pure-Go binding exists; it is that **no
+pure-Go Opus encoder yet produces packets a standard decoder can use**, and
+QSP's Zello direction needs encoding. A premise that was true on 2026-09-14
+had expired within a day, and the conclusion survived the test that expiry
+prompted.
+
+**What would change it:** a pure-Go encoder whose output libopus decodes at
+the right level. The test above is four commands and should be repeated rather
+than argued about. The decoder half could already be pure Go today — but
+splitting one codec across two processes to save cgo in one direction is worse
+than keeping it whole, so both stay outside together.
+
 ## Consequences
 
 **Two processes beside QSP, both optional.** A club running plain DMR installs
