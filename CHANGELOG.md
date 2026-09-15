@@ -4,6 +4,70 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`internal/secrets`: where a console-entered credential lives.** ADR-0012
+  keeps secrets out of the configuration document and ADR-0065 keeps that rule
+  while moving where an operator types one — the console, not a text editor. So
+  a credential needs somewhere that is not `configuration_versions`, which
+  stores the full JSON for every save: a secret written there would appear in
+  every snapshot, every diff and every version the console shows, in plain
+  text, with an author's name on it.
+
+  Stored AES-256-GCM under a key in a separate file, created on first use so
+  there is no setup step to forget. **What that buys, stated with its limit:**
+  a copy of the database without the key file yields nothing — and a SQLite
+  file gets handed around in ways a configuration file does not, sent for
+  diagnosis or caught in a storage snapshot. It does **not** protect a
+  compromised host, because anyone who can read the database can usually read
+  the key beside it. Defence in depth against copies, not a claim about an
+  attacker with a shell.
+
+  **Losing the key loses every secret**, exactly as ADR-0065 says losing a
+  backup passphrase loses a backup, and recovery is rotation rather than
+  decryption. A key file readable by another account is refused rather than
+  used, because that makes the encryption pointless while leaving everything
+  looking encrypted; a truncated one is refused with the consequence stated
+  rather than padded.
+
+  **The secret's name is the additional authenticated data**, so a row cannot
+  be moved between names: copying the Zello credential into the peer-password
+  row fails to decrypt rather than quietly offering the wrong secret to a link.
+  A second write replaces rather than accumulating, because a table of every
+  password a server has ever held is a liability. A listing names secrets and
+  their dates and **never decrypts**, so it cannot leak a value even if the
+  page rendering it is wrong.
+
+### Fixed
+
+- **Two holes in the tests for the riskiest code in this patch, both found by
+  breaking it.**
+
+  The first test of the name binding built **its own cipher** and checked that
+  GCM authenticates its additional data — which is true of GCM and says nothing
+  about whether this package passes the name in. Removing the name from both
+  `Seal` and `Open` passed everything: the two sides agreed on nothing, every
+  round trip succeeded, and the binding was gone.
+
+  And **nothing caught a fixed nonce**. Deleting the random read left twelve
+  zero bytes for every secret, and every test still passed because round trips
+  work fine. Under GCM that is not a weakness but a break: two plaintexts under
+  one nonce leak their exclusive-or and permit forgery.
+
+  The encryption is now a pair of functions the tests drive directly rather
+  than a path they reconstruct, so both breaks fail — along with a nonce from a
+  counter, which repeats whenever the counter restarts on a restored database
+  or a second process.
+
+### Notes
+
+- **The SQL half of `internal/secrets` is not verified in the development
+  container**, which has no SQLite driver — the same reason seven `cmd/qsp`
+  tests cannot run there. Those tests skip rather than fail, and run on a
+  machine with a driver. The cryptography needs no driver and is exercised in
+  full.
+
+
 ### Documentation
 
 - **ADR-0065: a full backup, encrypted, alongside the shareable export** —
