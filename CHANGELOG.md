@@ -6,6 +6,50 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Something acts on the mapping: QSP opens its vocoder channels.**
+  A supervisor in `internal/ambe` holds one client per enabled `dmr.transcoders`
+  entry, brings each chip to a known state, and registers a health check per
+  channel.
+
+  **A supervisor rather than a startup step, because a dongle is a thing that
+  gets unplugged.** The operator's is passed through a hypervisor, AMBEserver
+  has no unit and is started by hand, and the documented recovery path for a
+  wedged chip is removing its power for ten seconds. A server that refused to
+  start without one would be a server that refused to start — so a channel
+  that cannot be opened is retried every thirty seconds and reported, not
+  fatal. The retry is slow and logged once rather than per attempt, for the
+  same reason the IPSC warnings needed a rate limit.
+
+  **A reachable vocoder reports degraded, not healthy, and that is the point.**
+  ADR-0063 put the mapping in the routing table and nothing delivers frames to
+  it yet, so a green line would be the stub that claims success — and the
+  specific way an afternoon goes missing is every check reporting fine while no
+  audio crosses. The summary says "ready and carrying nothing" and the fix says
+  why.
+
+  **An unreachable one reports failing with the two things that have actually
+  gone wrong on this bench**: AMBEserver not running, with `-x` named as its
+  debug flag since `-v` only prints a version, and a wedged chip needing its
+  power pulled.
+
+### Fixed
+
+- **Three stale reasons in the unbuilt-subsystem list.** AllStar, Zello and
+  EchoLink each said they needed an external transcoder to hand audio to,
+  because QSP does not decode audio. ADR-0062 revised that months later and the
+  entries never caught up: QSP now speaks the AMBE-3000 packet format to an
+  AMBEserver itself, and real DMR audio has been decoded to speech on the
+  operator's bench. What is missing for each is the connector, not the codec
+  path — and for Zello specifically, Opus, the API and a channel policy, with
+  Opus staying outside because every Go binding is cgo.
+
+  The vocoder itself is still outside, and the reason is unchanged: AMBEserver
+  owns the serial port, and that keeps the operator's hardware available to the
+  operator.
+
+
+### Added
+
 - **Talkgroup to channel mapping: a transcoder is a routing destination**
   ([ADR-0063](docs/adr/ADR-0063-a-transcoder-is-a-routing-destination.md)).
   ADR-0062's third item. `routing.Endpoint` gains a `Transcoder` field beside

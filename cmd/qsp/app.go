@@ -17,6 +17,7 @@ import (
 	"syscall"
 
 	"github.com/k9mls/qsp/console"
+	"github.com/k9mls/qsp/internal/ambe"
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/buildinfo"
@@ -58,6 +59,15 @@ type app struct {
 	p25       *p25link.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
+
+	// vocoders supervises the configured transcoder channels.
+	//
+	// **It carries nothing yet**, and its health check says so rather than
+	// reporting green: ADR-0063 put the talkgroup-to-channel mapping in the
+	// routing table and nothing delivers frames to it. A supervisor rather
+	// than a startup step because a dongle is a thing that gets unplugged —
+	// its documented recovery path is removing its power for ten seconds.
+	vocoders *ambe.Supervisor
 	// auth is the concrete login service, kept alongside the interface the
 	// server holds because the session sweep is not something an HTTP handler
 	// ever needs and does not belong on that interface.
@@ -554,6 +564,26 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			registry.MustRegister(a.upstreams.CheckFor(name))
 		}
 	}
+	// Vocoder channels. Built from the enabled transcoders only: a disabled
+	// one is a line in a document and not a thing to go looking for.
+	var vocoders []ambe.Vocoder
+	for _, t := range cfg.DMR.Transcoders {
+		if !t.Enabled {
+			continue
+		}
+		vocoders = append(vocoders, ambe.Vocoder{
+			Name:    t.Name,
+			Address: t.Address,
+			Rate:    t.RateIndex(),
+		})
+	}
+	if len(vocoders) > 0 {
+		a.vocoders = ambe.NewSupervisor(log, vocoders)
+		for _, name := range a.vocoders.Names() {
+			registry.MustRegister(a.vocoders.CheckFor(name))
+		}
+	}
+
 	for _, s := range unbuiltSubsystems {
 		registry.MustRegister(unbuilt(s.name, s.arrives))
 	}
@@ -871,6 +901,15 @@ func (a *app) run(ctx context.Context) error {
 	// registry that is slow costs a name rather than a transmission.
 	if a.names != nil {
 		go a.names.Run(ctx)
+	}
+
+	// Vocoder channels are opened in the background and retried, because the
+	// thing at the other end is absent more often than anything else QSP
+	// talks to: it is passed through a hypervisor, AMBEserver is started by
+	// hand, and a wedged chip is cleared by pulling its power. A server that
+	// refused to start without one would be a server that refused to start.
+	if a.vocoders != nil {
+		go a.vocoders.Run(ctx)
 	}
 
 	<-ctx.Done()
@@ -1560,17 +1599,28 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// does not decode audio and will not: it copies vocoder payloads and never
 	// inspects them, which is why DMR-to-DMR needs no codec at all. Crossing
 	// codecs — into AllStar, Zello or EchoLink, or between P25 Phase 1 and DMR
-	// — needs an AMBE decoder, and in this hobby that is a hardware dongle
-	// behind a transcoder, not a package in this repository.
+	// — needs an AMBE decoder, and in this hobby that is a hardware dongle.
 	//
-	// So it belonged to the connectors that need it rather than to QSP. The
-	// three below say so themselves.
-	{"allstar", "the AllStar connector arrives in phase 5; it needs an external transcoder " +
-		"with an AMBE dongle, because QSP does not decode audio"},
-	{"zello", "the Zello connector arrives in phase 6; it needs an external transcoder " +
-		"with an AMBE dongle, because QSP does not decode audio"},
-	{"echolink", "the EchoLink connector arrives in phase 6; it needs an external " +
-		"transcoder with an AMBE dongle, because QSP does not decode audio"},
+	// **What changed since, and these three entries said the old thing until
+	// 0365.** They described the dongle as sitting behind an external
+	// transcoder that QSP would hand audio to. ADR-0062 revised that: as much
+	// as possible is built in QSP, and a thing leaves only when keeping it
+	// would break a property QSP has decided to hold. So QSP now speaks the
+	// AMBE-3000 packet format to an AMBEserver itself (ADR-0061,
+	// internal/ambe), and real DMR audio has been decoded to speech on the
+	// operator's bench — PROJECT_MEMORY §8r.
+	//
+	// The vocoder is still outside, because AMBEserver owns the serial port
+	// and that keeps the operator's hardware available to the operator. What
+	// is missing for each connector below is the connector, not the codec
+	// path.
+	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
+		"built (internal/ambe, ADR-0061) and the connector is not"},
+	{"zello", "the Zello connector arrives in phase 6; the vocoder link is built and " +
+		"proved on hardware, and what remains is Opus, the Zello API and a channel " +
+		"policy — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
+	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
+		"built (internal/ambe, ADR-0061) and the connector is not"},
 }
 
 // unbuilt returns a check for a subsystem that does not exist yet.
