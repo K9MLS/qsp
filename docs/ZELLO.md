@@ -271,6 +271,37 @@ IPSC omits the EMB. The repeater terminates the air interface and
 re-originates it. A Homebrew peer passes the bursts through, which is why the
 alias is in a Pi-Star capture and not a repeater one.
 
+## The codec, and the build tag that keeps it out of QSP
+
+`internal/opus` wraps libopus, and it is **behind a `zello` build tag**. That
+is not tidiness: a cgo package in the tree without a tag breaks
+`CGO_ENABLED=0 go build ./...`, and with it `gofmt`, `go vet`, `staticcheck`
+and `go test ./...` for the whole repository. A server running plain DMR would
+stop compiling because of a connector it does not run.
+
+```sh
+CGO_ENABLED=1 go build -tags zello ./...   # the companion, needs libopus
+go build ./...                             # QSP, and it must not see the tag
+```
+
+**Zello's parameters are fixed**: 16 kHz mono, 60 ms frames, codec `opus` and
+no PCM option. DMR is 8 kHz and 20 ms, so `internal/audio` resamples and
+repacketises three radio frames into one Zello packet — which costs **60 ms of
+latency toward Zello**, unavoidable at a fixed packet size and the dominant
+delay in the path.
+
+**A 60 ms frame can only be SILK.** RFC 6716 §2 gives CELT 2.5 to 20 ms and
+SILK 10 to 60 ms, so the speech model is forced by the packet length rather
+than chosen by the application hint — setting the hint to `audio` changes
+nothing measurable. It also means a CELT-only encoder cannot serve Zello at
+all, whatever its quality, which is sharper than ADR-0062's rejection of the
+pure-Go candidates on quality grounds.
+
+**libopus's bitrate is read back rather than assumed.** A control returning
+`OPUS_OK` has been accepted, not necessarily applied: libopus clamps to what
+the mode can carry, and a silently clamped rate is a stream costing more or
+sounding worse than the configuration claims.
+
 ## Identity: settled in ADR-0064
 
 **A Zello user transmits under the gateway's own DMR ID and identifies by

@@ -6,6 +6,52 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`internal/opus`: libopus, behind a `zello` build tag.** The tag is
+  load-bearing rather than tidy — a cgo package in the tree without one breaks
+  `CGO_ENABLED=0 go build ./...`, and with it `gofmt`, `go vet`, `staticcheck`
+  and `go test ./...` for the whole repository. A server running plain DMR would
+  stop compiling because of a connector it does not run. The default build is
+  checked to not see it.
+
+  **Measured the same way the pure-Go encoder was condemned.** ADR-0062's
+  revisit rejected a candidate because libopus decoded its output at peak 32761
+  against an input of 6149; this package is held to that test rather than
+  trusted for being written in C. Speech-shaped audio round-trips at 0.5 to 2.0
+  of its level, the stream lands near the requested bitrate, and the last frame
+  must not be pinned at full scale.
+
+  **A lost packet is concealed, not failed.** Passing nil returns a concealed
+  frame, because on a voice channel 60 ms of concealment is far less noticeable
+  than a hole — and a hole is what a caller gets if it treats a loss as an
+  error and sends nothing.
+
+  **The bitrate is read back.** A control returning `OPUS_OK` has been accepted,
+  not necessarily applied as asked: libopus clamps to what the mode can carry,
+  and a silently clamped rate is a stream costing more or sounding worse than
+  the configuration says. Left unset entirely, the encoder in the earlier
+  investigation chose 69 kbit/s for 8 kHz mono.
+
+### Fixed
+
+- **A claim this package made and could not support.** The comment said the
+  VoIP application hint is what selects SILK over CELT, and a test was written
+  specifically to check it — **changing the hint to audio passed both.**
+
+  The real reason is better: RFC 6716 §2 gives CELT frame sizes of 2.5 to 20 ms
+  and SILK 10 to 60 ms, so **a 60 ms frame can only be SILK** and the hint
+  cannot override arithmetic. Zello's fixed packet length forces the speech
+  model whatever anybody asks for. The test now drives both hints and requires
+  them to agree, and fails if the frame size is changed to one where CELT is
+  possible.
+
+  It also sharpens ADR-0062's rejection of the CELT-only pure-Go encoders: one
+  cannot produce a 60 ms frame at all, so it could never serve Zello whatever
+  its quality. That is a stronger argument than the quality measurement it was
+  rejected on.
+
+
+### Added
+
 - **The rate conversion and the repacketiser for the Zello boundary**, both in
   `internal/audio` and both pure Go with no cgo anywhere in them. These are the
   parts of the path a bench can judge, so they are built and measured before
