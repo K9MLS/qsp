@@ -451,7 +451,23 @@ func (c *Conn) Close() error {
 	return c.closeErr
 }
 
+// CloseWriteTimeout bounds the courtesy close frame.
+//
+// **Closing must not be able to hang.** A peer that has stopped reading — a
+// dead far end, a full window, a process being killed — leaves a write with
+// nowhere to go, and a shutdown path that blocks forever is a daemon that will
+// not stop. Two seconds is long enough for a working connection and short
+// enough that nobody waits on a broken one.
+//
+// Found by a test hanging in Close rather than failing.
+const CloseWriteTimeout = 2 * time.Second
+
 // sendClose writes a close frame at most once for the life of the connection.
+//
+// The frame is a courtesy: it lets the peer stop waiting. **So it is bounded
+// and its failure is ignored** — a close that could not be delivered is not a
+// reason to keep a connection open, and the socket is being torn down either
+// way.
 func (c *Conn) sendClose(payload []byte) {
 	c.writeMu.Lock()
 	already := c.closeSent
@@ -460,7 +476,9 @@ func (c *Conn) sendClose(payload []byte) {
 	if already {
 		return
 	}
+	_ = c.raw.SetWriteDeadline(time.Now().Add(CloseWriteTimeout))
 	_ = c.writeFrame(opClose, payload)
+	_ = c.raw.SetWriteDeadline(time.Time{})
 }
 
 // SetReadDeadline bounds a read, so a session can notice a server that has

@@ -6,6 +6,56 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Zello session: the last piece of the connector.** Logon, waiting for
+  the channel, opening a stream, sending audio, closing it. Tested against a
+  server this package writes from the specification — so what is proved is that
+  the session does what the specification says, **not that Zello does.** The
+  first real connection is the test that matters and it needs an account.
+
+  **Three rules the specification sets and this enforces.** A session does not
+  come up until `on_channel_status` reports the channel online, because a
+  stream started sooner is refused with `channel is not ready` and an operator
+  reading that would go looking at their channel rather than at timing. A
+  stream is closed before the socket, because one left open holds the channel
+  against everybody else until the server times it out. And bad credentials are
+  reported as fatal rather than retried, because retrying `not authorized`
+  forever hammers the service with a password that will never work.
+
+  One stream at a time, since the API identifies packets only by stream ID and
+  two open streams would leave two identifiers and one caller. Audio is dropped
+  rather than blocking the reader when a consumer falls behind — blocking there
+  stops pings being answered, which drops the connection thirty seconds later
+  for a reason that looks nothing like a slow consumer. And an unreadable
+  binary message is skipped: the specification has an image type, and a session
+  that died on somebody sending a photograph would be a session that died on a
+  photograph.
+
+### Fixed
+
+- **`Close` could block forever, and the test hung rather than failed.** The
+  courtesy close frame had no write deadline, so a peer that had stopped
+  reading left the write with nowhere to go. **A shutdown path that blocks
+  forever is a daemon that will not stop** — worse than a close frame nobody
+  receives. Bounded at two seconds now, with the failure ignored because the
+  socket is being torn down either way.
+
+- **A guard with no test.** Removing the check that refuses a second stream
+  while one is open passed the entire suite — nothing opened two. It is tested
+  now, including that closing one lets another begin, so the guard is a guard
+  rather than a one-stream-per-session limit.
+
+- **Two test problems worth naming, because both wasted a cycle.** The fake
+  server used `net.Pipe`, which is unbuffered, so every session's closing frame
+  waited out its deadline and added two seconds per test — sixteen across the
+  file. It uses a loopback socket now, which has kernel buffers like the
+  connection this code will really run over. And two tests replied to a command
+  without waiting for the goroutine that sent it, so the cleanup closed the
+  socket underneath and the reported failure was "use of closed network
+  connection" rather than whatever was actually wrong.
+
+
+### Added
+
 - **A WebSocket client, RFC 6455, hand-written on the standard library.** The
   Zello session needs one and **this project cannot add a dependency**:
   `go.mod` and `go.sum` are never committed, so a library would be a build that
