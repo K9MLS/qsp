@@ -4,6 +4,44 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **Talker Alias PDUs, built from the standard rather than from
+  recollection.** `TalkerAliasPDUs` in `internal/dmrfec` produces the Link Control
+  PDUs for an alias: one header and up to three blocks, nine bytes each. From
+  ETSI TS 102 361-2 V2.3.1 — §5.4.3 the service, tables 7.4 and 7.5 the
+  layouts, 7.25 and 7.26 the format and length elements, 5.4 the four FLCOs.
+  The field widths close on 72 bits, which is the first check that the tables
+  were read right, and the character boundaries derive to §5.4.3's own
+  numbers — 7, 15, 23, 31 and 6, 13, 20, 27 — by a second route.
+
+  **Nothing carries them yet, and that is said rather than hidden.** The
+  embedded Link Control spreading a 9-byte LC across four bursts of a voice
+  superframe is a BPTC(16,7) with a five-bit checksum, specified in
+  TS 102 361-1, which is not in the tree. Half a feature that says so beats
+  half a feature that looks finished.
+
+  **Two contradictions in the standard, both refused rather than guessed.**
+  UTF-16BE, because §5.4.3's boundaries for it run 3, 6, 10, 13 where a 56-bit
+  block holds three and a half characters and the other formats increment
+  evenly. And non-ASCII in an 8-bit format, because §7.2.19's prose calls the
+  length bytes while its own table 7.26 calls it characters — the same class
+  of self-contradiction the AMBE manual had in four places.
+
+  **It has never been compared against a radio.** A capture of a MOTOTRBO with
+  Inband Caller Alias enabled is what turns a careful reading into a
+  recording, and that test comes before anything transmits one.
+
+### Fixed
+
+- **A line of dead arithmetic, found by breaking it.** The header's character
+  count subtracted the reserved most significant bit, and 49 bits hold six
+  8-bit characters whether it is subtracted or not — integer division discards
+  the remainder either way, so the break was a no-op and tested nothing. What
+  is load-bearing is *writing* the bit, which moves the first character to
+  octet 3 as table 7.4's note requires; that is now what the tests gate.
+
+
 ### Fixed
 
 - **The withheld list was produced and nothing consumed it.** 0366 added

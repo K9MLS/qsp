@@ -212,6 +212,37 @@ there.
 Baseline before the hardware arrived: no `/dev/ttyUSB*` and no `/dev/ttyACM*`
 on either server. Afterwards there should be exactly one new device.
 
+## Talker Alias: the PDUs are built, and nothing carries them
+
+`TalkerAliasPDUs` in `internal/dmrfec` builds the Link Control PDUs for an alias:
+one header and up to three blocks, nine bytes each. From **ETSI TS 102 361-2
+V2.3.1 (2016-02)**, `md5 68543536068f01fe965b827e2f498ae3` — §5.4.3 is the
+service, tables 7.4 and 7.5 are the layouts, tables 7.25 and 7.26 are the
+format and length elements, table 5.4 lists the four FLCOs (0x04 to 0x07).
+
+**Nothing carries them yet.** The embedded Link Control that spreads a 9-byte
+LC across the four middle bursts of a voice superframe is a BPTC(16,7) with a
+five-bit checksum, and that is specified in **TS 102 361-1**, which is not in
+the tree. `EncodeBPTC` in that package is the 196-bit data-burst code — a
+different thing with a similar name.
+
+**Two places the standard contradicts itself, both refused rather than
+guessed:**
+
+- **UTF-16BE.** §5.4.3's character boundaries for it run 3, 6, 10, 13 —
+  increments of 3, 4 and 3, where a 56-bit block holds three and a half 16-bit
+  characters. The 7-bit and 8-bit formats increment evenly and reconstruct
+  exactly. A callsign needs none of it.
+- **Non-ASCII in an 8-bit format.** §7.2.19's prose calls the length element
+  "the length in bytes" and its own table 7.26 calls it "Length in
+  characters". They agree for ASCII and differ for anything else, and a radio
+  told the wrong number displays a truncated alias.
+
+**And it has never been compared against a radio.** Everything here is a
+careful reading of tables. A capture of a MOTOTRBO with Inband Caller Alias
+enabled is what would turn it into a recording, and that is the test worth
+running before anything transmits one.
+
 ## Identity: settled in ADR-0064
 
 **A Zello user transmits under the gateway's own DMR ID and identifies by
