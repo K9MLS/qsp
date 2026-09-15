@@ -24,12 +24,15 @@ import (
 const (
 	KeySubsystem = "subsystem"
 	KeyPeerID    = "peer_id"
-	KeyCallsign  = "callsign"
-	KeyTalkgroup = "talkgroup"
-	KeyTimeslot  = "timeslot"
-	KeyRequestID = "request_id"
-	KeyStreamID  = "stream_id"
-	KeyComponent = "component"
+	// KeySourceRadio names the radio that keyed up, which survives relaying
+	// while a peer ID does not. internal/ipsclink already uses this key.
+	KeySourceRadio = "source"
+	KeyCallsign    = "callsign"
+	KeyTalkgroup   = "talkgroup"
+	KeyTimeslot    = "timeslot"
+	KeyRequestID   = "request_id"
+	KeyStreamID    = "stream_id"
+	KeyComponent   = "component"
 )
 
 // RedactedPlaceholder replaces any value that must not appear in logs.
@@ -125,8 +128,27 @@ func Subsystem(l *slog.Logger, name string) *slog.Logger {
 	return l.With(slog.String(KeySubsystem, name))
 }
 
-// PeerID returns the canonical attribute for a DMR/P25 radio or peer ID.
+// PeerID returns the canonical attribute for a peer: the repeater or hotspot
+// QSP is exchanging frames with.
+//
+// **Not for a radio.** An earlier version of this doc said "a DMR/P25 radio or
+// peer ID", and that conflation put two different identifiers under one label:
+// `call started` logged the radio that keyed up as peer_id while `relaying
+// transmission` logged the peer it came from as peer_id, for the same stream.
+// On the operator's network those numbers are 3132910 and 3132913, four apart,
+// which is the worst possible case for noticing.
+//
+// A log field's name is a claim, the same way a counter's is. Use SourceRadio
+// for the radio that transmitted.
 func PeerID(id uint32) slog.Attr { return slog.Uint64(KeyPeerID, uint64(id)) }
+
+// SourceRadio returns the canonical attribute for the radio that keyed up.
+//
+// **It survives relaying and a peer ID does not**, which is exactly why they
+// need different names: the same transmission reaches four peers and carries
+// one source throughout. internal/ipsclink already logs it as "source", so
+// this is that convention rather than a fourth name for the same thing.
+func SourceRadio(id uint32) slog.Attr { return slog.Uint64(KeySourceRadio, uint64(id)) }
 
 // Callsign returns the canonical attribute for an amateur callsign.
 func Callsign(cs string) slog.Attr { return slog.String(KeyCallsign, cs) }

@@ -4,6 +4,34 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A radio ID logged as `peer_id`, found by an operator reading two lines
+  about one transmission.** The journal said, for a single stream:
+
+      call started           subsystem=network peer_id=3132910 stream_id=1317457390
+      relaying transmission  subsystem=network peer_id=3132913 to=3127045/TG2/TS2
+
+  **Both were labelled `peer_id` and neither was wrong about its value.** The
+  first is the radio that keyed up; the second is the peer the frame arrived
+  from. On this network those numbers are four apart, which is the worst case
+  for noticing.
+
+  `logging.PeerID`'s own documentation invited it — "a DMR/P25 radio or peer
+  ID" — so one label carried two identifiers. It was used correctly at fifteen
+  sites and incorrectly at six, and **every test passed**, because nothing
+  asserted which identifier a line was about.
+
+  `logging.SourceRadio` now names the radio that keyed up, under the key
+  `source` that `internal/ipsclink` already uses rather than a fourth name for
+  the same thing. A log field's name is a claim, the same way a counter's is.
+
+  **Still inconsistent, and named rather than changed in passing:**
+  `internal/ipsclink` calls the *peer* `radio_id`, so an IPSC peer and a
+  Homebrew peer are logged under different keys. Changing that alters a field
+  the operator greps, so it is a separate decision.
+
+
 ### Added
 
 - **A MOTOTRBO's own Talker Alias**, `testdata/hbp/hbp-talker-alias.pcap`, and

@@ -447,7 +447,7 @@ func (l *Listener) trigger(from hbp.RepeaterID, frame hbp.Data) {
 	for _, bridge := range opened {
 		l.log.Info("bridge opened on demand",
 			slog.String("bridge", bridge),
-			logging.PeerID(frame.SourceID),
+			logging.SourceRadio(frame.SourceID),
 			logging.Talkgroup(frame.TargetID),
 		)
 	}
@@ -1105,7 +1105,7 @@ func (l *Listener) observe(peer hbp.RepeaterID, frame hbp.Data) {
 			level = slog.LevelDebug
 		}
 		l.log.Log(context.Background(), level, "call started",
-			logging.PeerID(started.Source),
+			logging.SourceRadio(started.Source),
 			logging.Talkgroup(started.Target),
 			logging.Timeslot(int(started.Key.Timeslot)),
 			logging.StreamID(uint32(started.Key.Stream)),
@@ -1171,7 +1171,7 @@ func (l *Listener) logCallEnded(c calls.Call, now time.Time) {
 		level = slog.LevelDebug
 	}
 	l.log.Log(context.Background(), level, "call ended",
-		logging.PeerID(c.Source),
+		logging.SourceRadio(c.Source),
 		logging.Talkgroup(c.Target),
 		logging.Timeslot(int(c.Key.Timeslot)),
 		logging.StreamID(uint32(c.Key.Stream)),
@@ -1251,7 +1251,7 @@ func (l *Listener) expireCalls() {
 		// was written for: a lossy link, or a peer vanishing mid-over.
 		if !c.Voice {
 			l.log.Debug("data transmission ended",
-				logging.PeerID(c.Source),
+				logging.SourceRadio(c.Source),
 				logging.Talkgroup(c.Target),
 				logging.StreamID(uint32(c.Key.Stream)),
 				slog.Int("frames", c.Frames),
@@ -1262,7 +1262,7 @@ func (l *Listener) expireCalls() {
 		// Worth an operator's attention: many of these mean a lossy link or a
 		// peer that keeps vanishing mid-transmission.
 		l.log.Warn("call ended without a terminator",
-			logging.PeerID(c.Source),
+			logging.SourceRadio(c.Source),
 			logging.Talkgroup(c.Target),
 			logging.StreamID(uint32(c.Key.Stream)),
 			slog.Int("frames", c.Frames),
@@ -1566,7 +1566,7 @@ func (l *Listener) storeCall(c calls.Call) {
 
 	if err := l.cfg.CallStore.Record(ctx, c); err != nil {
 		l.log.Warn("cannot record a call in the history",
-			logging.PeerID(c.Source), "error", err)
+			logging.SourceRadio(c.Source), "error", err)
 	}
 }
 
