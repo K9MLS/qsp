@@ -110,13 +110,37 @@ burst, and a DMR talker's callsign reaching the far side — is a separate
 decision with an open question in it: what a Zello username *is* in a system
 keyed on DMR radio IDs. It gets its own record.
 
-**The per-repeater permission is not this record either.** ADR-0062 requires
-that a repeater owner opt in before transcoded audio appears on their machine,
-because a Zello user is not necessarily licensed and their audio reaches RF.
-That is a rule about the *reverse* direction — what leaves the vocoder for the
-network — and it belongs with the delivery path rather than with the mapping.
-**Until it exists, nothing delivers transcoded audio to a repeater**, which is
-the safe order to build these two in.
+**The per-repeater permission is part of this decision after all**, added in
+0366 before anything delivers. ADR-0062 requires that a repeater owner opt in
+before transcoded audio appears on their machine, because a Zello user is not
+necessarily licensed and their audio reaches RF.
+
+It lives in the routing table rather than at the delivery point, for the same
+reason the mapping does: the decision is configuration, this is the package
+that owns configuration decisions, and a caller that had to remember to check
+would eventually be a caller that forgot.
+
+`Permission` denies when empty — the only list in this configuration that
+does, because every access list governs a network the operator already runs
+while this one governs whether somebody else's licence is put at risk. Three
+consequences follow:
+
+- **Zero is not a wildcard.** `AnyPeer` is 0 in this package and matches
+  everything; carrying that convention here would mean a stray zero silently
+  permitted every repeater to carry possibly unlicensed audio. Configuration
+  refuses a zero entry rather than ignoring it, because 0 means "every peer"
+  everywhere else and somebody will write it here meaning that.
+- **Permitting everybody is a separate boolean**, so that it is a sentence
+  somebody wrote on purpose.
+- **An endpoint naming `AnyPeer` is withheld unless every peer is permitted.**
+  Resolving "wherever it appears" needs the set of registered peers, which
+  this package does not have and should not, so the unresolvable case takes
+  the safe reading.
+
+A refused destination goes in `Decision.Withheld` rather than simply being
+absent from `Targets`, because a repeater that has not opted in looks exactly
+like a repeater nobody bridged and those need different answers from an
+operator — the requirement the COLLISIONS counter failed.
 
 **One name is one chip, and a club with two needs two entries.** There is no
 pooling, and nothing here pretends otherwise. If a second chip is added, the

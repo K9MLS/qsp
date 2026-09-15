@@ -171,16 +171,16 @@ func TestATalkgroupRoutesToATranscoder(t *testing.T) {
 		t.Fatalf("the targets are %v, want the dvstick transcoder alone", d.Targets)
 	}
 
-	// Traffic from the chip reaches the network, and does not come back to
-	// the chip.
+	// **Traffic from the chip does not reach the network by default.** The
+	// permission this table carries is empty, so no repeater has opted in —
+	// see TestTranscodedAudioReachesARepeaterOnlyByOptIn.
 	back := table.Route(transcoder("dvstick", 2, hbp.Timeslot2))
-	if !back.Routed() {
-		t.Fatalf("a call from the transcoder went nowhere: %s", back.Reason)
+	if back.Routed() {
+		t.Errorf("transcoded audio reached %v with no peer opted in", back.Targets)
 	}
-	for _, target := range back.Targets {
-		if target.Transcoder != "" {
-			t.Errorf("a call from the transcoder was routed back to %s", target)
-		}
+	if len(back.Withheld) == 0 {
+		t.Error("the refused destination was not reported; a repeater nobody " +
+			"opted in for looks exactly like a repeater nobody bridged")
 	}
 
 	// A different talkgroup is not mapped, and the reason says so rather
@@ -237,5 +237,166 @@ func TestATranscoderEndpointNamesItselfInAString(t *testing.T) {
 	// And it is not mistakable for a link in a log line.
 	if strings.Contains(got, "upstream") {
 		t.Errorf("a transcoder endpoint reads %q, which names it as a link", got)
+	}
+}
+
+// TestTranscodedAudioReachesARepeaterOnlyByOptIn is ADR-0062's licensing
+// consequence, as a routing rule.
+//
+// **A Zello user is not necessarily licensed and their audio reaches RF.** An
+// unlicensed transmission on a licensed operator's repeater is that operator's
+// problem, not the network's, so it cannot be something a default arranges on
+// their behalf. The default is nobody.
+func TestTranscodedAudioReachesARepeaterOnlyByOptIn(t *testing.T) {
+	const (
+		optedIn = hbp.RepeaterID(312345)
+		hasNot  = hbp.RepeaterID(315544)
+	)
+
+	build := func(t *testing.T, perm map[string]Permission) *Table {
+		t.Helper()
+		table, err := NewTable([]Bridge{{
+			Name:    "zello",
+			Enabled: true,
+			Endpoints: []Endpoint{
+				{Peer: optedIn, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+				{Peer: hasNot, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+				transcoder("dvstick", 2, hbp.Timeslot2),
+			},
+		}}, WithPermissions(perm))
+		if err != nil {
+			t.Fatalf("building a table: %v", err)
+		}
+		return table
+	}
+
+	// Nothing configured: nothing delivered, and both refusals named.
+	d := build(t, nil).Route(transcoder("dvstick", 2, hbp.Timeslot2))
+	if d.Routed() {
+		t.Errorf("with no permission configured, transcoded audio reached %v", d.Targets)
+	}
+	if len(d.Withheld) != 2 {
+		t.Errorf("%d destination(s) reported as withheld, want 2", len(d.Withheld))
+	}
+	for _, want := range []string{"opted in", "unlicensed", "dvstick"} {
+		if !strings.Contains(d.Reason, want) {
+			t.Errorf("the reason does not mention %q: %s", want, d.Reason)
+		}
+	}
+
+	// One peer opts in: that one and only that one.
+	d = build(t, map[string]Permission{
+		"dvstick": {Peers: []hbp.RepeaterID{optedIn}},
+	}).Route(transcoder("dvstick", 2, hbp.Timeslot2))
+	if len(d.Targets) != 1 || d.Targets[0].Peer != optedIn {
+		t.Fatalf("the targets are %v, want peer %d alone", d.Targets, optedIn)
+	}
+	if len(d.Withheld) != 1 || d.Withheld[0].Peer != hasNot {
+		t.Errorf("the withheld list is %v, want peer %d alone", d.Withheld, hasNot)
+	}
+
+	// All permits both, and is a separate boolean so that it cannot happen by
+	// accident.
+	d = build(t, map[string]Permission{"dvstick": {All: true}}).
+		Route(transcoder("dvstick", 2, hbp.Timeslot2))
+	if len(d.Targets) != 2 {
+		t.Errorf("with every peer permitted the targets are %v, want both", d.Targets)
+	}
+	if len(d.Withheld) != 0 {
+		t.Errorf("with every peer permitted %v was still withheld", d.Withheld)
+	}
+
+	// **A permission for one transcoder does not carry to another.** Two
+	// chips may serve different things, and a club permitting its own net
+	// has not permitted somebody else's gateway.
+	d = build(t, map[string]Permission{"other": {All: true}}).
+		Route(transcoder("dvstick", 2, hbp.Timeslot2))
+	if d.Routed() {
+		t.Errorf("a permission named for %q delivered audio from %q: %v",
+			"other", "dvstick", d.Targets)
+	}
+}
+
+// TestAStrayZeroInAPermissionPermitsNobody guards the convention clash.
+//
+// AnyPeer is 0 in this package and matches every peer. A permission that
+// carried that convention would mean a stray zero — a malformed list, a
+// missing field in a form, an unparsed string — silently permitted every
+// repeater on the network to carry possibly unlicensed audio. Permitting
+// everything is a separate boolean for exactly this reason.
+func TestAStrayZeroInAPermissionPermitsNobody(t *testing.T) {
+	p := Permission{Peers: []hbp.RepeaterID{0}}
+	if p.Permits(312345) {
+		t.Error("a zero entry permitted an arbitrary peer")
+	}
+	if p.Permits(AnyPeer) {
+		t.Error("a zero entry permitted AnyPeer")
+	}
+	// And an endpoint naming AnyPeer is withheld unless every peer is
+	// permitted, because resolving "wherever it appears" needs the peer list
+	// and this package is pure.
+	if (Permission{Peers: []hbp.RepeaterID{312345}}).Permits(AnyPeer) {
+		t.Error("a specific permission permitted an AnyPeer endpoint")
+	}
+	if !(Permission{All: true}).Permits(AnyPeer) {
+		t.Error("permitting every peer did not permit an AnyPeer endpoint")
+	}
+}
+
+// TestPermissionDoesNotGovernTrafficIntoTheTranscoder.
+//
+// The rule is about what leaves the vocoder for RF. A radio transmitting to a
+// talkgroup bridged to a chip is a licensed operator putting their own audio
+// into a transcoder, which needs nobody's permission — and gating it would
+// make the mapping look broken while the configuration said it was right.
+func TestPermissionDoesNotGovernTrafficIntoTheTranscoder(t *testing.T) {
+	table, err := NewTable([]Bridge{{
+		Name:    "zello",
+		Enabled: true,
+		Endpoints: []Endpoint{
+			{Peer: 312345, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			transcoder("dvstick", 2, hbp.Timeslot2),
+		},
+	}}, WithPermissions(nil))
+	if err != nil {
+		t.Fatalf("building a table: %v", err)
+	}
+
+	d := table.Route(Endpoint{Peer: 312345, Talkgroup: 2, Timeslot: hbp.Timeslot2})
+	if len(d.Targets) != 1 || d.Targets[0].Transcoder != "dvstick" {
+		t.Fatalf("a radio's audio reached %v, want the transcoder", d.Targets)
+	}
+	if len(d.Withheld) != 0 {
+		t.Errorf("traffic into the transcoder was withheld: %v", d.Withheld)
+	}
+}
+
+// TestAPermissionIsCopiedIntoTheTable, so that a caller mutating its map
+// afterwards cannot change an active table.
+//
+// Invariant I3: a call is never routed against a half-applied configuration.
+// A permission held by reference would let a configuration reload change what
+// a repeater is allowed to receive part-way through a transmission.
+func TestAPermissionIsCopiedIntoTheTable(t *testing.T) {
+	perm := map[string]Permission{"dvstick": {Peers: []hbp.RepeaterID{312345}}}
+	table, err := NewTable([]Bridge{{
+		Name:    "zello",
+		Enabled: true,
+		Endpoints: []Endpoint{
+			{Peer: 312345, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			transcoder("dvstick", 2, hbp.Timeslot2),
+		},
+	}}, WithPermissions(perm))
+	if err != nil {
+		t.Fatalf("building a table: %v", err)
+	}
+
+	// Mutate the caller's map and its slice afterwards.
+	perm["dvstick"] = Permission{All: true}
+	delete(perm, "dvstick")
+
+	d := table.Route(transcoder("dvstick", 2, hbp.Timeslot2))
+	if len(d.Targets) != 1 || d.Targets[0].Peer != 312345 {
+		t.Errorf("mutating the caller's permission map changed the table: %v", d.Targets)
 	}
 }

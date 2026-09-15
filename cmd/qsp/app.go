@@ -1121,7 +1121,25 @@ func buildTable(cfg config.Config, sched *scheduler.Schedule, triggers *routing.
 		}
 		bridges = append(bridges, routing.Bridge{Name: b.Name, Enabled: enabled, Endpoints: endpoints})
 	}
-	return routing.NewTable(bridges)
+
+	// **Who may receive transcoded audio, per vocoder.** Empty permits
+	// nobody: ADR-0062 makes this opt-in per repeater because a transcoded
+	// transmission may come from an unlicensed user and reaches RF. A
+	// disabled transcoder contributes no permission, so turning one off
+	// stops its audio rather than leaving a permission behind.
+	permissions := make(map[string]routing.Permission, len(cfg.DMR.Transcoders))
+	for _, t := range cfg.DMR.Transcoders {
+		if !t.Enabled {
+			continue
+		}
+		peers := make([]hbp.RepeaterID, 0, len(t.PermitPeers))
+		for _, id := range t.PermitPeers {
+			peers = append(peers, hbp.RepeaterID(id))
+		}
+		permissions[t.Name] = routing.Permission{Peers: peers, All: t.PermitAllPeers}
+	}
+
+	return routing.NewTable(bridges, routing.WithPermissions(permissions))
 }
 
 // readyPeers adapts the peer master to the routing core's narrow view of it.

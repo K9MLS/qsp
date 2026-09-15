@@ -162,6 +162,57 @@ func (e Endpoint) Validate() error {
 	return nil
 }
 
+// Permission records which peers may receive audio from one transcoder.
+//
+// **The default is nobody, and that is the whole point of the type.**
+// ADR-0062 requires that a repeater owner opt in before transcoded audio
+// appears on their machine, because a Zello user is not necessarily licensed
+// and their audio reaches RF. An unlicensed transmission on a licensed
+// operator's repeater is that operator's problem, not the network's, so it
+// cannot be something a default arranges on their behalf.
+//
+// The zero value therefore permits nothing. That is the opposite of
+// [access.List], which is permissive when empty — and the difference is
+// deliberate: an access list governs who may use a network the operator
+// already runs, while this governs whether somebody else's licence is put at
+// risk.
+type Permission struct {
+	// Peers are the repeater IDs that have opted in.
+	//
+	// **Zero is not a wildcard here.** Elsewhere in this package AnyPeer is
+	// 0 and matches everything, and carrying that convention into a
+	// permission would mean a stray zero in a list silently permitted every
+	// repeater on the network. A zero entry is ignored.
+	Peers []hbp.RepeaterID
+	// All permits every registered peer.
+	//
+	// A separate boolean rather than a wildcard entry, so that permitting
+	// everything is a sentence an operator wrote on purpose and not a
+	// consequence of a malformed list.
+	All bool
+}
+
+// Permits reports whether a peer has opted in to transcoded audio.
+//
+// **AnyPeer is permitted only by All.** A bridge endpoint may name AnyPeer,
+// meaning "this talkgroup wherever it appears", and resolving that to a list
+// of repeaters needs the set of registered peers — which this package does not
+// have and should not, because it is pure. So a transcoded call bridged to
+// AnyPeer is withheld unless the operator has said every peer may receive
+// transcoded audio, which is the safe reading of an unresolvable permission
+// rather than a limitation.
+func (p Permission) Permits(peer hbp.RepeaterID) bool {
+	if p.All {
+		return true
+	}
+	for _, id := range p.Peers {
+		if id != 0 && id == peer {
+			return true
+		}
+	}
+	return false
+}
+
 // Bridge joins endpoints so that traffic arriving at one reaches the others.
 type Bridge struct {
 	// Name identifies the bridge to an operator. It must be unique.
@@ -205,13 +256,37 @@ func (b Bridge) Validate() error {
 // half-applied configuration (invariant I3).
 type Table struct {
 	bridges []Bridge
+	// permissions is keyed by transcoder name. A name absent from the map
+	// permits nothing, which is the same as a zero Permission — so a
+	// transcoder nobody has opted in to cannot deliver to any repeater.
+	permissions map[string]Permission
+}
+
+// TableOption configures a table.
+type TableOption func(*Table)
+
+// WithPermissions sets which peers may receive audio from each transcoder,
+// keyed by transcoder name.
+//
+// Omitting it, or omitting a name from the map, permits nothing — see
+// [Permission].
+func WithPermissions(p map[string]Permission) TableOption {
+	return func(t *Table) {
+		t.permissions = make(map[string]Permission, len(p))
+		for name, perm := range p {
+			t.permissions[name] = Permission{
+				Peers: append([]hbp.RepeaterID(nil), perm.Peers...),
+				All:   perm.All,
+			}
+		}
+	}
 }
 
 // NewTable validates and builds a routing table.
 //
 // It returns every problem it finds rather than the first, because an operator
 // fixing a form should see all of them at once.
-func NewTable(bridges []Bridge) (*Table, error) {
+func NewTable(bridges []Bridge, opts ...TableOption) (*Table, error) {
 	var problems []string
 	names := make(map[string]bool, len(bridges))
 
@@ -239,7 +314,11 @@ func NewTable(bridges []Bridge) (*Table, error) {
 		out[i] = b
 		out[i].Endpoints = append([]Endpoint(nil), b.Endpoints...)
 	}
-	return &Table{bridges: out}, nil
+	t := &Table{bridges: out}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t, nil
 }
 
 // Decision is the outcome of routing one call.
@@ -255,6 +334,15 @@ type Decision struct {
 	// answer, and an empty list with no explanation is the worst possible
 	// answer to it.
 	Reason string
+	// Withheld are endpoints a bridge named and permission refused.
+	//
+	// **Separate from Targets rather than simply missing from it**, because a
+	// repeater that has not opted in to transcoded audio looks exactly like a
+	// repeater nobody bridged — and those two need different answers from an
+	// operator. Naming the refused destination is the same requirement the
+	// COLLISIONS counter failed: a drop an operator cannot attribute cannot
+	// be acted on.
+	Withheld []Endpoint
 }
 
 // Routed reports whether the call has anywhere to go.
@@ -323,15 +411,46 @@ func (t *Table) Route(from Endpoint) Decision {
 		}
 	}
 
+	// **Transcoded audio reaches a repeater only if its owner said so.**
+	// ADR-0062: a Zello user is not necessarily licensed and their audio
+	// reaches RF, so this is opt-in per repeater and the default is nobody.
+	// Applied here rather than at delivery because the decision is
+	// configuration, and this is the package that owns configuration
+	// decisions — and because a caller that had to remember to check would
+	// eventually be a caller that forgot.
+	var withheld []Endpoint
+	if from.Transcoder != "" {
+		permitted := t.permissions[from.Transcoder]
+		kept := targets[:0:0]
+		for _, e := range targets {
+			if e.Transcoder == "" && e.Upstream == "" && !permitted.Permits(e.Peer) {
+				withheld = append(withheld, e)
+				continue
+			}
+			kept = append(kept, e)
+		}
+		targets = kept
+	}
+
 	sortEndpoints(targets)
+	sortEndpoints(withheld)
 	sort.Strings(used)
 
-	d := Decision{Targets: targets, Bridges: used}
+	d := Decision{Targets: targets, Bridges: used, Withheld: withheld}
 	if len(targets) > 0 {
 		return d
 	}
 
 	switch {
+	case len(withheld) > 0:
+		names := make([]string, 0, len(withheld))
+		for _, e := range withheld {
+			names = append(names, e.String())
+		}
+		d.Reason = fmt.Sprintf("no peer bridged to transcoder %q permits transcoded "+
+			"audio: %s. A repeater receives it only if its owner opted in, because "+
+			"a transcoded transmission may come from an unlicensed user and reaches RF",
+			from.Transcoder, strings.Join(names, ", "))
 	case !matchedAny:
 		d.Reason = fmt.Sprintf("no bridge includes %s", from)
 	case len(disabled) > 0:

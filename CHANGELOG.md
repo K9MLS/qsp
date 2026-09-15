@@ -6,6 +6,44 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The per-repeater permission: transcoded audio reaches a repeater only if
+  its owner opted in.** ADR-0062's licensing consequence, built before anything
+  delivers — a Zello user is not necessarily licensed and their audio reaches
+  RF, so an unlicensed transmission on a licensed operator's repeater is that
+  operator's problem and not something a default may arrange for them.
+
+  `dmr.transcoders[].permit_peers` names the repeater IDs. **It denies when
+  empty**, which makes it the only list in this configuration that is closed
+  rather than open — every access list is the other way round, because an
+  access list governs a network the operator already runs while this one
+  governs whether somebody else's licence is put at risk.
+
+  **Zero is not a wildcard, and configuration refuses it rather than ignoring
+  it.** `AnyPeer` is 0 in the routing package and matches everything, so
+  carrying that convention here would mean a stray zero silently permitted
+  every repeater on the network. Permitting everybody is
+  `permit_all_peers`, a boolean of its own, so it is a sentence somebody wrote
+  on purpose. Listing both is refused, because the document would say two
+  things and do one.
+
+  **An endpoint naming every peer is withheld unless every peer is
+  permitted.** Resolving "this talkgroup wherever it appears" needs the set of
+  registered peers, which the routing package does not have and should not,
+  so the unresolvable case takes the safe reading.
+
+  **A refused destination is reported rather than simply absent.**
+  `Decision.Withheld` carries it and the reason names it, because a repeater
+  that has not opted in looks exactly like a repeater nobody bridged — and
+  those two need different answers from an operator. That is the requirement
+  the COLLISIONS counter failed.
+
+  The rule governs only what leaves the vocoder. A radio transmitting to a
+  talkgroup bridged to a chip is a licensed operator putting their own audio
+  in, which needs nobody's permission.
+
+
+### Added
+
 - **Something acts on the mapping: QSP opens its vocoder channels.**
   A supervisor in `internal/ambe` holds one client per enabled `dmr.transcoders`
   entry, brings each chip to a known state, and registers a health check per

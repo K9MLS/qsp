@@ -721,6 +721,31 @@ type Transcoder struct {
 	// pin low and therefore not at the DMR rate, so this is a precondition
 	// for audio rather than a refinement — see PROJECT_MEMORY §8q.
 	Rate int `json:"rate,omitempty"`
+
+	// PermitPeers are the repeater IDs whose owners have opted in to
+	// receiving transcoded audio from this channel.
+	//
+	// **Empty permits nobody, and that is deliberate.** ADR-0062: a Zello
+	// user is not necessarily licensed and their audio reaches RF, so an
+	// unlicensed transmission on a licensed operator's repeater is that
+	// operator's problem — not something a default may arrange on their
+	// behalf. This is the one list in this configuration that is closed when
+	// empty rather than open; every access list is the other way round,
+	// because an access list governs a network the operator already runs.
+	//
+	// **Zero is not a wildcard.** A stray zero permits nothing rather than
+	// everything. Use PermitAllPeers to say that deliberately.
+	PermitPeers []uint32 `json:"permit_peers,omitempty"`
+	// PermitAllPeers permits every registered peer to receive transcoded
+	// audio from this channel.
+	//
+	// A boolean of its own so that permitting everything is a sentence
+	// somebody wrote on purpose, and cannot be the consequence of a
+	// malformed list. It also covers a bridge endpoint naming every peer,
+	// which nothing else can: resolving "wherever it appears" needs the set
+	// of registered peers, so a transcoded call bridged that way is withheld
+	// unless this is set.
+	PermitAllPeers bool `json:"permit_all_peers,omitempty"`
 }
 
 // DefaultTranscoderRate is the rate index used when a transcoder names none.
@@ -1426,6 +1451,26 @@ func (c Config) Validate() error {
 				v.add(tf+".rate", fmt.Sprintf("is %d", t.Rate),
 					"the AMBE-3000F has rate indices 0 to 61; leave it unset for 33, "+
 						"which is the rate interoperable with DMR")
+			}
+			// **A zero in the permission list is refused rather than
+			// ignored.** Ignoring it silently would leave an operator
+			// believing they had permitted a repeater, and the repeater
+			// receiving nothing; and 0 means "every peer" everywhere else in
+			// this configuration, so somebody will eventually write it here
+			// meaning that.
+			for j, id := range t.PermitPeers {
+				if id == 0 {
+					v.add(fmt.Sprintf("%s.permit_peers[%d]", tf, j), "is 0",
+						"give the repeater's ID. 0 means every peer elsewhere in this "+
+							"configuration and means nothing here; to permit every peer, "+
+							"set \"permit_all_peers\": true")
+				}
+			}
+			if t.Enabled && t.PermitAllPeers && len(t.PermitPeers) > 0 {
+				v.add(tf+".permit_peers",
+					fmt.Sprintf("lists %d peer(s) while permit_all_peers is true", len(t.PermitPeers)),
+					"the list has no effect when every peer is permitted; remove one of "+
+						"them so the document says what it does")
 			}
 		}
 

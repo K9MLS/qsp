@@ -152,3 +152,75 @@ func TestADisabledTranscoderNeedsNoBridge(t *testing.T) {
 		t.Errorf("a disabled transcoder with no bridge was refused: %v", err)
 	}
 }
+
+// TestThePermissionIsClosedWhenEmpty is the one list in this configuration
+// that denies by default.
+//
+// ADR-0062: a Zello user is not necessarily licensed and their audio reaches
+// RF, so an unlicensed transmission on a licensed operator's repeater is that
+// operator's problem and not something a default may arrange for them. Every
+// access list in this configuration is permissive when empty; this one is the
+// other way round, because an access list governs a network the operator
+// already runs.
+func TestThePermissionIsClosedWhenEmpty(t *testing.T) {
+	c := withTranscoder(t, nil)
+	if got := c.DMR.Transcoders[0].PermitPeers; len(got) != 0 {
+		t.Fatalf("the fixture already permits %v", got)
+	}
+	if c.DMR.Transcoders[0].PermitAllPeers {
+		t.Fatal("the fixture already permits every peer")
+	}
+	// An empty permission is a valid configuration: a mapping that carries
+	// audio into the vocoder and nothing back out is a perfectly ordinary
+	// thing to run, and refusing it would force an operator to grant a
+	// permission in order to start.
+	if err := c.Validate(); err != nil {
+		t.Errorf("a transcoder permitting nobody was refused: %v", err)
+	}
+}
+
+// TestAZeroInThePermissionListIsRefused guards the convention clash.
+//
+// 0 means "every peer" everywhere else in this configuration, so somebody will
+// eventually write it here meaning that. Ignoring it would leave an operator
+// believing they had permitted a repeater while the repeater received nothing;
+// honouring it would silently permit every repeater on the network to carry
+// possibly unlicensed audio.
+func TestAZeroInThePermissionListIsRefused(t *testing.T) {
+	err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].PermitPeers = []uint32{312345, 0}
+	}).Validate()
+	if err == nil {
+		t.Fatal("a zero in permit_peers was accepted")
+	}
+	if !strings.Contains(err.Error(), "permit_all_peers") {
+		t.Errorf("the refusal does not point at the deliberate way to say it: %v", err)
+	}
+}
+
+// TestPermittingEverybodyAndSomebodyIsRefused, because the document would then
+// say two things and do one.
+func TestPermittingEverybodyAndSomebodyIsRefused(t *testing.T) {
+	err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].PermitAllPeers = true
+		c.DMR.Transcoders[0].PermitPeers = []uint32{312345}
+	}).Validate()
+	if err == nil {
+		t.Fatal("a transcoder permitting every peer and also listing one was accepted")
+	}
+	if !strings.Contains(err.Error(), "no effect") {
+		t.Errorf("the refusal does not say which half is inert: %v", err)
+	}
+
+	// Either on its own is fine.
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].PermitAllPeers = true
+	}).Validate(); err != nil {
+		t.Errorf("permitting every peer was refused: %v", err)
+	}
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].PermitPeers = []uint32{312345, 315544}
+	}).Validate(); err != nil {
+		t.Errorf("permitting two peers was refused: %v", err)
+	}
+}
