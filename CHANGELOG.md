@@ -6,6 +6,54 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The transform the delivery path will call: frames in, PCM, frames back.**
+  `TranscodeRun` takes a run of DMR vocoder frames — the 72 bits QSP already
+  carries, which is the form the dongle accepted 828 times out of 828 — decodes
+  them, and optionally re-encodes the result.
+
+  **It is deliberately not the delivery path, and the reason is honesty about
+  what exists.** Nothing today can consume the PCM a decode produces: Opus
+  stays outside QSP because every Go binding is cgo, and the Zello API and its
+  channel policy do not exist. Wiring the routing core to hand frames to
+  something that threw the audio away would be a sink that claims work, which
+  is the same fault as a stub that claims success. So the part that can be
+  finished and proved is finished, and the Zello side consumes the middle when
+  it lands.
+
+  **A run rather than a frame, because a frame at a time would be wrong
+  twice.** The encoder and decoder each carry state, so the first frame out of
+  a reset one encodes approximately nothing — three bench runs went into
+  learning that. And the chip answers one packet at a time, so alternating
+  encode and decode would pay a round trip twice per frame of audio. The
+  signature makes both facts visible.
+
+  **The decoder's verdict is carried out with the audio.** Comfort noise is
+  counted and is not an error — Table 16's case (a) is the decoder answering a
+  *received* silence frame, and 40 of 828 on the bench was somebody drawing
+  breath. What matters is a run that is *mostly* comfort noise, or any
+  rejection at all, or a run of tone descriptors where speech was expected.
+  None of those is visible in the samples.
+
+- **`ambe-probe -loopback`**, which sends a capture's real audio through the
+  chip and back: the whole path a radio would hear, and the only way to hear it
+  before Opus exists.
+
+### Fixed
+
+- **A test that could not distinguish redundancy from a guard.** The run's
+  channel check is redundant because `Decode` refuses too, so removing it left
+  the same error coming back wrapped and the assertion passing. The property
+  that is not redundant — **no packet reaches the vocoder from a caller that
+  does not hold the channel** — is now what is checked, and it fails when both
+  guards go. The redundant guard stays: it states the precondition at the
+  boundary a caller reads rather than leaving it to be inferred from a function
+  it happens to call.
+
+  Sixteen.
+
+
+### Added
+
 - **The per-repeater permission: transcoded audio reaches a repeater only if
   its owner opted in.** ADR-0062's licensing consequence, built before anything
   delivers — a Zello user is not necessarily licensed and their audio reaches

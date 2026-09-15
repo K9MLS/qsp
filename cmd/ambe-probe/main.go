@@ -97,6 +97,10 @@ func main() {
 			"onair adds ETSI's error correction, params sends the parameters "+
 			"with 23 zeros behind them and lets the chip object")
 	wav := flag.String("wav", "", "write the decoded audio here as an 8 kHz 16-bit WAV")
+	loopback := flag.Bool("loopback", false,
+		"with -capture, re-encode the decoded audio and compare the frames "+
+			"against the ones that went in; this is the whole path a radio would "+
+			"hear, and the only way to hear it before Opus exists")
 	limit := flag.Int("limit", 0, "stop after this many frames; 0 means all of them")
 	roundtrip := flag.Int("roundtrip", 0,
 		"encode this many consecutive 20 ms frames and decode them back in "+
@@ -149,7 +153,7 @@ func main() {
 	}
 
 	if *capture != "" {
-		decodeCapture(conn, *wait, *capture, *frameForm, *wav, *limit, *rate, *server)
+		decodeCapture(conn, *wait, *capture, *frameForm, *wav, *limit, *rate, *loopback, *server)
 		return
 	}
 
@@ -495,7 +499,7 @@ func roundTrip(conn net.Conn, wait time.Duration, frames, rate int, signal strin
 // samples look like, because a run of DATA_INVALID would mean the 72-bit form
 // is wrong and no amount of listening to the output would say which form to
 // try instead.
-func decodeCapture(conn net.Conn, wait time.Duration, path, form, wav string, limit, rate int, server string) {
+func decodeCapture(conn net.Conn, wait time.Duration, path, form, wav string, limit, rate int, loopback bool, server string) {
 	frames, err := vocoderFramesFromCapture(path, form)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
@@ -589,6 +593,58 @@ func decodeCapture(conn net.Conn, wait time.Duration, path, form, wav string, li
 		fmt.Printf("\n  the decoder accepted these frames. **Listen to the file** — " +
 			"a voice means the whole path works, and noise at a healthy peak " +
 			"means the bits are in the wrong order rather than rejected\n")
+	}
+
+	// **The round trip, which is the path a radio would hear.** Frames in,
+	// PCM, frames back out. The comparison is not expected to match: a
+	// vocoder is lossy and re-encoding decoded audio loses again, so
+	// identical frames would mean nothing had happened. What matters is that
+	// every frame comes back the right width and the audio survives.
+	if loopback {
+		fmt.Printf("\n--- re-encoding %d frames ---\n\n", len(samples)/samplesPerFrame)
+		encoded, same := 0, 0
+		for i := 0; i+samplesPerFrame <= len(samples); i++ {
+			if i%samplesPerFrame != 0 {
+				continue
+			}
+			speech, err := ambe.SpeechD(samples[i : i+samplesPerFrame])
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+				return
+			}
+			pkt, err := ambe.Build(ambe.TypeSpeech, ambe.Val(fieldChannel0), speech)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ambe-probe: %v\n", err)
+				return
+			}
+			reply, out := quiet(conn, wait, pkt)
+			if out == unreachable {
+				refused(server)
+			}
+			frame, ok := ambe.ChannelFrameFromResponse(reply)
+			if !ok {
+				fmt.Printf("  frame %d was not re-encoded; %d done before it\n",
+					i/samplesPerFrame+1, encoded)
+				break
+			}
+			if frame.Bits != wantBits {
+				fmt.Printf("  frame %d came back %d bits where the rate gives %d; "+
+					"the rate stopped being what it was set to\n",
+					i/samplesPerFrame+1, frame.Bits, wantBits)
+				break
+			}
+			if n := i / samplesPerFrame; n < len(frames) &&
+				string(frame.Data) == string(frames[n]) {
+				same++
+			}
+			encoded++
+		}
+		fmt.Printf("  %-30s %d\n", "frames re-encoded", encoded)
+		fmt.Printf("  %-30s %d\n", "identical to the input", same)
+		fmt.Printf("\n  **Identical frames would be the surprise, not the goal.** A " +
+			"vocoder is lossy and re-encoding decoded audio loses again, so a " +
+			"round trip that reproduced its input would mean nothing had " +
+			"happened. Every frame coming back the right width is the result.\n")
 	}
 
 	if wav == "" {
