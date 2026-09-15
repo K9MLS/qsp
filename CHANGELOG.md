@@ -6,6 +6,58 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The embedded Link Control carriage, so a Talker Alias can reach the
+  air.** `EncodeEmbeddedLC` turns a nine-octet Link Control into the four
+  32-bit fragments that ride the middle of bursts B to E of a voice
+  superframe, and `EmbeddedLCMiddles` goes straight to the four values
+  `AssembleBurst` wants with the EMB and LCSS filled in.
+
+  From TS 102 361-1 V1.4.5 annex B — a different part of the standard from the
+  alias itself, which is part 2: the alias says what the bits mean and this
+  says how they survive the air. An eight-by-sixteen matrix carrying 77
+  information bits under Hamming (16,11,4) row codes and even column parity,
+  interleaved by columns. The checksum is the sum of the nine octets modulo 31,
+  so it never reaches 31 — worth knowing rather than discovering from a decoder
+  that rejects one frame in thirty-one.
+
+  **Figure B.3 prints its own answer for the interleave, and that is the check
+  that matters.** It lists burst 1 as beginning LC(71), LC(60), LC(49), LC(39),
+  LC(29), LC(19), LC(9), PC(15) and ending LC(16), LC(6), PC(12), and the
+  column reading reproduces every position.
+
+  **No error correction, deliberately.** The parity could locate and fix a
+  single bit, but QSP reads these from its own output and from captures rather
+  than off the air, and a corrector nothing exercises is one nobody can trust.
+  What is guaranteed instead: a corrupted fragment never yields a *different*
+  Link Control — the original, or a refusal, and nothing between.
+
+### Fixed
+
+- **The Hamming parity was computed over ten columns where the standard gives
+  eleven, and every other test passed.** The checksum bit sits in column 10 of
+  rows 3 to 7, inside the code's reach per figure B.3 — but this package does
+  not correct errors, so a decode reads the checksum straight out of that
+  column and never consults the parity. The round trip was blind to it, and a
+  receiver that *does* correct would have computed a different syndrome on
+  every frame. Found by breaking it; the matrix is now verified the way a
+  receiver would verify it, row by row.
+
+- **A test that called correct behaviour a defect.** It required every
+  single-bit flip of a fragment to be refused, and four of the thirty-two bits
+  in each burst are column parity, carrying no Link Control at all — flipping
+  one leaves the LC unchanged and the checksum correct. Nothing was corrected
+  and nothing was wrong. The property is now stated as what it should always
+  have been: never return a Link Control that differs from the one encoded.
+
+  The bit accounting in it was wrong twice, which is itself the structural
+  check: 77 information bits and 51 parity — five Hamming bits on each of seven
+  rows plus sixteen column bits — adding to the 128 of an eight-by-sixteen
+  matrix. The first version expected 16, having counted the columns and
+  forgotten the rows.
+
+
+### Added
+
 - **Talker Alias PDUs, built from the standard rather than from
   recollection.** `TalkerAliasPDUs` in `internal/dmrfec` produces the Link Control
   PDUs for an alias: one header and up to three blocks, nine bytes each. From

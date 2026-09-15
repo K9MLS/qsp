@@ -220,11 +220,30 @@ V2.3.1 (2016-02)**, `md5 68543536068f01fe965b827e2f498ae3` — §5.4.3 is the
 service, tables 7.4 and 7.5 are the layouts, tables 7.25 and 7.26 are the
 format and length elements, table 5.4 lists the four FLCOs (0x04 to 0x07).
 
-**Nothing carries them yet.** The embedded Link Control that spreads a 9-byte
-LC across the four middle bursts of a voice superframe is a BPTC(16,7) with a
-five-bit checksum, and that is specified in **TS 102 361-1**, which is not in
-the tree. `EncodeBPTC` in that package is the 196-bit data-burst code — a
-different thing with a similar name.
+**The carriage is built too**, from **TS 102 361-1 V1.4.5**,
+`md5 b0148d72137287d622fe391e85cadf70` — annex B. `EncodeEmbeddedLC` turns a
+nine-octet Link Control into the four 32-bit fragments that ride the middle of
+bursts B to E of a superframe, and `EmbeddedLCMiddles` goes straight to the
+four values `AssembleBurst` wants, EMB and LCSS included.
+
+An eight-by-sixteen matrix carrying 77 information bits — the 72 of the Link
+Control plus a five-bit checksum — under Hamming (16,11,4) row codes and even
+column parity, interleaved by columns into four bursts. §B.2.1 and figure B.3
+are the matrix, table B.16 the generator, §B.3.11 the checksum, which is the
+sum of the nine octets modulo 31 and so never reaches 31.
+
+**Figure B.3 prints its own answer for the interleave**, which is the check
+worth having: burst 1 begins LC(71), LC(60), LC(49), LC(39), LC(29), LC(19),
+LC(9), PC(15) and ends LC(16), LC(6), PC(12), and the column reading
+reproduces every one of those positions. A reading that missed them would be a
+reading to throw away.
+
+**No error correction, deliberately.** The Hamming rows and column parity
+could locate and fix a single bit, but QSP reads these from its own output and
+from captures rather than off the air. A corrector nothing exercises is one
+nobody can trust — ADR-0034's reasoning a layer down. What is guaranteed is
+that a corrupted fragment never yields a *different* Link Control: either the
+original, or a refusal.
 
 **Two places the standard contradicts itself, both refused rather than
 guessed:**
