@@ -567,6 +567,32 @@ func decodeCapture(conn net.Conn, wait time.Duration, path, form, wav string, li
 		}
 	}
 
+	// **One peak for a whole run hides where the audio is.** Three seconds of
+	// a sixteen-second transmission reported peak 32 and looked like a
+	// failure; it was the operator keying up before speaking, and with DTX
+	// disabled a quiet room is not silence frames but a different frame every
+	// 20 ms describing the hiss. A per-second column shows speech starting
+	// instead of averaging it away.
+	fmt.Printf("  %-30s ", "peak by second")
+	for from := 0; from < len(samples); from += 8000 {
+		to := from + 8000
+		if to > len(samples) {
+			to = len(samples)
+		}
+		p := 0
+		for _, v := range samples[from:to] {
+			n := int(v)
+			if n < 0 {
+				n = -n
+			}
+			if n > p {
+				p = n
+			}
+		}
+		fmt.Printf("%d ", p)
+	}
+	fmt.Println()
+
 	fmt.Printf("  %-30s %d\n", "frames decoded", decoded)
 	fmt.Printf("  %-30s %.2f seconds at 20 ms a frame\n", "audio",
 		float64(decoded)*0.02)

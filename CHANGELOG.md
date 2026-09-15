@@ -4,6 +4,23 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **One peak for a whole run hid where the audio was.** A 150-frame run of the
+  capture reported peak 32 and looked like a failure, while the full 828-frame
+  run of the same file reported 7191. Both were correct: the operator had keyed
+  up and not started speaking, and the first three seconds are room noise.
+
+  **With DTX disabled a quiet room is not silence frames.** The encoder sends a
+  different frame every 20 ms describing the hiss — 143 of the first 150 frames
+  were distinct and valid, and only 7 were the silence frame, which is exactly
+  the 7 the decoder reported as comfort noise. Nothing was wrong anywhere; the
+  summary was just averaging a transmission into a single number.
+
+  `-capture` now prints a peak per second, so speech starting is visible rather
+  than averaged away.
+
+
 ### Added
 
 - **The embedded Link Control carriage, so a Talker Alias can reach the
