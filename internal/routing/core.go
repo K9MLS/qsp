@@ -78,6 +78,26 @@ type Drop struct {
 	// so a drop site added later and not classified keeps today's behaviour
 	// rather than quietly leaking a refused frame to the repeaters.
 	NotAJudgement bool
+	// NotACollision says this drop is an operator's policy rather than two
+	// transmissions competing, so the COLLISIONS counter must not take it.
+	//
+	// **A counter's name is a claim** (2026-09-12). COLLISIONS counts frames
+	// refused because something else had the destination; a frame refused
+	// because the operator never permitted that destination is not a
+	// collision, and counting it as one would turn the Traffic panel amber
+	// for a configuration working exactly as written.
+	//
+	// It matters most for the transcoder permission, which refuses on *every*
+	// frame of *every* transcoded transmission to a repeater that has not
+	// opted in — fifty a second, routinely, by design. The drop is still a
+	// judgement, so the frame reaches nobody by any path; it is simply not a
+	// collision.
+	//
+	// **The talkgroup-access drops below look like the same class and are
+	// deliberately left alone**, because reclassifying them would change a
+	// number the operator has been reading. Worth settling, separately and on
+	// purpose.
+	NotACollision bool
 }
 
 // Result is the outcome of routing one frame.
@@ -516,6 +536,28 @@ func (c *Core) RouteFromUpstream(name string, frame hbp.Data, now time.Time) Res
 	return c.route(Endpoint{Upstream: name, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
 }
 
+// RouteFromTranscoder routes a frame that came out of a vocoder channel.
+//
+// **A third entry point rather than a flag, for the same reason there are
+// two.** Each origin carries a rule that must not be possible to forget, and a
+// transcoder's rule is the one with somebody else's licence behind it: audio
+// leaving a vocoder reaches a repeater only if that repeater's owner opted in
+// (ADR-0062, ADR-0064). A Zello user may not be licensed and their audio
+// reaches RF.
+//
+// The permission is applied in the table, so it cannot be skipped by a caller
+// that reached for the wrong entry point — but the entry point still has to
+// exist, and until this it did not. **Nothing could route from a vocoder at
+// all**: Route takes a peer and RouteFromUpstream takes a link, so the mapping
+// added in ADR-0063 had no way to carry anything in that direction. The named
+// half was built and the called half was not.
+//
+// The frame's source ID is the gateway's own, supplied by the caller from
+// dmr.transcoders[].radio_id. QSP does not invent one.
+func (c *Core) RouteFromTranscoder(name string, frame hbp.Data, now time.Time) Result {
+	return c.route(Endpoint{Transcoder: name, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
+}
+
 func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -686,6 +728,32 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	}
 
 	var res Result
+
+	// **A destination the permission withheld is a drop, not an absence.**
+	// Constitution §18 forbids silently dropping traffic, and a repeater whose
+	// owner has not opted in to transcoded audio looks exactly like a repeater
+	// nobody bridged — which is the question an operator would then be unable
+	// to answer.
+	//
+	// Recorded as a judgement, so the frame reaches nobody by any path: the
+	// operator said this repeater does not receive transcoded audio, and a
+	// leak to the Motorola side would be that decision ignored. But not as a
+	// collision — see Drop.NotACollision.
+	//
+	// The line is written once per destination and reason by the listener's
+	// own rate limit rather than once per frame, which is what
+	// `noteRoutingDrop` is for.
+	for _, e := range decision.Withheld {
+		res.Drops = append(res.Drops, Drop{
+			To: e,
+			Reason: fmt.Sprintf("peer %d has not opted in to transcoded audio from "+
+				"transcoder %q; a transcoded transmission may come from an "+
+				"unlicensed user and reaches RF, so it is permitted per repeater "+
+				"in dmr.transcoders[].permit_peers",
+				e.Peer, origin.Transcoder),
+			NotACollision: true,
+		})
+	}
 
 	// One copy per peer, whatever combination of repeat and bridges named it.
 	// A member on a talkgroup that is also bridged must not hear two of

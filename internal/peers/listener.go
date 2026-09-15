@@ -916,7 +916,14 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		//
 		// **Still logged** — the line is how an operator sees a link is
 		// carrying, and it is what diagnosed this.
-		if !drop.NotAJudgement {
+		// **And a policy refusal is not a collision either.** COLLISIONS
+		// counts frames refused because something else had the destination.
+		// The transcoder permission refuses on every frame of every
+		// transcoded transmission to a repeater that has not opted in — fifty
+		// a second, routinely, by design — and counting those would turn the
+		// Traffic panel amber for a configuration working exactly as written.
+		// A counter's name is a claim.
+		if !drop.NotAJudgement && !drop.NotACollision {
 			l.collided.Add(1)
 		}
 		// **Debug is where a reason goes to be unreachable.** Production runs

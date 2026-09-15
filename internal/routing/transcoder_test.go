@@ -3,9 +3,20 @@ package routing
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 )
+
+// bothReady reports every peer as connected, so that a test about permission
+// is about permission and not about whether a peer happens to be logged in.
+type bothReady struct{}
+
+func (bothReady) Ready(hbp.RepeaterID) bool { return true }
+
+func (bothReady) ReadyPeers() []hbp.RepeaterID {
+	return []hbp.RepeaterID{312345, 315544}
+}
 
 // A transcoder endpoint: ADR-0063.
 //
@@ -398,5 +409,92 @@ func TestAPermissionIsCopiedIntoTheTable(t *testing.T) {
 	d := table.Route(transcoder("dvstick", 2, hbp.Timeslot2))
 	if len(d.Targets) != 1 || d.Targets[0].Peer != 312345 {
 		t.Errorf("mutating the caller's permission map changed the table: %v", d.Targets)
+	}
+}
+
+// TestAWithheldDestinationBecomesADropTheOperatorCanRead closes the hole 0366
+// left.
+//
+// **The withheld list was produced and nothing consumed it**, which made a
+// permission refusal invisible outside the routing package — the exact fault
+// this project cited from COLLISIONS while building the permission, in the
+// same patch. Constitution §18 forbids silently dropping traffic, and a
+// repeater whose owner has not opted in looks identical to a repeater nobody
+// bridged.
+//
+// Two properties, and the second is the one that would otherwise have gone
+// unnoticed for a week:
+//
+//  1. The drop exists and names the destination and the setting to change.
+//  2. It is a judgement but **not** a collision. The permission refuses on
+//     every frame of every transcoded transmission to a peer that has not
+//     opted in — fifty a second, by design — and counting those would peg
+//     COLLISIONS and turn Traffic amber for a configuration working as
+//     written.
+func TestAWithheldDestinationBecomesADropTheOperatorCanRead(t *testing.T) {
+	const (
+		optedIn = hbp.RepeaterID(312345)
+		hasNot  = hbp.RepeaterID(315544)
+	)
+	table, err := NewTable([]Bridge{{
+		Name:    "zello",
+		Enabled: true,
+		Endpoints: []Endpoint{
+			{Peer: optedIn, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			{Peer: hasNot, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			transcoder("dvstick", 2, hbp.Timeslot2),
+		},
+	}}, WithPermissions(map[string]Permission{
+		"dvstick": {Peers: []hbp.RepeaterID{optedIn}},
+	}))
+	if err != nil {
+		t.Fatalf("building a table: %v", err)
+	}
+
+	core, err := NewCore(CoreOptions{Table: table, Peers: bothReady{}})
+	if err != nil {
+		t.Fatalf("building a core: %v", err)
+	}
+	res := core.RouteFromTranscoder("dvstick", hbp.Data{
+		SourceID: 3132911, TargetID: 2, Timeslot: hbp.Timeslot2,
+		CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: 1,
+	}, time.Now())
+
+	var found *Drop
+	for i, d := range res.Drops {
+		if d.To.Peer == hasNot {
+			found = &res.Drops[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("no drop named peer %d, which the permission withheld; the "+
+			"refusal would be invisible and §18 forbids that. Drops: %v",
+			hasNot, res.Drops)
+	}
+	for _, want := range []string{"opted in", "permit_peers", "unlicensed"} {
+		if !strings.Contains(found.Reason, want) {
+			t.Errorf("the drop reason does not mention %q: %s", want, found.Reason)
+		}
+	}
+	if found.NotAJudgement {
+		t.Error("the drop is marked as deciding nothing; the operator decided " +
+			"this repeater does not receive transcoded audio, and a leak to the " +
+			"Motorola side would be that decision ignored")
+	}
+	if !found.NotACollision {
+		t.Error("the drop counts as a collision; it refuses on every frame of " +
+			"every transcoded transmission by design, and COLLISIONS would peg")
+	}
+
+	// And the permitted peer still receives.
+	delivered := false
+	for _, d := range res.Deliveries {
+		if d.Peer == optedIn {
+			delivered = true
+		}
+	}
+	if !delivered {
+		t.Errorf("the peer that opted in received nothing; deliveries %v, drops %v",
+			res.Deliveries, res.Drops)
 	}
 }

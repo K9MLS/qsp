@@ -4,6 +4,48 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The withheld list was produced and nothing consumed it.** 0366 added
+  `Decision.Withheld`, cited COLLISIONS as the reason a refusal must name its
+  destination, and then left the refusal invisible outside the routing package.
+  A repeater whose owner had not opted in looked identical to a repeater nobody
+  bridged, which is the question an operator would have been unable to answer —
+  and Constitution §18 forbids dropping traffic silently.
+
+  Each withheld destination now produces a `Drop` naming the peer, the
+  transcoder, why the rule exists, and the setting to change. The listener's
+  existing rate limit writes it once per destination and reason rather than
+  once per frame.
+
+- **And a policy refusal is not a collision.** `Drop.NotACollision` exists
+  because COLLISIONS counts frames refused by contention, while the transcoder
+  permission refuses on *every* frame of *every* transcoded transmission to a
+  peer that has not opted in — fifty a second, routinely, by design. Counting
+  those would peg the counter and turn Traffic amber for a configuration
+  working exactly as written. A counter's name is a claim.
+
+  The drop is still a judgement, so the frame reaches nobody by any path: the
+  operator said that repeater does not receive transcoded audio, and leaking it
+  to the Motorola side would be that decision ignored.
+
+  **The talkgroup-access drops look like the same class and are deliberately
+  left alone**, because reclassifying them would change a number the operator
+  has been reading. Named as worth settling rather than changed in passing.
+
+### Added
+
+- **`RouteFromTranscoder`, because nothing could route from a vocoder at
+  all.** `Route` takes a peer and `RouteFromUpstream` takes a link, so the
+  mapping ADR-0063 added had no entry point in that direction — the named half
+  was built and the called half was not, which is the pattern this project
+  keeps catching.
+
+  A third entry point rather than a flag, for the same reason there are two:
+  each origin carries a rule that must not be possible to forget, and a
+  transcoder's is the one with somebody else's licence behind it.
+
+
 ### Added
 
 - **ADR-0064: a Zello user borrows the gateway's identity and identifies by
