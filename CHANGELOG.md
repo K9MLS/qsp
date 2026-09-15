@@ -6,6 +6,43 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`internal/zello`: the Channels API wire protocol**, from the Zello Channel
+  API specification v1.0 rather than from recollection. Commands, responses,
+  events and binary audio packets — pure Go, no network and no cgo, so every
+  line is testable without an account. The WebSocket session is a separate
+  thing and is not built.
+
+  **Three values would have been wrong from memory**, and each is asserted
+  directly: `packet_id` is filled with zeroes when streaming to the server
+  (a counter is the plausible wrong answer and would have appeared to work),
+  `channels` on logon is an array rather than a name, and `frames_per_packet`
+  is 1 or 2 only.
+
+  **The codec header's sample rate is little-endian** while every other
+  multi-byte field is network byte order. Getting that backwards declares
+  32 kHz where 16 was meant, so the tests assert the raw bytes `80 3e 01 3c`
+  against Zello's own published `gD4BPA==` — the best available check, because
+  they published the answer.
+
+  **Errors are classified rather than matched at call sites.** Credentials are
+  not retryable and most other conditions are: retrying `not authorized`
+  forever hammers the service with a password that will never work, and giving
+  up on `server closed connection` stays down after a blip the specification
+  says to reconnect from. `Fatal` is the narrower set a health check can report
+  as a configuration that cannot work.
+
+  **And two things recorded for whoever writes the session**: the protocol is
+  TLS-only, and the server pings every 30 seconds and terminates the connection
+  if a Pong is later than 30 — a library that does not answer automatically
+  gives a link dropping every half minute, which looks like a network fault.
+
+  An incoming stream declares its own codec header, which need not be QSP's, so
+  it is decoded rather than assumed: 16 kHz assumed against 8 received plays
+  somebody's audio at half speed and sounds like a radio fault.
+
+
+### Added
+
 - **`internal/opus`: libopus, behind a `zello` build tag.** The tag is
   load-bearing rather than tidy — a cgo package in the tree without one breaks
   `CGO_ENABLED=0 go build ./...`, and with it `gofmt`, `go vet`, `staticcheck`

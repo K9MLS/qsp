@@ -302,6 +302,51 @@ pure-Go candidates on quality grounds.
 the mode can carry, and a silently clamped rate is a stream costing more or
 sounding worse than the configuration claims.
 
+## The Channels API, from the specification
+
+`internal/zello` speaks the wire protocol: commands, responses, events and
+binary audio packets. Pure Go, no network, no cgo — so all of it is testable
+without an account, and the session that carries it over a WebSocket is a
+separate thing that is not yet built.
+
+**Source: the Zello Channel API specification v1.0**,
+`github.com/zelloptt/zello-channel-api/API.md`. Written from it rather than
+from recollection, and **three values would have been wrong from memory**:
+
+- **`packet_id` is filled with zeroes when streaming to the server**, which
+  ignores it. A counter is the plausible wrong answer and would have appeared
+  to work.
+- **`channels` on logon is an array**, not a single name.
+- **`frames_per_packet` is 1 or 2 only.**
+
+**Two things the transport must do.** TLS only — the specification supports no
+other connection. And **answer the server's pings**: it sends a WebSocket Ping
+every 30 seconds and terminates the connection if a Pong takes longer than 30
+to arrive. A library that does not answer automatically gives a link that drops
+every half minute and looks like a network fault.
+
+**The codec header's sample rate is little-endian** while every other
+multi-byte field in the protocol is network byte order. That asymmetry is
+Zello's, and getting it backwards produces a header declaring 32 kHz — so the
+tests assert the raw bytes `80 3e 01 3c` against the specification's own
+published `gD4BPA==` rather than only round-tripping.
+
+**A stream cannot start before its channel is online.** The specification's
+`channel is not ready` error says to wait for `on_channel_status` with status
+`online`. And an incoming stream declares **its own** codec header, which need
+not be QSP's: assuming 16 kHz and receiving 8 plays somebody's audio at half
+speed, which sounds like a radio fault rather than a bridge one.
+
+**Errors are classified rather than matched at the call site.** Credentials are
+not retryable and most other things are: a client retrying `not authorized`
+forever hammers the service with a password that will never work, and one
+giving up on `server closed connection` stays down after a blip the
+specification explicitly says to reconnect from.
+
+`platform_name` is set to include "Gateway" on purpose — the specification says
+Zello's Alarms service tracks the online status of a client whose platform name
+contains it, and QSP is a gateway.
+
 ## Identity: settled in ADR-0064
 
 **A Zello user transmits under the gateway's own DMR ID and identifies by
