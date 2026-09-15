@@ -73,3 +73,4 @@ conclusion.
 | [0061](ADR-0061-qsp-speaks-to-a-transcoder.md) | QSP speaks to a transcoder and stops there | Accepted |
 | [0062](ADR-0062-as-much-as-possible-in-qsp.md) | As much as possible in QSP | Accepted |
 | [0063](ADR-0063-a-transcoder-is-a-routing-destination.md) | A transcoder is a routing destination, and a third kind of one | Accepted |
+| [0064](ADR-0064-a-zello-user-borrows-the-gateway-identity.md) | A Zello user borrows the gateway's identity, and identifies by voice | Accepted |

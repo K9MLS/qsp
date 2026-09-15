@@ -212,6 +212,36 @@ there.
 Baseline before the hardware arrived: no `/dev/ttyUSB*` and no `/dev/ttyACM*`
 on either server. Afterwards there should be exactly one new device.
 
+## Identity: settled in ADR-0064
+
+**A Zello user transmits under the gateway's own DMR ID and identifies by
+voice.** Radios embed the source ID in every burst, a Zello user has no radio,
+so QSP supplies one — and it supplies a real one rather than minting per-user
+IDs that would collide with a live radio on a linked network.
+
+- **Admission is the Zello channel's job.** Added to a moderated channel means
+  trusted means permitted. QSP keeps no second allow-list; the channel's
+  moderators are the operator's own admins, and two gates deciding one
+  question is the second code path that rots.
+- **The gateway needs a DMR ID of its own** — not a repeater's and not a
+  hotspot's, or transcoded traffic is indistinguishable from that machine's in
+  Last heard and on every linked server.
+- **The alias is administrator-set and never derived from the Zello
+  username**, because Zello display names are chosen by the user and an alias
+  from one lets somebody appear as a licensed operator's callsign.
+- **Identification is the operator's obligation, by voice**, exactly as on an
+  EchoLink-equipped repeater. The alias is display data: §97.119 does not count
+  embedded signalling inside a phone emission, a radio may have it switched
+  off, and a network may strip it.
+
+**Where the responsibility sits, said plainly**: the licensing judgement rests
+with whoever moderates the channel. Zello has no field for a callsign or a
+licence — trusted there means a moderator approved somebody. EchoLink differs,
+because it will not issue an account without callsign validation, so "trusted
+on EchoLink" carries an implicit "licensed" that Zello does not. Nothing in
+QSP can tell a licensed Zello user from an unlicensed one, and it does not
+pretend to.
+
 ## The part that is a licensing question, not a wiring one
 
 BrandMeister's Zello integration is the reference implementation, and most of

@@ -6,6 +6,44 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **ADR-0064: a Zello user borrows the gateway's identity and identifies by
+  voice.** ADR-0062's fourth item, and the decision came out smaller than the
+  question looked.
+
+  Radios embed the source ID in every burst — voice LC header, terminator,
+  embedded LC — so a frame without one is not a DMR frame. A Zello user has no
+  radio, so QSP supplies one: `dmr.transcoders[].radio_id`, the gateway's own,
+  refused at startup when an enabled channel has none. **QSP never mints
+  IDs**; a block of synthetic per-user IDs would collide with a real radio on
+  a linked network and attribute a stranger's transmission to somebody's
+  callsign, which is ADR-0059's reasoning with more force because the identity
+  would be asserted on RF rather than in a database.
+
+  **`dmr.transcoders[].alias` is administrator-set and never derived from the
+  Zello username.** An earlier draft had it carry the username; Zello display
+  names are chosen by the user, so that would let somebody rename themselves
+  to a licensed operator's callsign and appear on that operator's repeater as
+  them. Bounded at 31 characters, which is what Motorola's Inband Caller Alias
+  sends, because a longer string is truncated on the air where nobody can see
+  it.
+
+  **Two earlier drafts were rejected on the operator's argument and both were
+  over-engineering.** One required a callsign mapping before any audio reached
+  RF — enforcing in software an obligation the operator's voice already
+  discharges, exactly as on analog and on EchoLink. The other kept an
+  allow-list in QSP beside the Zello channel's, which is two gates deciding one
+  question and the second code path ADR-0052 warns about.
+
+  **And the record says where the responsibility sits.** The licensing
+  judgement rests with whoever moderates the channel: Zello has no field for a
+  callsign or a licence, unlike EchoLink, which validates one before issuing an
+  account. Nothing in QSP can tell a licensed Zello user from an unlicensed
+  one, and §97.115 is where that matters. Written down so a future operator
+  does not assume the software checked something it could not.
+
+
+### Added
+
 - **The transform the delivery path will call: frames in, PCM, frames back.**
   `TranscodeRun` takes a run of DMR vocoder frames — the 72 bits QSP already
   carries, which is the form the dongle accepted 828 times out of 828 — decodes

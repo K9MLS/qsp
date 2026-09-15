@@ -19,6 +19,10 @@ func withTranscoder(t *testing.T, mutate func(*Config)) Config {
 	c.DMR.ListenAddress = "127.0.0.1:62031"
 	c.DMR.Transcoders = []Transcoder{{
 		Name: "dvstick", Enabled: true, Address: "192.168.1.247:2460",
+		// An ID of the gateway's own, not the XPR8300's 999999 nor the
+		// Pi-Star's 3132910. A Zello user has no radio and so no ID, and a
+		// frame with source 0 is not a DMR frame — ADR-0064.
+		RadioID: 3132911,
 	}}
 	c.DMR.Bridges = []Bridge{{
 		Name: "zello", Enabled: true,
@@ -222,5 +226,108 @@ func TestPermittingEverybodyAndSomebodyIsRefused(t *testing.T) {
 		c.DMR.Transcoders[0].PermitPeers = []uint32{312345, 315544}
 	}).Validate(); err != nil {
 		t.Errorf("permitting two peers was refused: %v", err)
+	}
+}
+
+// TestAnEnabledTranscoderNeedsAnIdOfItsOwn is the field a Zello user borrows.
+//
+// **Radios embed the source ID in every burst** — the voice LC header, the
+// terminator and the embedded LC — so a frame without one is not a DMR frame.
+// A Zello user has no radio and therefore no ID, which makes this the only
+// source a transcoded transmission can carry. Refused at startup rather than
+// discovered as silence on the air.
+func TestAnEnabledTranscoderNeedsAnIdOfItsOwn(t *testing.T) {
+	err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].RadioID = 0
+	}).Validate()
+	if err == nil {
+		t.Fatal("an enabled transcoder with no radio ID was accepted")
+	}
+	// The advice has to say *its own*, because sharing a repeater's is the
+	// mistake somebody will make: it works, and makes transcoded traffic
+	// indistinguishable from that machine's in Last heard and on every
+	// linked server.
+	if !strings.Contains(err.Error(), "of its own") {
+		t.Errorf("the refusal does not warn against sharing an ID: %v", err)
+	}
+
+	// A disabled one needs nothing, so turning a channel off does not force
+	// an operator to invent an ID in order to start.
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].Enabled = false
+		c.DMR.Transcoders[0].RadioID = 0
+		c.DMR.Bridges = nil
+	}).Validate(); err != nil {
+		t.Errorf("a disabled transcoder with no radio ID was refused: %v", err)
+	}
+}
+
+// TestARadioIdOutsideTheDmrRangeIsRefused.
+//
+// ETSI TS 102 361-1 Annex A: source IDs run to 16776415, and the top of the
+// 24-bit space is reserved for non-addressable gateways. An ID above it is a
+// source nothing can match.
+func TestARadioIdOutsideTheDmrRangeIsRefused(t *testing.T) {
+	for _, id := range []uint32{16776416, 16777215, 1 << 24} {
+		err := withTranscoder(t, func(c *Config) {
+			c.DMR.Transcoders[0].RadioID = id
+		}).Validate()
+		if err == nil {
+			t.Errorf("radio ID %d was accepted; the range stops at 16776415", id)
+			continue
+		}
+		if !strings.Contains(err.Error(), "16776415") {
+			t.Errorf("the refusal for %d does not state the range: %v", id, err)
+		}
+	}
+	// The ends of the range are valid.
+	for _, id := range []uint32{1, 3132911, 16776415} {
+		if err := withTranscoder(t, func(c *Config) {
+			c.DMR.Transcoders[0].RadioID = id
+		}).Validate(); err != nil {
+			t.Errorf("radio ID %d was refused: %v", id, err)
+		}
+	}
+}
+
+// TestTheAliasIsOptionalAndBounded.
+//
+// Talker Alias is display data, not station identification — the operator
+// identifies by voice, as on an EchoLink-equipped repeater (ADR-0064). So an
+// empty alias is an ordinary configuration and not an omission.
+//
+// The bound is what a radio will send: Motorola's Inband Caller Alias allows
+// 31 characters, and the field is fragmented across a voice superframe. A
+// longer string is truncated somewhere an operator cannot see, which is worse
+// than a refusal at startup.
+func TestTheAliasIsOptionalAndBounded(t *testing.T) {
+	if err := withTranscoder(t, nil).Validate(); err != nil {
+		t.Errorf("a transcoder with no alias was refused: %v", err)
+	}
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].Alias = "K9MLS"
+	}).Validate(); err != nil {
+		t.Errorf("a transcoder with a callsign alias was refused: %v", err)
+	}
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].Alias = strings.Repeat("A", 31)
+	}).Validate(); err != nil {
+		t.Errorf("a 31-character alias was refused: %v", err)
+	}
+	err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].Alias = strings.Repeat("A", 32)
+	}).Validate()
+	if err == nil {
+		t.Fatal("a 32-character alias was accepted")
+	}
+	if !strings.Contains(err.Error(), "31") {
+		t.Errorf("the refusal does not state the limit: %v", err)
+	}
+	// Counted in characters rather than bytes, because a callsign is not the
+	// only thing anybody will put here.
+	if err := withTranscoder(t, func(c *Config) {
+		c.DMR.Transcoders[0].Alias = strings.Repeat("é", 31)
+	}).Validate(); err != nil {
+		t.Errorf("31 multi-byte characters were refused as too long: %v", err)
 	}
 }

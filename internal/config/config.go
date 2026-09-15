@@ -722,6 +722,41 @@ type Transcoder struct {
 	// for audio rather than a refinement — see PROJECT_MEMORY §8q.
 	Rate int `json:"rate,omitempty"`
 
+	// RadioID is the DMR source ID every transmission from this channel
+	// carries.
+	//
+	// **A Zello user has no radio, so there is no ID to embed and QSP must
+	// supply one** — radios put the source ID in the voice LC header, the
+	// terminator and the embedded LC, and a frame without one is not a DMR
+	// frame. See ADR-0064.
+	//
+	// **Give the gateway an ID of its own.** Sharing a repeater's or a
+	// hotspot's would make transcoded traffic indistinguishable from that
+	// machine's own in Last heard and in the logs of every linked server. An
+	// additional ID for a gateway is issued against a callsign by the usual
+	// registry.
+	//
+	// **QSP never invents one.** A block of synthetic IDs per Zello user
+	// would collide with a real radio on a linked network and attribute a
+	// stranger's transmission to somebody's callsign — the reasoning
+	// ADR-0059 used to refuse synthetic DMR keys for P25, with more force
+	// here because the identity is asserted on RF rather than in a database.
+	RadioID uint32 `json:"radio_id,omitempty"`
+	// Alias is the Talker Alias text transmitted with every call from this
+	// channel, empty for none.
+	//
+	// **Administrator-set and never self-asserted.** Zello display names are
+	// chosen by the user, so an alias derived from one would let a Zello user
+	// rename themselves to a licensed operator's callsign and appear on that
+	// operator's repeater as them.
+	//
+	// It is display data and not station identification: §97.119 does not
+	// count embedded signalling inside a phone emission, a receiving radio
+	// may have it switched off, and a network may strip it. The operator
+	// identifies by voice, as on an EchoLink-equipped repeater. See
+	// ADR-0064.
+	Alias string `json:"alias,omitempty"`
+
 	// PermitPeers are the repeater IDs whose owners have opted in to
 	// receiving transcoded audio from this channel.
 	//
@@ -1465,6 +1500,35 @@ func (c Config) Validate() error {
 							"configuration and means nothing here; to permit every peer, "+
 							"set \"permit_all_peers\": true")
 				}
+			}
+			// The ID range DMR allows: ETSI TS 102 361-1 Annex A defines 1
+			// to 16776415, with the top of the 24-bit space reserved. An ID
+			// outside it is not addressable and the transmission would carry
+			// a source nothing can match.
+			if t.RadioID > 16776415 {
+				v.add(tf+".radio_id", fmt.Sprintf("is %d", t.RadioID),
+					"DMR source IDs run from 1 to 16776415; the range above that is "+
+						"reserved for non-addressable gateways")
+			}
+			// **An enabled transcoder with no ID could not put a frame on the
+			// air.** A Zello user has no radio and therefore no ID of their
+			// own, so this is the only source a transcoded transmission can
+			// carry, and a frame with source 0 is not a DMR frame. Refused at
+			// startup rather than discovered as silence.
+			if t.Enabled && t.RadioID == 0 {
+				v.add(tf+".radio_id", "must be set on an enabled transcoder",
+					"give this channel a DMR ID of its own — not a repeater's or a "+
+						"hotspot's, or transcoded traffic is indistinguishable from "+
+						"that machine's own in Last heard and on every linked server")
+			}
+			// Talker Alias is bounded by what a radio will send: Motorola's
+			// Inband Caller Alias allows 31 characters, and the field is
+			// fragmented across a voice superframe, so a longer string is a
+			// string that gets truncated somewhere an operator cannot see.
+			if n := len([]rune(t.Alias)); n > 31 {
+				v.add(tf+".alias", fmt.Sprintf("is %d characters", n),
+					"Talker Alias carries up to 31; a longer one is truncated on the "+
+						"air rather than refused, which is worse")
 			}
 			if t.Enabled && t.PermitAllPeers && len(t.PermitPeers) > 0 {
 				v.add(tf+".permit_peers",
