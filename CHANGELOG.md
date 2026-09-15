@@ -6,6 +6,60 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A WebSocket client, RFC 6455, hand-written on the standard library.** The
+  Zello session needs one and **this project cannot add a dependency**:
+  `go.mod` and `go.sum` are never committed, so a library would be a build that
+  works on one machine. The protocol needed is small — a handshake, masked
+  client frames, and answering pings — and writing it is less risk than a build
+  nobody else can reproduce.
+
+  **Every expectation in the tests is built from the specification, not from
+  this client's encoder.** Server frames are assembled by hand from §5.2's
+  field layout, and the handshake is checked against RFC 6455 §1.3's own worked
+  example: the key `dGhlIHNhbXBsZSBub25jZQ==` must produce the accept
+  `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`. A test that framed its expectations by
+  calling the code under test would pass for any consistent mistake.
+
+  **The two things that break a WebSocket client in the field** are both
+  handled and both tested. Client frames are always masked with a fresh key,
+  because §5.1 has a server close the connection on an unmasked one — a client
+  that forgets is not mostly working, it is dropped at the first frame and
+  looks like a network fault. And pings are answered from inside `ReadMessage`,
+  carrying the ping's own payload as §5.5.3 requires, because Zello terminates
+  a connection whose pong is later than 30 seconds and a caller that had to
+  remember would eventually forget.
+
+  Refused rather than guessed at: a masked server frame, a reserved bit meaning
+  an extension nobody negotiated, an announced frame larger than the limit —
+  checked **before allocating**, since the length field is 63 bits wide — and a
+  plain `ws://` URL, which would send the password in the clear on a
+  misconfiguration.
+
+### Fixed
+
+- **The client sent two close frames, and the test hung rather than failed.**
+  On receiving a close, `ReadMessage` echoed one and then called `Close`, which
+  sent another. RFC 6455 §5.5.1 permits one per direction, and against a peer
+  that has stopped reading the second write blocks forever — which is how it
+  was found: a timeout, not an assertion.
+
+  A close frame now goes out at most once per connection, and the test drains
+  exactly one echo and requires nothing to follow it.
+
+  Worth recording how the break suite reported the two worst faults: removing
+  the frame-length limit fails by **exhausting memory**, and sending two close
+  frames fails by **deadlocking**. Neither is a clean test failure — they are
+  the production symptoms those checks exist to prevent, reproduced on a bench
+  where they cost nothing.
+
+- **Two tests that read a frame with one `Read`.** `net.Pipe` delivers one
+  `Write` per `Read` and this client writes a header and a payload separately,
+  so a single read returned only the header and the test reported a short
+  frame. They read both parts now.
+
+
+### Added
+
 - **The encrypted full backup wired to endpoints.**
   `POST /api/admin/full-backup` writes one and `POST /api/admin/full-restore`
   reads one, beside the shareable export's existing pair. ADR-0065.
