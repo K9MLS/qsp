@@ -4,6 +4,56 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The rate conversion and the repacketiser for the Zello boundary**, both in
+  `internal/audio` and both pure Go with no cgo anywhere in them. These are the
+  parts of the path a bench can judge, so they are built and measured before
+  anything that needs an account.
+
+  **Zello's codec is fixed at 16 kHz mono with 60 ms frames**, which the tests
+  verify by decoding `gD4BPA==` from ADR-0062 rather than trusting the prose:
+  four bytes giving 16000 little-endian, one frame per packet, and 0x3c = 60 ms.
+  DMR is 8 kHz and 20 ms, so **three radio frames make one Zello packet** and
+  nothing crosses unchanged.
+
+  **The conversion filters, and the tests measure where the energy went rather
+  than what the level is.** Halving a rate by dropping samples folds everything
+  above 4 kHz into the voice band — a 6 kHz tone arrives at 2 kHz, in the
+  middle of speech, and nothing downstream can separate it from signal again. A
+  level check cannot see that, because folding preserves the level exactly. So
+  the tests use a Goertzel measurement and assert frequencies: the voice band
+  survives within a quarter of its level, the interpolation image at 7 kHz
+  stays under 5% of the wanted tone, and a 6 kHz tone does not appear at 2 kHz.
+
+  **Filter state is kept between frames**, and the test proves a run of five
+  frames gives the same samples as one call of five frames' worth. A filter
+  restarted each frame produces a transient fifty times a second, which is
+  heard as a buzz at the frame rate rather than as distortion.
+
+  **The last partial block is padded and sent, not dropped.** A transmission is
+  rarely a multiple of three frames, and dropping the remainder clips the last
+  word of every single call — audible on every transmission and hard to
+  attribute to a buffer. Mid-transmission, a remainder is carried forward
+  instead, because padding there inserts silence into the middle of somebody's
+  sentence.
+
+  **And the 60 ms of latency is asserted rather than discovered.** Two frames
+  are held while the third arrives. It is unavoidable at a fixed packet size
+  and it dominates the path — the filter's own delay is under two milliseconds
+  — so there is a test whose job is to record it as a known cost.
+
+### Fixed
+
+- **A test case that could not fail, caught by breaking the code under it.**
+  The mid-transmission padding rule was checked with two thirds of a packet —
+  640 samples, which downsample to exactly two frames — so there was no
+  remainder, and an unpacker that padded mid-transmission passed. It now uses
+  500 samples, which leave 90 over, and asserts the pending count exactly.
+
+  Seventeen.
+
+
 ### Documentation
 
 - **ADR-0062's Opus premise expired within a day, and the decision survived
