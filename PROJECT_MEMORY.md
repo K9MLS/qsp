@@ -3133,6 +3133,25 @@ Analog_Bridge has two sides: TLV frames carrying AMBE on the one an `xx_Bridge`
 connects to, and PCM over USRP on the other. Reading one stanza further would
 have settled it.
 
+**Superseded 2026-09-15, and the lesson is why.** QSP now speaks USRP, built in
+`internal/audio`. The lesson above is unchanged and was applied to reach the
+opposite answer: the constraint moved, so the recommendation had to be read
+against the new one.
+
+The constraint in September was "QSP contains no vocoder and touches no
+audio" — under that, PCM could not exist anywhere in the program and a
+connector carrying it had nothing to put in it. ADR-0061 and ADR-0062 changed
+the second half: an AMBE-3000F on hardware QSP does not own does the decoding,
+reached over a socket, and §8r records real audio coming back through it and
+written to a file. **QSP still contains no vocoder.** It holds PCM that a chip
+produced.
+
+So the check the entry prescribes is what settled it both times. In September
+the constraint was "no PCM" and USRP requires PCM, so the recommendation was
+wrong. Now the constraint is "no vocoder" and USRP requires only PCM, so it is
+not. A rejected recommendation is worth re-reading when a constraint moves,
+rather than staying rejected because it once was.
+
 ### A capture cannot answer a question nothing varied in
 
 **2026-09-11.** The first P25 voice capture held seven transmissions and could

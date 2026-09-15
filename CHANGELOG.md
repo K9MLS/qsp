@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`internal/audio`: QSP speaks USRP.** The boundary ADR-0062 leaves open —
+  8 kHz 16-bit PCM and push-to-talk over UDP, in both directions — as
+  AllStarLink's `chan_usrp` protocol rather than an interface of QSP's own.
+
+  **Because the operator already runs Zello on analog sites**, and whatever
+  carries that sits on the far side of plain PCM. An interface something
+  already speaks may mean no new program has to be written at all; declining to
+  invent a private one where a well-understood one exists is the same instinct
+  that made ADR-0061 choose a socket over a serial device.
+
+  Asserted against DVSwitch's USRP_Audio reference, which builds a datagram as
+  `"USRP"` and seven big-endian 32-bit fields and reads audio from offset 32.
+  **The two byte orders in one datagram are the thing that will trip
+  somebody**: the header is big-endian and the PCM is little-endian, and there
+  is a test whose only job is to make that deliberate rather than discovered.
+
+  Voice only, and the omissions are deliberate rather than pending. USRP
+  carries metadata, text and DTMF types, and none is implemented because the
+  only citation this package has is the header layout and the voice type — a
+  type number guessed from a name would be a packet somebody's software
+  silently discards.
+
+### Documentation
+
+- **PROJECT_MEMORY §8's rejection of USRP is superseded, and its lesson is why.**
+  The entry records a recommendation to speak USRP being rejected on 2026-09-09
+  under "a recommendation that requires what it just ruled out is wrong": QSP
+  was to contain no vocoder and touch no audio, so PCM could not exist anywhere
+  in it.
+
+  The prescribed check — read the recommendation against the constraint it was
+  written under — is what reached the opposite answer this time. The constraint
+  moved: ADR-0061 and ADR-0062 put the decoding on a chip QSP does not own,
+  reached over a socket, and §8r records real audio coming back through it.
+  **QSP still contains no vocoder**; it holds PCM a chip produced. The old
+  constraint was "no PCM" and USRP needs PCM; the new one is "no vocoder" and
+  USRP needs only PCM.
+
+  A rejected recommendation is worth re-reading when a constraint moves, rather
+  than staying rejected because it once was.
+
+
 ### Fixed
 
 - **A radio ID logged as `peer_id`, found by an operator reading two lines
