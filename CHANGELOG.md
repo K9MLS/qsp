@@ -6,6 +6,55 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The encrypted full backup wired to endpoints.**
+  `POST /api/admin/full-backup` writes one and `POST /api/admin/full-restore`
+  reads one, beside the shareable export's existing pair. ADR-0065.
+
+  POSTs rather than GETs: each call produces a file carrying every secret on
+  the server, which is not a safe repeatable read, and the passphrase travels
+  in the body rather than a query string that every proxy logs.
+
+  **A credential that cannot be decrypted fails the whole backup** rather than
+  being omitted — a file silently missing one produces a restore where three
+  links work and one does not, for a reason nothing in the file records, and
+  the operator cannot know it was incomplete when they made it.
+
+  **Credentials are written before the configuration.** If the configuration
+  landed first and a credential write then failed, the server would be running
+  a configuration whose links have no passwords: silent, and looking correct.
+  The other order leaves credentials for links that do not exist yet, which is
+  inert. There is a test that fails a credential write and requires the
+  configuration to be untouched.
+
+### Fixed
+
+- **The restore skipped the confirmation, and the test could not see it.** The
+  handler was modelled on the shareable restore and left out its confirmation
+  step and its identity warning — which ADR-0065 explicitly requires it to
+  carry, because a backup holds a server identifier and two servers claiming
+  one identity is a failure neither reports.
+
+  Worse, **breaking the confirmation passed**: the only test of that path
+  stopped at the no-store check and never reached it. So the check that stops a
+  restore replacing every setting on a server unasked was untested.
+
+  The fix was a design change the package already uses everywhere else — the
+  credential store is now a `CredentialStore` interface, like `ConfigManager`
+  and `Auth`, so a handler that replaces a whole configuration can be tested
+  without a database. Three breaks now fail: skipping the confirmation,
+  dropping the identity warning, and saving the configuration before the
+  credentials.
+
+### Documentation
+
+- **`SECURITY.md` covers the full-backup endpoints**, including the thing that
+  matters most about having two: mailing the wrong one publishes every password
+  on the server, so the extensions differ and an import of one through the
+  other's endpoint says which it found.
+
+
+### Added
+
 - **Credential endpoints, so a secret can be entered in the console without
   going into the configuration document.** `GET /api/secrets` lists,
   `PUT /api/secrets/{name}` stores, `DELETE` removes. ADR-0065 settles that all

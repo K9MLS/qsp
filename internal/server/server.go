@@ -23,7 +23,6 @@ import (
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/peers"
-	"github.com/k9mls/qsp/internal/secrets"
 )
 
 // Options configures a Server.
@@ -105,7 +104,7 @@ type Options struct {
 	// credential endpoints say so rather than accepting a value and storing
 	// nothing — an operator who typed a password into a page that discarded
 	// it would believe the link was configured.
-	Secrets *secrets.Store
+	Secrets CredentialStore
 	// Restart stops QSP so that its supervisor starts it again.
 	//
 	// **Nil is a working state**, and the console says so rather than showing a
@@ -246,6 +245,11 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/admin", s.requireSession(s.handleAdmin)},
 		{"GET /api/admin/backup", s.requireSession(s.handleBackup)},
 		{"POST /api/admin/restore", s.requireSession(s.handleRestore)},
+		// **A second backup, and the words on it matter more than the code.**
+		// This one carries the credentials and must never be emailed; the
+		// shareable export above must be safe to. ADR-0065.
+		{"POST /api/admin/full-backup", s.requireSession(s.handleFullBackup)},
+		{"POST /api/admin/full-restore", s.requireSession(s.handleFullRestore)},
 		{"PUT /api/admin/callsigns", s.requireSession(s.handleCallsigns)},
 		{"POST /api/restart", s.requireSession(s.handleRestart)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -38,6 +39,21 @@ import (
 // the question a console actually asks — is this configured, and when did it
 // change — and answers it without decrypting anything, so it cannot leak a
 // value even if the page rendering it is wrong.
+
+// CredentialStore is the credential store the server needs.
+//
+// **An interface for the same reason ConfigManager and Auth are**: the handler
+// that confirms before replacing every setting on a server has to be testable
+// without a database, and it was not — a break that skipped the confirmation
+// entirely passed, because the only test of that path stopped at the
+// no-store check.
+type CredentialStore interface {
+	List(context.Context) ([]secrets.Record, error)
+	Get(context.Context, string) (string, error)
+	Set(ctx context.Context, name, value, author string) error
+	Delete(ctx context.Context, name string) error
+	Has(ctx context.Context, name string) (bool, error)
+}
 
 // secretRecord is what the console is told about a stored credential.
 //
@@ -160,7 +176,7 @@ func (s *Server) handleRemoveSecret(w http.ResponseWriter, r *http.Request) {
 // page that accepts it and stores nothing would believe the link was
 // configured — which is the failure the whole project keeps writing records
 // about.
-func (s *Server) secretStore(w http.ResponseWriter) (*secrets.Store, bool) {
+func (s *Server) secretStore(w http.ResponseWriter) (CredentialStore, bool) {
 	if s.opts.Secrets == nil {
 		writeJSON(w, s.log, http.StatusServiceUnavailable, map[string]string{
 			"error": "this instance cannot store credentials; it was started " +
@@ -205,7 +221,7 @@ func (s *Server) recordSecret(r *http.Request, action, name string, outcome audi
 // typing. A store that cannot decrypt a secret reports it as present, not
 // missing, so that a key mismatch is not mistaken for a credential nobody
 // entered.
-func SecretMissing(store *secrets.Store, r *http.Request, name string) (bool, error) {
+func SecretMissing(store CredentialStore, r *http.Request, name string) (bool, error) {
 	if store == nil {
 		return false, errors.New("server: no credential store")
 	}

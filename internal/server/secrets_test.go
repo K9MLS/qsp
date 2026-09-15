@@ -20,7 +20,7 @@ import (
 
 // newSecretServer builds a server with a credential store, reusing the
 // package's existing helpers rather than inventing another.
-func newSecretServer(t *testing.T, store *secrets.Store) (*Server, *stubAuth) {
+func newSecretServer(t *testing.T, store CredentialStore) (*Server, *stubAuth) {
 	t.Helper()
 	bus := events.NewBus(nil, events.Options{})
 	t.Cleanup(bus.Close)

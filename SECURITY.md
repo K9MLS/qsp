@@ -129,6 +129,51 @@ goroutine that owns the routing core — in that order, so that a change which
 fails to reach the disk is still one an operator can find and attribute. See
 [ADR-0027](docs/adr/ADR-0027-configuration-writes.md).
 
+### The encrypted full backup
+
+`/api/admin/full-backup` and `/api/admin/full-restore` carry **configuration
+and the credentials**, encrypted with a passphrase the operator supplies. See
+[ADR-0065](docs/adr/ADR-0065-a-full-backup-encrypted.md).
+
+**Mailing the wrong backup publishes every password on the server.** That is
+the first thing to get right about having two: `/api/admin/backup` is safe to
+send and this is not, the file extensions differ (`.qspbackup.json` against
+`.qspfull`), and a restore of one through the other's endpoint says which it
+found rather than only complaining.
+
+A POST rather than a GET, because it takes a passphrase in a body and because
+each call produces a file carrying every secret on the server — not a safe,
+repeatable read. **The passphrase travels in the body**, never a query string,
+which is logged by every proxy in the way and kept in a browser's history; a
+passphrase in a log is every backup made with it.
+
+AES-256-GCM, with the key derived by PBKDF2-HMAC-SHA256 at OWASP's recommended
+600 000 iterations and a per-file salt. The cleartext header carrying the salt
+and that count is **authenticated**, so it cannot be rewritten to 1 and handed
+back for a cheaper attack. Argon2id would be preferable and is not in the
+standard library.
+
+**A credential that cannot be decrypted fails the whole backup** rather than
+being omitted. A file silently missing one credential produces a restore where
+three links work and one does not, for a reason nothing in the file records —
+and the operator cannot know it was incomplete when they made it.
+
+**A restore confirms first**, and carries the same identity warning the
+shareable restore does: a backup holds a server identifier, so taking it makes
+this machine a replacement for the one that made it, and two servers claiming
+one identity is a failure neither will report. The credentials restored belong
+to links whose far ends have not been asked, which is that same confirmation
+covering more.
+
+**Credentials are written before the configuration.** If the configuration
+landed first and a credential write then failed, the server would be running a
+configuration whose links have no passwords — silent, and looking correct. The
+other order leaves credentials for links that do not exist yet, which is inert.
+
+The audit trail records that a full backup was taken and by whom, and **never
+the passphrase or the names of the credentials**: a trail listing which
+credentials exist is a map for whoever later gets the file.
+
 ### Credential endpoints
 
 `/api/secrets` lists the credentials an operator has entered, and
