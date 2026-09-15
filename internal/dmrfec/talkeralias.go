@@ -26,10 +26,23 @@ import (
 // §7.1.1.5 are the two PDU layouts (tables 7.4 and 7.5), §7.2.18 and §7.2.19
 // are the format and length elements, and table 5.4 lists the four FLCOs.
 //
-// **Written from the tables, not from recollection.** PROJECT_MEMORY §8r
-// records what guessing at a field's length cost on the AMBE side — a wedged
-// dongle recovered only by removing its power — and this one transmits on the
-// operator's repeater.
+// **Written from the tables, and since 2026-09-15 confirmed against a radio.**
+// A MOTOTRBO with Inband Caller Alias enabled sent
+// `04 00 90 4b 39 4d 4c 53 20` and `05 00 52 37 00 00 00 00 00`, and
+// TalkerAliasPDUs builds both byte for byte — see
+// testdata/hbp/hbp-talker-alias.md.
+//
+// The reserved bit is the value that mattered. Table 7.4's note reserves the
+// most significant bit of the 49-bit data field for the 8-bit and 16-bit
+// formats and starts the first character at octet 3; no worked example prints
+// it, so it was written on the strength of a footnote. The radio sets it to
+// zero and starts its first character at octet 3.
+//
+// **Reading an alias off the air is not the mirror of writing one.** The
+// capture holds 23 embedded LC groups in 140 bursts, of which one is an alias
+// header and one an alias block — so a radio interleaves them among voice LC
+// groups and sends them rarely. A reader collects by FLCO across a whole
+// transmission, never by adjacency, and cannot assume the alias arrives early.
 //
 // # What this does not do
 //

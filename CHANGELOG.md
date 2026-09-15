@@ -6,6 +6,52 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A MOTOTRBO's own Talker Alias**, `testdata/hbp/hbp-talker-alias.pcap`, and
+  0370 stops being a reading of tables. The radio sent `"K9MLS R7"` in UTF-8 as
+  two PDUs, and `TalkerAliasPDUs` builds both **byte for byte**: the FLCOs, the
+  format code, the five-bit length, the field widths and the block numbering
+  all confirmed by hardware.
+
+  **The reserved bit is the value that mattered.** Table 7.4's note reserves
+  the most significant bit of the 49-bit data field for the 8-bit formats and
+  starts the first character at octet 3. No worked example prints it, so it was
+  written on the strength of a footnote with nothing but this project's own
+  decoder agreeing. The radio sets it to zero and starts `K` at octet 3.
+
+  The radio also chose UTF-8, which is the format we build — so refusing
+  UTF-16BE costs nothing against this hardware, and it stays refused because
+  §5.4.3's boundaries for it do not reconstruct.
+
+- **Two findings only real traffic could give.** The capture holds 23 embedded
+  LC groups in 140 bursts, of which **one is an alias header and one an alias
+  block** — so a radio sends the alias rarely and interleaves it among voice
+  LC groups. **Reassembly must collect by FLCO across a whole transmission,
+  never by adjacency**, which is a defect that cannot appear against
+  self-generated fixtures where the PDUs are built in a row. The first attempt
+  at decoding this capture found nothing for exactly that reason.
+
+### Documentation
+
+- **IPSC cannot carry a Talker Alias, and the reason is structural.** Three
+  captures of the same radio through the XPR8300 held none: an IPSC voice
+  packet carries the Link Control spelled out as fields rather than the
+  embedded signalling it travelled in, which is the same reason IPSC omits the
+  EMB. The repeater terminates the air interface and re-originates it, so the
+  colour code goes and so does anything else in the embedded LC.
+
+  **So QSP can generate an alias toward Homebrew peers and can never receive
+  one from Motorola.** That is what ADR-0064 needs for a Zello user, but it
+  makes an alias a one-way street across the IPSC boundary.
+
+- **A false positive worth recording.** Searching the IPSC captures for a byte
+  whose low six bits were 4 to 7 gave four hits in perfect equal counts —
+  exactly the shape of a header and three blocks. They were frame sequence
+  numbers, each followed by that counter times 480. A pattern matching in equal
+  counts is not evidence of structure.
+
+
+### Added
+
 - **A capture that settled two open questions at once**,
   `testdata/hbp/hbp-emb-colourcode-4.pcap` — seven transmissions from two
   peers at two different colour codes, taken on the production server.

@@ -257,10 +257,19 @@ guessed:**
   characters". They agree for ASCII and differ for anything else, and a radio
   told the wrong number displays a truncated alias.
 
-**And it has never been compared against a radio.** Everything here is a
-careful reading of tables. A capture of a MOTOTRBO with Inband Caller Alias
-enabled is what would turn it into a recording, and that is the test worth
-running before anything transmits one.
+**Confirmed against a radio on 2026-09-15**, and no longer a reading. A
+MOTOTRBO with Inband Caller Alias enabled sent the alias `"K9MLS R7"` in UTF-8
+as two PDUs, and `TalkerAliasPDUs` builds both byte for byte — including the
+reserved bit that had been written purely on the strength of table 7.4's
+footnote. See `testdata/hbp/hbp-talker-alias.md`.
+
+**But QSP can only ever send one, not receive one from Motorola.** Three
+captures of the same radio through the XPR8300 over IPSC contained no alias at
+all, because an IPSC voice packet carries the Link Control spelled out as
+fields rather than the embedded signalling it travelled in — the same reason
+IPSC omits the EMB. The repeater terminates the air interface and
+re-originates it. A Homebrew peer passes the bursts through, which is why the
+alias is in a Pi-Star capture and not a repeater one.
 
 ## Identity: settled in ADR-0064
 
