@@ -198,6 +198,7 @@
       return;
     }
 
+    lastTraffic = payload;
     if (!payload.enabled) {
       peersCount.textContent = "disabled";
       peersBody.innerHTML = emptyState(
@@ -596,10 +597,83 @@
     );
   }
 
+  /* The drop advisory's life, which is ten seconds from when it appears.
+   *
+   * **The note and the amber counter expire together**, and that is the whole
+   * point of this. The comment on the note below records why it exists: a
+   * permanently amber IGNORED read as a fault and had nothing to explain it, so
+   * the note was added as the counter's explanation. Dismissing the
+   * explanation while leaving the counter amber would restore exactly that
+   * problem — an unexplained amber number, which is where this started.
+   *
+   * So recent trouble is amber with a reason beside it, and older trouble is a
+   * quiet number. The count itself is never hidden: it is still there, still
+   * correct, and no longer shouting.
+   *
+   * It comes back whenever something else is turned away, because a second
+   * event is news even if the first was read and dismissed.
+   */
+  var NOTE_LIFETIME_MS = 10000;
+  var dropNote = { seen: -1, dismissed: false, timer: null };
+
+  /* dismissDropNote starts the dissolve and removes the element after it.
+   *
+   * The element is removed rather than left hidden, so that a panel rendered
+   * again while the animation is running does not find a stale note to
+   * re-animate. */
+  function dismissDropNote() {
+    dropNote.timer = null;
+    dropNote.dismissed = true;
+
+    var note = trafficBody
+      ? trafficBody.querySelector(".inline-note--drops")
+      : null;
+    if (!note) {
+      return;
+    }
+    note.classList.add("is-dissolving");
+
+    /* **A timer rather than the animationend event.** Reduced motion replaces
+     * the animation with `display: none`, and an animation that never runs
+     * never ends — so waiting for the event would leave the element in the
+     * document for ever on exactly the machines that asked for less movement.
+     */
+    window.setTimeout(function () {
+      if (note.parentNode) {
+        note.parentNode.removeChild(note);
+      }
+      /* Re-render so the counter loses its amber in the same moment the
+       * reason goes, rather than on whatever refresh happens next. */
+      if (lastTraffic) {
+        renderTraffic(lastTraffic);
+      }
+    }, 600);
+  }
+
+  /* noteDropsFor arms the dismissal and reports whether the note should be
+   * drawn at all. */
+  function noteDropsFor(ignored) {
+    if (ignored > dropNote.seen) {
+      /* Something new was turned away: news, even if the previous note was
+       * read and dismissed. */
+      dropNote.seen = ignored;
+      dropNote.dismissed = false;
+      if (dropNote.timer !== null) {
+        window.clearTimeout(dropNote.timer);
+      }
+      dropNote.timer = window.setTimeout(dismissDropNote, NOTE_LIFETIME_MS);
+      return true;
+    }
+    return !dropNote.dismissed;
+  }
+
+  var lastTraffic = null;
+
   function renderTraffic(payload) {
     if (!trafficBody) {
       return;
     }
+    lastTraffic = payload;
     if (!payload.enabled) {
       trafficNote.textContent = "disabled";
       trafficBody.innerHTML = emptyState(
@@ -626,6 +700,13 @@
      * peer arrived on is in the table below, where it belongs. */
     var frames = (t.frames_accepted || 0) + (ipsc ? ipsc.voice_frames || 0 : 0);
     var ignored = (t.ignored || 0) + (ipsc ? ipsc.ignored || 0 : 0);
+
+    /* **Decided before the markup is built**, because the counter's colour and
+     * the note's presence are one decision and asking twice would let them
+     * disagree — an amber number with no reason beside it, or a reason beside
+     * a muted number. */
+    var showDrops = ignored > 0 && noteDropsFor(ignored);
+
     var p25 = t.p25;
     var peers = (payload.peers || []).length;
 
@@ -651,7 +732,14 @@
        * is answered so it logs in again — and counting that beside a stray port
        * scan produced one permanently amber number that looked like a fault and
        * was not. The reasons are below. */
-      metric(ignored, "ignored", ignored > 0 ? "metric--warn" : "metric--muted") +
+      /* **Amber only while the reason is on screen.** See noteDropsFor: an
+       * amber number that outlives its explanation is the fault this note was
+       * built to fix, so the two end together. */
+      metric(
+        ignored,
+        "ignored",
+        ignored > 0 && showDrops ? "metric--warn" : "metric--muted"
+      ) +
       "</div>";
 
     /* **Only when something was actually turned away, and then one line.**
@@ -674,7 +762,7 @@
      * Signed-in only — recent_drops is withheld from unauthenticated callers
      * because the reasons name addresses — so this is absent on a public view
      * rather than empty, which is correct. */
-    if (ignored > 0) {
+    if (ignored > 0 && showDrops) {
       var silent = (t.recent_drops || []).filter(function (d) {
         return !d.answered;
       });
@@ -697,7 +785,9 @@
       });
       if (lines.length > 0) {
         trafficBody.innerHTML +=
-          '<p class="inline-note">' + lines.join(". ") + ".</p>";
+          '<p class="inline-note inline-note--drops">' +
+          lines.join(". ") +
+          ".</p>";
       }
     }
 
@@ -884,6 +974,7 @@
     if (!callsBody) {
       return;
     }
+    lastTraffic = payload;
     if (!payload.enabled) {
       callsCount.textContent = "disabled";
       callsBody.innerHTML = emptyState(

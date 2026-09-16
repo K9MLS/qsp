@@ -111,12 +111,117 @@ func TestTheDropSummaryUsesAnExistingStyle(t *testing.T) {
 // third of the panel while IGNORED read 0 and had nothing to explain.
 func TestTheDropSummaryOnlyAppearsWhenSomethingWasIgnored(t *testing.T) {
 	js := stripComments(readFile(t, "static/console.js"))
-	if !strings.Contains(js, "if (ignored > 0)") {
-		t.Error("the drop summary is not gated on the counter it explains")
+
+	// **The intent rather than one spelling of it.** This matched the literal
+	// `if (ignored > 0)` and broke the moment the condition gained a second
+	// term — while the property it exists to protect was untouched. A gate
+	// that fails on a rewrite it should not care about is a gate somebody
+	// edits out.
+	//
+	// The property: the summary is drawn only when the counter it explains is
+	// non-zero. That now runs through `showDrops`, which is itself derived
+	// from the counter, so both halves are checked.
+	if !strings.Contains(js, "showDrops = ignored > 0") {
+		t.Error("the drop summary's condition is not derived from the counter it " +
+			"explains")
+	}
+	if !strings.Contains(js, "if (ignored > 0 && showDrops)") {
+		t.Error("the summary is not gated on both the counter and the note's own " +
+			"lifetime")
 	}
 	if !strings.Contains(js, "!d.answered") {
 		t.Error("the summary counts answered drops, which are the protocol working")
 	}
+}
+
+// TestTheAmberCounterAndItsReasonEndTogether is the property the dissolve must
+// not break.
+//
+// The note exists because a permanently amber IGNORED read as a fault and had
+// nothing to explain it. **Dismissing the explanation while leaving the
+// counter amber would restore exactly that**, so the counter's colour is
+// decided by the same value that decides whether the note is drawn.
+func TestTheAmberCounterAndItsReasonEndTogether(t *testing.T) {
+	js := stripComments(readFile(t, "static/console.js"))
+
+	if !strings.Contains(js, `ignored > 0 && showDrops ? "metric--warn"`) {
+		t.Error("the ignored counter's amber is not tied to the note being on " +
+			"screen; an amber number outliving its reason is the fault the note " +
+			"was added to fix")
+	}
+	// And the note is removed rather than hidden, so a re-render does not find
+	// a stale one to animate again.
+	if !strings.Contains(js, "removeChild(note)") {
+		t.Error("the note is hidden rather than removed")
+	}
+	// The dismissal re-renders, so the colour changes in the same moment the
+	// reason goes rather than on whatever refresh happens next.
+	if !strings.Contains(js, "renderTraffic(lastTraffic)") {
+		t.Error("dismissing the note does not re-render, so the counter keeps " +
+			"its amber until something else happens")
+	}
+}
+
+// TestTheDissolveHasAReducedMotionPathThatStillRemovesTheNote.
+//
+// Somebody who asked for less movement still wants the note to go; they do not
+// want it to slide. `animation: none` alone would have left it on screen for
+// ever on exactly the machines that asked for less.
+func TestTheDissolveHasAReducedMotionPathThatStillRemovesTheNote(t *testing.T) {
+	css := readFile(t, "static/console.css")
+
+	if !strings.Contains(css, "@keyframes note-dissolve") {
+		t.Fatal("the dissolve animation is not defined")
+	}
+	if !strings.Contains(css, ".inline-note--drops") {
+		t.Error("the drop advisory has no style of its own, so the height " +
+			"collapse has nothing to clip against")
+	}
+
+	reduced := css[strings.LastIndex(css, "prefers-reduced-motion"):]
+	_ = reduced
+	if !strings.Contains(css, "prefers-reduced-motion") {
+		t.Fatal("the stylesheet has no reduced-motion guard")
+	}
+
+	// The guard for this animation must do more than switch it off, or the
+	// note never leaves.
+	// **The last occurrence, not the first.** The stylesheet has several
+	// reduced-motion guards and the rule for this animation appears twice —
+	// once to define it and once inside the guard, which comes later. Indexing
+	// from the front found the table's guard instead, where there is no
+	// note to remove, so the check would have passed or failed for reasons
+	// nothing to do with the dissolve.
+	guard := lastSectionAround(css, ".inline-note.is-dissolving")
+	if guard == "" {
+		t.Fatal("the dissolve has no reduced-motion guard of its own")
+	}
+	if !strings.Contains(guard, "display: none") {
+		t.Error("reduced motion switches the animation off without removing the " +
+			"note, so it would stay on screen for ever")
+	}
+
+	// And a JavaScript timer rather than animationend, because an animation
+	// that never runs never ends.
+	js := stripComments(readFile(t, "static/console.js"))
+	if strings.Contains(js, "animationend") {
+		t.Error("the dissolve waits for animationend; with reduced motion the " +
+			"animation never runs, so the element would never be removed")
+	}
+}
+
+// lastSectionAround returns a window of the stylesheet around the final
+// occurrence of a marker, or "".
+func lastSectionAround(css, marker string) string {
+	at := strings.LastIndex(css, marker)
+	if at < 0 {
+		return ""
+	}
+	end := at + len(marker) + 200
+	if end > len(css) {
+		end = len(css)
+	}
+	return css[at:end]
 }
 
 func readFile(t *testing.T, path string) string {

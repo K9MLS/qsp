@@ -4,6 +4,51 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **The drop advisory dissolves after ten seconds instead of staying until a
+  restart**, at the operator's request — and **the amber IGNORED counter loses
+  its colour in the same moment.**
+
+  That second half is not decoration. The note exists because a permanently
+  amber IGNORED "looked like a fault and was not" and had nothing to explain
+  it; the note is the counter's explanation. **Dismissing the explanation while
+  leaving the counter amber would restore exactly that problem** — an
+  unexplained amber number, which is where this started. So recent trouble is
+  amber with a reason beside it, older trouble is a quiet number, and the count
+  itself is never hidden.
+
+  It returns whenever something else is turned away, because a second event is
+  news even if the first was read.
+
+  **Reduced motion removes the animation and not the behaviour.** Somebody who
+  asked for less movement still wants the note to go; they do not want it to
+  slide, so it disappears at once. `animation: none` alone would have left it
+  on screen for ever on exactly the machines that asked for less — and the
+  removal uses a timer rather than `animationend`, because an animation that
+  never runs never ends.
+
+  The note is removed from the document rather than hidden, so a panel
+  re-rendered while the fade is running does not find a stale note to animate
+  again. It collapses its own height as it goes, because fading to transparent
+  and keeping the space would leave the panel holding a gap for a line nobody
+  can read.
+
+### Fixed
+
+- **A gate that matched one spelling of its own intent.** The drop summary's
+  test required the literal `if (ignored > 0)` and broke the moment the
+  condition gained a second term, while the property it protects was
+  untouched. A gate that fails on a rewrite it should not care about is a gate
+  somebody edits out. It now checks that the condition is *derived* from the
+  counter, which is stronger than the string it replaced.
+
+- **And a test window that found the wrong block.** The reduced-motion check
+  indexed the stylesheet from the front and landed on the table's guard, where
+  there is no note to remove — so it would have passed or failed for reasons
+  nothing to do with the dissolve.
+
+
 ### Added
 
 - **The logon token signer.** Zello's `auth_token` is a JWT signed RS256 with

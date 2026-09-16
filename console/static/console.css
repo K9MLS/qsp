@@ -620,6 +620,76 @@ body {
   }
 }
 
+/* ---- A note that has had its moment ---------------------------------- */
+/*
+ * The drop advisory dissolves ten seconds after it appears, and motion here
+ * depicts something real: the note has been read and is going, rather than a
+ * page element being decorated.
+ *
+ * **It collapses its own height as it fades.** Fading to transparent and
+ * leaving the space would make the panel keep a gap for a line nobody can
+ * read, which is worse than either showing it or removing it — the panel would
+ * look broken rather than tidy.
+ */
+@keyframes note-dissolve {
+  from {
+    opacity: 1;
+    max-height: 4rem;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/*
+ * The drop advisory, which is the one note that goes away by itself.
+ *
+ * **`overflow: hidden` here rather than only on the dissolving state**, so the
+ * height collapse has something to clip against from the start: applying it at
+ * the same moment as the animation makes the first frame reflow, which reads
+ * as a jump before the fade.
+ */
+.inline-note--drops {
+  overflow: hidden;
+  max-height: 4rem;
+}
+
+.inline-note.is-dissolving {
+  animation: note-dissolve var(--duration-slow) var(--ease-out-expo) forwards;
+  overflow: hidden;
+}
+
+/*
+ * **Reduced motion removes the animation and not the behaviour.** Somebody who
+ * has asked for less movement still wants the note to go; they do not want it
+ * to slide. So it disappears at once rather than being left on screen for
+ * ever, which is what `animation: none` alone would have done.
+ */
+@media (prefers-reduced-motion: reduce) {
+  /*
+ * The drop advisory, which is the one note that goes away by itself.
+ *
+ * **`overflow: hidden` here rather than only on the dissolving state**, so the
+ * height collapse has something to clip against from the start: applying it at
+ * the same moment as the animation makes the first frame reflow, which reads
+ * as a jump before the fade.
+ */
+.inline-note--drops {
+  overflow: hidden;
+  max-height: 4rem;
+}
+
+.inline-note.is-dissolving {
+    animation: none;
+    display: none;
+  }
+}
+
 /* ---- Call activity --------------------------------------------------- */
 /*
  * A live transmission pulses. Motion here depicts something real — somebody is
