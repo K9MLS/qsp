@@ -360,3 +360,63 @@ func TestSixtyMillisecondFramesForceTheSpeechModel(t *testing.T) {
 			"not force SILK and this test proves nothing", FrameMS, celtLongestMS)
 	}
 }
+
+// twoFramePacket rewrites a single-frame Opus packet (TOC code 0) as a legal
+// two-frame packet (code 1: two frames of equal size, RFC 6716 §3.2.2) carrying
+// the same frame twice — twice the audio in one packet, which is what the
+// Zello app sent on the first real connection.
+func twoFramePacket(t *testing.T, single []byte) []byte {
+	t.Helper()
+	if single[0]&3 != 0 {
+		t.Fatalf("the encoder's packet has TOC code %d, not 0; this helper cannot double it", single[0]&3)
+	}
+	out := []byte{single[0]&^3 | 1}
+	out = append(out, single[1:]...)
+	return append(out, single[1:]...)
+}
+
+// TestADecoderTakesTheLongestLegalPacket.
+//
+// To see it bite: size the decoder's buffer with SamplesPerFrame again, and
+// the 120 ms row fails with "buffer too small" — the error the Zello app's
+// packets produced on 2026-09-16.
+func TestADecoderTakesTheLongestLegalPacket(t *testing.T) {
+	enc, err := NewEncoder(16000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer enc.Close()
+	pcm := make([]int16, SamplesPerFrame)
+	for i := range pcm {
+		pcm[i] = int16((i%40)*400 - 8000)
+	}
+	one, err := enc.Encode(pcm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name        string
+		packet      []byte
+		wantSamples int
+	}{
+		{"one 60 ms frame, as QSP sends", one, SamplesPerFrame},
+		{"two 60 ms frames, 120 ms, the longest Opus allows", twoFramePacket(t, one), MaxSamplesPerPacket},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dec, err := NewDecoder()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer dec.Close()
+			got, err := dec.Decode(tc.packet)
+			if err != nil {
+				t.Fatalf("decoding: %v", err)
+			}
+			if len(got) != tc.wantSamples {
+				t.Errorf("decoded %d samples, want %d", len(got), tc.wantSamples)
+			}
+		})
+	}
+}

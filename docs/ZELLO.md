@@ -455,11 +455,17 @@ issuer), `zello_refused` (Zello's side — the account or channel membership;
 retried every five minutes, not every few seconds), `zello_unreachable`
 (the network).
 
-**One claim cannot be verified from the specification.** `azp` is `dev` in a
-developer token, and whether a production gateway needs something else is not
-documented — guessing would produce a logon refused for a reason that reads
-like bad credentials. It is configurable with `dev` as the default, and the
-first real connection settles it.
+**`azp` is `dev`, and that is settled by a logon, not by the specification.**
+The first real connection, 2026-09-16, logged on to channel "QSP Server 1" with
+a token carrying `azp: dev` on its first attempt. It stays configurable in case
+Zello changes that, but `dev` is no longer a guess.
+
+**What the far side sends is not what QSP sends.** The same connection showed
+the Zello app's packets carrying more than one 60 ms frame; a decoder sized for
+QSP's own packets refused every one. The decoder is sized for the longest legal
+Opus packet, 120 ms, and `qsp-zello` logs each incoming stream's declared codec
+header, so the next surprise of this kind is read from a log line rather than
+inferred from an error.
 
 **A PEM header is five dashes each side.** A copy that lost one is unreadable
 everywhere while looking entirely normal, so the parser names that specific

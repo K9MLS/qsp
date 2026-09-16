@@ -4,6 +4,32 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Nothing a Zello user said reached the radios.** On the first real
+  connection every packet from the Zello app failed with "buffer too small":
+  the Opus decoder was sized for one 60 ms frame, the packets QSP makes, and
+  the app sends packets carrying more. A radio keyed up, played nothing and
+  unkeyed. The decoder now takes the longest legal Opus packet, 120 ms. A test
+  builds a legal two-frame packet and pushes it through the real bridge; with
+  the old buffer QSP receives exactly what the radio did — a keyup and a
+  release.
+
+  **Concealment stays one frame.** For a lost packet the size handed to libopus
+  is how much audio to invent, so growing the buffer alone turned every dropped
+  packet into 120 ms of made-up sound; the existing concealment test caught it.
+
+### Added
+
+- **`qsp-zello` logs each incoming Zello stream's codec header** — sample rate,
+  frames per packet, frame length — once per stream.
+
+### Documentation
+
+- **The first Zello connection is recorded**: the logon worked first time with
+  `azp: dev`, real DMR audio decoded through the dongle and reached Zello, and
+  the decoder defect above was the one thing standing in the other direction.
+
 ### Added
 
 - **A Zello page in the console** (Administration → Zello), written for

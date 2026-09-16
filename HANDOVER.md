@@ -140,7 +140,17 @@ block existed. **Read it against the code, not the other way round.**
 question a silent repeater raises — a non-zero value means the chip's frames
 are not in DMR's layout. The one recorded real frame needs no correction.
 
-1. **`qsp-zello` is built (2026-09-16) and has never met Zello.** It asks QSP
+**First connection, 2026-09-16, on production.** QSP 0.1.239 and `qsp-zello`
+logged on to channel "QSP Server 1" first time, which settles `azp: dev`. Real
+DMR audio from the network decoded through the dongle — AMBEserver's debug log
+shows speech waveforms coming back — and went to Zello. **Zello to DMR failed:**
+every packet from the app was refused by an Opus decoder sized for one 60 ms
+frame (0398 fixes it, `qsp-zello` only). **Still open:** the audio Zello users
+hear from DMR was reported as bad, not yet described; TG2 is a busy talkgroup,
+so every call on it goes to Zello and holds the one chip. AMBEserver is still
+started by hand.
+
+1. **`qsp-zello` is built (2026-09-16) and has now met Zello.** It asks QSP
    for a logon over `zello.logon_socket` and is handed a token, username and
    password, never the key (ADR-0066). Proved against a real logon socket and
    a refused endpoint; `docs/ZELLO.md` "Running the connector" has the steps.

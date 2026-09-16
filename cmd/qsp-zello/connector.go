@@ -260,6 +260,13 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 		case p := <-s.Audio():
 			play(p)
 		case ev := <-s.Events():
+			if ev.Command == zello.EventStreamStart {
+				// **Said once per stream**: what the far side chose to send.
+				// The first real connection failed on a packet shape nothing
+				// here had seen, and the only evidence was a decode error.
+				logStreamStart(c.log, ev)
+				continue
+			}
 			if ev.Command != zello.EventStreamStop {
 				continue
 			}
@@ -293,6 +300,26 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 			}
 		}
 	}
+}
+
+// logStreamStart records an incoming stream's declared audio parameters.
+func logStreamStart(log *slog.Logger, ev zello.Event) {
+	attrs := []any{
+		slog.Uint64("stream", uint64(ev.StreamID)),
+		slog.String("from", ev.From),
+		slog.String("codec", ev.Codec),
+		slog.Int("packet_duration_ms", ev.PacketDuration),
+	}
+	if h, err := zello.DecodeCodecHeader(ev.CodecHeader); err == nil {
+		attrs = append(attrs,
+			slog.Int("sample_rate", h.SampleRate),
+			slog.Int("frames_per_packet", h.FramesPerPacket),
+			slog.Int("frame_ms", h.FrameSizeMS))
+	} else {
+		attrs = append(attrs, slog.String("codec_header", ev.CodecHeader),
+			slog.String("codec_header_error", err.Error()))
+	}
+	log.Info("zello stream started", attrs...)
 }
 
 // drainFor waits between attempts while discarding USRP audio, so a keyup

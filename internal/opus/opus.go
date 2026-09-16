@@ -68,8 +68,16 @@ const (
 	SampleRate = 16000
 	// FrameMS is the packet length Zello declares.
 	FrameMS = 60
-	// SamplesPerFrame is one Zello packet's worth of audio.
+	// SamplesPerFrame is one Zello packet's worth of audio, as QSP sends it.
 	SamplesPerFrame = SampleRate * FrameMS / 1000
+	// MaxPacketMS is the longest audio one Opus packet may carry (RFC 6716
+	// §3.2.5). **What QSP receives is whatever the far side chose**, not
+	// what QSP sends: the Zello app sent packets longer than one 60 ms frame
+	// on the first real connection, 2026-09-16, and a decoder sized for our
+	// own packets refused every one as "buffer too small".
+	MaxPacketMS = 120
+	// MaxSamplesPerPacket is MaxPacketMS at SampleRate.
+	MaxSamplesPerPacket = SampleRate * MaxPacketMS / 1000
 	// Channels is mono.
 	Channels = 1
 )
@@ -213,7 +221,8 @@ func NewDecoder() (*Decoder, error) {
 	if err != C.OPUS_OK || st == nil {
 		return nil, fmt.Errorf("opus: cannot create a decoder: %s", errString(err))
 	}
-	d := &Decoder{st: st, pcm: make([]int16, SamplesPerFrame)}
+	// Sized for the longest legal packet, not for the packets QSP makes.
+	d := &Decoder{st: st, pcm: make([]int16, MaxSamplesPerPacket)}
 	runtime.SetFinalizer(d, func(d *Decoder) { d.Close() })
 	return d, nil
 }
@@ -232,13 +241,22 @@ func (d *Decoder) Decode(packet []byte) ([]int16, error) {
 
 	var data *C.uchar
 	var length C.opus_int32
+	// **For a lost packet the size passed is how much audio to invent**, not
+	// room: libopus conceals exactly that many samples. So concealment asks
+	// for one frame, and only a real packet is offered the whole buffer —
+	// sized for the longest legal packet, because that is what the far side
+	// may send. Offering loss the whole buffer turned every dropped packet
+	// into 120 ms of made-up audio; TestALostPacketIsConcealedRatherThanFailing
+	// caught it when the buffer grew.
+	want := SamplesPerFrame
 	if len(packet) > 0 {
 		data = (*C.uchar)(unsafe.Pointer(&packet[0]))
 		length = C.opus_int32(len(packet))
+		want = len(d.pcm)
 	}
 
 	n := C.opus_decode(d.st, data, length,
-		(*C.opus_int16)(unsafe.Pointer(&d.pcm[0])), C.int(len(d.pcm)), 0)
+		(*C.opus_int16)(unsafe.Pointer(&d.pcm[0])), C.int(want), 0)
 	if n < 0 {
 		return nil, fmt.Errorf("opus: decoding a packet: %s", errString(C.int(n)))
 	}

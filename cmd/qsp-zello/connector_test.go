@@ -199,6 +199,38 @@ func TestAudioCrossesBothWays(t *testing.T) {
 	})
 }
 
+// TestAZelloStreamOfLongPacketsReachesQSP is the first real connection's
+// failure, through the real bridge: the Zello app sent packets carrying more
+// than one 60 ms frame, and every one was refused before reaching QSP.
+//
+// To see it bite: size internal/opus's decoder buffer with SamplesPerFrame,
+// and QSP receives a keyup, no audio and a release.
+func TestAZelloStreamOfLongPacketsReachesQSP(t *testing.T) {
+	single := opusPacket(t)
+	if single[0]&3 != 0 {
+		t.Fatalf("TOC code %d; the doubling below needs a single-frame packet", single[0]&3)
+	}
+	// A legal two-frame Opus packet (RFC 6716 §3.2.2, code 1): 120 ms.
+	long := append([]byte{single[0]&^3 | 1}, single[1:]...)
+	long = append(long, single[1:]...)
+
+	s := newFakeSession()
+	c := testConnector(t, s)
+	radio := &radioLog{}
+	s.audio <- zello.IncomingPacket{StreamID: 11, PacketID: 1, Opus: long}
+	s.audio <- zello.IncomingPacket{StreamID: 11, PacketID: 2, Opus: long}
+	s.events <- zello.Event{Command: zello.EventStreamStop, StreamID: 11}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.pump(ctx, s, mustBridge(t, s, radio), make(chan audio.Frame))
+
+	waitFor(t, "the release toward QSP", func() bool { return strings.HasSuffix(radio.String(), "R") })
+	want := "K" + strings.Repeat("A", 12) + "R"
+	if got := radio.String(); got != want {
+		t.Errorf("QSP received %q, want %q: two 120 ms packets are twelve 20 ms frames", got, want)
+	}
+}
+
 func mustBridge(t *testing.T, s session, r zellobridge.Radio) bridge {
 	t.Helper()
 	br, err := realBridge(s, r)
