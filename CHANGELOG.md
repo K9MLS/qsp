@@ -4,6 +4,41 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`internal/zellobridge`: the part that was missing.** Every piece of the
+  Zello path was proved on its own — the rate conversion and packetisation, the
+  codec against libopus, the wire protocol, the session — and **nothing put
+  them in order.** This does, behind the `zello` build tag because it reaches
+  the cgo codec.
+
+  Toward Zello: three USRP frames of 8 kHz PCM resampled to 16 kHz, one 60 ms
+  Opus packet, sent on a stream. Toward the radio: one packet decoded,
+  resampled down, three 20 ms frames.
+
+  **Six behaviours, each of which would be an audible defect.** The stream
+  opens on the keyup rather than the first frame, since every packet is
+  identified by stream ID and opening later would spend a frame's 20 ms on a
+  round trip. The last partial block is flushed before the stream closes,
+  because a transmission is rarely a multiple of three and dropping the
+  remainder clips the last word of every call. The stream closes even when that
+  tail cannot be sent, because one left open holds the channel until the server
+  times it out. The radio is keyed before the first frame, since the far side
+  opens a channel on the keyup. A new stream ID ends the previous transmission,
+  detected from the packets rather than only from `on_stream_start` — a bridge
+  that missed that event would feed one caller's audio into another's open
+  transmission. And a stop naming another stream is ignored, because acting on
+  it cuts a call in progress.
+
+  A failed keyup leaves the bridge not transmitting, so frames are refused at
+  the keyup rather than failing one at a time on a stream that does not exist.
+  All six are covered by breaks that fail.
+
+  **What is still unproved is Zello itself.** The assembly is tested against
+  fakes and the codec against libopus; no part of this has spoken to the
+  service.
+
+
 ### Fixed
 
 - **Three minutes of PBKDF2 in every gate run, which I put there two patches

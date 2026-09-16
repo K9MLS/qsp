@@ -347,6 +347,44 @@ specification explicitly says to reconnect from.
 Zello's Alarms service tracks the online status of a client whose platform name
 contains it, and QSP is a gateway.
 
+## The bridge, which is the part that was missing
+
+`internal/zellobridge` puts the pieces in order, behind the `zello` build tag
+because it reaches the cgo codec.
+
+**Toward Zello**: USRP frames of 8 kHz PCM, three at a time, resampled to
+16 kHz and repacketised into one 60 ms block, encoded as Opus, sent on a
+stream. **Toward the radio**: an Opus packet decoded to 60 ms of 16 kHz,
+resampled down, split into three 20 ms frames.
+
+Every piece was proved on its own before this — the rate conversion and
+packetisation in `internal/audio`, the codec against libopus, the wire
+protocol and session in `internal/zello`. **Nothing put them in order**, and
+that is all this package does.
+
+**The things it gets right because they are each an audible defect:**
+
+- **The stream opens on the keyup, not on the first frame.** Zello identifies
+  every packet by stream ID, so the identifier must exist before there is
+  audio — and opening on the first frame would spend its 20 ms on a round trip.
+- **The last partial block is flushed before the stream closes.** A
+  transmission is rarely a multiple of three frames, and dropping the
+  remainder clips the last word of every single call.
+- **The stream closes even when the tail cannot be sent.** One left open holds
+  the channel against everybody else until the server times it out.
+- **The radio is keyed before the first frame reaches it**, because the far
+  side opens a channel on the keyup and audio arriving first has nowhere to be
+  played.
+- **A new stream ID ends the previous transmission**, detected from the packets
+  rather than only from `on_stream_start` — a bridge that missed that event
+  would otherwise feed one caller's audio into another's open transmission.
+- **A stop naming another stream is ignored**, because acting on it cuts a
+  transmission in progress.
+
+**The 60 ms is the cost and it is not a defect.** Two frames are held while
+the third arrives; unavoidable at a fixed packet size, and the resampler's
+filter adds under two milliseconds beside it.
+
 ## Identity: settled in ADR-0064
 
 **A Zello user transmits under the gateway's own DMR ID and identifies by
