@@ -51,6 +51,8 @@ type Config struct {
 	DMR      DMR      `json:"dmr"`
 	IPSC     IPSC     `json:"ipsc"`
 	P25      P25      `json:"p25"`
+	// Zello configures the logon QSP hands the Zello connector (ADR-0066).
+	Zello Zello `json:"zello,omitzero"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -800,6 +802,24 @@ type Transcoder struct {
 	PermitAllPeers bool `json:"permit_all_peers,omitempty"`
 }
 
+// Zello is what QSP needs to hand qsp-zello a logon.
+//
+// **No secret lives here.** The private key, username and password are in the
+// credential store under names fixed in internal/zellologon; this block says
+// where to serve a logon and which key pair signs it.
+type Zello struct {
+	// LogonSocket is the Unix socket qsp-zello asks for a logon on. Empty
+	// serves nothing, which is every server not running the connector.
+	LogonSocket string `json:"logon_socket,omitempty"`
+	// Issuer is the issuer string from Zello's developer portal. It names the
+	// key pair rather than being one, so it is configuration.
+	Issuer string `json:"issuer,omitempty"`
+	// Audience is the token's azp claim. Empty selects "dev", the value a
+	// developer token carries; whether production needs another is settled
+	// by the first real logon (docs/ZELLO.md).
+	Audience string `json:"audience,omitempty"`
+}
+
 // DefaultTranscoderRate is the rate index used when a transcoder names none.
 const DefaultTranscoderRate = 33
 
@@ -1194,6 +1214,22 @@ func (v *validator) positiveDuration(field string, value Duration, fix string) {
 // of type *ValidationError.
 func (c Config) Validate() error {
 	v := &validator{}
+
+	// The Zello logon socket. Checked here rather than at startup so -check
+	// catches it; whether the directory exists is the network-free kind of
+	// question validation still leaves to startup.
+	if sock := strings.TrimSpace(c.Zello.LogonSocket); sock != "" {
+		if !filepath.IsAbs(sock) {
+			v.add("zello.logon_socket", fmt.Sprintf("%q is not an absolute path", c.Zello.LogonSocket),
+				"give a path such as \"/run/qsp/zello.sock\"; a relative one depends on the "+
+					"directory QSP was started from")
+		}
+		if strings.TrimSpace(c.Zello.Issuer) == "" {
+			v.add("zello.issuer", "must not be empty when zello.logon_socket is set",
+				"copy the issuer string from Zello's developer portal; it names the key pair "+
+					"and is not a secret")
+		}
+	}
 
 	switch {
 	case c.Version <= 0:

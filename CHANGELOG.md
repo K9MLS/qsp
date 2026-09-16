@@ -6,6 +6,49 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **`qsp-zello`, the Zello connector** (`cmd/qsp-zello`, behind the `zello`
+  build tag). It carries audio between one Zello channel and a QSP transcoder
+  over USRP, reconnects with backoff, and serves a loopback `/healthz` whose
+  state names the action a failure needs. Zello refusing a logon is retried
+  every five minutes rather than every few seconds, because bad credentials do
+  not fix themselves and hammering a service that said no is how an account is
+  suspended.
+
+- **QSP hands the connector a logon, never a key** (ADR-0066). With
+  `zello.logon_socket` and `zello.issuer` set, QSP serves a Unix socket, mode
+  0600, answering only its own uid by the kernel's peer credentials. It reads
+  `zello-private-key`, `zello-username` and `zello-password` from the
+  credential store, signs a token, and hands out the token and the other two.
+  The names are fixed in code, so the socket cannot be asked for anything else.
+  A `zello-logon` health check says which credentials are missing without
+  decrypting any.
+
+  Option A — the connector opening the credential store itself — was
+  recommended and withdrawn: the key file decrypts every credential, and the
+  connector is the one process holding an internet connection and a C codec.
+
+### Fixed
+
+- **A Zello over ended with a ghost keyup.** The session delivers audio and the
+  stop event on separate channels, and `select` chooses between ready channels
+  at random; taking the stop first played the last packet as a new
+  transmission — a 60 ms keyup and a two-second hang. Queued audio is drained
+  before a stop is acted on. The test runs the case fifty times and fails on
+  the first without the fix.
+
+- **`qsp.service` forbade Unix sockets** (`RestrictAddressFamilies=AF_INET
+  AF_INET6`), so QSP would have failed to start with `zello.logon_socket` set,
+  on an error naming neither the sandbox nor the setting.
+
+- **The crash-loop limit in `qsp.service` was never in effect.**
+  `StartLimitIntervalSec` sat under `[Service]`, where `systemd-analyze verify`
+  reports it unknown and systemd ignores it. It is under `[Unit]` now.
+
+- **Nothing compiled the `zello` build tag.** CI and `check.sh` built every
+  package but `internal/opus`, `internal/zellobridge` and the connector. Both
+  now vet and race-test them; `check.sh` skips only when libopus headers are
+  absent, and says so.
+
 - **Audio from USRP becomes a DMR transmission.** A transcoder channel encodes
   each 20 ms frame through the chip and builds a whole transmission under the
   transcoder's `radio_id`: a voice LC header, superframes of six bursts with

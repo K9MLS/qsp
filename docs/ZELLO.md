@@ -409,8 +409,41 @@ that passed while the link was down.
 
 **The private key goes in the credential store** — typed into the console,
 encrypted at rest, outside the configuration document, never returned by any
-endpoint. It is not a configuration value and must never appear in one, because
-`configuration_versions` keeps the full document for every save.
+console endpoint. It is not a configuration value and must never appear in one,
+because `configuration_versions` keeps the full document for every save.
+
+**And it never leaves QSP.** `qsp-zello` asks QSP for a logon over a Unix
+socket at every connection, and is handed a freshly signed token, the username
+and the password — never the key ([ADR-0066](adr/ADR-0066-a-connector-is-handed-a-logon-never-a-key.md)).
+
+## Running the connector
+
+1. **In QSP's configuration**, add a transcoder with `usrp_listen` and
+   `usrp_peer`, a bridge naming it, and:
+
+   ```json
+   "zello": { "logon_socket": "/run/qsp/zello.sock", "issuer": "<from the developer portal>" }
+   ```
+
+2. **In the console's credentials**, enter `zello-private-key` (the PEM),
+   `zello-username` and `zello-password`. The `zello-logon` health check turns
+   green when all three are present; it reads presence only and decrypts
+   nothing.
+3. **Build the connector** where libopus headers are installed:
+   `CGO_ENABLED=1 go build -tags zello -o qsp-zello ./cmd/qsp-zello`.
+4. **Configure it** from `deploy/systemd/qsp-zello.json.example`: its
+   `usrp_listen` is QSP's `usrp_peer` and the other way round. It holds no
+   secret, and refuses a field it does not know — so there is nowhere to put a
+   password by mistake. Check it with `qsp-zello -check`.
+5. **Install `deploy/systemd/qsp-zello.service`**, running as the same `qsp`
+   user; the socket serves no other.
+
+Its `/healthz` on `health_listen` names the action a failure needs:
+`qsp_unreachable` (is QSP running with the socket set?),
+`credentials_missing` (QSP's console), `credentials_unusable` (the key or
+issuer), `zello_refused` (Zello's side — the account or channel membership;
+retried every five minutes, not every few seconds), `zello_unreachable`
+(the network).
 
 **One claim cannot be verified from the specification.** `azp` is `dev` in a
 developer token, and whether a production gateway needs something else is not

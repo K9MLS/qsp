@@ -100,6 +100,18 @@ jobs:
       - name: Test with race detector
         run: go test -race ./...
 
+      # ADR-0009 keeps Opus behind the zello build tag, so every step above
+      # compiles none of qsp-zello, internal/opus or internal/zellobridge. A
+      # tag nothing builds is code nothing checks.
+      - name: Vet and test the zello-tagged connector
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q libopus-dev
+          go vet -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/
+          staticcheck -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/
+          go test -race -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/
+
       # ADR-0001 and ADR-0009: the core must stay pure Go and cross-compilable
       # to every target from one machine. CGO_ENABLED=0 makes a cgo dependency
       # fail here rather than at a user's install.

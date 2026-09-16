@@ -37,6 +37,17 @@ go test -race ./... || fail=1
 step "documentation accuracy"
 go test ./cmd/qsp/ -run 'TestDocumented|TestEmptiness|TestNothingClaims|TestUnbuilt' || fail=1
 
+# ADR-0009 keeps Opus behind the zello build tag, so nothing above compiles
+# qsp-zello. Skipped only when libopus headers are absent, and said so.
+step "zello-tagged connector"
+if pkg-config --exists opus 2>/dev/null; then
+  CGO_ENABLED=1 go vet -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/ || fail=1
+  CGO_ENABLED=1 go test -race -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/ || fail=1
+else
+  echo "libopus headers not installed; skipping."
+  echo "Install with: sudo dnf install opus-devel   (Debian/Ubuntu: libopus-dev)"
+fi
+
 step "staticcheck ./..."
 if command -v staticcheck >/dev/null 2>&1; then
   staticcheck ./... || fail=1

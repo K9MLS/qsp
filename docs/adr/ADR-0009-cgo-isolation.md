@@ -16,7 +16,6 @@ Connectors requiring cgo ship as separate binaries in the same repository and
 container image: `cmd/qsp-zello`. They communicate with the core over **USRP**,
 the UDP PCM protocol every analog system in this ecosystem already speaks.
 
-<!-- doc-accuracy: allow-path cmd/qsp-zello — decided here, written in phase 6 -->
 
 ## Consequences
 

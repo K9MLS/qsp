@@ -4,6 +4,13 @@ Documentation=https://github.com/K9MLS/qsp
 After=network-online.target
 Wants=network-online.target
 
+# In [Unit], where systemd reads them. They sat under [Service] until
+# 2026-09-16, where systemd-analyze reports StartLimitIntervalSec as unknown
+# and ignores it — so the crash-loop limit the comment below describes was
+# never in effect.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/qsp -config /var/lib/qsp/qsp.json
@@ -15,8 +22,6 @@ WorkingDirectory=/var/lib/qsp
 # the journal.
 Restart=on-failure
 RestartSec=10s
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # QSP writes its audit trail to the structured log. Nothing writes to the
 # database yet, so the journal *is* the soak evidence. It must outlive a
@@ -32,6 +37,12 @@ Group=qsp
 # /var/lib/qsp, created and owned automatically.
 StateDirectory=qsp
 StateDirectoryMode=0750
+
+# /run/qsp, for zello.logon_socket = /run/qsp/zello.sock. **Owned by this unit
+# alone**: qsp-zello.service must not also declare it, or stopping the
+# connector would remove the directory holding QSP's live socket.
+RuntimeDirectory=qsp
+RuntimeDirectoryMode=0750
 
 # UDP 62031 needs no privilege; nothing here binds below 1024.
 NoNewPrivileges=true
@@ -49,7 +60,11 @@ ProtectProc=invisible
 RestrictNamespaces=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
-RestrictAddressFamilies=AF_INET AF_INET6
+# AF_UNIX for zello.logon_socket (ADR-0066). Without it QSP fails to start the
+# moment the socket is configured, with a permission error that names neither
+# the sandbox nor the setting — every test passes, because no test runs under
+# this unit.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native

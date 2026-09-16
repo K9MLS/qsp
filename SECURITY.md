@@ -213,6 +213,12 @@ An instance started without a database has nowhere to keep a credential and
 **says so** rather than accepting one and discarding it, which would leave an
 operator believing a link was configured.
 
+**One narrow path takes a stored value out of QSP** (ADR-0066): with
+`zello.logon_socket` set, QSP hands the Zello connector a signed token, the
+Zello username and the Zello password over a Unix socket that answers only
+QSP's own uid. The private key is never handed out, and the socket cannot be
+asked for any other credential.
+
 The audit trail records who changed which credential and when, **by name and
 never by value**: a trail is read, exported and kept far longer than a session,
 and a password in it is a password in every copy of it.

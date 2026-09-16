@@ -1,0 +1,58 @@
+[Unit]
+Description=QSP Zello connector
+Documentation=https://github.com/K9MLS/qsp
+# It asks QSP for a logon and carries audio to and from it, so it is useless
+# without QSP — but it retries on its own, so it does not stop when QSP
+# restarts. Wants, not Requires.
+After=network-online.target qsp.service
+Wants=network-online.target qsp.service
+
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/qsp-zello -config /var/lib/qsp/qsp-zello.json
+
+Restart=on-failure
+RestartSec=10s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qsp-zello
+
+# The same user as QSP: the logon socket serves only QSP's own uid (ADR-0066).
+User=qsp
+Group=qsp
+
+# **No RuntimeDirectory here.** /run/qsp belongs to qsp.service; declaring it
+# twice means stopping this unit deletes QSP's socket.
+ReadOnlyPaths=/var/lib/qsp
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+# AF_UNIX for the logon socket, AF_INET/6 for USRP and Zello.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+# libopus generates no code at run time.
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

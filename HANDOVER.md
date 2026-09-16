@@ -140,11 +140,18 @@ block existed. **Read it against the code, not the other way round.**
 question a silent repeater raises — a non-zero value means the chip's frames
 are not in DMR's layout. The one recorded real frame needs no correction.
 
-1. **A `qsp-zello` companion main**, under `cmd/`. It does not exist yet. The
-   open question is how it reads the Zello private key, which lives in QSP's
-   credential store and is returned by no endpoint.
-2. **Then** the credential goes in through the console and the first connection
-   happens.
+1. **`qsp-zello` is built (2026-09-16) and has never met Zello.** It asks QSP
+   for a logon over `zello.logon_socket` and is handed a token, username and
+   password, never the key (ADR-0066). Proved against a real logon socket and
+   a refused endpoint; `docs/ZELLO.md` "Running the connector" has the steps.
+   **Found on the way:** Zello's last audio packet and its stop event reach the
+   connector on two channels, and select could take the stop first — a ghost
+   keyup after nearly every over, fixed with a test that fails on its first run
+   without the fix. And `qsp.service` forbade Unix sockets, so QSP would not
+   have started with the socket configured.
+2. **Then** the credentials go in through the console and the first connection
+   happens. **Fedora needs `sudo dnf install opus-devel`** for `check.sh` to
+   run the tagged gate rather than skip it.
 3. **Undecided by the operator:** whether the transcoder's configured `alias`
    is injected as Talker Alias. The standing rule is "passed through, never
    injected", and a gateway's own alias is a new case. Nothing injects it.

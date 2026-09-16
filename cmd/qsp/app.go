@@ -42,6 +42,7 @@ import (
 	"github.com/k9mls/qsp/internal/server"
 	"github.com/k9mls/qsp/internal/upstream"
 	"github.com/k9mls/qsp/internal/vocoderlink"
+	"github.com/k9mls/qsp/internal/zellologon"
 )
 
 // app holds the constructed dependency graph.
@@ -76,6 +77,9 @@ type app struct {
 	transcoding *vocoderlink.Set
 	// transcodingChannels are the same channels, for their health checks.
 	transcodingChannels []*vocoderlink.Channel
+	// zelloLogon hands qsp-zello a logon (ADR-0066). Nil when
+	// zello.logon_socket is empty.
+	zelloLogon *zellologon.Server
 	// auth is the concrete login service, kept alongside the interface the
 	// server holds because the session sweep is not something an HTTP handler
 	// ever needs and does not belong on that interface.
@@ -199,6 +203,28 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		}
 		a.secrets = store
 		log.Info("credential store ready", "key", keyPath)
+	}
+
+	// **A logon socket with nowhere to read credentials from is refused at
+	// startup**, not served as a stream of refusals: an operator who set
+	// zello.logon_socket meant the connector to work.
+	if sock := strings.TrimSpace(cfg.Zello.LogonSocket); sock != "" {
+		if a.secrets == nil {
+			return nil, fmt.Errorf("zello.logon_socket is set and there is no database to keep " +
+				"the Zello credentials in; configure database.dsn or remove zello.logon_socket")
+		}
+		srv, zerr := zellologon.Listen(zellologon.Options{
+			SocketPath: sock,
+			Store:      a.secrets,
+			Issuer:     cfg.Zello.Issuer,
+			Audience:   cfg.Zello.Audience,
+			Log:        log,
+		})
+		if zerr != nil {
+			return nil, zerr
+		}
+		a.zelloLogon = srv
+		log.Info("serving Zello logons", slog.String("socket", sock))
 	}
 
 	// Radio ID lookups. Off unless configured, and refused without a contact
@@ -672,6 +698,9 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	for _, ch := range a.transcodingChannels {
 		registry.MustRegister(ch.Checker())
 	}
+	if a.zelloLogon != nil {
+		registry.MustRegister(a.zelloLogon.Checker(a.secrets))
+	}
 
 	for _, s := range unbuiltSubsystems {
 		registry.MustRegister(unbuilt(s.name, s.arrives))
@@ -1005,6 +1034,9 @@ func (a *app) run(ctx context.Context) error {
 	// call, so a vocoder that opens late is used from the next call on.
 	if a.transcoding != nil {
 		go a.transcoding.Run(ctx)
+	}
+	if a.zelloLogon != nil {
+		go a.zelloLogon.Serve(ctx)
 	}
 
 	<-ctx.Done()
@@ -1751,8 +1783,8 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 	{"zello", "the Zello connector arrives in phase 6; the vocoder link is built and " +
-		"carries DMR and USRP both ways, and what remains is the qsp-zello " +
-		"companion — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
+		"carries DMR and USRP both ways, and qsp-zello is built and has not made " +
+		"its first connection — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
 	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 }

@@ -1,0 +1,7 @@
+{
+  "logon_socket": "/run/qsp/zello.sock",
+  "channel": "Your Zello Channel",
+  "usrp_listen": "127.0.0.1:32002",
+  "usrp_peer": "127.0.0.1:32001",
+  "health_listen": "127.0.0.1:18090"
+}
