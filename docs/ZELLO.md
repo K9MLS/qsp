@@ -385,6 +385,45 @@ that is all this package does.
 the third arrives; unavoidable at a fixed packet size, and the resampler's
 filter adds under two milliseconds beside it.
 
+## The logon token, and where the key lives
+
+`auth_token` on the logon is a JWT signed RS256 with the private key from
+Zello's developer portal. Its shape, read from a token the portal issued:
+
+```
+header  {"typ":"JWT","alg":"RS256"}
+claims  {"iss":"<issuer>","exp":<unix>,"azp":"dev"}
+```
+
+The issuer's first segment is itself base64 and decodes to
+`ZC:<account>:<key number>` — so the issuer says which key pair, and the
+signature proves possession of it.
+
+**QSP mints its own token rather than storing one.** A token from the portal
+carries an expiry about a month out, and storing that means a credential that
+silently stops working on a date nothing records, at a moment nobody chose —
+the failure being a connector that has worked for weeks refusing to log on.
+The *private key* is the stored credential; the token is made fresh for each
+connection, so a reconnection after an outage is never blocked by an expiry
+that passed while the link was down.
+
+**The private key goes in the credential store** — typed into the console,
+encrypted at rest, outside the configuration document, never returned by any
+endpoint. It is not a configuration value and must never appear in one, because
+`configuration_versions` keeps the full document for every save.
+
+**One claim cannot be verified from the specification.** `azp` is `dev` in a
+developer token, and whether a production gateway needs something else is not
+documented — guessing would produce a logon refused for a reason that reads
+like bad credentials. It is configurable with `dev` as the default, and the
+first real connection settles it.
+
+**A PEM header is five dashes each side.** A copy that lost one is unreadable
+everywhere while looking entirely normal, so the parser names that specific
+cause rather than only reporting an unreadable key. Both `BEGIN PRIVATE KEY`
+and `BEGIN RSA PRIVATE KEY` are accepted, because the two look almost
+identical and nobody should have to know which their tool produced.
+
 ## Identity: settled in ADR-0064
 
 **A Zello user transmits under the gateway's own DMR ID and identifies by
