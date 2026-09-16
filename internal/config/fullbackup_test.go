@@ -5,12 +5,31 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 	"time"
 )
 
 // The encrypted full backup: ADR-0065.
+
+// testIterations is a deliberately weak count, for tests that exercise the
+// format rather than the key derivation.
+//
+// **The real count is asserted once**, in
+// TestTheKeyDerivationIsWhatTheConstantsSay, and the file records whichever
+// was used so a cheap backup still opens. Paying 600 000 iterations in every
+// test cost this package 30 seconds plain and three minutes under the race
+// detector, in a gate chain that runs on every patch.
+const testIterations = 4096
+
+// writeCheap writes a full backup with the weak count.
+func writeCheap(t *testing.T, w io.Writer, f FullBackup, passphrase string) {
+	t.Helper()
+	if err := writeFullBackup(w, f, passphrase, testIterations); err != nil {
+		t.Fatalf("writing a full backup: %v", err)
+	}
+}
 
 func fullBackupFixture(t *testing.T) FullBackup {
 	t.Helper()
@@ -31,9 +50,7 @@ func TestAFullBackupCarriesSecretsAndComesBack(t *testing.T) {
 	const passphrase = "a passphrase with spaces and ünïcode"
 
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, want, passphrase); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, want, passphrase)
 
 	got, err := ReadFullBackup(bytes.NewReader(buf.Bytes()), passphrase)
 	if err != nil {
@@ -73,9 +90,7 @@ func TestAFullBackupCarriesSecretsAndComesBack(t *testing.T) {
 func TestNoSecretAppearsInTheFileInTheClear(t *testing.T) {
 	f := fullBackupFixture(t)
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, f, "passphrase"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, f, "passphrase")
 	raw := buf.Bytes()
 
 	for name, value := range f.Secrets {
@@ -104,9 +119,7 @@ func TestNoSecretAppearsInTheFileInTheClear(t *testing.T) {
 // presented as a diagnosis**, so the message says both possibilities.
 func TestTheWrongPassphraseIsRefusedAndSaysWhatItCannotTell(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, fullBackupFixture(t), "right"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, fullBackupFixture(t), "right")
 
 	_, err := ReadFullBackup(bytes.NewReader(buf.Bytes()), "wrong")
 	if !errors.Is(err, ErrWrongPassphrase) {
@@ -131,9 +144,7 @@ func TestTheWrongPassphraseIsRefusedAndSaysWhatItCannotTell(t *testing.T) {
 // authenticated data, and this is the test of it.
 func TestAnAlteredByteAnywhereIsRefused(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, fullBackupFixture(t), "right"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, fullBackupFixture(t), "right")
 	raw := buf.Bytes()
 
 	// Every byte of the header, and a sample of the body.
@@ -173,12 +184,8 @@ func TestTwoBackupsOfTheSameThingShareNoDerivedKey(t *testing.T) {
 	f := fullBackupFixture(t)
 
 	var a, b bytes.Buffer
-	if err := WriteFullBackup(&a, f, "same"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
-	if err := WriteFullBackup(&b, f, "same"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &a, f, "same")
+	writeCheap(t, &b, f, "same")
 
 	saltA := a.Bytes()[14:fullBackupHeaderBytes]
 	saltB := b.Bytes()[14:fullBackupHeaderBytes]
@@ -223,9 +230,7 @@ func TestTheShareableExportIsNotMistakenForAFullBackup(t *testing.T) {
 	// And the full backup is not readable as the shareable export, or an
 	// operator could import a keyring believing it was configuration.
 	var full bytes.Buffer
-	if err := WriteFullBackup(&full, fullBackupFixture(t), "p"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &full, fullBackupFixture(t), "p")
 	if _, err := ReadBackup(bytes.NewReader(full.Bytes())); err == nil {
 		t.Error("an encrypted full backup was read as the shareable export")
 	}
@@ -248,9 +253,7 @@ func TestTheShareableExportIsNotMistakenForAFullBackup(t *testing.T) {
 // they have restored a server.
 func TestANewerFormatIsRefusedEntirely(t *testing.T) {
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, fullBackupFixture(t), "p"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, fullBackupFixture(t), "p")
 	raw := bytes.Clone(buf.Bytes())
 	binary.BigEndian.PutUint16(raw[8:10], FullBackupFormat+1)
 
@@ -279,6 +282,34 @@ func TestAPassphraseIsRequiredWhenWriting(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "credential") {
 		t.Errorf("the refusal does not say what the file would contain: %v", err)
+	}
+}
+
+// TestAnIterationCountOfNothingIsRefused.
+//
+// The count is a parameter internally so the tests can be cheap, which means
+// the value zero can reach the key derivation — and a key derived in no
+// iterations is a key derived from the passphrase alone. **Refused rather than
+// passed to the KDF**, because what a library does with a nonsensical
+// iteration count is not something to find out from a file somebody is
+// relying on.
+func TestAnIterationCountOfNothingIsRefused(t *testing.T) {
+	for _, n := range []int{0, -1, -600_000} {
+		var buf bytes.Buffer
+		err := writeFullBackup(&buf, fullBackupFixture(t), "p", n)
+		if err == nil {
+			t.Errorf("an iteration count of %d was accepted", n)
+		}
+		if buf.Len() != 0 {
+			t.Errorf("%d bytes were written for an iteration count of %d",
+				buf.Len(), n)
+		}
+	}
+
+	// And the weak count the tests use is still a real count, so a mistake
+	// there cannot silently become none.
+	if testIterations <= 0 {
+		t.Errorf("the test iteration count is %d", testIterations)
 	}
 }
 
@@ -374,9 +405,7 @@ func TestAFullBackupDoesNotClaimToBeMissingWhatItCarries(t *testing.T) {
 	// And it survives the round trip that way, so the cleared list is what an
 	// import sees rather than something recomputed.
 	var buf bytes.Buffer
-	if err := WriteFullBackup(&buf, full, "p"); err != nil {
-		t.Fatalf("writing: %v", err)
-	}
+	writeCheap(t, &buf, full, "p")
 	got, err := ReadFullBackup(bytes.NewReader(buf.Bytes()), "p")
 	if err != nil {
 		t.Fatalf("reading: %v", err)

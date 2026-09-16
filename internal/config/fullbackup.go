@@ -124,6 +124,27 @@ func (f FullBackup) SecretNames() []string {
 // file back for a cheaper attack. That is what passing it as additional
 // authenticated data buys.
 func WriteFullBackup(w io.Writer, f FullBackup, passphrase string) error {
+	return writeFullBackup(w, f, passphrase, FullBackupIterations)
+}
+
+// writeFullBackup takes the iteration count, so the tests can exercise the
+// format without paying for the key derivation.
+//
+// **600 000 iterations is the point of the constant and the cost of the
+// tests.** Asserting it belongs in one test; checking that a header round
+// trips, that a tampered byte is refused and that two files share no salt does
+// not need a hardened KDF at all. Before this split, `internal/config` took 30
+// seconds plain and three minutes under the race detector — in a gate chain
+// that runs on every patch.
+//
+// The count is written into the file and read back from it, so a backup made
+// with a low count still opens: this is a test cost, not a compatibility
+// switch, and there is deliberately no way for a caller outside this package
+// to choose one.
+func writeFullBackup(w io.Writer, f FullBackup, passphrase string, iterations int) error {
+	if iterations <= 0 {
+		return errors.New("config: a full backup needs a positive iteration count")
+	}
 	if passphrase == "" {
 		return errors.New(
 			"config: a full backup needs a passphrase; it carries every " +
@@ -141,8 +162,7 @@ func WriteFullBackup(w io.Writer, f FullBackup, passphrase string) error {
 		return fmt.Errorf("config: cannot generate a salt: %w", err)
 	}
 
-	key, err := pbkdf2.Key(sha256.New, passphrase, salt,
-		FullBackupIterations, fullBackupKeyBytes)
+	key, err := pbkdf2.Key(sha256.New, passphrase, salt, iterations, fullBackupKeyBytes)
 	if err != nil {
 		return fmt.Errorf("config: cannot derive a key: %w", err)
 	}
@@ -156,7 +176,7 @@ func WriteFullBackup(w io.Writer, f FullBackup, passphrase string) error {
 		return fmt.Errorf("config: cannot generate a nonce: %w", err)
 	}
 
-	header := fullBackupHeader(salt, FullBackupIterations)
+	header := fullBackupHeader(salt, iterations)
 	sealed := aead.Seal(nil, nonce, payload, header)
 
 	if _, err := w.Write(header); err != nil {

@@ -4,6 +4,31 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Three minutes of PBKDF2 in every gate run, which I put there two patches
+  ago.** `internal/config` took 30 seconds plain and **180 under the race
+  detector**, because every full-backup test paid 600 000 iterations to check
+  things that have nothing to do with key derivation — that a header round
+  trips, that a tampered byte is refused, that two files share no salt.
+
+  The count is a parameter internally now. The tests use a weak one and **the
+  real constant is asserted exactly once**, in the test that requires the file
+  to declare 600 000 — so the security property is still gated and the format
+  tests are free. The count travels in the header and is read back from it, so
+  a cheap backup still opens: this is a test cost, not a compatibility switch,
+  and no caller outside the package can choose one.
+
+  30 seconds became 3.6, and 180 became 40. On a chain that runs on every
+  patch, that is the difference between a gate somebody runs and a gate
+  somebody skips.
+
+- **And a guard with no test, found by breaking it.** Making the count a
+  parameter means zero can reach the key derivation, and a key derived in no
+  iterations is a key derived from the passphrase alone. It was refused and
+  nothing checked that it was.
+
+
 ### Added
 
 - **The Zello session: the last piece of the connector.** Logon, waiting for
