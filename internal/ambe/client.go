@@ -67,6 +67,11 @@ type Client struct {
 	decoded atomic.Uint64
 	refused atomic.Uint64
 	failed  atomic.Uint64
+
+	// broken is set by the first exchange that fails: a vocoder that did not
+	// answer once is not trusted with the next call. The supervisor closes a
+	// broken client and opens a new one with the whole handshake.
+	broken atomic.Bool
 }
 
 // Holder names the call occupying the vocoder.
@@ -288,6 +293,25 @@ func (c *Client) Acquire(h Holder) error {
 	}
 
 	// Encoder, decoder and echo canceller all initialised: Table 48's 0x07.
+	// **The rate is set again at the start of every call, before the init.**
+	// The handshake set it once, when the channel opened; a chip or an
+	// AMBEserver that restarted since is back at its default rate, and nothing
+	// fails — every DMR frame is simply decoded at the wrong rate into
+	// garbled audio. That happened on production on 2026-09-16, when an
+	// AMBEserver was restarted under a QSP that never noticed. One exchange a
+	// call, in the handshake's own order: rate, then init.
+	reply, err := c.exchange(MustBuild(TypeControl, Val(0x09, byte(c.rate))))
+	if err == nil {
+		if field, status, ok := AckedField(reply); !ok || field != 0x09 || status != 0x00 {
+			err = fmt.Errorf("rate index %d was answered by %x rather than accepted", c.rate, reply)
+			c.broken.Store(true)
+		}
+	}
+	if err != nil {
+		c.holder.Store(nil)
+		c.failed.Add(1)
+		return fmt.Errorf("ambe: cannot set the rate for a new call: %w", err)
+	}
 	if _, err := c.exchange(MustBuild(TypeControl, Val(0x0B, 0x07))); err != nil {
 		c.holder.Store(nil)
 		c.failed.Add(1)
@@ -295,6 +319,10 @@ func (c *Client) Acquire(h Holder) error {
 	}
 	return nil
 }
+
+// Broken reports whether an exchange with this vocoder has failed. A broken
+// client is not handed to a new call; see Supervisor.
+func (c *Client) Broken() bool { return c.broken.Load() }
 
 // Release gives the channel up. It is safe to call without holding it.
 func (c *Client) Release() { c.holder.Store(nil) }
@@ -419,14 +447,17 @@ func (c *Client) exchange(out []byte) ([]byte, error) {
 // send is the wire exchange. Caller holds mu.
 func (c *Client) send(out []byte) ([]byte, error) {
 	if err := c.conn.SetDeadline(c.now().Add(c.timeout)); err != nil {
+		c.broken.Store(true)
 		return nil, err
 	}
 	if _, err := c.conn.Write(out); err != nil {
+		c.broken.Store(true)
 		return nil, err
 	}
 	buf := make([]byte, 2048)
 	n, err := c.conn.Read(buf)
 	if err != nil {
+		c.broken.Store(true)
 		return nil, err
 	}
 	return buf[:n], nil

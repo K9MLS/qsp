@@ -37,7 +37,14 @@ import (
 type Supervisor struct {
 	log      *slog.Logger
 	channels []*channel
+	// checkInterval is how often an open channel is checked for a broken
+	// client. A field so a test need not wait CheckInterval.
+	checkInterval time.Duration
 }
+
+// CheckInterval is how often an open channel is checked for having stopped
+// answering. The check reads a flag and sends nothing, so it can be frequent.
+const CheckInterval = 2 * time.Second
 
 // Vocoder is one configured vocoder channel.
 //
@@ -78,7 +85,7 @@ const RetryInterval = 30 * time.Second
 // NewSupervisor builds a supervisor over the configured channels. It opens
 // nothing; call Run.
 func NewSupervisor(log *slog.Logger, channels []Vocoder) *Supervisor {
-	s := &Supervisor{log: log}
+	s := &Supervisor{log: log, checkInterval: CheckInterval}
 	for _, c := range channels {
 		s.channels = append(s.channels, &channel{cfg: c})
 	}
@@ -111,7 +118,27 @@ func (s *Supervisor) keepOpen(ctx context.Context, ch *channel) {
 	}
 
 	for {
+		// **A channel that stopped answering is closed and reopened**, with
+		// the whole handshake. Before this an open channel was never checked
+		// again, so an AMBEserver restarted underneath QSP left a client that
+		// looked open and a chip at its default rate (2026-09-16).
+		ch.mu.Lock()
+		broken := ch.client != nil && ch.client.Broken()
+		ch.mu.Unlock()
+		if broken {
+			if s.log != nil {
+				s.log.Warn("vocoder stopped answering; reopening it",
+					"transcoder", ch.cfg.Name, "address", ch.cfg.Address)
+			}
+			ch.close()
+			ch.mu.Lock()
+			ch.attempts = 0
+			ch.mu.Unlock()
+		}
+
+		wait := s.checkInterval
 		if err := s.openOnce(ctx, ch); err != nil {
+			wait = RetryInterval
 			// Logged at the first failure and then not again until it
 			// changes, because a vocoder that is absent stays absent and a
 			// line every thirty seconds is a log nobody reads.
@@ -127,7 +154,7 @@ func (s *Supervisor) keepOpen(ctx context.Context, ch *channel) {
 			}
 		}
 
-		timer.Reset(RetryInterval)
+		timer.Reset(wait)
 		select {
 		case <-ctx.Done():
 			ch.close()
@@ -198,6 +225,12 @@ func (s *Supervisor) ClientFor(name string) *Client {
 		}
 		ch.mu.Lock()
 		defer ch.mu.Unlock()
+		// A client that stopped answering is not handed out: the call is
+		// refused cleanly until the supervisor has reopened the channel,
+		// rather than started against a vocoder that may have lost its rate.
+		if ch.client != nil && ch.client.Broken() {
+			return nil
+		}
 		return ch.client
 	}
 	return nil

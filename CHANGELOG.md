@@ -4,6 +4,22 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An AMBEserver restarted underneath QSP garbled every call until QSP was
+  restarted.** The vocoder supervisor opened a channel once and never checked
+  it again, and the rate was set only in that first handshake. On 2026-09-16
+  an AMBEserver was stopped and started while QSP ran: the new one never
+  received the DMR rate, and every call decoded at the chip's default rate
+  into garbled audio, with no error anywhere. Two changes, each closing half
+  of it. **Every call sets the rate again before its init**, in the
+  handshake's order, so a chip that restarted between calls is corrected at
+  the next call. **A failed exchange marks the client broken**: it is no
+  longer handed to a call, and the supervisor closes it and reopens the
+  channel with the whole handshake within two seconds. A test stops a fake
+  AMBEserver mid-session, brings it back on the same address, and requires
+  the reset and the DMR rate to reach it.
+
 ### Changed
 
 - **Zello audio reaches Motorola repeaters whose owners agreed.** It was

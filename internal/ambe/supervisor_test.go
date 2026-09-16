@@ -2,6 +2,7 @@ package ambe
 
 import (
 	"context"
+	"encoding/hex"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -239,4 +240,71 @@ func TestOpeningIsNotRetriedWhileAChannelIsAlreadyOpen(t *testing.T) {
 			extra.Load())
 	}
 	ch.close()
+}
+
+// TestAnAMBEserverRestartedUnderneathIsReopened is production on 2026-09-16.
+//
+// AMBEserver was stopped and started again while QSP ran. The supervisor had
+// opened the channel once and never checked it again, so the new AMBEserver
+// never received the DMR rate and every call decoded into garbled audio until
+// QSP was restarted by hand.
+//
+// To see it bite: delete the broken-client block in keepOpen, and no reset
+// ever reaches the second vocoder.
+func TestAnAMBEserverRestartedUnderneathIsReopened(t *testing.T) {
+	first := newFakeVocoder(t)
+	addr := first.address()
+
+	s := NewSupervisor(nil, []Vocoder{{Name: "zello", Address: addr, Rate: RateIndexDMR}})
+	s.checkInterval = 20 * time.Millisecond
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go s.Run(ctx)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for s.ClientFor("zello") == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("the channel never opened")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	opened := s.ClientFor("zello")
+
+	// AMBEserver stops. The next call's first exchange fails.
+	_ = first.conn.Close()
+	opened.timeout = 100 * time.Millisecond
+	if err := opened.Acquire(Holder{Reason: "a call during the outage"}); err == nil {
+		t.Fatal("a call started against a vocoder that is not there")
+	}
+	if s.ClientFor("zello") != nil {
+		t.Error("a client that stopped answering was still handed out")
+	}
+
+	// AMBEserver comes back on the same address.
+	second := fakeVocoderAt(t, addr)
+	deadline = time.Now().Add(3 * time.Second)
+	for {
+		c := s.ClientFor("zello")
+		if c != nil && c != opened {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the channel was not reopened against the restarted AMBEserver")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	second.mu.Lock()
+	var sawReset, sawRate bool
+	for _, req := range second.seen {
+		switch hex.EncodeToString(req) {
+		case "6100010033":
+			sawReset = true
+		case "610002000921":
+			sawRate = true
+		}
+	}
+	second.mu.Unlock()
+	if !sawReset || !sawRate {
+		t.Errorf("the restarted vocoder saw reset %v and the DMR rate %v; the handshake must be whole", sawReset, sawRate)
+	}
 }

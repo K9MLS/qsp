@@ -152,8 +152,9 @@ are not in DMR's layout. The one recorded real frame needs no correction.
   because a foreground AMBEserver died with its terminal, and **QSP's vocoder
   supervisor never noticed**: it opens a channel once and never re-checks it,
   so the AMBEserver started next never received the DMR rate command and every
-  call decoded at the wrong rate. That is the next fix; until then an
-  AMBEserver restart needs a QSP restart.
+  call decoded at the wrong rate. Fixed in 0401: every call sets the rate
+  again, and a vocoder that stops answering is reopened with the whole
+  handshake.
 - **`/etc/udev/rules.d/99-ambe-dongle-latency.rules`** sets the FTDI latency
   timer to 1 ms. At the 16 ms default a decode took 26.8 ms (median, from a
   capture) against the 20 ms real time allows — three per 60 ms burst — so QSP

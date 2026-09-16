@@ -45,13 +45,18 @@ type fakeVocoder struct {
 
 func newFakeVocoder(t *testing.T) *fakeVocoder {
 	t.Helper()
-	fx := records(t, "observed-exchanges.hex")
-	key := func(name string) string { return hex.EncodeToString(fx[name]) }
-
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
 	if err != nil {
 		t.Fatalf("binding a fake vocoder: %v", err)
 	}
+	return fakeVocoderOn(t, conn)
+}
+
+// fakeVocoderOn serves the recorded exchanges on an already-bound socket.
+func fakeVocoderOn(t *testing.T, conn *net.UDPConn) *fakeVocoder {
+	t.Helper()
+	fx := records(t, "observed-exchanges.hex")
+	key := func(name string) string { return hex.EncodeToString(fx[name]) }
 	f := &fakeVocoder{
 		t:    t,
 		conn: conn,
@@ -74,6 +79,29 @@ func newFakeVocoder(t *testing.T) *fakeVocoder {
 	go f.serve()
 	t.Cleanup(func() { _ = conn.Close() })
 	return f
+}
+
+// fakeVocoderAt is a fake vocoder on a given address, for a restart that comes
+// back where the client expects it.
+func fakeVocoderAt(t *testing.T, addr string) *fakeVocoder {
+	t.Helper()
+	a, err := net.ResolveUDPAddr("udp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conn *net.UDPConn
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		conn, err = net.ListenUDP("udp", a)
+		if err == nil || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("binding the restarted vocoder on %s: %v", addr, err)
+	}
+	return fakeVocoderOn(t, conn)
 }
 
 // serve reads datagrams and answers each on its own goroutine.
@@ -377,16 +405,42 @@ func TestAcquireClearsVocoderStateBetweenCalls(t *testing.T) {
 	if err := c.Acquire(Holder{Reason: "zello"}); err != nil {
 		t.Fatalf("acquiring the channel: %v", err)
 	}
-	if got := f.requests() - before; got != 1 {
-		t.Fatalf("acquiring sent %d packets, want 1 (a PKT_INIT)", got)
+	// **Two packets since 2026-09-16: the rate, then the init.** One init
+	// alone left a chip that had restarted since the handshake at its default
+	// rate, and every frame of the call decoded into garbled audio with no
+	// error anywhere.
+	if got := f.requests() - before; got != 2 {
+		t.Fatalf("acquiring sent %d packets, want 2 (PKT_RATET, then PKT_INIT)", got)
 	}
 
 	f.mu.Lock()
-	last := f.seen[len(f.seen)-1]
+	rate, init := f.seen[len(f.seen)-2], f.seen[len(f.seen)-1]
 	f.mu.Unlock()
-	if got, want := hex.EncodeToString(last), "610002000b07"; got != want {
+	if got, want := hex.EncodeToString(rate), "610002000921"; got != want {
+		t.Errorf("the first packet of a call is %s, want %s — the DMR rate, index 33", got, want)
+	}
+	if got, want := hex.EncodeToString(init), "610002000b07"; got != want {
 		t.Errorf("the init packet is %s, want %s — field 0x0b with Table 48's "+
 			"0x07, encoder, decoder and echo canceller", got, want)
+	}
+}
+
+// TestACallIsRefusedWhenTheRateIsNotAccepted: a chip refusing its rate must
+// refuse the call, not carry it at whatever rate it is at.
+//
+// To see it bite: drop the AckedField check in Acquire.
+func TestACallIsRefusedWhenTheRateIsNotAccepted(t *testing.T) {
+	f := newFakeVocoder(t)
+	c := openAgainst(t, f)
+	f.answerWith("610002000921", []byte{StartByte, 0x00, 0x02, TypeControl, 0x09, 0x01})
+	if err := c.Acquire(Holder{Reason: "zello"}); err == nil {
+		t.Fatal("a call started although the vocoder did not accept the DMR rate")
+	}
+	if c.Holder() != nil {
+		t.Error("the refused call left the channel held")
+	}
+	if !c.Broken() {
+		t.Error("a vocoder that refused its rate is still trusted with the next call")
 	}
 }
 
