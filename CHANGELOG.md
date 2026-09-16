@@ -6,6 +6,43 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Audio from USRP becomes a DMR transmission.** A transcoder channel encodes
+  each 20 ms frame through the chip and builds a whole transmission under the
+  transcoder's `radio_id`: a voice LC header, superframes of six bursts with
+  the sync pattern, EMB and embedded Link Control, and a terminator. It goes
+  through `routing.Core.RouteFromTranscoder`, its first caller, so
+  `permit_peers` decides which repeaters hear it. The talkgroup and timeslot
+  are the transcoder's endpoint in its bridge.
+
+  **Proved in the real binary** against a fake AMBEserver that answers with the
+  chip's recorded frame: a logged-in hotspot received header, three voice
+  bursts and a terminator from the gateway ID on one stream. That recorded
+  frame needs no FEC correction, which is the first evidence that the chip's
+  encoder output is already in DMR's layout.
+
+  **What it gets right because each is audible:** the last partial burst is
+  padded with encoded silence rather than dropped; a transmission whose USRP
+  release never arrives still gets a terminator; a fresh stream ID per
+  transmission; one chip carries one direction at a time, so a Zello keyup
+  over a DMR call is refused and so is the reverse.
+
+  **`encoded_needing_fec`** on the channel's health counts encoded frames that
+  need any FEC correction. `dmrfec.Decode` reports failure only when both
+  Golay blocks are beyond repair, so counting failures alone would have read
+  zero whatever the chip produced — the test's own guard found that.
+
+  **Transcoded audio is not offered to Motorola repeaters.** Every other
+  ingress offers frames to every IPSC repeater with no per-repeater check,
+  and ADR-0062 requires that an owner opt in first.
+
+  **There is no colour code setting.** A colour code belongs to each
+  receiving repeater; the production hotspots run different ones and hear
+  each other through QSP, and Motorola repeaters are stamped per repeater by
+  ADR-0042.
+
+  Both transcoder health checks report healthy once audio has crossed in both
+  directions, and until then name the direction that has not.
+
 - **A bridge naming a transcoder now carries DMR audio out as USRP.**
   `internal/vocoderlink` takes each routed call, acquires the chip, pulls the
   three vocoder frames out of every voice burst, decodes each to 20 ms of 8 kHz

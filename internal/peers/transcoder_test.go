@@ -74,3 +74,43 @@ func TestTranscoderDeliveriesReachTheSenderAndFailuresAreSaidOnce(t *testing.T) 
 		})
 	}
 }
+
+// TestTranscodedAudioIsNeverOfferedToMotorolaRepeaters.
+//
+// Every other ingress ends in sendToIPSC, which reaches every IPSC repeater
+// with no permission check. A Zello user's audio must not.
+//
+// To see it bite: add `l.sendToIPSC(0, frame, res)` to DeliverFromTranscoder.
+func TestTranscodedAudioIsNeverOfferedToMotorolaRepeaters(t *testing.T) {
+	table, err := routing.NewTable([]routing.Bridge{{Name: "zello", Enabled: true, Endpoints: []routing.Endpoint{
+		{Peer: routing.AnyPeer, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+		{Transcoder: "dvstick", Talkgroup: 2, Timeslot: hbp.Timeslot2},
+	}}}, routing.WithPermissions(map[string]routing.Permission{"dvstick": {All: true}}))
+	if err != nil {
+		t.Fatalf("building a table: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: noPeers{}})
+	if err != nil {
+		t.Fatalf("building a core: %v", err)
+	}
+	l, buf := journal()
+	l.cfg.Routing = core
+	offered := 0
+	l.cfg.IPSC = func(uint32, hbp.Data) { offered++ }
+
+	for range 20 {
+		l.DeliverFromTranscoder("dvstick", hbp.Data{SourceID: 3100999, TargetID: 2,
+			Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: 5})
+	}
+	if offered != 0 {
+		t.Errorf("transcoded audio was offered to the Motorola side %d times", offered)
+	}
+	if n := strings.Count(buf.String(), "not offered to Motorola repeaters"); n != 1 {
+		t.Errorf("the withholding was logged %d times, want once", n)
+	}
+}
+
+type noPeers struct{}
+
+func (noPeers) Ready(hbp.RepeaterID) bool    { return false }
+func (noPeers) ReadyPeers() []hbp.RepeaterID { return nil }

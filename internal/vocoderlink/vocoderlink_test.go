@@ -25,6 +25,8 @@ type fakeChip struct {
 	acquired  int
 	released  int
 	decoded   [][]byte
+	encoded   []int16 // the first sample of every frame encoded
+	badFEC    bool
 }
 
 func (f *fakeChip) Acquire(ambe.Holder) error {
@@ -58,6 +60,22 @@ func (f *fakeChip) Decode(fr ambe.ChannelFrame) (ambe.SpeechReply, error) {
 	s := make([]int16, audio.SamplesPerFrame)
 	s[0] = int16(len(f.decoded))
 	return ambe.SpeechReply{Samples: s}, nil
+}
+
+// Encode answers with a frame that passes DMR's FEC, numbered so a test can
+// follow it, unless badFEC asks for one that does not.
+func (f *fakeChip) Encode(samples []int16) (ambe.ChannelFrame, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if !f.held {
+		return ambe.ChannelFrame{}, ambe.ErrNotHeld
+	}
+	f.encoded = append(f.encoded, samples[0])
+	if f.badFEC {
+		return ambe.ChannelFrame{Bits: 72, Data: []byte{0xff, 0, 0xff, 0, 0xff, 0, 0xff, 0, 0xff}}, nil
+	}
+	bits := dmrfec.Encode(dmrfec.Parameters(len(f.encoded)))
+	return ambe.ChannelFrame{Bits: 72, Data: packBits(bits)}, nil
 }
 
 func (f *fakeChip) Rate() int { return f.rate }

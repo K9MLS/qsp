@@ -9,9 +9,10 @@
 // 20 ms of 8 kHz PCM, and send it to the one program on the far side of the
 // USRP socket — `qsp-zello`, per ADR-0009.
 //
-// **Only DMR toward USRP is built.** Audio arriving on the socket is received,
-// counted and discarded; the health report says so rather than letting a
-// working direction stand for a working path.
+// **Both directions share one chip, one at a time.** Audio arriving on the
+// socket is encoded into a complete DMR transmission under the transcoder's
+// own radio ID and handed to routing, where the per-repeater opt-in decides
+// who hears it (outbound.go).
 //
 // # Why a queue and a goroutine per channel
 //
@@ -44,6 +45,7 @@ type Chip interface {
 	Acquire(h ambe.Holder) error
 	Release()
 	Decode(frame ambe.ChannelFrame) (ambe.SpeechReply, error)
+	Encode(samples []int16) (ambe.ChannelFrame, error)
 	Rate() int
 }
 
@@ -83,6 +85,18 @@ type Options struct {
 	Idle time.Duration
 	// Log records what happened. Nil logs nothing.
 	Log *slog.Logger
+
+	// RadioID is the DMR source every transmission built from USRP audio
+	// carries: the gateway's own ID, never a Zello user's (ADR-0064).
+	RadioID uint32
+	// Talkgroup and Timeslot are what a transmission built from USRP audio
+	// is sent on — the transcoder's endpoint in its bridge, so routing
+	// recognises it as coming from that bridge.
+	Talkgroup uint32
+	Timeslot  hbp.Timeslot
+	// Deliver hands a built burst to routing. Nil means audio from USRP is
+	// received and discarded, which is how a channel is tested one-way.
+	Deliver func(frame hbp.Data)
 }
 
 // Channel carries calls for one transcoder.
@@ -95,7 +109,18 @@ type Channel struct {
 	queue chan hbp.Data
 	seq   atomic.Uint32
 
+	radioID   uint32
+	talkgroup uint32
+	timeslot  hbp.Timeslot
+	deliver   func(hbp.Data)
+	fromUSRP  chan audio.Frame
+
 	calls, frames, dropped, notVoice, refused, failed, abandoned, fromRadio atomic.Uint64
+
+	// The other direction's counters: transmissions built from USRP, bursts
+	// handed to routing, USRP frames dropped because Run was not keeping up,
+	// keyups refused, and encoded frames that failed DMR's own FEC check.
+	txCalls, txBursts, txDropped, txRefused, txBadFEC, txAbandoned atomic.Uint64
 
 	mu      sync.Mutex
 	problem string
@@ -120,13 +145,22 @@ func New(opts Options) (*Channel, error) {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	if opts.Deliver != nil && opts.RadioID == 0 {
+		return nil, fmt.Errorf("vocoderlink: channel %q would build transmissions with no "+
+			"source; a frame from radio 0 is not a DMR frame", opts.Name)
+	}
 	return &Channel{
-		name:  opts.Name,
-		chip:  opts.Chip,
-		radio: opts.Radio,
-		idle:  opts.Idle,
-		log:   log.With(slog.String("transcoder", opts.Name)),
-		queue: make(chan hbp.Data, QueueDepth),
+		name:      opts.Name,
+		chip:      opts.Chip,
+		radio:     opts.Radio,
+		idle:      opts.Idle,
+		log:       log.With(slog.String("transcoder", opts.Name)),
+		queue:     make(chan hbp.Data, QueueDepth),
+		radioID:   opts.RadioID,
+		talkgroup: opts.Talkgroup,
+		timeslot:  opts.Timeslot,
+		deliver:   opts.Deliver,
+		fromUSRP:  make(chan audio.Frame, QueueDepth),
 	}, nil
 }
 
@@ -174,38 +208,70 @@ func (c *Channel) Run(ctx context.Context) {
 	tick := time.NewTicker(c.idle / 4)
 	defer tick.Stop()
 
+	// **Both directions' state lives on this goroutine and nowhere else**, so
+	// "is the chip held by the other direction" is a plain read, not a race.
 	var cur *call
+	var tx *outbound
 	for {
 		select {
 		case <-ctx.Done():
 			c.finish(cur, "shutting down")
+			c.endOutbound(tx, "shutting down")
 			return
 		case f := <-c.queue:
+			if tx != nil && tx.chip != nil && !f.IsUserData() {
+				// A Zello user holds the chip. The DMR call is refused once,
+				// at its first frame, and absorbed after that.
+				if cur == nil || cur.stream != f.StreamID {
+					c.refused.Add(1)
+					c.note("a DMR call arrived while audio from USRP held the vocoder")
+					cur = &call{stream: f.StreamID, source: f.SourceID, talkgroup: f.TargetID}
+				}
+				cur.lastSeen = time.Now()
+				continue
+			}
 			cur = c.handle(cur, f, time.Now())
+		case f := <-c.fromUSRP:
+			tx = c.handleUSRP(tx, cur, f, time.Now())
 		case now := <-tick.C:
 			if cur != nil && now.Sub(cur.lastSeen) > c.idle {
-				c.abandoned.Add(1)
-				c.finish(cur, "the call stopped without a terminator")
+				if cur.chip != nil {
+					c.abandoned.Add(1)
+					c.finish(cur, "the call stopped without a terminator")
+				}
 				cur = nil
+			}
+			if tx != nil && now.Sub(tx.lastSeen) > c.idle {
+				if tx.chip != nil {
+					c.txAbandoned.Add(1)
+				}
+				c.endOutbound(tx, "USRP audio stopped without a release")
+				tx = nil
 			}
 		}
 	}
 }
 
-// drainRadio receives what the far side sends and discards it.
+// drainRadio receives what the far side sends and queues it for Run.
 //
-// **Received rather than left unread**, so the source filter runs and its
-// counters mean something, and so an operator can see that qsp-zello is
-// sending audio this build does not carry yet.
+// A full queue drops the frame and counts it rather than blocking, for the
+// same reason Send does: the socket buffer behind it would fill instead, and
+// the loss would be the kernel's and invisible.
 func (c *Channel) drainRadio(ctx context.Context) {
 	for {
-		if _, err := c.radio.Receive(ctx); err != nil {
+		f, err := c.radio.Receive(ctx)
+		if err != nil {
 			if ctx.Err() == nil {
 				c.note(fmt.Sprintf("the USRP socket stopped receiving: %v", err))
 			}
 			return
 		}
 		c.fromRadio.Add(1)
+		select {
+		case c.fromUSRP <- f:
+		default:
+			c.txDropped.Add(1)
+		}
 	}
 }
 
@@ -222,7 +288,9 @@ func (c *Channel) handle(cur *call, f hbp.Data, now time.Time) *call {
 	// stream reaching here is one the core let through after the first went
 	// silent — its terminator was lost, and it still holds the far side keyed.
 	if cur != nil && (f.StreamID != cur.stream || f.SourceID != cur.source) {
-		c.abandoned.Add(1)
+		if cur.chip != nil {
+			c.abandoned.Add(1)
+		}
 		c.finish(cur, "another transmission began before this one's terminator arrived")
 		cur = nil
 	}

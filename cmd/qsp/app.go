@@ -417,11 +417,28 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 					return nil, fmt.Errorf("transcoder %q: %w", t.Name, uerr)
 				}
 				a.closers = append(a.closers, func(context.Context) error { return conn.Close() })
+				// What a transmission built from USRP audio is sent on: this
+				// transcoder's own endpoint in the first bridge naming it, so
+				// routing recognises the traffic as that bridge's. Validation
+				// already refuses an enabled transcoder no bridge names.
+				talkgroup, timeslot := transcoderEndpoint(cfg, t.Name)
+				name := t.Name
 				ch, cerr := vocoderlink.New(vocoderlink.Options{
-					Name:  t.Name,
-					Chip:  vocoderlink.SupervisedChip(a.vocoders, t.Name),
-					Radio: conn,
-					Log:   log,
+					Name:      t.Name,
+					Chip:      vocoderlink.SupervisedChip(a.vocoders, t.Name),
+					Radio:     conn,
+					Log:       log,
+					RadioID:   t.RadioID,
+					Talkgroup: talkgroup,
+					Timeslot:  timeslot,
+					// Resolved at call time: the listener is built just below,
+					// and channels do not run until run(), by which point a.dmr
+					// is set and never written again.
+					Deliver: func(frame hbp.Data) {
+						if a.dmr != nil {
+							a.dmr.DeliverFromTranscoder(name, frame)
+						}
+					},
 				})
 				if cerr != nil {
 					return nil, fmt.Errorf("transcoder %q: %w", t.Name, cerr)
@@ -1681,6 +1698,27 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 	return res
 }
 
+// transcoderEndpoint is the talkgroup and timeslot of a transcoder's endpoint
+// in the first bridge that names it.
+//
+// **The first, and a transcoder named by two bridges is a choice**: routing
+// matches a transcoder origin by name alone, so audio from it reaches every
+// bridge that names it whichever talkgroup the frame carries. This value only
+// decides what the frame says, which is what the ingress access check and the
+// console read. The timeslot goes through timeslot(), the conversion the
+// routing table uses, so the frame and the table cannot disagree about it.
+func transcoderEndpoint(cfg config.Config, name string) (uint32, hbp.Timeslot) {
+	key := strings.ToLower(strings.TrimSpace(name))
+	for _, b := range cfg.DMR.Bridges {
+		for _, e := range b.Endpoints {
+			if strings.ToLower(strings.TrimSpace(e.Transcoder)) == key {
+				return e.Talkgroup, timeslot(e.Timeslot)
+			}
+		}
+	}
+	return 0, hbp.Timeslot1
+}
+
 // unbuiltSubsystems have no implementation at all, only a place in the phase
 // plan. Every other registered check describes something that exists, even when
 // configuration has it switched off.
@@ -1713,8 +1751,8 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 	{"zello", "the Zello connector arrives in phase 6; the vocoder link is built and " +
-		"carries DMR out as USRP, and what remains is USRP back to DMR and the " +
-		"qsp-zello companion — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
+		"carries DMR and USRP both ways, and what remains is the qsp-zello " +
+		"companion — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
 	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 }

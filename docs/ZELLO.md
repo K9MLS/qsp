@@ -484,11 +484,12 @@ holds one call at a time and carries frames both ways. Real DMR audio has been
 decoded to speech and listened to. What follows is the original list; items 3
 and 4 are the remaining QSP-side work and neither needs a Zello account.
 
-**Mapping reaches the chip as of 2026-09-16, in one direction.** A bridge
-naming a transcoder delivers DMR to it, and `internal/vocoderlink` sends the
-decoded audio out as USRP (`usrp_listen`, `usrp_peer`). Audio from USRP back
-to DMR, and so identity in the Zello-to-DMR direction, is the next piece;
-`HANDOVER.md` keeps the current list.
+**Mapping reaches the chip as of 2026-09-16, both ways.** A bridge naming a
+transcoder delivers DMR to it, and `internal/vocoderlink` sends the decoded
+audio out as USRP (`usrp_listen`, `usrp_peer`). Audio arriving from USRP is
+encoded into a whole DMR transmission under the transcoder's `radio_id` and
+routed, so item 4's Zello-to-DMR identity is the gateway ID ADR-0064 chose.
+What remains is the `qsp-zello` companion; `HANDOVER.md` keeps the current list.
 
 
 1. **An AMBE_AUDIO link.** TLV frames over UDP to Analog_Bridge, with the

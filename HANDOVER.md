@@ -111,25 +111,43 @@ would stop compiling because of a connector it does not run.
 This list read "a `transcoders` block in configuration" for a day after that
 block existed. **Read it against the code, not the other way round.**
 
-**Built on 2026-09-16: DMR to USRP.** A bridge naming a transcoder now delivers
-to it. `internal/vocoderlink` acquires the chip, decodes each voice burst's
-three frames and sends USRP keyup, audio and release to `usrp_peer` from a
-socket on `usrp_listen` (`internal/audio/conn.go`). Before this, a transcoder
-target fell through the routing core's peer loop and **reached every ready
-peer, including the one that sent it** — latent only because neither server
-configures a transcoder.
+**Built on 2026-09-16: both directions through the chip.**
 
-1. **USRP back to DMR.** Encode PCM through the chip and build a whole DMR
-   transmission under the transcoder's `radio_id`: voice LC header,
-   superframes with EMB and embedded LC, terminator. Every burst-building piece
-   is in `internal/dmrfec` and proved byte-identical; what is missing is the
-   assembly and handing it to `routing.Core.RouteFromTranscoder`, which nothing
-   calls yet. Audio arriving on the socket today is counted and discarded.
-2. **A `qsp-zello` companion main**, under `cmd/`. It does not exist yet. The
+- **DMR to USRP.** A bridge naming a transcoder delivers to it;
+  `internal/vocoderlink` decodes each voice burst and sends USRP keyup, audio
+  and release to `usrp_peer`. Before this a transcoder target **reached every
+  ready peer, including the sender** — latent, because neither server
+  configures one.
+- **USRP to DMR.** Audio arriving on `usrp_listen` is encoded and built into a
+  whole transmission under the transcoder's `radio_id` — voice LC header,
+  superframes with EMB and embedded LC, terminator — and routed through
+  `routing.Core.RouteFromTranscoder`, where `permit_peers` decides which
+  Homebrew peers hear it. Proved in the real binary against a fake AMBEserver
+  answering with the chip's recorded frame: a logged-in hotspot received
+  H A B C T from the gateway ID, one stream.
+- **Transcoded audio is not offered to Motorola repeaters.** Every other
+  ingress offers frames to every IPSC repeater with no per-repeater check, and
+  ADR-0062 requires opt-in. It reaches them when the permission does.
+- **One chip, one direction at a time.** A Zello keyup over a DMR call is
+  refused, and the reverse.
+- **No colour code setting, on evidence.** The four production hotspots run
+  different colour codes and hear each other through QSP, which forwards
+  bursts untouched; Motorola repeaters are stamped per repeater by ADR-0042.
+  See PROJECT_MEMORY §7, "Colour code on a generated transmission".
+
+**What is not proved: a chip on the bench in the USRP-to-DMR direction.** The
+`encoded_needing_fec` counter on `transcoder-audio:<name>` answers the first
+question a silent repeater raises — a non-zero value means the chip's frames
+are not in DMR's layout. The one recorded real frame needs no correction.
+
+1. **A `qsp-zello` companion main**, under `cmd/`. It does not exist yet. The
    open question is how it reads the Zello private key, which lives in QSP's
    credential store and is returned by no endpoint.
-3. Then the credential goes in through the console and the first connection
+2. **Then** the credential goes in through the console and the first connection
    happens.
+3. **Undecided by the operator:** whether the transcoder's configured `alias`
+   is injected as Talker Alias. The standing rule is "passed through, never
+   injected", and a gateway's own alias is a new case. Nothing injects it.
 
 **Deploy order for any configuration naming `usrp_listen` or `usrp_peer`:
 binary first, then configuration.** QSP refuses unknown fields, so 0.1.233 or

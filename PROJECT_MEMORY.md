@@ -726,6 +726,21 @@ Every one of these was learned by getting it wrong on a live network this week.
 
 ---
 
+### Colour code on a generated transmission is not a setting (2026-09-16)
+
+- **A colour code belongs to each receiving repeater, never to a transcoder.**
+  One bridge can feed a repeater on colour code 1 and another across a state
+  line on 7; a single value on the transcoder is wrong for one of them, and a
+  burst at the wrong colour code is dropped by a radio in silence.
+- **The Homebrew side rebuilds it on receipt, and that is observed, not
+  assumed.** The operator confirmed the four production hotspots run
+  different colour codes in different places and hear each other through QSP,
+  which forwards Homebrew bursts with the sender's colour code untouched.
+- **The Motorola side is stamped per repeater** by ADR-0042's learned colour
+  code. `vocoderlink.GeneratedColourCode` is therefore a constant nothing
+  downstream reads, and the operator's first answer — "default to 1, but
+  repeaters differ by area" — is what moved it from a proposed field to that.
+
 ## 7a. Current scope
 
 `BLUEPRINT-v1.md` is the current plan. Read it before proposing work; the frozen

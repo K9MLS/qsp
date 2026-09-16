@@ -264,19 +264,22 @@ func (c channelCheck) Check(context.Context) health.Result {
 		detail["carrying"] = h.String()
 	}
 
-	// **Degraded until audio can cross both ways.** Frames routed from DMR
-	// are decoded toward USRP (internal/vocoderlink); audio arriving from
-	// USRP is not encoded back to DMR yet, so a Zello user cannot be heard,
-	// and a green line would say otherwise.
+	// **Healthy once the chip has worked both ways.** Decoding proves DMR
+	// reaches it and encoding proves audio leaves it; either alone is half a
+	// transcoder, and the summary says which half.
 	summary := fmt.Sprintf("%s at %s is ready and carrying nothing", client.Product(), c.ch.cfg.Address)
-	if decoded > 0 {
-		summary = fmt.Sprintf("%s at %s has decoded %d frame(s) toward USRP",
-			client.Product(), c.ch.cfg.Address, decoded)
+	if encoded > 0 || decoded > 0 {
+		summary = fmt.Sprintf("%s at %s has decoded %d and encoded %d frame(s)",
+			client.Product(), c.ch.cfg.Address, decoded, encoded)
+	}
+	if encoded > 0 && decoded > 0 {
+		res := health.Healthy(summary)
+		res.Detail = detail
+		return res
 	}
 	res := health.Degraded(summary,
-		"DMR to USRP is carried; audio from USRP is not encoded back to DMR yet, "+
-			"so this reports degraded rather than healthy — see transcoder-audio:"+
-			c.ch.cfg.Name+" for the calls")
+		"a vocoder is working when it has carried audio both ways; see transcoder-audio:"+
+			c.ch.cfg.Name+" for which direction has not")
 	res.Detail = detail
 	return res
 }

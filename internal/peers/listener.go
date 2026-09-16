@@ -601,6 +601,38 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 	l.sendToIPSC(0, frame, res)
 }
 
+// DeliverFromTranscoder routes a burst built from a vocoder channel's audio.
+//
+// The shape of DeliverFromUpstream, with one path deliberately missing.
+//
+// **Transcoded audio is not offered to the Motorola repeaters.** Every other
+// ingress ends in sendToIPSC, which hands the frame to every IPSC repeater
+// with no per-repeater check — a Motorola repeater filters by its own codeplug
+// and QSP cannot see that. ADR-0062 requires that a repeater owner opt in
+// before audio from a possibly unlicensed Zello user reaches their machine, and
+// routing's permission applies only to the Homebrew peers it resolves. Copying
+// DeliverFromUpstream whole would have put that audio on every Motorola
+// repeater on the network. It reaches them when the permission reaches them,
+// and not before.
+func (l *Listener) DeliverFromTranscoder(transcoder string, frame hbp.Data) {
+	if l.cfg.Routing == nil {
+		return
+	}
+	// Last heard: the gateway's own ID, which is what ADR-0064 says a
+	// transcoded transmission is.
+	l.observe(0, frame)
+	res := l.cfg.Routing.RouteFromTranscoder(transcoder, frame, time.Now())
+	l.deliver(0, res)
+	if l.cfg.IPSC != nil && l.noteRoutingDrop(routing.Drop{
+		To:     routing.Endpoint{Transcoder: transcoder},
+		Reason: "transcoded audio is not offered to Motorola repeaters",
+	}) {
+		l.log.Info("transcoded audio is not offered to Motorola repeaters",
+			slog.String("transcoder", transcoder),
+			slog.String("reason", "the per-repeater opt-in does not reach IPSC repeaters yet"))
+	}
+}
+
 // DeliverFromIPSC routes a burst converted from a Motorola repeater's audio.
 //
 // It exists for the same reason DeliverFromUpstream does: this listener owns
