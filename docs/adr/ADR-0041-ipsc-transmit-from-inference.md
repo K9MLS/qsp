@@ -22,7 +22,7 @@ relays; it does not mesh.
 The capture that would settle it needs a repeater in the master role with a
 second repeater pointed at it, and a host bridged into the path. It is roughly
 ten minutes of work and it could not be scheduled: the only Motorola repeaters
-on this network are in Denton, Post Falls and Wisconsin, and two of the three
+on this network are in Texas, Idaho and Wisconsin, and two of the three
 belong to other people.
 
 The cost of waiting is that two members' repeaters are heard by the network and

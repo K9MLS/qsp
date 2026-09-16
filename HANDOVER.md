@@ -12,6 +12,21 @@ look up.
 
 ---
 
+
+## Before this repository is made public
+
+**The working tree was scrubbed on 2026-09-16; the history was not.** Other
+operators' first names, towns and home public addresses were replaced — a first
+name by the callsign, a town by its state, an address by a reserved
+documentation address (`203.0.113.x`) in text, tests and the two HBP captures
+that carried them, with the captures' payloads byte-identical. **Every earlier
+commit still contains the originals.** The repository is private
+(PROJECT_MEMORY §1), so that costs nothing today; before it is made public,
+either rewrite history (`git filter-repo --replace-text`) or publish a fresh
+history from a single commit. Scan again first:
+`git grep -nIE '\b(KD9EJA|Wisconsin|Post Falls)\b'` and a search for any public
+address that is not a documentation range or a public service.
+
 ## Where both servers are
 
 **Both servers run 0.1.233** (the repository's own version is `cat VERSION`,

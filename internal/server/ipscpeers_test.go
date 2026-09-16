@@ -286,7 +286,7 @@ func TestAnAddressIsNotPublished(t *testing.T) {
 	srv := peersServer(t,
 		fixedPeers{peers: []PeerView{
 			{ID: 3155413, Protocol: ProtocolHomebrew, Callsign: "KB9TYC",
-				Address: "198.51.100.172:45383"},
+				Address: "203.0.113.172:45383"},
 		}},
 		fixedPeers{peers: []PeerView{
 			{ID: 315544, Protocol: ProtocolIPSC, Address: "198.51.100.2:50004"},

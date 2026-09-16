@@ -4,6 +4,16 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Other operators' personal details are out of the working tree.** First
+  names are replaced by callsigns, towns by their state, and members' home
+  public addresses by reserved documentation addresses — in documents, test
+  data and the two HBP captures that carried them in their packet headers,
+  rewritten with checksums recalculated and payloads byte-identical. The
+  handover records that history still holds the originals and must be
+  rewritten before the repository is made public.
+
 ### Fixed
 
 - **An AMBEserver restarted underneath QSP garbled every call until QSP was
@@ -2201,7 +2211,7 @@ until the field tables come from the DVSI manual rather than a reconstruction.
 
 ### Not defects, recorded so they are not chased twice
 
-- **`198.51.100.172` is KB9TYC, not a scanner.** The five turned-away datagrams
+- **`203.0.113.172` is KB9TYC, not a scanner.** The five turned-away datagrams
   at 04:48 UTC on 2026-09-14 were that hotspot recovering from a NAT rebind:
   `configured peer is logging in from a new address`, two authentication
   failures with `no challenge was outstanding`, then a clean login from a third
@@ -5568,7 +5578,7 @@ them findable by reading the code.
   thing to put between a member's home connection and a public page.
 
 - **Every drop reason formats its address with `displayAddr` now.** They were
-  printing raw, so a v4 peer read `[::ffff:198.51.100.60]:62032` — in the journal
+  printing raw, so a v4 peer read `[::ffff:203.0.113.60]:62032` — in the journal
   as well as on the page. The helper that unmaps it was in the same file, used
   by the structured log fields beside them.
 
@@ -8089,7 +8099,7 @@ them findable by reading the code.
 ### Notes for the next session
 
 **Where this stands, 2026-08-31 evening.** Three stations on air across three
-states — K9MLS Denton, KB9TYC Wisconsin, AD0MI Post Falls — carrying voice,
+states — K9MLS Denton, KB9TYC Wisconsin, AD0MI Idaho — carrying voice,
 private calls both directions, text and parrot. Schema at version 5. AD0MI is an
 administrator.
 

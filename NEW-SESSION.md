@@ -10,7 +10,7 @@ commercial DMR servers clubs otherwise buy. The repository is
 `github.com/K9MLS/qsp`.
 
 **It carries a real network.** Three stations use it: mine in Denton, Texas,
-KB9TYC's in Wisconsin, Wisconsin, and AD0MI's in Post Falls, Idaho. Voice, private
+KB9TYC's in Wisconsin, and AD0MI's in Idaho. Voice, private
 calls, text messages and parrot all work on air.
 
 **And three Motorola repeaters, on two models.** Mine in Denton, KD9EJA's

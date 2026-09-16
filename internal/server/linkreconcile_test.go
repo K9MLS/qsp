@@ -295,7 +295,7 @@ func TestALinkThatDialledInIsListed(t *testing.T) {
 		{ID: 3132912, Callsign: "K9MLS", Address: "192.168.1.27:42048", Ready: true,
 			Software: "QSP 0.1.124", LinkName: "denton", Network: "BCARA"},
 		// A hotspot, which stays a peer because that is what it is.
-		{ID: 3127045, Callsign: "AD0MI", Address: "198.51.100.60:62032", Ready: true,
+		{ID: 3127045, Callsign: "AD0MI", Address: "203.0.113.60:62032", Ready: true,
 			Software: "MMDVM_MMDVMHost"},
 	}
 

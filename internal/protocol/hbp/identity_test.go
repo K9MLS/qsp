@@ -13,7 +13,7 @@ func TestAnIdentitySurvivesTheRoundTrip(t *testing.T) {
 		Network:     "KD9EJA-01",
 		Callsign:    "KD9EJA",
 		Software:    "QSP 0.1.139 (abc1234)",
-		Description: "Wisconsin, WI",
+		Description: "Wisconsin",
 	}
 
 	got, err := Parse(want.Marshal())

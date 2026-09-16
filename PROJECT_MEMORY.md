@@ -69,7 +69,7 @@ bridging.** Both are now implemented.
 | Cross-compile | linux/amd64, arm64, armv7 — all `CGO_ENABLED=0` |
 | Health report | **12** subsystems, plus one per configured link — `ipsc` became a real check at 0.1.18, having joined as unbuilt at 0.1.13 |
 | Hardware validated | **yes** — live voice 2026-08-25, a two-station QSO 2026-08-28, and a three-station network with private calls working both directions 2026-08-30, see §6 and §6b |
-| Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin, WI) and AD0MI (Post Falls, ID), joined 2026-08-30 |
+| Members | **three**: K9MLS (Denton, TX), KB9TYC (Wisconsin) and AD0MI (Idaho), joined 2026-08-30 |
 | CI | green, **one job**, `github.com/K9MLS/qsp` (private). It runs on `workflow_dispatch`, weekly on Monday, and on a `v*` tag — **not on push**. Five of the old six jobs repeated what the development machine already runs before every patch; the two that do not are the three cross-compiles and `go mod tidy`. Run it with `gh workflow run CI` |
 | Static analysis | `staticcheck` clean, pinned at 2026.2.1. **It runs in the development container**: the release binary comes from GitHub, which the network policy allows, unlike the module proxy |
 | Migrations | **5** — configuration versions, audit events, users and sessions, callsign cache, call history (ADR-0033) |
@@ -285,7 +285,7 @@ Fixture: `testdata/hbp/hbp-voice-live.pcap`.
 
 ## 6a. What two members on a real network taught us, 2026-08-28 and 08-29
 
-A second station joined — KB9TYC in Wisconsin, Wisconsin, about a thousand miles
+A second station joined — KB9TYC in Wisconsin, about a thousand miles
 from K9MLS in Denton, Texas — and **everything below was found by using QSP
 rather than by testing it.** That is the pattern worth carrying forward: the
 defects that mattered were all invisible to a passing suite.
@@ -889,7 +889,7 @@ in force. Read §6b first; it supersedes parts of §6a.
 
 ### Working, on air, as of 2026-08-30
 
-Three stations across three states: Denton TX, Wisconsin WI, Post Falls ID. Voice,
+Three stations across three states: Texas, Wisconsin and Idaho. Voice,
 private calls both directions, text and parrot. AD0MI's hotspot announces 0, 0
 and is refused a position on the map until he sets one, which the console says
 plainly.
@@ -3510,7 +3510,7 @@ sudo install -m755 /tmp/qsp /usr/local/bin/qsp && sudo systemctl restart qsp
 `/etc/dmrgateway` under `[DMR Network Custom]`, and now points at the LAN
 address rather than `qsp.hopto.me`. Its logs are in `/var/log/pi-star/`, not the
 journal: `DMRGateway-<date>.log` for sessions and `MMDVM-<date>.log` for what
-actually reaches the radio. KB9TYC is at `198.51.100.172` in Wisconsin, Wisconsin.
+actually reaches the radio. KB9TYC is at `203.0.113.172` in Wisconsin.
 
 ## §8m — 2026-09-08, the night the linking system was used
 
