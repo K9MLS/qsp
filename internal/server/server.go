@@ -105,6 +105,9 @@ type Options struct {
 	// nothing — an operator who typed a password into a page that discarded
 	// it would believe the link was configured.
 	Secrets CredentialStore
+	// Dongle reports on and controls the vocoder dongle's AMBEserver service.
+	// Nil when no transcoder is configured; the page then shows no panel.
+	Dongle DongleControl
 	// Restart stops QSP so that its supervisor starts it again.
 	//
 	// **Nil is a working state**, and the console says so rather than showing a
@@ -263,6 +266,8 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"DELETE /api/links/inbound/{id}", s.requireSession(s.handleRefuseInbound)},
 		{"PUT /api/links/{name}/address", s.requireSession(s.handleLinkAddress)},
 		{"GET /api/secrets", s.requireSession(s.handleSecrets)},
+		{"GET /api/dongle", s.requireSession(s.handleDongle)},
+		{"POST /api/dongle/{verb}", s.requireSession(s.handleDongleControl)},
 		{"PUT /api/secrets/{name}", s.requireSession(s.handleSetSecret)},
 		// **Anything a page creates it must be able to remove.** A credential
 		// entered by mistake should not need the database opening to undo.

@@ -106,6 +106,11 @@ sudo systemctl enable --now ambeserver
   for its 16 ms default before the host sees it. Measured on production: a
   decode took 26.8 ms against the 20 ms real time allows, so audio going to
   Zello was choppy and stretched; at 1 ms it takes 11.9 ms.
+- **The Zello page shows the service and the adapter**, flags a latency timer
+  above 1 ms, and has Start, Restart and Stop buttons. They need
+  `deploy/polkit/50-qsp-ambeserver.rules` in `/etc/polkit-1/rules.d/`, which
+  lets the `qsp` user do exactly those three things to `ambeserver.service` and
+  nothing else; without it they report "not authorized". Every use is audited.
 - **AMBEserver restarting is survivable.** QSP sets the DMR rate at the start of
   every call and reopens a vocoder that stops answering, so a restart costs at
   most the call in progress. Before 0.1.243 it silently garbled every call

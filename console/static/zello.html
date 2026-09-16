@@ -243,6 +243,30 @@
         </div>
       </section>
 
+      <section class="panel" id="dongle-panel" hidden>
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">The vocoder dongle</h2>
+            <button class="hint" type="button" aria-controls="hint-dongle" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="dongle-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-dongle">
+          <p class="hint__text"><strong>AMBEserver runs as its own service</strong>, next to QSP, so the dongle keeps working whatever QSP is doing. Restarting it costs at most the call in progress: QSP sets the dongle up again at the next call. The buttons need the polkit rule in <code>deploy/polkit/</code>; without it they say so and change nothing. Every use is recorded in the audit trail, including a refused one.</p>
+        </div>
+        <div class="panel__body">
+          <p class="acl__state" id="dongle-service"></p>
+          <p class="acl__state" id="dongle-adapter"></p>
+          <ul class="notice__list" id="dongle-problems"></ul>
+          <div class="page__actions">
+            <button class="button button--quiet" id="dongle-start" type="button">Start</button>
+            <button class="button button--quiet" id="dongle-restart" type="button">Restart</button>
+            <button class="button button--quiet" id="dongle-stop" type="button">Stop</button>
+          </div>
+          <p class="acl__hint" id="dongle-result"></p>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel__head">
           <div class="panel__heading">

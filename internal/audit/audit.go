@@ -104,6 +104,10 @@ const (
 	ActionConfigFullExported Action = "config.full_export"
 	// ActionConfigFullRestored records the encrypted full backup restored.
 	ActionConfigFullRestored Action = "config.full_restored"
+
+	// ActionDongleControlled records the vocoder dongle's AMBEserver service
+	// started, stopped or restarted from the console; the subject is the verb.
+	ActionDongleControlled Action = "dongle.controlled"
 )
 
 var knownActions = map[Action]bool{
@@ -128,6 +132,7 @@ var knownActions = map[Action]bool{
 	ActionConfigRestored:        true,
 	ActionConfigFullExported:    true,
 	ActionConfigFullRestored:    true,
+	ActionDongleControlled:      true,
 }
 
 // IsKnownAction reports whether a is a declared action.

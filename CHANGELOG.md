@@ -4,6 +4,20 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The vocoder dongle on the Zello page.** A panel shows whether
+  `ambeserver.service` is running and since when, which USB-serial adapters are
+  present, and each FTDI adapter's latency timer — flagged when it is above the
+  1 ms that keeps audio to Zello from turning choppy. Start, Restart and Stop
+  buttons act on that one unit through `systemctl`, confirmed before acting
+  and recorded in the audit trail whatever the outcome, including an attempt
+  systemd refuses. QSP stays unprivileged: `deploy/polkit/50-qsp-ambeserver.rules`
+  grants the `qsp` user exactly those three verbs on exactly that unit, and
+  without it the buttons say so. The unit name is fixed in code and never taken
+  from a request. On an install with no systemd the panel says the service is
+  managed outside QSP.
+
 ### Fixed
 
 - **Credential, backup and peer-credential actions were never audited.** The

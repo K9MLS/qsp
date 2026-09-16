@@ -84,10 +84,11 @@ learned to run it as a service.
    (−35 against −22 dBFS, measured from a capture). Ask the Zello users before
    changing anything; a gain stage belongs in `internal/vocoderlink`, measured
    against the same capture.
-2. **Dongle control from the console** — status and start/stop for
-   `ambeserver.service`. QSP runs unprivileged by design, so this needs a
-   narrow, explicit grant (a polkit rule for that one unit), decided before
-   code.
+2. **Confirm the dongle panel's buttons on production.** Built (0406): status
+   from `systemctl show` and `/sys`, control through `systemctl` under a polkit
+   rule for one unit. **Not yet run under qsp.service's sandbox**, whose system
+   call filter and hidden devices a test here cannot reproduce. Install
+   `deploy/polkit/50-qsp-ambeserver.rules`, press Restart, read the result.
 3. **A Docker compose service for `qsp-zello`**, for the container install.
    Only systemd is written.
 4. **Talker Alias for Zello transmissions** — whether the transcoder's

@@ -174,6 +174,17 @@ The audit trail records that a full backup was taken and by whom, and **never
 the passphrase or the names of the credentials**: a trail listing which
 credentials exist is a map for whoever later gets the file.
 
+### Dongle endpoints
+
+`/api/dongle` reports the vocoder dongle's AMBEserver service and USB adapter,
+and `/api/dongle/{verb}` starts, stops or restarts that service on POST. Both
+require a session. **The unit is fixed in code and the verb must be `start`,
+`stop` or `restart`**, so the endpoint cannot act on any other service or do
+anything else to this one. QSP runs `systemctl` unprivileged; systemd refuses
+unless `deploy/polkit/50-qsp-ambeserver.rules` grants the `qsp` user those
+three verbs on that one unit. Every attempt is audited as `dongle.controlled`
+with its outcome, including one systemd refused.
+
 ### Credential endpoints
 
 `/api/secrets` lists the credentials an operator has entered, and

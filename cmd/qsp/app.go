@@ -27,6 +27,7 @@ import (
 	"github.com/k9mls/qsp/internal/callsigns"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/dongle"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/ipscbridge"
@@ -823,6 +824,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Config:   manager,
 		Audit:    a.audit,
 		Secrets:  a.secrets,
+		Dongle:   dongleControl(cfg),
 		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
 		// takes exactly the path systemctl restart already takes, so the audit
 		// record, the shutdown timeout and every subsystem's close run as they
@@ -1745,6 +1747,17 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 	res := health.Healthy(fmt.Sprintf("%d scheduled window(s)", c.windows))
 	res.Detail = map[string]string{"windows": strconv.Itoa(c.windows)}
 	return res
+}
+
+// dongleControl is the dongle panel's backend when a transcoder is enabled,
+// and nil otherwise, so an instance with no vocoder shows no panel.
+func dongleControl(cfg config.Config) server.DongleControl {
+	for _, t := range cfg.DMR.Transcoders {
+		if t.Enabled {
+			return dongle.New()
+		}
+	}
+	return nil
 }
 
 // transcoderEndpoint is the talkgroup and timeslot of a transcoder's endpoint

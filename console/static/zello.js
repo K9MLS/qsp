@@ -274,6 +274,7 @@
           saveButton.disabled = true;
         }
         loadCredentials();
+        loadDongle();
         loadPeers();
         loadChecklist();
       })
@@ -434,6 +435,91 @@
       })
       .catch(function () { state.textContent = "Cannot reach this instance."; });
   }
+
+  /* ---- The dongle ---- */
+
+  var donglePanel = document.getElementById("dongle-panel");
+  var dongleState = document.getElementById("dongle-state");
+  var dongleService = document.getElementById("dongle-service");
+  var dongleAdapter = document.getElementById("dongle-adapter");
+  var dongleProblems = document.getElementById("dongle-problems");
+  var dongleResult = document.getElementById("dongle-result");
+  /* Written out per verb, not assembled, so every URL is one the console's
+   * endpoint gate can read. */
+  var dongleActions = {
+    start: { button: document.getElementById("dongle-start"), url: "/api/dongle/start" },
+    restart: { button: document.getElementById("dongle-restart"), url: "/api/dongle/restart" },
+    stop: { button: document.getElementById("dongle-stop"), url: "/api/dongle/stop" }
+  };
+
+  function renderDongle(st) {
+    show(donglePanel);
+    if (!st.managed) {
+      dongleState.textContent = "outside QSP";
+      dongleService.textContent = "AMBEserver is not managed by systemd on this install, so it is started and stopped outside QSP.";
+    } else if (!st.installed) {
+      dongleState.textContent = "not installed";
+      dongleService.textContent = "AMBEserver is not installed as a service.";
+    } else {
+      dongleState.textContent = st.active === "active" ? "running" : st.active;
+      dongleService.textContent = "Service: " + st.active + " (" + st.sub + ")" + (st.since ? ", since " + st.since : "") + ".";
+    }
+    dongleAdapter.textContent = (st.adapters || []).length === 0
+      ? "No USB-serial adapter is present."
+      : "Adapter: " + (st.adapters || []).map(function (a) {
+        return a.name + (a.driver ? " (" + a.driver + ")" : "") +
+          (a.latency_ms >= 0 ? ", latency timer " + a.latency_ms + " ms" : "");
+      }).join("; ") + ".";
+    dongleProblems.innerHTML = "";
+    (st.problems || []).forEach(function (p) {
+      var li = document.createElement("li");
+      li.textContent = p;
+      dongleProblems.appendChild(li);
+    });
+    var controllable = st.managed && st.installed;
+    Object.keys(dongleActions).forEach(function (verb) {
+      dongleActions[verb].button.disabled = !controllable;
+    });
+  }
+
+  function loadDongle() {
+    fetch("/api/dongle", { headers: { Accept: "application/json" }, credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (body) { return { status: r.status, body: body }; });
+      })
+      .then(function (res) {
+        if (res.status === 200) { renderDongle(res.body); }
+        /* 503 is an instance with no transcoder: no panel at all. */
+      })
+      .catch(function () { /* the checklist says the instance is unreachable */ });
+  }
+
+  function controlDongle(verb) {
+    var warn = verb === "restart"
+      ? "Restart AMBEserver? A call in progress is dropped; the next one sets the dongle up again."
+      : verb === "stop" ? "Stop AMBEserver? Zello is off the air until it is started again."
+      : "Start AMBEserver?";
+    if (!window.confirm(warn)) { return; }
+    dongleResult.textContent = "Asking systemd…";
+    fetch(dongleActions[verb].url, { method: "POST", credentials: "same-origin" })
+      .then(function (r) {
+        return r.json().then(function (body) { return { status: r.status, body: body }; });
+      })
+      .then(function (res) {
+        if (res.status === 200) {
+          dongleResult.textContent = "Done: " + verb + ".";
+          renderDongle(res.body);
+          loadChecklist();
+          return;
+        }
+        dongleResult.textContent = (res.body && res.body.error) || "That did not work.";
+      })
+      .catch(function () { dongleResult.textContent = "Cannot reach this instance."; });
+  }
+
+  Object.keys(dongleActions).forEach(function (verb) {
+    dongleActions[verb].button.addEventListener("click", function () { controlDongle(verb); });
+  });
 
   /* ---- Repeaters connected now ---- */
 
