@@ -2119,6 +2119,38 @@ parse and be skipped, enough survive to clear a threshold, and the run reaches
 the dongle with the wrong bytes while the test says nothing. Exact counts where
 an exact count exists.
 
+## 8s. Zello on the air, 2026-09-16
+
+**The first connection worked; four things between it and clean audio did
+not, and none of them was findable without the real far end.** Every one was
+found by running the system on production with real users and then measuring,
+never by reading.
+
+- **Test with what the far side sends, not with what you send.** The Opus
+  decoder was sized for QSP's own 60 ms packets; the Zello app sends 120 ms
+  ones, and every packet from a real user failed. A suite that only ever fed
+  the decoder its own encoder's output could not have seen it.
+- **A USB latency timer is a real-time budget line.** The FTDI adapter's 16 ms
+  default made each AMBE decode 26.8 ms against the 20 ms real time allows.
+  Nothing errored; audio to Zello was choppy and stretched. A packet capture
+  and a median round-trip found it in minutes after a day of guessing.
+- **Something opened once must be checked again.** The vocoder supervisor never
+  re-checked an open channel, and the rate lived only in the first handshake,
+  so an AMBEserver restarted underneath QSP garbled every call silently. Now
+  every call sets the rate, and a failed exchange reopens the channel.
+- **On UDP, "connection refused" is a blip, not an ending.** A far end that
+  stopped listening for a moment ended the BCARA link for good, because a
+  read loop returned on any error.
+- **A rule that makes safety impossible to satisfy is a rule that blocks.**
+  Transcoded audio was withheld from every Motorola repeater because the only
+  IPSC path could not honour the opt-in. The fix was a path that could, not an
+  exception.
+
+**Also settled:** `azp: dev` logs on in production; the Zello app declares
+16 kHz, two 60 ms frames per packet; all 1,917 frames the chip encoded from
+Zello audio passed DMR FEC uncorrected; DMR audio reaches Zello about 13 dB
+quieter than Zello audio arrives (open).
+
 ## 8i. Where the next session starts, as of 2026-09-04
 
 Read §0, then §6b and §6c, then this. It supersedes §8g; everything §8g settled

@@ -4,6 +4,16 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+## [0.1.246] — 2026-09-16
+
+**The first release since 0.1.9, covering everything between.** In short:
+linking over Homebrew, IPSC (Motorola repeaters), OpenBridge and peer QSP
+servers, with talkgroup bridges, schedules and access control; P25 gateways as
+a reflector; a console to run all of it, with configuration history, backups
+and an encrypted credential store; and — new at the end — **Zello**, linked
+through an AMBE vocoder dongle, carrying calls both ways on a live network.
+Every entry below is from that span, newest first.
+
 ### Added
 
 - **`deploy/systemd/ambeserver.service` and

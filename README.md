@@ -45,10 +45,14 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > a Motorola Quantar is a different problem and is not built: a Quantar links
 > over a V.24 daughtercard running HDLC rather than over IP.
 >
-> **Not yet built:** the analog connectors (AllStar, Zello, EchoLink).
-> The health endpoint reports each as `unavailable`, and each needs an external
-> transcoder with an AMBE dongle — **QSP does not decode audio and will not**,
-> which is why DMR-to-DMR needs no codec at all.
+> **Zello** is built and has carried calls both ways on a live network: a
+> Zello channel is linked to a talkgroup through an AMBE vocoder dongle, heard
+> on Homebrew hotspots and Motorola repeaters whose owners agreed. It is set up
+> from the console's Zello page; see [`docs/ZELLO.md`](docs/ZELLO.md). DMR-to-DMR
+> still needs no codec at all — only a bridge to a transcoder decodes audio.
+>
+> **Not yet built:** AllStar and EchoLink. The health endpoint reports each as
+> `unavailable`.
 >
 > See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) for what is built and where
 > the line is, [`BLUEPRINT.md`](BLUEPRINT.md) for the product specification, and

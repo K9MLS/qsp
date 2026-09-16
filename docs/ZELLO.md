@@ -466,10 +466,24 @@ page generates.
    hears Zello nor is heard on it. Motorola repeaters are covered by the same
    list, by repeater ID, and key up only for a talkgroup and timeslot their
    channel carries.
-5. **The connector** — copy the generated `qsp-zello.json`; build `qsp-zello`
-   where libopus headers are installed
-   (`CGO_ENABLED=1 go build -tags zello -o qsp-zello ./cmd/qsp-zello`); install
-   `deploy/systemd/qsp-zello.service`, running as the `qsp` user.
+5. **The connector** — copy the generated `qsp-zello.json`; build `qsp-zello`;
+   install `deploy/systemd/qsp-zello.service`, running as the `qsp` user.
+
+   **Build it for the server's C library, not the build machine's.** It is the
+   one cgo binary, and one built on a newer distribution will not start on an
+   older one. Building in a Debian container gives a binary that runs on
+   Ubuntu 24.04 and anything newer; the server then needs only `libopus0`:
+
+   ```sh
+   mkdir -p build && podman run --rm --security-opt label=disable \
+     -v "$PWD":/src -v "$PWD/build":/out -w /src docker.io/library/golang:1.27-bookworm \
+     sh -c 'apt-get update -qq && apt-get install -y -qq libopus-dev pkg-config >/dev/null &&
+            CGO_ENABLED=1 go build -buildvcs=false -trimpath -tags zello -o /out/qsp-zello ./cmd/qsp-zello'
+   objdump -T build/qsp-zello | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1   # at most the server's
+   ```
+
+   `--security-opt label=disable` rather than `:Z`, which relabels every file
+   under the mounted directory for SELinux.
 6. **Switch Zello on, save, restart QSP.** The checklist goes green one line at
    a time: serving logons, credentials stored, vocoder reachable, audio both
    ways.

@@ -61,12 +61,21 @@ links are never targets for one, and a frame arriving from a link records no
 location — so a call crosses in one direction only. Deferred by decision; it
 needs a record before code.
 
-**Analog and other modes.** AllStar, EchoLink and Zello have registered health
-checks and no implementations, which is deliberate: an absent capability that
-says so is better than one that is silently missing. Each needs an external
-transcoder with an AMBE dongle, because **QSP does not decode audio and will
-not** — it copies vocoder payloads and never inspects them, which is why
-DMR-to-DMR needs no codec at all.
+**Zello: built, and on the air since 2026-09-16.** A bridge names a transcoder;
+QSP decodes DMR through an AMBE vocoder dongle (via AMBEserver) to USRP, and
+`qsp-zello` carries that audio to one Zello channel and back. Zello audio
+reaches only the repeaters — Homebrew or Motorola — whose owners agreed, under
+the gateway's own DMR ID. The Zello private key stays in QSP's credential store
+(ADR-0066). Set up from the console; `docs/ZELLO.md` has the steps and the
+dongle service.
+
+**Everything else is still copied, not decoded.** DMR-to-DMR and P25-to-P25
+carry vocoder payloads untouched; only traffic bridged to a transcoder is
+decoded, which is ADR-0062's line.
+
+**AllStar and EchoLink** have registered health checks and no implementations,
+which is deliberate: an absent capability that says so is better than one that
+is silently missing.
 
 **P25.** `internal/protocol/p25` exists with a health check standing by, and the
 capture in `testdata/p25/` holds polling traffic only. Not the current focus;
