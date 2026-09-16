@@ -1,4 +1,4 @@
-# Handover, 2026-09-14
+# Handover, 2026-09-15
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md`, then **ADR-0052**,
 the frame everything about linking sits inside. **ADR-0062** is the newest and
@@ -9,10 +9,34 @@ commit, message and path, and force-pushed. **Every commit hash predating that
 no longer resolves** — they are a record of what happened, not something to look
 up.
 
-**VERSION 0.1.198.** Production (192.168.1.247, systemd) runs **0.1.193**; the
-test server (192.168.1.27, Docker) runs 0.1.191. Patches 0344 through 0353 were
-applied on Fedora today; 0350 onward are a bench tool and documentation, so the
-servers are correct where they are.
+**VERSION 0.1.233, and both servers are on it.** Production (192.168.1.247,
+systemd) and the test server (192.168.1.27, Docker) were deployed on
+2026-09-15 from 0.1.193 and 0.1.191 respectively — a forty-version jump, taken
+because the gap itself had become the risk.
+
+Both applied **migration 6** and created a credential store. All four peers
+returned within twenty seconds on production; the test server's BCARA upstream
+logged back in. Nothing in the deploy changed a configuration file.
+
+**Two things that deploy left behind.** `~/qsp-rollback-0.1.193` on Fedora is a
+real 0.1.193 binary, built from commit `b5af5d3` in a worktree and verified by
+its own `-version` — keep it, because the previous binary was installed over
+and there was no rollback until it was rebuilt. And the schema is now at 6
+where 0.1.193 expects 5; **whether it refuses a newer schema or ignores the
+extra table is not known**, so `~/qsp.db.before-0.1.233` on the server and
+`~/qsp-data-before-0.1.233.tar.gz` on the test server are the real safety net.
+
+**The credential store's key is `/var/lib/qsp/secrets.key`** — 32 bytes, mode
+0600, owned by `qsp`, created on first start. **Losing it loses every stored
+credential**, and the recovery is re-entering them. On the test server it lives
+inside the `qsp-data` volume, which survives a container replacement and dies
+with `docker compose down -v`.
+
+**`-X main.version` in the Dockerfile is not vestigial**, whatever a passing
+remark on 2026-09-15 said. `main.version` is a deliberate override hook that
+`buildVersion()` prefers, falling back to the `internal/buildinfo` constant —
+which is why a build without the flag still reports the right number. Keep it
+in the deploy process.
 
 ---
 

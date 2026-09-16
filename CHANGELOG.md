@@ -4,6 +4,30 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Both servers are on 0.1.233, and the handover said 0.1.193.** Production
+  and the test server were deployed on 2026-09-15 from 0.1.193 and 0.1.191 — a
+  forty-version jump, taken because the gap itself had become the risk. Both
+  applied migration 6 and created a credential store; all four peers returned
+  within twenty seconds on production and the test server's upstream logged
+  back in. No configuration file changed.
+
+  A handover that names the wrong version on a running server is the kind of
+  stale document the next session acts on, so it now records what is actually
+  deployed — along with three things that deploy left behind: where the
+  rollback binary is and how it was built, that the schema is at 6 where
+  0.1.193 expects 5 **and what happens then is not known**, and where the
+  credential key lives on each machine along with what losing it costs.
+
+- **Corrected a remark that was wrong.** `-X main.version` in the Dockerfile
+  was described in passing as vestigial. It is not: `main.version` is a
+  deliberate override hook that `buildVersion()` prefers, falling back to the
+  `internal/buildinfo` constant — which is why a build without the flag still
+  reports the right number. The advice to drop it from the deploy process would
+  have removed a release pipeline's only way to override the version.
+
+
 ### Changed
 
 - **The drop advisory dissolves after ten seconds instead of staying until a
