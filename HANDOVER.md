@@ -140,6 +140,28 @@ block existed. **Read it against the code, not the other way round.**
 question a silent repeater raises — a non-zero value means the chip's frames
 are not in DMR's layout. The one recorded real frame needs no correction.
 
+**Production changes made by hand on 2026-09-16, not yet in the repository.**
+
+- **`/etc/systemd/system/ambeserver.service`**: AMBEserver `-x` in the
+  foreground, `StandardOutput=null` (its per-packet dump is hundreds of MB an
+  hour), `IPAddressAllow=localhost` / `IPAddressDeny=any` (it binds 0.0.0.0
+  unauthenticated), `DynamicUser` with `dialout`, enabled at boot. It exists
+  because a foreground AMBEserver died with its terminal, and **QSP's vocoder
+  supervisor never noticed**: it opens a channel once and never re-checks it,
+  so the AMBEserver started next never received the DMR rate command and every
+  call decoded at the wrong rate. That is the next fix; until then an
+  AMBEserver restart needs a QSP restart.
+- **`/etc/udev/rules.d/99-ambe-dongle-latency.rules`** sets the FTDI latency
+  timer to 1 ms. At the 16 ms default a decode took 26.8 ms (median, from a
+  capture) against the 20 ms real time allows — three per 60 ms burst — so QSP
+  decoded 36.6 frames a second of the 50 needed, dropped a quarter and
+  stretched the rest. At 1 ms: 11.9 ms.
+- **What the capture also showed**: the Zello app sends 16 kHz, two 60 ms
+  frames per 120 ms packet; all 1,917 voice frames the chip encoded from Zello
+  audio passed DMR FEC with no correction; DMR audio reaches Zello about 13 dB
+  quieter than Zello audio arrives; and Zello audio went to every Homebrew peer
+  the page permitted.
+
 **First connection, 2026-09-16, on production.** QSP 0.1.239 and `qsp-zello`
 logged on to channel "QSP Server 1" first time, which settles `azp: dev`. Real
 DMR audio from the network decoded through the dongle — AMBEserver's debug log

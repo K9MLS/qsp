@@ -324,16 +324,31 @@ func (l *Link) serve(ctx context.Context) {
 	}()
 
 	buf := make([]byte, openbridge.PacketSize*2)
+	readFailing := false
 	for {
 		n, from, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
-			if ctx.Err() != nil || !l.running.Load() {
+			if ctx.Err() != nil || !l.running.Load() || errors.Is(err, net.ErrClosed) {
 				l.log.Info("link closed")
 				return
 			}
-			l.log.Warn("read failed", "error", err)
-			return
+			// The same rule as PeerLink.serve: a failed read is not the end
+			// of the link. OpenBridge has no keepalive to notice, so a loop
+			// that returned here left a link that looked open and carried
+			// nothing, for as long as the process ran.
+			if !readFailing {
+				l.log.Warn("a read failed; the link keeps listening", "error", err)
+			}
+			readFailing = true
+			select {
+			case <-ctx.Done():
+				l.log.Info("link closed")
+				return
+			case <-time.After(ReadRetryDelay):
+			}
+			continue
 		}
+		readFailing = false
 
 		frame, err := openbridge.Parse(buf[:n], l.cfg.Passphrase)
 		if err != nil {

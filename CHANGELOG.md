@@ -6,6 +6,38 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A link stopped for good when its far end blinked.** Both the outbound
+  Homebrew link and the OpenBridge link returned from their read loop on any
+  failed read. On 2026-09-16 the BCARA server stopped listening for a moment, a
+  keepalive bounced as "connection refused", and the test server's link to
+  BCARA ended silently — no retry, no state change — until the process was
+  restarted. A failed read is now an outage: logged once, retried each second,
+  and ended by the link's own timeout and login; only QSP closing the socket
+  stops the loop. The Links page and health say "the far end is not answering;
+  retrying" while that is true. A test closes the fake far end, keeps it away
+  past several retries and brings it back on the same port; with the old
+  `return` the link never logs in again.
+
+- **"cannot send a frame upstream" was logged every 60 ms** of every
+  transmission while a link was down, and buried the one line that said why it
+  was down. It is logged once per link and reason; the failure count still
+  counts every frame.
+
+- **A far end that is gone logged a failed keepalive on every other tick.**
+  To a port with nothing listening, UDP writes alternate between leaving and
+  bouncing, so an outage now ends when the far end is heard from, not when a
+  write succeeds.
+
+### Documentation
+
+- **Production's vocoder findings are recorded in the handover**: the FTDI
+  latency timer at its 16 ms default made each decode take 26.8 ms against the
+  20 ms real time allows, which is what made DMR audio on Zello choppy; set to
+  1 ms it is 11.9 ms. AMBEserver now runs as a locked-down systemd unit
+  admitting only local traffic. Neither is in the repository yet.
+
+### Fixed
+
 - **Nothing a Zello user said reached the radios.** On the first real
   connection every packet from the Zello app failed with "buffer too small":
   the Opus decoder was sized for one 60 ms frame, the packets QSP makes, and

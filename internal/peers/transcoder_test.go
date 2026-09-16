@@ -114,3 +114,31 @@ type noPeers struct{}
 
 func (noPeers) Ready(hbp.RepeaterID) bool    { return false }
 func (noPeers) ReadyPeers() []hbp.RepeaterID { return nil }
+
+// failingUpstreams refuses every frame, as a stopped link does.
+type failingUpstreams struct{}
+
+func (failingUpstreams) Send(string, hbp.Data) error {
+	return errors.New(`upstream "BCARA": the link is not running`)
+}
+
+// TestADeadUpstreamIsReportedOnceNotPerFrame: on 2026-09-16 this warning ran at
+// one line every 60 ms and buried the line that said why BCARA had stopped.
+//
+// To see it bite: remove the noteRoutingDrop guard around "cannot send a frame
+// upstream" and fifty frames log fifty lines.
+func TestADeadUpstreamIsReportedOnceNotPerFrame(t *testing.T) {
+	l, buf := journal()
+	l.cfg.Upstreams = failingUpstreams{}
+	res := routing.Result{Upstreams: []routing.UpstreamDelivery{{Upstream: "BCARA", Bridge: "tg2",
+		Frame: hbp.Data{TargetID: 2, Timeslot: hbp.Timeslot2}}}}
+	for range 50 {
+		l.deliver(312345, res)
+	}
+	if n := strings.Count(buf.String(), "cannot send a frame upstream"); n != 1 {
+		t.Errorf("logged %d times over 50 frames, want once", n)
+	}
+	if got := l.writeErr.Load(); got != 50 {
+		t.Errorf("counted %d failures, want all 50: the count is what the console shows", got)
+	}
+}

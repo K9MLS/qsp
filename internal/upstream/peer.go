@@ -64,6 +64,13 @@ type PeerLink struct {
 	mu    sync.Mutex
 	link  *homebrew.Link
 	stats Stats
+	// unreachable is the error that says the far end is not answering, while
+	// that is the case; empty once a datagram arrives again.
+	unreachable string
+	// writeFailing is set by the first failed write of an outage and cleared
+	// when a datagram arrives, so the keepalives of a far end that is gone say
+	// so once rather than every tick.
+	writeFailing atomic.Bool
 	// lastReceived is when a frame last arrived, for Status.
 	lastReceived time.Time
 }
@@ -194,7 +201,9 @@ func (l *PeerLink) apply(out homebrew.Outcome) {
 			l.mu.Lock()
 			l.stats.SendErrors++
 			l.mu.Unlock()
-			l.log.Warn("cannot write to the far end", "error", err)
+			if !l.writeFailing.Swap(true) {
+				l.log.Warn("cannot write to the far end", "error", err)
+			}
 			return
 		}
 	}
@@ -250,13 +259,37 @@ func (l *PeerLink) serve(ctx context.Context) {
 	for {
 		n, err := l.conn.Read(buf)
 		if err != nil {
-			if ctx.Err() != nil || !l.running.Load() {
+			if ctx.Err() != nil || !l.running.Load() || errors.Is(err, net.ErrClosed) {
 				l.log.Info("outbound link closed")
 				return
 			}
-			l.log.Warn("read failed", "error", err)
-			return
+			// **A failed read is the far end blinking, not the end of the
+			// link.** On a connected UDP socket, "connection refused" is one
+			// datagram bounced because nothing was listening for that moment
+			// — a restart on the far side. Returning here ended the link for
+			// good, silently, until QSP restarted: it happened to the BCARA
+			// link on 2026-09-16. The state machine's own timeout moves a
+			// silent link to backoff and logs in again; it only needs this
+			// loop to still be reading when the far end comes back.
+			if first := l.noteUnreachable(err); first {
+				l.log.Warn("the far end is not answering; the link keeps trying", "error", err)
+			}
+			select {
+			case <-ctx.Done():
+				l.log.Info("outbound link closed")
+				return
+			case <-time.After(ReadRetryDelay):
+			}
+			continue
 		}
+		if l.clearUnreachable() {
+			l.log.Info("the far end is answering again")
+		}
+		// **An outage ends when the far end is heard, not when a write
+		// succeeds.** To a port with nothing listening, UDP writes alternate:
+		// one leaves, its bounce fails the next. Resetting on a successful
+		// write logged every other keepalive.
+		l.writeFailing.Store(false)
 
 		l.mu.Lock()
 		out := l.link.Handle(buf[:n])
@@ -271,6 +304,30 @@ func (l *PeerLink) serve(ctx context.Context) {
 			l.cfg.Receive(l.cfg.Name, *out.Data)
 		}
 	}
+}
+
+// ReadRetryDelay is how long a link waits after a failed read before reading
+// again. Long enough that a refused socket does not spin, short enough that a
+// far end which is back is heard within a keepalive.
+const ReadRetryDelay = time.Second
+
+// noteUnreachable records a failed read and reports whether it began an
+// outage, so the outage is logged once rather than once a second.
+func (l *PeerLink) noteUnreachable(err error) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	first := l.unreachable == ""
+	l.unreachable = err.Error()
+	return first
+}
+
+// clearUnreachable ends an outage and reports whether there was one.
+func (l *PeerLink) clearUnreachable() bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	was := l.unreachable != ""
+	l.unreachable = ""
+	return was
 }
 
 // Status implements Connection.
@@ -304,6 +361,10 @@ func (l *PeerLink) Status() Status {
 	switch {
 	case !st.Open:
 		st.Summary = "the link is not open"
+	case l.unreachable != "" && state != homebrew.StateConnected:
+		st.Summary = fmt.Sprintf("the far end is not answering (%s); retrying", l.unreachable)
+		st.Advice = "nothing is listening at the far end's address right now — usually its " +
+			"server restarting; this link logs in again by itself when it answers"
 	case state == homebrew.StateConnected:
 		if st.EverReceived {
 			st.Summary = fmt.Sprintf("connected; last traffic %s ago", st.Since)

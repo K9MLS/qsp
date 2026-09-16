@@ -905,10 +905,16 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		}
 		if err := l.cfg.Upstreams.Send(u.Upstream, u.Frame); err != nil {
 			l.writeErr.Add(1)
-			l.log.Warn("cannot send a frame upstream",
-				slog.String("upstream", u.Upstream),
-				slog.String("error", err.Error()),
-			)
+			// Once per link and reason, not per frame. At one line every
+			// 60 ms of every transmission, this buried the single line that
+			// said why the BCARA link had stopped.
+			if l.noteRoutingDrop(routing.Drop{To: routing.Endpoint{Upstream: u.Upstream},
+				Reason: err.Error()}) {
+				l.log.Warn("cannot send a frame upstream",
+					slog.String("upstream", u.Upstream),
+					slog.String("error", err.Error()),
+				)
+			}
 			continue
 		}
 		l.forwarded.Add(1)
