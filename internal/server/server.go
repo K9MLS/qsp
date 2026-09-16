@@ -333,6 +333,9 @@ func (s *Server) handler() http.Handler {
 		mux.HandleFunc("GET /network", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/network.html", http.StatusFound)
 		})
+		mux.HandleFunc("GET /zello", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/zello.html", http.StatusFound)
+		})
 		mux.HandleFunc("GET /bridges", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/bridges.html", http.StatusFound)
 		})

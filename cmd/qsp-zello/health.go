@@ -21,7 +21,7 @@ func (c *connector) healthHandler() http.Handler {
 		body := map[string]any{
 			"state":                  c.state,
 			"since":                  c.since.UTC().Format(time.RFC3339),
-			"channel":                c.cfg.Channel,
+			"channel":                c.channel,
 			"connections":            c.connected.Load(),
 			"usrp_discarded_offline": c.discarded.Load(),
 		}

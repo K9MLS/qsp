@@ -15,10 +15,12 @@ func TestTheZelloLogonSocketIsChecked(t *testing.T) {
 		wantField string
 	}{
 		{"not configured", Zello{}, ""},
-		{"a socket and an issuer", Zello{LogonSocket: "/run/qsp/zello.sock", Issuer: "iss"}, ""},
-		{"a relative socket", Zello{LogonSocket: "run/zello.sock", Issuer: "iss"}, "zello.logon_socket"},
-		{"a socket and no issuer", Zello{LogonSocket: "/run/qsp/zello.sock"}, "zello.issuer"},
-		{"an issuer alone serves nothing and is harmless", Zello{Issuer: "iss"}, ""},
+		{"on and complete", Zello{Enabled: true, LogonSocket: "/run/qsp/zello.sock", Issuer: "iss", Channel: "c"}, ""},
+		{"on with a relative socket", Zello{Enabled: true, LogonSocket: "run/zello.sock", Issuer: "iss", Channel: "c"}, "zello.logon_socket"},
+		{"on with no socket", Zello{Enabled: true, Issuer: "iss", Channel: "c"}, "zello.logon_socket"},
+		{"on with no issuer", Zello{Enabled: true, LogonSocket: "/run/qsp/zello.sock", Channel: "c"}, "zello.issuer"},
+		{"on with no channel", Zello{Enabled: true, LogonSocket: "/run/qsp/zello.sock", Issuer: "iss"}, "zello.channel"},
+		{"off keeps half-entered values without complaint", Zello{LogonSocket: "relative", Channel: ""}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

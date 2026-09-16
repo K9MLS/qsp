@@ -9,6 +9,8 @@ import (
 
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/secrets"
+	"github.com/k9mls/qsp/internal/zello"
+	"github.com/k9mls/qsp/internal/zellologon"
 )
 
 // Credentials an operator types into the console.
@@ -122,6 +124,18 @@ func (s *Server) handleSetSecret(w http.ResponseWriter, r *http.Request) {
 	var body setSecretRequest
 	if !decodeJSON(w, s.log, r, &body) {
 		return
+	}
+
+	// **A Zello key that cannot sign is refused as it is entered**, with the
+	// parser's own reason — a PEM header one dash short looks entirely
+	// normal and is unreadable everywhere. Stored, it would fail only when
+	// qsp-zello next connected, as a logon refusal naming nothing.
+	if name == zellologon.PrivateKeyName {
+		if err := zello.CheckPrivateKey(body.Value); err != nil {
+			writeJSON(w, s.log, http.StatusBadRequest,
+				map[string]string{"error": "that is not a usable private key: " + err.Error()})
+			return
+		}
 	}
 
 	actor := "unknown"

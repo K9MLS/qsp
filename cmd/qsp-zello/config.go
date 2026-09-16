@@ -12,14 +12,12 @@ import (
 	"strings"
 )
 
-// Config is the connector's own configuration. **It holds no secret**: the
-// logon comes from QSP (ADR-0066), so this file can be read by anyone who can
-// read QSP's own configuration.
+// Config is the connector's own configuration. **It holds no secret and
+// nothing an operator changes**: the logon and the channel come from QSP
+// (ADR-0066), set on its Zello page. This file says only where to reach QSP.
 type Config struct {
 	// LogonSocket is QSP's zello.logon_socket.
 	LogonSocket string `json:"logon_socket"`
-	// Channel is the Zello channel, joined in the Zello app first.
-	Channel string `json:"channel"`
 	// Endpoint is the WebSocket URL. Empty selects the consumer service.
 	Endpoint string `json:"endpoint,omitempty"`
 	// USRPListen is where audio from QSP arrives: QSP's usrp_peer.
@@ -54,9 +52,6 @@ func (c Config) validate() error {
 	var problems []string
 	if !filepath.IsAbs(strings.TrimSpace(c.LogonSocket)) {
 		problems = append(problems, "logon_socket must be an absolute path: QSP's zello.logon_socket")
-	}
-	if strings.TrimSpace(c.Channel) == "" {
-		problems = append(problems, "channel must name the Zello channel, joined in the Zello app first")
 	}
 	if e := strings.TrimSpace(c.Endpoint); e != "" && !strings.HasPrefix(e, "wss://") {
 		// Refused here as well as by the session, so it is a configuration

@@ -70,7 +70,7 @@ func serve(t *testing.T, store Getter, allow func(net.Conn) error) (string, *Ser
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	path := filepath.Join(dir, "s")
-	srv, err := Listen(Options{SocketPath: path, Store: store, Issuer: "issuer-from-portal", allowPeer: allow})
+	srv, err := Listen(Options{SocketPath: path, Store: store, Issuer: "issuer-from-portal", Channel: "K9MLS Gateway", allowPeer: allow})
 	if err != nil {
 		t.Fatalf("listening: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestALogonIsHandedOutAndTheKeyIsNot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("fetching: %v", err)
 	}
-	if logon.Username != "k9mls-gateway" || logon.Password != "hunter2" {
+	if logon.Username != "k9mls-gateway" || logon.Password != "hunter2" || logon.Channel != "K9MLS Gateway" {
 		t.Errorf("got %+v", logon)
 	}
 	parts := strings.Split(logon.Token, ".")
@@ -220,7 +220,7 @@ func TestAPathThatIsNotASocketIsNeverRemoved(t *testing.T) {
 	if err := os.WriteFile(path, []byte("keep me"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Listen(Options{SocketPath: path, Store: mapStore{}, Issuer: "x"}); err == nil {
+	if _, err := Listen(Options{SocketPath: path, Store: mapStore{}, Issuer: "x", Channel: "c"}); err == nil {
 		t.Fatal("Listen succeeded over a regular file")
 	}
 	if b, _ := os.ReadFile(path); string(b) != "keep me" {

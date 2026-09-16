@@ -149,9 +149,17 @@ are not in DMR's layout. The one recorded real frame needs no correction.
    keyup after nearly every over, fixed with a test that fails on its first run
    without the fix. And `qsp.service` forbade Unix sockets, so QSP would not
    have started with the socket configured.
-2. **Then** the credentials go in through the console and the first connection
-   happens. **Fedora needs `sudo dnf install opus-devel`** for `check.sh` to
-   run the tagged gate rather than skip it.
+2. **The console's Zello page is built (2026-09-16)**: a new user's whole setup
+   in order, credentials stored write-only with the key checked as it is
+   entered, settings saved and versioned, the connector's file generated, and
+   a checklist read from health. The channel now lives in QSP and travels with
+   the logon. Driven in jsdom as a new user and its saved configuration
+   accepted by the real `qsp -check`, switched on and paused. **Not proved in a
+   browser.** Found on the way: the console's element gate reads only
+   `getElementById` literals, and the page's first version hid every lookup
+   behind a helper; and the credential API had no page at all.
+   **Next: the first connection, from that page, with the real credentials
+   typed there and nowhere else.**
 3. **Undecided by the operator:** whether the transcoder's configured `alias`
    is injected as Talker Alias. The standing rule is "passed through, never
    injected", and a gateway's own alias is a new case. Nothing injects it.

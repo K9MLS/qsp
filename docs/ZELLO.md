@@ -416,31 +416,41 @@ because `configuration_versions` keeps the full document for every save.
 socket at every connection, and is handed a freshly signed token, the username
 and the password — never the key ([ADR-0066](adr/ADR-0066-a-connector-is-handed-a-logon-never-a-key.md)).
 
-## Running the connector
+## Setting it up
 
-1. **In QSP's configuration**, add a transcoder with `usrp_listen` and
-   `usrp_peer`, a bridge naming it, and:
+**Everything is on the console's Zello page** (Administration → Zello), in the
+order the work is done, with a checklist read from this server's health report.
+Nothing needs editing by hand but the connector's own four-line file, which the
+page generates.
 
-   ```json
-   "zello": { "logon_socket": "/run/qsp/zello.sock", "issuer": "<from the developer portal>" }
-   ```
+1. **Before you start** — none of this can be done from QSP: a Zello account for
+   the gateway, an API key pair and its issuer from the developer portal, the
+   channel joined *in the Zello app with that account* and set to Zelect, a
+   DMR ID for the gateway from RadioID.net, and AMBEserver running.
+2. **The Zello account** — the channel and issuer, then the username, password
+   and private key, each stored the moment its button is pressed. They are
+   never shown again, only whether each is stored. A key that cannot sign is
+   refused as it is entered, with the reason.
+3. **The vocoder** — the AMBEserver address and the gateway's DMR ID.
+4. **What Zello carries** — the talkgroup and timeslot, and the repeaters whose
+   owners have agreed. None is chosen for you; a repeater not listed neither
+   hears Zello nor is heard on it. Motorola repeaters do not receive Zello
+   audio yet.
+5. **The connector** — copy the generated `qsp-zello.json`; build `qsp-zello`
+   where libopus headers are installed
+   (`CGO_ENABLED=1 go build -tags zello -o qsp-zello ./cmd/qsp-zello`); install
+   `deploy/systemd/qsp-zello.service`, running as the `qsp` user.
+6. **Switch Zello on, save, restart QSP.** The checklist goes green one line at
+   a time: serving logons, credentials stored, vocoder reachable, audio both
+   ways.
 
-2. **In the console's credentials**, enter `zello-private-key` (the PEM),
-   `zello-username` and `zello-password`. The `zello-logon` health check turns
-   green when all three are present; it reads presence only and decrypts
-   nothing.
-3. **Build the connector** where libopus headers are installed:
-   `CGO_ENABLED=1 go build -tags zello -o qsp-zello ./cmd/qsp-zello`.
-4. **Configure it** from `deploy/systemd/qsp-zello.json.example`: its
-   `usrp_listen` is QSP's `usrp_peer` and the other way round. It holds no
-   secret, and refuses a field it does not know — so there is nowhere to put a
-   password by mistake. Check it with `qsp-zello -check`.
-5. **Install `deploy/systemd/qsp-zello.service`**, running as the same `qsp`
-   user; the socket serves no other.
+**Switching Zello off keeps every value.** A paused bridge may name a paused
+transcoder, so the talkgroup and repeaters are there when it is switched back
+on.
 
 Its `/healthz` on `health_listen` names the action a failure needs:
 `qsp_unreachable` (is QSP running with the socket set?),
-`credentials_missing` (QSP's console), `credentials_unusable` (the key or
+`credentials_missing` (the Zello page), `credentials_unusable` (the key or
 issuer), `zello_refused` (Zello's side — the account or channel membership;
 retried every five minutes, not every few seconds), `zello_unreachable`
 (the network).

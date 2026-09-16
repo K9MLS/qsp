@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zello — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__meta">
+      <span class="topbar__auth" id="auth-state"></span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li><a class="nav__link" href="/"><span>Overview</span></a></li>
+    </ul>
+    <p class="nav__heading" id="nav-admin" hidden>Administration</p>
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin" hidden>
+      <li><a class="nav__link" href="/server"><span>This server</span></a></li>
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
+      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/links"><span>Links</span></a></li>
+      <li><a class="nav__link" href="/zello" aria-current="page"><span>Zello</span></a></li>
+      <li><a class="nav__link" href="/record"><span>Call record</span></a></li>
+      <li><a class="nav__link" href="/history"><span>History</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
+    </ul>
+
+    <p class="nav__version" id="nav-version"></p>
+  </nav>
+
+  <main class="main" id="main">
+    <h1 class="page__title">Zello</h1>
+
+    <p class="page__lede">
+      Connect one Zello channel to a talkgroup, so people on the Zello app and
+      people on radios hear each other. Work down this page in order; the
+      checklist says what is done and what is next.
+    </p>
+
+    <div class="empty" id="loading">
+      <h2 class="empty__title">Loading</h2>
+      <p class="empty__body">Reading this instance's configuration.</p>
+    </div>
+
+    <div class="notice notice--warn" id="signed-out" hidden>
+      <p class="notice__title">Sign in to set up Zello</p>
+      <p class="notice__body">
+        <a href="/signin">Sign in</a> as an administrator.
+      </p>
+    </div>
+
+    <div class="notice notice--warn" id="read-only" hidden>
+      <p class="notice__title">This instance cannot be changed from here</p>
+      <p class="notice__body" id="read-only-reason"></p>
+    </div>
+
+    <div class="notice notice--warn" id="error" hidden>
+      <p class="notice__title">That did not save</p>
+      <p class="notice__body" id="error-text"></p>
+      <ul class="notice__list" id="error-fields"></ul>
+    </div>
+
+    <div class="notice" id="saved" hidden>
+      <p class="notice__title">Saved</p>
+      <p class="notice__body" id="saved-text"></p>
+      <p class="notice__body" id="restart-note" hidden></p>
+    </div>
+
+    <div class="stack" id="form" hidden>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Before you start</h2>
+            <button class="hint" type="button" aria-controls="hint-before" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-before">
+          <p class="hint__text"><strong>None of these can be done from QSP</strong>, and each one is a common reason a first attempt does not connect. The channel must be joined by the gateway's own account in the Zello app before QSP can use it: logging on from a server does not join a channel. A Zello user has no radio, so the gateway transmits under a DMR ID of its own; sharing a repeater's or a hotspot's makes Zello traffic indistinguishable from that station's everywhere it is logged.</p>
+        </div>
+        <div class="panel__body">
+          <ul class="notice__list">
+            <li>A Zello account for the gateway, separate from your own.</li>
+            <li>An API key pair from Zello's developer portal: the <strong>issuer</strong> string and the <strong>private key</strong> file.</li>
+            <li>A Zello channel, <strong>joined in the Zello app with the gateway's account</strong>, moderated, and set to Zelect.</li>
+            <li>A DMR ID for the gateway from RadioID.net &mdash; its own, not a repeater's or a hotspot's.</li>
+            <li>The AMBE dongle plugged in, with AMBEserver running.</li>
+            <li>The <code>qsp-zello</code> connector installed beside QSP (the last step shows how).</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Setup checklist</h2>
+            <button class="hint" type="button" aria-controls="hint-checklist" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="checklist-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-checklist">
+          <p class="hint__text"><strong>Read from this server's health report</strong>, the same one the overview page shows. It updates when you press Check again, and after every save. Green on all four means Zello users and radio users can hear each other.</p>
+        </div>
+        <div class="panel__body">
+          <ul class="notice__list" id="checklist"></ul>
+          <div class="page__actions">
+            <button class="button button--quiet" id="recheck" type="button">Check again</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Switch Zello on</h2>
+            <button class="hint" type="button" aria-controls="hint-switch" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="switch-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-switch">
+          <p class="hint__text"><strong>Off keeps everything you entered</strong>, so pausing Zello never means typing it all again. On asks QSP to serve the connector a logon and to route the talkgroup below to the vocoder. It needs a restart of QSP to take effect.</p>
+        </div>
+        <div class="panel__body">
+          <div class="notice notice--warn" id="forwarding-off" hidden>
+            <p class="notice__title">Forwarding is off on this server</p>
+            <p class="notice__body">Nothing is routed while it is off, so Zello would connect and carry nothing. Turn forwarding on in the configuration before switching Zello on.</p>
+          </div>
+          <label class="toggle">
+            <input class="toggle__input" id="zello-enabled" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="zello-enabled-state">Off</span>
+            <span>Connect a Zello channel</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">1. The Zello account</h2>
+            <button class="hint" type="button" aria-controls="hint-account" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-account">
+          <p class="hint__text"><strong>The password and the private key never come back out of QSP.</strong> This page shows only whether each is stored and when it changed. They are kept encrypted in QSP's credential store and are not handed to anything but the connector, which is given a short-lived logon made from them and never the key itself (ADR-0066). Each credential is stored the moment you press its button, separately from Save changes at the foot of the page. <strong>If your browser offers to fill the password</strong>, check it is not your console password.</p>
+        </div>
+        <div class="panel__body">
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Channel</span>
+              <input class="picker__input" id="zello-channel" type="text" spellcheck="false" placeholder="K9MLS Gateway">
+              <p class="field__note">Exactly as Zello shows it.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Issuer</span>
+              <input class="picker__input picker__input--wide" id="zello-issuer" type="text" spellcheck="false">
+              <p class="field__note">From the developer portal, beside the key. It is not a secret.</p>
+            </label>
+          </div>
+          <label class="picker__field">
+            <span class="picker__label">Username</span>
+            <input class="picker__input" id="cred-zello-username" type="text" autocomplete="off" spellcheck="false">
+            <p class="field__note">The gateway's Zello account name.</p>
+          </label>
+          <p class="acl__state" id="cred-zello-username-state"></p>
+          <div class="page__actions">
+            <button class="button" id="cred-zello-username-store" type="button">Store username</button>
+            <button class="button button--quiet" id="cred-zello-username-remove" type="button">Remove it</button>
+          </div>
+          <label class="picker__field">
+            <span class="picker__label">Password</span>
+            <input class="picker__input" id="cred-zello-password" type="password" autocomplete="new-password" spellcheck="false">
+            <p class="field__note">The gateway's Zello account password.</p>
+          </label>
+          <p class="acl__state" id="cred-zello-password-state"></p>
+          <div class="page__actions">
+            <button class="button" id="cred-zello-password-store" type="button">Store password</button>
+            <button class="button button--quiet" id="cred-zello-password-remove" type="button">Remove it</button>
+          </div>
+          <label class="picker__field">
+            <span class="picker__label">Private key</span>
+            <textarea class="picker__input picker__input--wide" id="cred-zello-private-key" rows="6" autocomplete="off" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+            <p class="field__note">Paste the whole file, including the BEGIN and END lines. It is checked as you store it.</p>
+          </label>
+          <p class="acl__state" id="cred-zello-private-key-state"></p>
+          <div class="page__actions">
+            <button class="button" id="cred-zello-private-key-store" type="button">Store private key</button>
+            <button class="button button--quiet" id="cred-zello-private-key-remove" type="button">Remove it</button>
+          </div>
+
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">2. The vocoder</h2>
+            <button class="hint" type="button" aria-controls="hint-vocoder" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-vocoder">
+          <p class="hint__text"><strong>The dongle turns DMR audio into ordinary audio and back.</strong> QSP reaches it through AMBEserver, usually on the machine the dongle is plugged into, port 2460. If the checklist says the vocoder cannot be reached, start AMBEserver; if it stops answering, unplug the dongle for ten seconds &mdash; a software reset does not clear a wedged chip.</p>
+        </div>
+        <div class="panel__body">
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">AMBEserver address</span>
+              <input class="picker__input" id="zello-ambe" type="text" spellcheck="false" placeholder="127.0.0.1:2460">
+              <p class="field__note">Address and port.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Gateway DMR ID</span>
+              <input class="picker__input" id="zello-radio-id" type="text" inputmode="numeric" placeholder="3100999">
+              <p class="field__note">Every Zello transmission carries this ID.</p>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">3. What Zello carries</h2>
+            <button class="hint" type="button" aria-controls="hint-carries" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="carries-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-carries">
+          <p class="hint__text"><strong>A Zello user is not necessarily licensed, and their audio goes out over the air.</strong> So no repeater hears Zello until its owner has agreed, and none is chosen for you. The repeaters you list here both hear Zello and are heard on it; a repeater not listed is left out in both directions, so its users never hold half a conversation. <strong>Motorola repeaters do not receive Zello audio yet</strong>: the agreement cannot reach them, so QSP withholds it.</p>
+        </div>
+        <div class="panel__body">
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Talkgroup</span>
+              <input class="picker__input" id="zello-talkgroup" type="text" inputmode="numeric" placeholder="2">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Timeslot</span>
+              <select class="picker__input" id="zello-timeslot">
+                <option value="1">1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+          </div>
+          <label class="toggle">
+            <input class="toggle__input" id="zello-permit-all" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="zello-permit-all-state">Off</span>
+            <span>Every repeater on this server has agreed</span>
+          </label>
+          <label class="picker__field">
+            <span class="picker__label">Repeaters that have agreed</span>
+            <input class="picker__input picker__input--wide" id="zello-permit" type="text" inputmode="numeric" placeholder="312345, 315544">
+            <p class="field__note">Repeater IDs, separated by commas.</p>
+          </label>
+          <p class="acl__state" id="zello-peers-now"></p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">4. The connector</h2>
+            <button class="hint" type="button" aria-controls="hint-connector" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-connector">
+          <p class="hint__text"><strong>qsp-zello is a separate program</strong> because Zello's audio codec is a C library QSP does not include. It holds no password and no key: it asks QSP for a logon every time it connects. The two talk over two local ports, and the connector's file below is generated from these settings, so it cannot disagree with them.</p>
+        </div>
+        <div class="panel__body">
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">QSP listens for Zello audio on</span>
+              <input class="picker__input" id="zello-usrp-listen" type="text" spellcheck="false" placeholder="127.0.0.1:32001">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">The connector listens on</span>
+              <input class="picker__input" id="zello-usrp-peer" type="text" spellcheck="false" placeholder="127.0.0.1:32002">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Logon socket</span>
+              <input class="picker__input picker__input--wide" id="zello-socket" type="text" spellcheck="false" placeholder="/run/qsp/zello.sock">
+              <p class="field__note">Leave the default on a service install.</p>
+            </label>
+          </div>
+          <div class="copyblock">
+            <div class="copyblock__head">
+              <p class="copyblock__label">Save as /var/lib/qsp/qsp-zello.json</p>
+              <button class="copyblock__copy" type="button" data-copy="zello-connector-config">
+                <svg class="copyblock__icon copyblock__icon--idle" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/><path d="M10.5 3.5a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V10a1.5 1.5 0 0 0 1.5 1.5"/></svg><svg class="copyblock__icon copyblock__icon--done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5 6.2 12 13 4.5"/></svg>
+                <span class="copyblock__word">Copy</span>
+              </button>
+            </div>
+            <pre class="copyblock__text" id="zello-connector-config"></pre>
+          </div>
+          <div class="copyblock">
+            <div class="copyblock__head">
+              <p class="copyblock__label">Then, on this server</p>
+              <button class="copyblock__copy" type="button" data-copy="zello-connector-commands">
+                <svg class="copyblock__icon copyblock__icon--idle" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="5.5" y="5.5" width="8" height="9" rx="1.5"/><path d="M10.5 3.5a1.5 1.5 0 0 0-1.5-1.5H4a1.5 1.5 0 0 0-1.5 1.5V10a1.5 1.5 0 0 0 1.5 1.5"/></svg><svg class="copyblock__icon copyblock__icon--done" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 8.5 6.2 12 13 4.5"/></svg>
+                <span class="copyblock__word">Copy</span>
+              </button>
+            </div>
+            <pre class="copyblock__text" id="zello-connector-commands">sudo qsp-zello -config /var/lib/qsp/qsp-zello.json -check
+sudo systemctl enable --now qsp-zello
+sudo systemctl restart qsp</pre>
+          </div>
+          <p class="acl__hint">
+            Changing any setting on this page needs a restart of QSP. The save
+            says which, and what to run.
+          </p>
+        </div>
+      </section>
+
+      <div class="page__actions">
+        <button class="button" id="save" type="button">Save changes</button>
+        <button class="button button--quiet" id="revert" type="button">Discard changes</button>
+      </div>
+
+    </div>
+  </main>
+
+</div>
+
+<script src="/nav.js"></script>
+<script src="/hints.js"></script>
+<script src="/zello.js"></script>
+</body>
+</html>

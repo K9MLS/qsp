@@ -62,6 +62,7 @@ type connector struct {
 	mu        sync.Mutex
 	state     string
 	detail    string
+	channel   string // as QSP last handed it out
 	since     time.Time
 	connected atomic.Uint64
 	discarded atomic.Uint64 // USRP frames that arrived with no Zello session
@@ -162,7 +163,7 @@ func (c *connector) once(ctx context.Context, frames <-chan audio.Frame, radio z
 	s, err := c.dial(ctx, zello.Options{
 		Endpoint: c.cfg.Endpoint, AuthToken: logon.Token,
 		Username: logon.Username, Password: logon.Password,
-		Channel: c.cfg.Channel, Log: c.log,
+		Channel: logon.Channel, Log: c.log,
 	})
 	if err != nil {
 		return err
@@ -175,8 +176,11 @@ func (c *connector) once(ctx context.Context, frames <-chan audio.Frame, radio z
 	defer br.Close()
 
 	c.connected.Add(1)
+	c.mu.Lock()
+	c.channel = logon.Channel
+	c.mu.Unlock()
 	c.setState(stateConnected, "")
-	c.log.Info("connected to Zello", slog.String("channel", c.cfg.Channel))
+	c.log.Info("connected to Zello", slog.String("channel", logon.Channel))
 	c.pump(ctx, s, br, frames)
 	return nil
 }

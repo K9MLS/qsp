@@ -36,6 +36,8 @@ type Options struct {
 	Issuer string
 	// Audience is the token's azp claim. Empty selects zello.TokenAudience.
 	Audience string
+	// Channel is the Zello channel the connector should join.
+	Channel string
 	// Log records what happened. Nil logs nothing.
 	Log *slog.Logger
 	// allowPeer decides whether a connecting process may be served. Nil
@@ -69,6 +71,9 @@ func Listen(opts Options) (*Server, error) {
 	}
 	if strings.TrimSpace(opts.Issuer) == "" {
 		return nil, errors.New("zellologon: no issuer; give zello.issuer from the developer portal")
+	}
+	if strings.TrimSpace(opts.Channel) == "" {
+		return nil, errors.New("zellologon: no channel; give zello.channel")
 	}
 	if opts.allowPeer == nil {
 		opts.allowPeer = samePeerUser
@@ -182,7 +187,8 @@ func (s *Server) logon(ctx context.Context) (Logon, *Error) {
 	if err != nil {
 		return Logon{}, &Error{Kind: KindUnusable, Message: err.Error()}
 	}
-	return Logon{Token: token, Username: values[UsernameName], Password: values[PasswordName]}, nil
+	return Logon{Token: token, Username: values[UsernameName], Password: values[PasswordName],
+		Channel: s.opts.Channel}, nil
 }
 
 func (s *Server) write(conn net.Conn, r reply) {

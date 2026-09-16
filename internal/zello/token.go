@@ -121,6 +121,17 @@ const MinimumKeyBits = 2048
 // `BEGIN PRIVATE KEY` against `BEGIN RSA PRIVATE KEY` — and an operator
 // pasting whichever their tool produced should not have to know which they
 // have.
+// CheckPrivateKey reports whether text is a private key a token can be signed
+// with, and if not, why — in the words NewSigner would use at the first logon.
+//
+// It exists so the console can refuse a bad paste when it is entered. A key
+// that fails only at the first connection fails at two in the morning, in a
+// log nobody is reading, as a connector that "cannot log on".
+func CheckPrivateKey(text string) error {
+	_, err := parseRSAPrivateKey(text)
+	return err
+}
+
 func parseRSAPrivateKey(text string) (*rsa.PrivateKey, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {

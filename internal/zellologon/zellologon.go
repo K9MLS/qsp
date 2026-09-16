@@ -38,6 +38,9 @@ type Logon struct {
 	Token    string `json:"token"`
 	Username string `json:"username"`
 	Password string `json:"password"`
+	// Channel travels with the logon so the connector's own file holds
+	// nothing an operator changes; it is set on QSP's Zello page.
+	Channel string `json:"channel"`
 }
 
 // Kinds of refusal, so the connector can say which action an operator needs.

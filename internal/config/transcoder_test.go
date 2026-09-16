@@ -400,3 +400,39 @@ func TestTheUSRPListenAddressIsAListener(t *testing.T) {
 		t.Error("a USRP socket on the DMR listener's own port validated")
 	}
 }
+
+// TestAPausedBridgeMayNameAPausedTranscoder: switching Zello off on its page
+// disables both, and must not have to delete the bridge — and with it the
+// talkgroup and repeaters an operator chose.
+//
+// To see it bite: delete the paused-bridge case in Validate.
+func TestAPausedBridgeMayNameAPausedTranscoder(t *testing.T) {
+	tests := []struct {
+		name          string
+		bridgeOn      bool
+		transcoderOn  bool
+		transcoderSet bool
+		wantRefusal   bool
+	}{
+		{"both on", true, true, true, false},
+		{"both paused", false, false, true, false},
+		{"a live bridge to a paused transcoder is still refused", true, false, true, true},
+		{"a paused bridge to a transcoder that does not exist is still refused", false, false, false, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := withTranscoder(t, func(c *Config) {
+				c.DMR.Transcoders[0].Enabled = tc.transcoderOn
+				c.DMR.Bridges[0].Enabled = tc.bridgeOn
+				if !tc.transcoderSet {
+					c.DMR.Transcoders = nil
+				}
+			})
+			err := c.Validate()
+			refused := err != nil && strings.Contains(err.Error(), "does not match any enabled transcoder")
+			if refused != tc.wantRefusal {
+				t.Fatalf("refused = %v, want %v: %v", refused, tc.wantRefusal, err)
+			}
+		})
+	}
+}

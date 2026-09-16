@@ -208,16 +208,17 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// **A logon socket with nowhere to read credentials from is refused at
 	// startup**, not served as a stream of refusals: an operator who set
 	// zello.logon_socket meant the connector to work.
-	if sock := strings.TrimSpace(cfg.Zello.LogonSocket); sock != "" {
+	if sock := strings.TrimSpace(cfg.Zello.LogonSocket); cfg.Zello.Enabled {
 		if a.secrets == nil {
-			return nil, fmt.Errorf("zello.logon_socket is set and there is no database to keep " +
-				"the Zello credentials in; configure database.dsn or remove zello.logon_socket")
+			return nil, fmt.Errorf("zello is on and there is no database to keep the Zello " +
+				"credentials in; configure database.dsn, or switch Zello off on the Zello page")
 		}
 		srv, zerr := zellologon.Listen(zellologon.Options{
 			SocketPath: sock,
 			Store:      a.secrets,
 			Issuer:     cfg.Zello.Issuer,
 			Audience:   cfg.Zello.Audience,
+			Channel:    cfg.Zello.Channel,
 			Log:        log,
 		})
 		if zerr != nil {

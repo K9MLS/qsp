@@ -684,13 +684,18 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the console: %v", err)
 	}
-	script, err := fs.ReadFile(assets, "network.js")
-	if err != nil {
-		t.Fatalf("reading network.js: %v", err)
-	}
-	page, err := fs.ReadFile(assets, "network.html")
-	if err != nil {
-		t.Fatalf("reading network.html: %v", err)
+	// **Where each section's switch lives.** Network settings by default.
+	// Zello has a page of its own because switching it on is the last of a
+	// sequence — credentials, a vocoder, the repeaters that agreed — and a
+	// toggle on the network page would invite switching on something that
+	// cannot yet work. The rule is unchanged: some page must read and write it.
+	pageFor := map[string]string{"zello": "zello"}
+	read := func(name string) string {
+		b, err := fs.ReadFile(assets, name)
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		return string(b)
 	}
 
 	// **Exempt, with the reason recorded rather than assumed.** A list like
@@ -724,15 +729,21 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 		}
 		checked++
 
+		base := "network"
+		if p, ok := pageFor[name]; ok {
+			base = p
+		}
+		page, script := read(base+".html"), read(base+".js")
+
 		// Read: the page must have a control, and the script must set it from
 		// the loaded configuration.
-		if !strings.Contains(string(page), `id="`+name+`-enabled"`) {
-			t.Errorf("configuration section %q can be enabled, and network.html has no "+
-				"control for it — the setting exists and no operator can reach it", name)
+		if !strings.Contains(page, `id="`+name+`-enabled"`) {
+			t.Errorf("configuration section %q can be enabled, and %s.html has no "+
+				"control for it — the setting exists and no operator can reach it", name, base)
 		}
 		// Write: the script must put it back, or the control is decoration.
-		if !strings.Contains(string(script), "next."+name+".enabled") {
-			t.Errorf("network.js never writes %s.enabled, so the control cannot save", name)
+		if !strings.Contains(script, "next."+name+".enabled") {
+			t.Errorf("%s.js never writes %s.enabled, so the control cannot save", base, name)
 		}
 	}
 

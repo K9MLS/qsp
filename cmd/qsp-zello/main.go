@@ -51,7 +51,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	log.Info("starting", slog.String("version", buildinfo.Version),
-		slog.String("channel", cfg.Channel), slog.String("logon_socket", cfg.LogonSocket))
+		slog.String("logon_socket", cfg.LogonSocket))
 
 	if err := run(ctx, cfg, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("stopped", slog.String("error", err.Error()))

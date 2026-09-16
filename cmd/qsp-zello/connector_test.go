@@ -87,10 +87,10 @@ func realBridge(s session, r zellobridge.Radio) (bridge, error) {
 func testConnector(t *testing.T, s *fakeSession) *connector {
 	t.Helper()
 	return &connector{
-		cfg: Config{Channel: "K9MLS Gateway"},
+		cfg: Config{},
 		log: slog.New(slog.DiscardHandler),
 		fetch: func(context.Context) (zellologon.Logon, error) {
-			return zellologon.Logon{Token: "t", Username: "u", Password: "p"}, nil
+			return zellologon.Logon{Token: "t", Username: "u", Password: "p", Channel: "K9MLS Gateway"}, nil
 		},
 		dial:  func(context.Context, zello.Options) (session, error) { return s, nil },
 		newBr: realBridge,
@@ -293,7 +293,7 @@ func TestAReasonToStopBecomesAStateAndAWait(t *testing.T) {
 func TestMissingCredentialsNeverReachZello(t *testing.T) {
 	dialled := false
 	c := &connector{
-		cfg: Config{Channel: "c"}, log: slog.New(slog.DiscardHandler),
+		cfg: Config{}, log: slog.New(slog.DiscardHandler),
 		fetch: func(context.Context) (zellologon.Logon, error) {
 			return zellologon.Logon{}, &zellologon.Error{Kind: zellologon.KindMissing, Message: "the credential \"zello-password\" has not been entered"}
 		},

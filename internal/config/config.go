@@ -806,10 +806,13 @@ type Transcoder struct {
 //
 // **No secret lives here.** The private key, username and password are in the
 // credential store under names fixed in internal/zellologon; this block says
-// where to serve a logon and which key pair signs it.
+// whether to serve a logon, where, which key pair signs it and which channel
+// it is for. Set from the console's Zello page.
 type Zello struct {
-	// LogonSocket is the Unix socket qsp-zello asks for a logon on. Empty
-	// serves nothing, which is every server not running the connector.
+	// Enabled serves logons. Off keeps every other value, so pausing Zello
+	// does not mean entering it all again.
+	Enabled bool `json:"enabled"`
+	// LogonSocket is the Unix socket qsp-zello asks for a logon on.
 	LogonSocket string `json:"logon_socket,omitempty"`
 	// Issuer is the issuer string from Zello's developer portal. It names the
 	// key pair rather than being one, so it is configuration.
@@ -818,7 +821,15 @@ type Zello struct {
 	// developer token carries; whether production needs another is settled
 	// by the first real logon (docs/ZELLO.md).
 	Audience string `json:"audience,omitempty"`
+	// Channel is the Zello channel, joined in the Zello app first. It is
+	// handed to the connector with the logon, so everything an operator
+	// changes about Zello is in one place.
+	Channel string `json:"channel,omitempty"`
 }
+
+// DefaultZelloLogonSocket is where a service install puts the socket:
+// qsp.service's RuntimeDirectory.
+const DefaultZelloLogonSocket = "/run/qsp/zello.sock"
 
 // DefaultTranscoderRate is the rate index used when a transcoder names none.
 const DefaultTranscoderRate = 33
@@ -1215,19 +1226,28 @@ func (v *validator) positiveDuration(field string, value Duration, fix string) {
 func (c Config) Validate() error {
 	v := &validator{}
 
-	// The Zello logon socket. Checked here rather than at startup so -check
-	// catches it; whether the directory exists is the network-free kind of
-	// question validation still leaves to startup.
-	if sock := strings.TrimSpace(c.Zello.LogonSocket); sock != "" {
-		if !filepath.IsAbs(sock) {
+	// Zello. Checked only when on, so a paused configuration keeps whatever
+	// was entered without having to be complete.
+	if c.Zello.Enabled {
+		sock := strings.TrimSpace(c.Zello.LogonSocket)
+		switch {
+		case sock == "":
+			v.add("zello.logon_socket", "must not be empty when Zello is on",
+				"use "+DefaultZelloLogonSocket+" on a service install")
+		case !filepath.IsAbs(sock):
 			v.add("zello.logon_socket", fmt.Sprintf("%q is not an absolute path", c.Zello.LogonSocket),
-				"give a path such as \"/run/qsp/zello.sock\"; a relative one depends on the "+
-					"directory QSP was started from")
+				"give a path such as \""+DefaultZelloLogonSocket+"\"; a relative one depends on "+
+					"the directory QSP was started from")
 		}
 		if strings.TrimSpace(c.Zello.Issuer) == "" {
-			v.add("zello.issuer", "must not be empty when zello.logon_socket is set",
+			v.add("zello.issuer", "must not be empty when Zello is on",
 				"copy the issuer string from Zello's developer portal; it names the key pair "+
 					"and is not a secret")
+		}
+		if strings.TrimSpace(c.Zello.Channel) == "" {
+			v.add("zello.channel", "must not be empty when Zello is on",
+				"give the channel's name exactly as Zello shows it, and join it in the Zello "+
+					"app with the gateway's account first")
 		}
 	}
 
@@ -1507,6 +1527,7 @@ func (c Config) Validate() error {
 		// address. A talkgroup bridged to a vocoder that was never
 		// configured is the same fault with a different name on it.
 		vocoders := map[string]bool{}
+		configuredVocoders := map[string]bool{}
 		reachedVocoder := map[string]bool{}
 		for i, t := range c.DMR.Transcoders {
 			tf := fmt.Sprintf("dmr.transcoders[%d]", i)
@@ -1519,6 +1540,7 @@ func (c Config) Validate() error {
 				v.add(tf+".name", fmt.Sprintf("%q is used by more than one transcoder", t.Name),
 					"transcoder names must be unique; rename one of them")
 			default:
+				configuredVocoders[key] = true
 				if t.Enabled {
 					vocoders[key] = true
 				}
@@ -1659,6 +1681,11 @@ func (c Config) Validate() error {
 				case strings.TrimSpace(e.Upstream) != "":
 					v.add(ef, "names both a link and a transcoder",
 						"an endpoint is one kind; set one of peer, upstream or transcoder")
+				case !vocoders[vocoder] && !b.Enabled && configuredVocoders[vocoder]:
+					// **A paused bridge may name a paused transcoder.** It
+					// carries nothing either way, and refusing it meant that
+					// switching Zello off had to delete the bridge — and the
+					// talkgroup an operator had chosen with it.
 				case !vocoders[vocoder]:
 					v.add(ef+".transcoder", fmt.Sprintf("%q does not match any enabled transcoder", e.Transcoder),
 						"check the spelling against dmr.transcoders, and that it is enabled")

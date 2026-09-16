@@ -6,6 +6,33 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A Zello page in the console** (Administration → Zello), written for
+  somebody who has just installed QSP. It lists what must be done outside QSP
+  first, keeps a checklist read from the health report — serving logons,
+  credentials stored, vocoder reachable, audio both ways — and walks the setup
+  in order: the account, the vocoder, what Zello carries, the connector.
+
+  **Credentials are stored write-only** through the existing credential API,
+  which until now no page called: the page shows whether each is stored and
+  when it changed, clears a box the moment its value is stored, and marks the
+  password field so a browser does not fill in the console's own password. A
+  private key that cannot sign is refused as it is entered, with the parser's
+  reason.
+
+  **The repeaters that hear Zello are written one endpoint each.** Routing
+  withholds transcoded audio from an every-peer endpoint unless every peer has
+  agreed, so a bridge written that way with a list would have carried nothing.
+
+  **The channel moved into QSP** and travels with the logon; `qsp-zello.json`
+  now holds only where to reach QSP, and the page generates it. `zello.enabled`
+  switches the whole thing, and off keeps every value — a paused bridge may now
+  name a paused transcoder, where before switching off meant deleting the
+  bridge and the talkgroup with it.
+
+  Driven in jsdom as a new user — an incomplete save refused step by step, a
+  password stored and cleared, a save, a pause — and both saved configurations
+  accepted by the real `qsp -check`.
+
 - **`qsp-zello`, the Zello connector** (`cmd/qsp-zello`, behind the `zello`
   build tag). It carries audio between one Zello channel and a QSP transcoder
   over USRP, reconnects with backoff, and serves a loopback `/healthz` whose
