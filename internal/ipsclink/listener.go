@@ -289,16 +289,16 @@ func (l *Listener) endCall(p *Peer, at time.Time, reason endReason) {
 	duration := at.Sub(c.Started).Round(time.Millisecond)
 	switch reason {
 	case endTerminated:
-		l.log.Info("call ended", "radio_id", p.RadioID, "source", c.Source,
+		l.log.Info("call ended", logging.PeerID(p.RadioID), logging.SourceRadio(c.Source),
 			"frames", c.Frames, "converted", c.Converted,
 			"delivered", c.Delivered, "duration", duration)
 	case endSilent:
-		l.log.Warn("call ended without a terminator", "radio_id", p.RadioID,
-			"source", c.Source, "frames", c.Frames, "converted", c.Converted,
+		l.log.Warn("call ended without a terminator", logging.PeerID(p.RadioID),
+			logging.SourceRadio(c.Source), "frames", c.Frames, "converted", c.Converted,
 			"delivered", c.Delivered, "duration", duration)
 	case endTooLong:
 		l.log.Warn("call exceeded the longest transmission QSP will report",
-			"radio_id", p.RadioID, "source", c.Source, "frames", c.Frames,
+			logging.PeerID(p.RadioID), logging.SourceRadio(c.Source), "frames", c.Frames,
 			"duration", duration, "limit", MaxCallDuration.String())
 	}
 }
@@ -652,7 +652,7 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 	}
 	for _, id := range relayedTo {
 		attrs := []any{
-			"radio_id", id, "source", frame.SourceID,
+			logging.PeerID(id), logging.SourceRadio(frame.SourceID),
 			"destination", uint32(frame.TargetID),
 			"private", frame.CallType == hbp.CallPrivate,
 			"stream", fmt.Sprintf("%#08x", uint32(frame.StreamID)),
@@ -671,7 +671,7 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 			continue
 		}
 		l.log.Warn("nothing to relay: the frame could not be read",
-			"radio_id", id, "source", frame.SourceID,
+			logging.PeerID(id), logging.SourceRadio(frame.SourceID),
 			"destination", uint32(frame.TargetID),
 			"frame_type", int(frame.FrameType), "data_type", int(frame.DataType))
 	}
@@ -989,7 +989,7 @@ func (l *Listener) record(msg ipsc.Message, from *net.UDPAddr, now time.Time) ([
 		// counters start again rather than carrying a previous life's totals
 		// into a new one.
 		if !known || !p.Registered.IsZero() {
-			l.log.Info("peer registered", "radio_id", msg.SenderID, "from", from.String())
+			l.log.Info("peer registered", logging.PeerID(msg.SenderID), "from", from.String())
 		}
 		p.Registered = now
 		p.Keepalives = 0
@@ -1096,7 +1096,7 @@ func (l *Listener) recordText(p *Peer, msg ipsc.Message, now time.Time) {
 	// working perfectly.
 	if !p.ColourCodeKnown || p.ColourCode != t.ColourCode {
 		if !p.ColourCodeKnown {
-			l.log.Info("learned a peer's colour code", "radio_id", p.RadioID,
+			l.log.Info("learned a peer's colour code", logging.PeerID(p.RadioID),
 				"colour_code", int(t.ColourCode), "from", "text")
 		}
 		p.ColourCode, p.ColourCodeKnown = t.ColourCode, true
@@ -1133,7 +1133,7 @@ func (l *Listener) recordText(p *Peer, msg ipsc.Message, now time.Time) {
 		LastFrame:   now,
 		Frames:      1,
 	}
-	l.log.Info("text", "radio_id", p.RadioID, "source", t.Source,
+	l.log.Info("text", logging.PeerID(p.RadioID), logging.SourceRadio(t.Source),
 		"destination", t.Destination, "private", t.Private,
 		"timeslot", int(slot),
 		"stream", fmt.Sprintf("%#04x", t.StreamID))
@@ -1149,7 +1149,7 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) ([]hbp.
 
 	if cc, ok := msg.ColourCode(); ok && (!p.ColourCodeKnown || p.ColourCode != cc) {
 		if !p.ColourCodeKnown {
-			l.log.Info("learned a peer's colour code", "radio_id", p.RadioID,
+			l.log.Info("learned a peer's colour code", logging.PeerID(p.RadioID),
 				"colour_code", int(cc))
 		}
 		p.ColourCode, p.ColourCodeKnown = cc, true
@@ -1184,7 +1184,7 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) ([]hbp.
 		// journal. Logging only the interpretation would make the log agree
 		// with the setting whether or not the setting is right.
 		bit, _ := msg.SlotBit()
-		l.log.Info("call started", "radio_id", p.RadioID, "source", v.SourceID,
+		l.log.Info("call started", logging.PeerID(p.RadioID), logging.SourceRadio(v.SourceID),
 			"destination", v.Destination, "private", v.Private,
 			"timeslot", int(slot), "slot_bit", bit,
 			"stream", fmt.Sprintf("%#04x", v.StreamID))
@@ -1266,7 +1266,7 @@ func (l *Listener) ExpireAt(now time.Time) int {
 		delete(l.bridges, id)
 		delete(l.encoders, id)
 		dropped++
-		l.log.Info("peer timed out", "radio_id", id, "silent_for",
+		l.log.Info("peer timed out", logging.PeerID(id), "silent_for",
 			now.Sub(p.LastHeard).Round(time.Second))
 	}
 	if dropped > 0 {

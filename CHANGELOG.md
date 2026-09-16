@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An IPSC peer was logged as `radio_id` while every other subsystem calls a
+  peer `peer_id`** — the mirror of the fault corrected in `internal/peers` on
+  the same day. `Peer.RadioID` in that listener is a repeater's own identifier,
+  and it went out under a key that everywhere else means the radio that keyed
+  up. One concept, two names, depending on which listener answered.
+
+  **The root cause was raw string keys.** `internal/logging` says subsystems
+  must use the helper constructors, and this file wrote literals — which is
+  exactly how a key drifts. It now goes through `logging.PeerID` and
+  `logging.SourceRadio`.
+
+  `radio_id` stays in `internal/callsigns` and the join endpoint, where it
+  really is a radio being looked up.
+
+  **Nothing gated it on either side.** The `internal/peers` fix passed every
+  test in the tree before its own test was written, and so did this one. Both
+  are covered now, and this one is driven through the real listener rather than
+  asserted against the source.
+
+### Documentation
+
+- **`HANDOVER.md` rewritten for a fresh session.** It had accumulated **three
+  separate sections titled "The dongle, proven"** from successive layered
+  edits, and still opened by naming versions neither server had run since
+  before the deploy.
+
+  The Zello state is now one statement — everything is built, nothing has
+  spoken to Zello — with what is proved on hardware, what is proved without it,
+  what is left to build, and what is needed from the operator each in one
+  place. The deploy procedure is recorded as it is actually done, including the
+  copy-aside step that was learned by not doing it, and the ETSI WAF trap
+  beside the AMBE manual's.
+
+
 ### Documentation
 
 - **Both servers are on 0.1.233, and the handover said 0.1.193.** Production

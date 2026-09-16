@@ -723,3 +723,53 @@ func TestRelayingToARepeaterIsReported(t *testing.T) {
 			n, frames, got)
 	}
 }
+
+// TestAPeerIsLoggedAsAPeerAndARadioAsASource closes the other half of a
+// labelling fix made on 2026-09-15.
+//
+// `internal/peers` had a radio ID under `peer_id`, and it was corrected there.
+// **This listener had the mirror image**: `Peer.RadioID` is a repeater's own
+// identifier — the thing every other subsystem calls `peer_id` — and it was
+// logged as `radio_id`, while the radio that keyed up was already `source`.
+// One concept, two names, depending on which listener answered.
+//
+// The root cause was that this file wrote raw string keys while
+// `internal/logging` says subsystems must use the helper constructors, which
+// is exactly how a key drifts. It now goes through them.
+//
+// **Nothing gated it before**, on either side: the peers fix passed every test
+// in the tree before its own test was written, and so did this one.
+func TestAPeerIsLoggedAsAPeerAndARadioAsASource(t *testing.T) {
+	journal := &syncBuffer{}
+	l, conn := startLogging(t, ipsclink.Config{},
+		logging.New(journal, logging.Options{Level: slog.LevelInfo, Format: logging.FormatJSON}))
+
+	send(t, conn, ipsc.KindRegisterRequest, peerID, registerBody())
+	expectReply(t, conn, ipsc.KindRegisterReply)
+	waitForJournal(t, journal, "peer registered")
+
+	voiceFrames(t, conn, 0x3360, 2)
+	waitForCall(t, l, 2)
+	waitForJournal(t, journal, "call started")
+
+	got := journal.String()
+
+	// The repeater goes under peer_id, as it does everywhere else.
+	if !strings.Contains(got, `"peer_id":`) {
+		t.Errorf("no peer_id appears in the journal; a repeater is a peer and "+
+			"every other subsystem names it so:\n%s", got)
+	}
+	// And never under radio_id, which is the drift this closes. The key is
+	// still correct in internal/callsigns, where it really is a radio being
+	// looked up — this is about a peer.
+	if strings.Contains(got, `"radio_id":`) {
+		t.Errorf("a peer is still logged as radio_id, so an IPSC peer and a "+
+			"Homebrew peer appear under different keys:\n%s", got)
+	}
+	// The radio that keyed up keeps source, which survives relaying while a
+	// peer ID does not.
+	if !strings.Contains(got, `"source":`) {
+		t.Errorf("no source appears in the journal; the radio that keyed up is "+
+			"what an operator searches for:\n%s", got)
+	}
+}
