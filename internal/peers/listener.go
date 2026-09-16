@@ -93,6 +93,11 @@ type ListenerConfig struct {
 	// direction and is recorded as an exception in ADR-0041, not as a
 	// discovery.
 	IPSC func(origin uint32, frame hbp.Data)
+	// IPSCTo sends a frame to one Motorola repeater, and IPSCPeers lists the
+	// connected ones. Used for transcoded audio, which goes only to the
+	// repeaters that agreed; set by SetIPSCTargets.
+	IPSCTo    func(target uint32, frame hbp.Data) error
+	IPSCPeers func() []uint32
 
 	// Calls observes transmissions. Optional; nil disables call tracking.
 	//
@@ -603,17 +608,14 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 
 // DeliverFromTranscoder routes a burst built from a vocoder channel's audio.
 //
-// The shape of DeliverFromUpstream, with one path deliberately missing.
+// Homebrew peers are reached through routing, which applies the transcoder's
+// permission. Motorola repeaters are reached here, against the same
+// permission, because routing does not resolve them.
 //
-// **Transcoded audio is not offered to the Motorola repeaters.** Every other
-// ingress ends in sendToIPSC, which hands the frame to every IPSC repeater
-// with no per-repeater check — a Motorola repeater filters by its own codeplug
-// and QSP cannot see that. ADR-0062 requires that a repeater owner opt in
-// before audio from a possibly unlicensed Zello user reaches their machine, and
-// routing's permission applies only to the Homebrew peers it resolves. Copying
-// DeliverFromUpstream whole would have put that audio on every Motorola
-// repeater on the network. It reaches them when the permission reaches them,
-// and not before.
+// **Until 2026-09-16 transcoded audio was offered to no Motorola repeater at
+// all.** The only IPSC path then was SendVoice, which reaches every repeater
+// with no per-repeater check, so honouring the opt-in meant withholding from
+// all of them — and a repeater whose owner had agreed never keyed up.
 func (l *Listener) DeliverFromTranscoder(transcoder string, frame hbp.Data) {
 	if l.cfg.Routing == nil {
 		return
@@ -623,14 +625,52 @@ func (l *Listener) DeliverFromTranscoder(transcoder string, frame hbp.Data) {
 	l.observe(0, frame)
 	res := l.cfg.Routing.RouteFromTranscoder(transcoder, frame, time.Now())
 	l.deliver(0, res)
-	if l.cfg.IPSC != nil && l.noteRoutingDrop(routing.Drop{
-		To:     routing.Endpoint{Transcoder: transcoder},
-		Reason: "transcoded audio is not offered to Motorola repeaters",
-	}) {
-		l.log.Info("transcoded audio is not offered to Motorola repeaters",
-			slog.String("transcoder", transcoder),
-			slog.String("reason", "the per-repeater opt-in does not reach IPSC repeaters yet"))
+	l.offerTranscodedToIPSC(transcoder, frame)
+}
+
+// offerTranscodedToIPSC sends transcoded audio to the Motorola repeaters the
+// transcoder's permission covers: every connected one when all agreed, or the
+// listed IDs that are connected Motorola repeaters.
+func (l *Listener) offerTranscodedToIPSC(transcoder string, frame hbp.Data) {
+	if l.cfg.IPSCTo == nil {
+		return
 	}
+	perm := l.cfg.Routing.TranscoderPermission(transcoder)
+	var targets []uint32
+	switch {
+	case perm.All && l.cfg.IPSCPeers != nil:
+		targets = l.cfg.IPSCPeers()
+	case !perm.All:
+		for _, id := range perm.Peers {
+			if id != 0 {
+				targets = append(targets, uint32(id))
+			}
+		}
+	}
+	for _, id := range targets {
+		err := l.cfg.IPSCTo(id, frame)
+		if err == nil {
+			continue
+		}
+		// Once per repeater and reason: a busy slot refuses every frame of
+		// the transmission, and the first line says it all.
+		if l.noteRoutingDrop(routing.Drop{To: routing.Endpoint{Peer: hbp.RepeaterID(id), Transcoder: transcoder},
+			Reason: err.Error()}) {
+			l.log.Info("transcoded audio not sent to a Motorola repeater",
+				slog.String("transcoder", transcoder),
+				slog.Uint64("repeater", uint64(id)),
+				slog.String("reason", err.Error()))
+		}
+	}
+}
+
+// SetIPSCTargets wires targeted sends to Motorola repeaters after
+// construction, as SetIPSCSink does for relaying. send must return nil for an
+// ID that is not a connected Motorola repeater: a permission list names
+// Homebrew peers too, and those are not failures.
+func (l *Listener) SetIPSCTargets(send func(target uint32, frame hbp.Data) error, peers func() []uint32) {
+	l.cfg.IPSCTo = send
+	l.cfg.IPSCPeers = peers
 }
 
 // DeliverFromIPSC routes a burst converted from a Motorola repeater's audio.

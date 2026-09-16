@@ -4,6 +4,22 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **Zello audio reaches Motorola repeaters whose owners agreed.** It was
+  withheld from every IPSC repeater, because the only path to them offered a
+  frame to all of them with no per-repeater check, so honouring the opt-in
+  meant nobody got it — and a Motorola repeater whose owner had agreed never
+  keyed up for a Zello reply. It now goes to each Motorola repeater the Zello
+  page's permission covers: every connected one when "every repeater has
+  agreed", or the listed IDs. An ID that is a Homebrew peer is reached through
+  routing as before.
+
+  **One transmission per repeater timeslot.** QSP keeps one encoder per
+  Motorola repeater, so a transmission sent to one does not start while that
+  repeater's slot is carrying another; a terminator frees the slot at once, a
+  lost one after a second. Refused frames are logged once per repeater.
+
 ### Fixed
 
 - **A link stopped for good when its far end blinked.** Both the outbound

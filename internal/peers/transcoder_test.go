@@ -75,38 +75,97 @@ func TestTranscoderDeliveriesReachTheSenderAndFailuresAreSaidOnce(t *testing.T) 
 	}
 }
 
-// TestTranscodedAudioIsNeverOfferedToMotorolaRepeaters.
+// TestTranscodedAudioReachesTheMotorolaRepeatersThatAgreed.
 //
-// Every other ingress ends in sendToIPSC, which reaches every IPSC repeater
-// with no permission check. A Zello user's audio must not.
+// Until 2026-09-16 transcoded audio went to no Motorola repeater, and a Zello
+// user was never heard on a repeater whose owner had agreed. It goes to the
+// ones the transcoder's permission covers, and no others.
 //
-// To see it bite: add `l.sendToIPSC(0, frame, res)` to DeliverFromTranscoder.
-func TestTranscodedAudioIsNeverOfferedToMotorolaRepeaters(t *testing.T) {
-	table, err := routing.NewTable([]routing.Bridge{{Name: "zello", Enabled: true, Endpoints: []routing.Endpoint{
+// To see rows fail, break the implementation deliberately:
+//   - make offerTranscodedToIPSC send to IPSCPeers() whatever the permission:
+//     "a list" also reaches 315000, which never agreed
+//   - put back the early return that withheld from all Motorola repeaters:
+//     every row that wants a send fails
+func TestTranscodedAudioReachesTheMotorolaRepeatersThatAgreed(t *testing.T) {
+	const (
+		blake  = uint32(315544)
+		other  = uint32(315000)
+		hotspt = uint32(3132910) // a Homebrew peer, not a Motorola repeater
+	)
+	tests := []struct {
+		name     string
+		perm     routing.Permission
+		want     []uint32
+		wantLogs int
+	}{
+		{"every repeater agreed", routing.Permission{All: true}, []uint32{blake, other}, 0},
+		{"a list naming one Motorola repeater", routing.Permission{Peers: []hbp.RepeaterID{hbp.RepeaterID(blake)}}, []uint32{blake}, 0},
+		{"a list naming only a Homebrew peer", routing.Permission{Peers: []hbp.RepeaterID{hbp.RepeaterID(hotspt)}}, nil, 0},
+		{"nobody agreed", routing.Permission{}, nil, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			table, err := routing.NewTable([]routing.Bridge{{Name: "zello", Enabled: true, Endpoints: []routing.Endpoint{
+				{Peer: routing.AnyPeer, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+				{Transcoder: "dvstick", Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			}}}, routing.WithPermissions(map[string]routing.Permission{"dvstick": tc.perm}))
+			if err != nil {
+				t.Fatalf("building a table: %v", err)
+			}
+			core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: noPeers{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			l, buf := journal()
+			l.cfg.Routing = core
+			sent := map[uint32]int{}
+			l.SetIPSCTargets(func(target uint32, _ hbp.Data) error {
+				if target != blake && target != other {
+					return nil // what the app's wrapper does with ErrNoSuchPeer
+				}
+				sent[target]++
+				return nil
+			}, func() []uint32 { return []uint32{blake, other} })
+
+			for range 20 {
+				l.DeliverFromTranscoder("dvstick", hbp.Data{SourceID: 3155408, TargetID: 2,
+					Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: 5})
+			}
+			for _, id := range tc.want {
+				if sent[id] != 20 {
+					t.Errorf("repeater %d received %d of 20 frames", id, sent[id])
+				}
+			}
+			if len(sent) != len(tc.want) {
+				t.Errorf("sent to %v, want only %v", sent, tc.want)
+			}
+			if n := strings.Count(buf.String(), "not sent to a Motorola repeater"); n != tc.wantLogs {
+				t.Errorf("logged %d refusals, want %d", n, tc.wantLogs)
+			}
+		})
+	}
+}
+
+// TestABusyMotorolaSlotIsSaidOnce: every frame of the transmission is refused,
+// and one line says so.
+func TestABusyMotorolaSlotIsSaidOnce(t *testing.T) {
+	table, _ := routing.NewTable([]routing.Bridge{{Name: "zello", Enabled: true, Endpoints: []routing.Endpoint{
 		{Peer: routing.AnyPeer, Talkgroup: 2, Timeslot: hbp.Timeslot2},
 		{Transcoder: "dvstick", Talkgroup: 2, Timeslot: hbp.Timeslot2},
 	}}}, routing.WithPermissions(map[string]routing.Permission{"dvstick": {All: true}}))
-	if err != nil {
-		t.Fatalf("building a table: %v", err)
-	}
-	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: noPeers{}})
-	if err != nil {
-		t.Fatalf("building a core: %v", err)
-	}
+	core, _ := routing.NewCore(routing.CoreOptions{Table: table, Peers: noPeers{}})
 	l, buf := journal()
 	l.cfg.Routing = core
-	offered := 0
-	l.cfg.IPSC = func(uint32, hbp.Data) { offered++ }
-
+	l.SetIPSCTargets(func(uint32, hbp.Data) error {
+		return errors.New("that repeater's timeslot is carrying another transmission")
+	},
+		func() []uint32 { return []uint32{315544} })
 	for range 20 {
-		l.DeliverFromTranscoder("dvstick", hbp.Data{SourceID: 3100999, TargetID: 2,
-			Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: 5})
+		l.DeliverFromTranscoder("dvstick", hbp.Data{SourceID: 3155408, TargetID: 2, Timeslot: hbp.Timeslot2,
+			CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: 5})
 	}
-	if offered != 0 {
-		t.Errorf("transcoded audio was offered to the Motorola side %d times", offered)
-	}
-	if n := strings.Count(buf.String(), "not offered to Motorola repeaters"); n != 1 {
-		t.Errorf("the withholding was logged %d times, want once", n)
+	if n := strings.Count(buf.String(), "not sent to a Motorola repeater"); n != 1 {
+		t.Errorf("logged %d times over 20 frames, want once", n)
 	}
 }
 

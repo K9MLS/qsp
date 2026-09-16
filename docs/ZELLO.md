@@ -434,8 +434,9 @@ page generates.
 3. **The vocoder** — the AMBEserver address and the gateway's DMR ID.
 4. **What Zello carries** — the talkgroup and timeslot, and the repeaters whose
    owners have agreed. None is chosen for you; a repeater not listed neither
-   hears Zello nor is heard on it. Motorola repeaters do not receive Zello
-   audio yet.
+   hears Zello nor is heard on it. Motorola repeaters are covered by the same
+   list, by repeater ID, and key up only for a talkgroup and timeslot their
+   channel carries.
 5. **The connector** — copy the generated `qsp-zello.json`; build `qsp-zello`
    where libopus headers are installed
    (`CGO_ENABLED=1 go build -tags zello -o qsp-zello ./cmd/qsp-zello`); install

@@ -125,9 +125,12 @@ block existed. **Read it against the code, not the other way round.**
   Homebrew peers hear it. Proved in the real binary against a fake AMBEserver
   answering with the chip's recorded frame: a logged-in hotspot received
   H A B C T from the gateway ID, one stream.
-- **Transcoded audio is not offered to Motorola repeaters.** Every other
-  ingress offers frames to every IPSC repeater with no per-repeater check, and
-  ADR-0062 requires opt-in. It reaches them when the permission does.
+- **Transcoded audio reaches the Motorola repeaters that agreed** (0400). It
+  was withheld from all of them until then, because the only IPSC path reached
+  every repeater with no per-repeater check; KD9EJA's repeater never keyed up
+  for a Zello reply. It now goes through SendVoiceTo to each repeater the
+  transcoder's permission covers, and does not start over another
+  transmission already on that repeater's timeslot.
 - **One chip, one direction at a time.** A Zello keyup over a DMR call is
   refused, and the reverse.
 - **No colour code setting, on evidence.** The four production hotspots run

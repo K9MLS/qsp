@@ -485,6 +485,19 @@ func (c *Core) SetTable(t *Table) {
 	c.table = t
 }
 
+// TranscoderPermission reports which repeaters may hear a transcoder, as the
+// current table says — the same answer routing applies to Homebrew peers, for
+// the delivery paths routing does not resolve itself.
+func (c *Core) TranscoderPermission(name string) Permission {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.table == nil {
+		return Permission{}
+	}
+	perm := c.table.permissions[name]
+	return Permission{Peers: append([]hbp.RepeaterID(nil), perm.Peers...), All: perm.All}
+}
+
 // SetAccess swaps in new talkgroup lists.
 //
 // **Unlike SetTable, this takes effect on the next frame rather than the next

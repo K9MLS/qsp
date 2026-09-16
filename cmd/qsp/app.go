@@ -654,6 +654,22 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	switch {
 	case a.dmr != nil && a.ipsc != nil:
 		a.dmr.SetIPSCSink(a.ipsc.SendVoice)
+		// Transcoded audio to the Motorola repeaters that agreed. An ID in
+		// the permission list that is not a Motorola repeater here is a
+		// Homebrew peer, reached through routing, and not an error.
+		ipscLink := a.ipsc
+		a.dmr.SetIPSCTargets(func(target uint32, frame hbp.Data) error {
+			if err := ipscLink.SendVoiceTo(target, frame); !errors.Is(err, ipsclink.ErrNoSuchPeer) {
+				return err
+			}
+			return nil
+		}, func() []uint32 {
+			var ids []uint32
+			for _, p := range ipscLink.Peers() {
+				ids = append(ids, p.RadioID)
+			}
+			return ids
+		})
 		// **This caveat used to say no capture of a master sending voice
 		// existed, and that stopped being true on 2026-09-03.**
 		// testdata/ipsc/ipsc-master-voice.pcap is 347 packets of an XPR8300's

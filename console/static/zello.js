@@ -441,13 +441,14 @@
     fetch("/api/peers", { headers: { Accept: "application/json" } })
       .then(function (r) { return r.json(); })
       .then(function (body) {
-        var peers = ((body && body.peers) || []).filter(function (p) {
-          return p.protocol !== "ipsc";
-        });
+        /* Motorola repeaters included and marked: they receive Zello audio
+         * when they are listed, as Homebrew peers do. */
+        var peers = (body && body.peers) || [];
         peersNow.textContent = peers.length === 0
           ? "No hotspot or repeater is connected right now."
           : "Connected now: " + peers.map(function (p) {
-            return p.id + (p.callsign ? " " + p.callsign : "");
+            return p.id + (p.callsign ? " " + p.callsign : "") +
+              (p.protocol === "ipsc" ? " (Motorola)" : "");
           }).join(", ") + ".";
       })
       .catch(function () { peersNow.textContent = ""; });

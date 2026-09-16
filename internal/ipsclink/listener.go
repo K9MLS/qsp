@@ -355,6 +355,10 @@ type Listener struct {
 	// relayed is the last stream sent to each repeater, so a relayed
 	// transmission is reported once rather than once per frame. Guarded by mu.
 	relayed map[uint32]hbp.StreamID
+	// slots records the stream each repeater's timeslot last carried, and
+	// when, so a transmission sent to one repeater does not interleave with
+	// another already on the same slot. See SendVoiceTo.
+	slots map[slotKey]slotUse
 
 	conn    *net.UDPConn
 	running atomic.Bool
@@ -603,6 +607,10 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 		// fifty frames a second and a line for each is a line nobody reads.
 		first := l.relayed[id] != frame.StreamID
 		l.relayed[id] = frame.StreamID
+		// Recorded, not enforced: ordinary relaying behaves as it always
+		// has. SendVoiceTo reads this so a targeted transmission does not
+		// start over one already on the slot.
+		_ = l.claimSlot(id, frame, time.Now())
 		enc, ok := l.encoders[id]
 		if !ok {
 			enc = ipscbridge.NewEncoder(l.cfg.MasterID, l.cfg.Bridge)
@@ -710,14 +718,21 @@ func (l *Listener) SendVoice(origin uint32, frame hbp.Data) {
 // the network, and the two callers would look identical at the call site.
 func (l *Listener) SendVoiceTo(target uint32, frame hbp.Data) error {
 	if l.conn == nil {
-		return errNotServing
+		return ErrNotServing
 	}
 
 	l.mu.Lock()
 	p, ok := l.peers[target]
 	if !ok || p.Address == "" {
 		l.mu.Unlock()
-		return errNoSuchPeer
+		return ErrNoSuchPeer
+	}
+	// **One transmission per repeater timeslot.** QSP keeps one encoder per
+	// repeater; frames of two streams sent to the same slot interleave into
+	// noise on air, so a targeted transmission does not start over another.
+	if l.claimSlot(target, frame, time.Now()) {
+		l.mu.Unlock()
+		return ErrSlotBusy
 	}
 	enc, have := l.encoders[target]
 	if !have {
@@ -749,10 +764,48 @@ func (l *Listener) SendVoiceTo(target uint32, frame hbp.Data) error {
 // Errors SendVoiceTo returns. They are values rather than strings because
 // parrot counts failed deliveries and continues, and a replay to a peer that
 // unregistered mid-transmission is ordinary rather than alarming.
+//
+// Exported because a caller offering one transmission to a list of IDs —
+// transcoded audio, to the repeaters that agreed — needs to tell "that ID is
+// not a Motorola repeater here" from a failure.
 var (
-	errNotServing = sendError("the IPSC listener is not serving")
-	errNoSuchPeer = sendError("no such registered IPSC peer")
+	ErrNotServing = sendError("the IPSC listener is not serving")
+	ErrNoSuchPeer = sendError("no such registered IPSC peer")
+	// ErrSlotBusy is a repeater's timeslot carrying another transmission.
+	ErrSlotBusy = sendError("that repeater's timeslot is carrying another transmission")
 )
+
+// SlotHold is how long a timeslot stays claimed by a transmission whose
+// terminator never arrived. A terminator frees it at once.
+const SlotHold = time.Second
+
+type slotKey struct {
+	peer uint32
+	ts   hbp.Timeslot
+}
+
+type slotUse struct {
+	stream hbp.StreamID
+	at     time.Time
+}
+
+// claimSlot records a frame on a repeater's timeslot and reports whether a
+// different transmission already holds it. Called with l.mu held.
+func (l *Listener) claimSlot(peer uint32, frame hbp.Data, now time.Time) (busy bool) {
+	if l.slots == nil {
+		l.slots = map[slotKey]slotUse{}
+	}
+	k := slotKey{peer: peer, ts: frame.Timeslot}
+	if held, ok := l.slots[k]; ok && held.stream != frame.StreamID && now.Sub(held.at) < SlotHold {
+		return true
+	}
+	if frame.IsTerminator() {
+		delete(l.slots, k)
+		return false
+	}
+	l.slots[k] = slotUse{stream: frame.StreamID, at: now}
+	return false
+}
 
 type sendError string
 
