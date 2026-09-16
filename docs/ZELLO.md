@@ -83,6 +83,34 @@ returned `stream_id`, then `stop_stream`. It needs an account and API keys from
 Zello's developer portal, and **it is documented as beta and subject to
 change** — a dependency risk to record rather than ignore.
 
+## Running the dongle as a service
+
+**AMBEserver has to run all the time, and started by hand it does not.** A
+foreground AMBEserver dies with its terminal. Install it as a service, and the
+latency rule with it:
+
+```sh
+sudo cp deploy/systemd/ambeserver.service /etc/systemd/system/
+sudo systemctl edit ambeserver      # set AMBE_DEVICE to the dongle's /dev/serial/by-id path
+sudo cp deploy/udev/99-ambe-dongle-latency.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # now, without replugging
+sudo systemctl enable --now ambeserver
+```
+
+- **The unit admits only this machine.** AMBEserver binds every interface with
+  no authentication, and a malformed packet can wedge the chip until it is
+  unplugged; `IPAddressAllow=localhost` keeps everyone else out whatever it
+  binds.
+- **The latency rule is not optional.** An FTDI adapter holds a short reply
+  for its 16 ms default before the host sees it. Measured on production: a
+  decode took 26.8 ms against the 20 ms real time allows, so audio going to
+  Zello was choppy and stretched; at 1 ms it takes 11.9 ms.
+- **AMBEserver restarting is survivable.** QSP sets the DMR rate at the start of
+  every call and reopens a vocoder that stops answering, so a restart costs at
+  most the call in progress. Before 0.1.243 it silently garbled every call
+  until QSP was restarted too.
+
 ## The dongle, in detail
 
 Researched 2026-09-13, the day before it arrived. Everything here is from
@@ -426,7 +454,8 @@ page generates.
 1. **Before you start** — none of this can be done from QSP: a Zello account for
    the gateway, an API key pair and its issuer from the developer portal, the
    channel joined *in the Zello app with that account* and set to Zelect, a
-   DMR ID for the gateway from RadioID.net, and AMBEserver running.
+   DMR ID for the gateway from RadioID.net, and AMBEserver running as a service
+   ("Running the dongle as a service", below).
 2. **The Zello account** — the channel and issuer, then the username, password
    and private key, each stored the moment its button is pressed. They are
    never shown again, only whether each is stored. A key that cannot sign is

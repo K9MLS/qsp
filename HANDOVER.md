@@ -158,7 +158,9 @@ block existed. **Read it against the code, not the other way round.**
 question a silent repeater raises — a non-zero value means the chip's frames
 are not in DMR's layout. The one recorded real frame needs no correction.
 
-**Production changes made by hand on 2026-09-16, not yet in the repository.**
+**Production changes made by hand on 2026-09-16, now in the repository** as
+`deploy/systemd/ambeserver.service` (generalised: the device path is set with
+`systemctl edit`) and `deploy/udev/99-ambe-dongle-latency.rules`.
 
 - **`/etc/systemd/system/ambeserver.service`**: AMBEserver `-x` in the
   foreground, `StandardOutput=null` (its per-packet dump is hundreds of MB an

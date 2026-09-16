@@ -4,6 +4,16 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`deploy/systemd/ambeserver.service` and
+  `deploy/udev/99-ambe-dongle-latency.rules`**, the two files production runs
+  the vocoder dongle with. The unit keeps AMBEserver in the foreground under
+  systemd, discards its per-packet dump, admits only local traffic and runs as
+  a dynamic user; the dongle's path is set once with `systemctl edit`. The
+  rule sets FTDI adapters' latency timer to 1 ms. `docs/ZELLO.md` says how to
+  install both and why neither is optional.
+
 ### Documentation
 
 - **Other operators' personal details are out of the working tree.** First

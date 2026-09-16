@@ -1,0 +1,51 @@
+# AMBEserver for the vocoder dongle QSP transcodes through (docs/ZELLO.md).
+#
+# Set the dongle's path once, with `sudo systemctl edit ambeserver`:
+#
+#   [Service]
+#   Environment=AMBE_DEVICE=/dev/serial/by-id/usb-FTDI_FT230X_Basic_UART_XXXXXXXX-if00-port0
+#
+# A /dev/serial/by-id path survives the dongle being unplugged and plugged into
+# another port; /dev/ttyUSB0 does not.
+[Unit]
+Description=AMBEserver for the QSP vocoder dongle
+Documentation=https://github.com/K9MLS/qsp/blob/main/docs/ZELLO.md
+Before=qsp.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+Environment=AMBE_DEVICE=/dev/serial/by-id/SET-THIS-WITH-systemctl-edit
+# -x keeps it in the foreground, where systemd can supervise it. It also prints
+# every packet, which on a busy talkgroup is hundreds of megabytes an hour —
+# hence StandardOutput=null.
+ExecStart=/usr/local/sbin/AMBEserver -x -s 460800 -i ${AMBE_DEVICE}
+Restart=on-failure
+RestartSec=5s
+StandardOutput=null
+StandardError=journal
+
+# It binds 0.0.0.0:2460 with no authentication, and a malformed packet can
+# wedge the chip until it is unplugged. The kernel admits only this machine.
+IPAddressAllow=localhost
+IPAddressDeny=any
+
+DynamicUser=yes
+SupplementaryGroups=dialout
+DevicePolicy=closed
+DeviceAllow=char-ttyUSB rw
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

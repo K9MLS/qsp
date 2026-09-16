@@ -1,0 +1,13 @@
+# Sets FTDI USB-serial adapters' latency timer to 1 ms.
+#
+# At the 16 ms default the adapter holds a short reply for up to 16 ms before
+# the host sees it. Every AMBE exchange waited it out: a decode measured 26.8 ms
+# against the 20 ms real time allows (three per 60 ms DMR burst), so QSP fell
+# behind, dropped a quarter of the frames going to Zello and stretched the rest.
+# At 1 ms a decode is 11.9 ms. Measured on a DVstick 30, 2026-09-16.
+#
+# Install: sudo cp 99-ambe-dongle-latency.rules /etc/udev/rules.d/ &&
+#          sudo udevadm control --reload-rules
+# Applies when the adapter appears; to apply now without replugging:
+#          echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer
+ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", ATTR{latency_timer}="1"
