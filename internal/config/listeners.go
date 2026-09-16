@@ -59,6 +59,17 @@ func (c Config) Listeners() []Listener {
 			})
 		}
 	}
+	for i, t := range c.DMR.Transcoders {
+		if !c.DMR.Enabled || !t.Enabled {
+			continue
+		}
+		if addr := strings.TrimSpace(t.USRPListen); addr != "" {
+			out = append(out, Listener{
+				fmt.Sprintf("dmr.transcoders[%d].usrp_listen", i),
+				fmt.Sprintf("the transcoder %q", t.Name), "udp", addr,
+			})
+		}
+	}
 	return out
 }
 

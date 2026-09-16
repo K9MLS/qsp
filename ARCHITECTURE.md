@@ -177,7 +177,8 @@ internal/protocol/p25       (phase 4) P25 reflector networking
 internal/routing            bridge model, routing decision, contention core, PTT triggers
 internal/peers              peer identity, lifecycle, and the UDP listener (M9 complete)
 internal/scheduler          scheduled bridging: level-triggered, DST-correct
-internal/audio              (phase 5) USRP transport
+internal/audio              USRP framing, rate conversion, and the USRP socket
+internal/vocoderlink        routed DMR through a vocoder chip and out as USRP
 internal/calls              call observation: frames reassembled into transmissions
 
 internal/config             configuration model, validation, versioning

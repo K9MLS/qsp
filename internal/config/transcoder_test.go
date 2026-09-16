@@ -23,6 +23,9 @@ func withTranscoder(t *testing.T, mutate func(*Config)) Config {
 		// Pi-Star's 3132910. A Zello user has no radio and so no ID, and a
 		// frame with source 0 is not a DMR frame — ADR-0064.
 		RadioID: 3132911,
+		// Where qsp-zello is: ADR-0009 puts it beside QSP on the same host.
+		USRPListen: "127.0.0.1:32001",
+		USRPPeer:   "127.0.0.1:32002",
 	}}
 	c.DMR.Bridges = []Bridge{{
 		Name: "zello", Enabled: true,
@@ -329,5 +332,71 @@ func TestTheAliasIsOptionalAndBounded(t *testing.T) {
 		c.DMR.Transcoders[0].Alias = strings.Repeat("é", 31)
 	}).Validate(); err != nil {
 		t.Errorf("31 multi-byte characters were refused as too long: %v", err)
+	}
+}
+
+// TestTheUSRPAddressesOfAnEnabledTranscoderAreChecked.
+//
+// **A transcoder with nowhere to send audio decodes every call into nothing**,
+// and the peer address is the only protection USRP has, so both are refused at
+// startup rather than discovered as silence or as a stranger keying up.
+//
+// To see a row fail, remove its case from the transcoder block in Validate.
+func TestTheUSRPAddressesOfAnEnabledTranscoderAreChecked(t *testing.T) {
+	tests := []struct {
+		name      string
+		mutate    func(*Transcoder)
+		wantField string // empty means valid
+	}{
+		{"both given", func(*Transcoder) {}, ""},
+		{"a wildcard listen address is allowed, for the container install",
+			func(tr *Transcoder) { tr.USRPListen = "0.0.0.0:32001" }, ""},
+		{"no listen address", func(tr *Transcoder) { tr.USRPListen = "" }, "usrp_listen"},
+		{"no peer", func(tr *Transcoder) { tr.USRPPeer = "" }, "usrp_peer"},
+		{"a hostname peer", func(tr *Transcoder) { tr.USRPPeer = "zello.lan:32002" }, "usrp_peer"},
+		{"a wildcard peer", func(tr *Transcoder) { tr.USRPPeer = "0.0.0.0:32002" }, "usrp_peer"},
+		{"a peer with port 0", func(tr *Transcoder) { tr.USRPPeer = "127.0.0.1:0" }, "usrp_peer"},
+		{"the peer is the listen address", func(tr *Transcoder) { tr.USRPPeer = tr.USRPListen }, "usrp_peer"},
+		{"the peer is AMBEserver", func(tr *Transcoder) { tr.USRPPeer = tr.Address }, "usrp_peer"},
+		{"a disabled transcoder needs neither", func(tr *Transcoder) {
+			tr.Enabled = false
+			tr.USRPListen, tr.USRPPeer = "", ""
+		}, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := withTranscoder(t, func(c *Config) { tc.mutate(&c.DMR.Transcoders[0]) })
+			err := c.Validate()
+			if tc.wantField == "" {
+				// A disabled transcoder is reported as unrouted-to by nothing,
+				// but the bridge naming it is refused; only USRP is at issue.
+				if err != nil && strings.Contains(err.Error(), "usrp_") {
+					t.Fatalf("refused over USRP: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "dmr.transcoders[0]."+tc.wantField) {
+				t.Fatalf("error %v, want a refusal naming %s", err, tc.wantField)
+			}
+		})
+	}
+}
+
+// TestTheUSRPListenAddressIsAListener, so -check tries to bind it and the
+// collision rule refuses a second thing on its port.
+func TestTheUSRPListenAddressIsAListener(t *testing.T) {
+	c := withTranscoder(t, nil)
+	found := false
+	for _, l := range c.Listeners() {
+		if l.Address == "127.0.0.1:32001" && l.Network == "udp" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the USRP listen address is not among %+v; -check would not try it", c.Listeners())
+	}
+	clash := withTranscoder(t, func(c *Config) { c.DMR.Transcoders[0].USRPListen = c.DMR.ListenAddress })
+	if err := clash.Validate(); err == nil {
+		t.Error("a USRP socket on the DMR listener's own port validated")
 	}
 }

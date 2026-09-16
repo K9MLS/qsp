@@ -64,6 +64,10 @@ type ListenerConfig struct {
 	// no links are configured and upstream deliveries are discarded with a
 	// reason rather than silently.
 	Upstreams UpstreamSender
+	// Transcoders hands frames to vocoder channels. Optional; nil means a
+	// bridge naming a transcoder has nothing to receive it, which is reported
+	// rather than ignored.
+	Transcoders TranscoderSender
 	// ScheduleState reports which bridges should be enabled at an instant.
 	// Optional; nil means bridges follow their configured Enabled flag.
 	//
@@ -557,6 +561,16 @@ type UpstreamSender interface {
 	Send(link string, frame hbp.Data) error
 }
 
+// TranscoderSender queues frames for vocoder channels.
+//
+// **Send must not block.** It is called from the goroutine that reads every
+// peer's socket, and a chip answers one packet at a time over UDP; waiting on
+// it here would stall every other call on the server behind one transcoded
+// one.
+type TranscoderSender interface {
+	Send(transcoder string, frame hbp.Data) error
+}
+
 // DeliverFromUpstream routes a frame that arrived over a link and sends the
 // result to peers.
 //
@@ -867,6 +881,34 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		}
 		l.forwarded.Add(1)
 		l.sent.Add(1)
+	}
+
+	for _, d := range res.Transcoders {
+		if l.cfg.Transcoders == nil {
+			l.collided.Add(1)
+			if l.noteRoutingDrop(routing.Drop{To: routing.Endpoint{Transcoder: d.Transcoder},
+				Reason: "no transcoder channels are running"}) {
+				l.log.Warn("a bridge names a transcoder, but no transcoder channels are running",
+					slog.String("transcoder", d.Transcoder),
+					slog.String("bridge", d.Bridge),
+				)
+			}
+			continue
+		}
+		if err := l.cfg.Transcoders.Send(d.Transcoder, d.Frame); err != nil {
+			l.writeErr.Add(1)
+			// Once per transcoder and reason, not per frame: a full queue
+			// refuses fifty frames a second and the first line says it all.
+			if l.noteRoutingDrop(routing.Drop{To: routing.Endpoint{Transcoder: d.Transcoder},
+				Reason: err.Error()}) {
+				l.log.Warn("cannot hand a frame to a transcoder",
+					slog.String("transcoder", d.Transcoder),
+					slog.String("error", err.Error()),
+				)
+			}
+			continue
+		}
+		l.forwarded.Add(1)
 	}
 
 	// **A transmission carried nowhere says why.** Result.Reason was set by

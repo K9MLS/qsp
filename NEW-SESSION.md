@@ -164,16 +164,24 @@ the four lines.
 **Your container reaps background processes between commands**, so nothing
 survives a `nohup ... &`, and it is a single core.
 
-**Your container ships without Go, and no allowed domain carries a Go binary.**
-`go.dev/dl` and the module proxy are both blocked, `golang/go` on GitHub
-publishes source rather than binaries, and Ubuntu's newest package is 1.22. The
-bootstrap minimum is enforced at run time, so the chain is **1.22 → 1.23 → 1.24.6
-→ 1.27** from the source tags on `codeload.github.com`. The patch release
-matters: `go1.24.0` is refused as a bootstrap for 1.27. `make.bash` cannot
-finish inside one command, but its toolchain phases survive being killed — run
-it once, then finish with `go_bootstrap install std` and `install cmd`. §7 has
-the exact commands. Allow an hour. Do
-it first: a documentation-only patch still has to pass the accuracy gate, and
+**Your container ships without Go. Install the prebuilt toolchain, which takes
+seconds.** `go.dev` and `dl.google.com` are blocked, but GitHub's
+`actions/go-versions` publishes the same release tarballs `setup-go` uses, and
+`release-assets.githubusercontent.com` is allowed. The manifest lists the
+current URL; read it rather than trusting a pasted one, whose run ID changes
+with every release:
+
+```sh
+curl -sL https://raw.githubusercontent.com/actions/go-versions/main/versions-manifest.json \
+  | grep -o 'https://[^"]*go-1\.27\.[0-9]*-linux-x64\.tar\.gz' | head -1
+curl -sL -o /tmp/go.tgz <that URL>
+mkdir -p /usr/local/go && tar -C /usr/local/go -xzf /tmp/go.tgz && export PATH=/usr/local/go/bin:$PATH
+```
+
+**Until 2026-09-16 this said no allowed domain carried a Go binary and to allow an hour
+for a source bootstrap.** It was asserted after checking three places and
+repeated for weeks without a fourth, which is the pattern §8a names. Do this
+first: a documentation-only patch still has to pass the accuracy gate, and
 the accuracy gate is a Go test.
 
 **I have three terminals open** — my Fedora development machine, `qsp-server`

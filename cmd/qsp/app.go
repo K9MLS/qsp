@@ -19,6 +19,7 @@ import (
 
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/ambe"
+	"github.com/k9mls/qsp/internal/audio"
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/buildinfo"
@@ -40,6 +41,7 @@ import (
 	"github.com/k9mls/qsp/internal/secrets"
 	"github.com/k9mls/qsp/internal/server"
 	"github.com/k9mls/qsp/internal/upstream"
+	"github.com/k9mls/qsp/internal/vocoderlink"
 )
 
 // app holds the constructed dependency graph.
@@ -65,12 +67,15 @@ type app struct {
 
 	// vocoders supervises the configured transcoder channels.
 	//
-	// **It carries nothing yet**, and its health check says so rather than
-	// reporting green: ADR-0063 put the talkgroup-to-channel mapping in the
-	// routing table and nothing delivers frames to it. A supervisor rather
-	// than a startup step because a dongle is a thing that gets unplugged —
-	// its documented recovery path is removing its power for ten seconds.
+	// A supervisor rather than a startup step because a dongle is a thing
+	// that gets unplugged — its documented recovery path is removing its
+	// power for ten seconds.
 	vocoders *ambe.Supervisor
+	// transcoding carries routed calls through those chips and out as USRP.
+	// Nil when no transcoder is enabled.
+	transcoding *vocoderlink.Set
+	// transcodingChannels are the same channels, for their health checks.
+	transcodingChannels []*vocoderlink.Channel
 	// auth is the concrete login service, kept alongside the interface the
 	// server holds because the session sweep is not something an HTTP handler
 	// ever needs and does not belong on that interface.
@@ -382,6 +387,59 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 				slog.Int("unlink_talkgroup", int(cfg.DMR.Subscription.Unlink)))
 		}
 
+		// Vocoder channels, built before the listener because the listener
+		// hands them frames. Only enabled transcoders: a disabled one is a
+		// line in a document and not a thing to go looking for.
+		//
+		// **The USRP socket is bound here, at startup**, so a port already
+		// taken fails the start with the address in the message rather than
+		// surfacing as a transcoder that never carries anything.
+		var vocoders []ambe.Vocoder
+		for _, t := range cfg.DMR.Transcoders {
+			if !t.Enabled {
+				continue
+			}
+			vocoders = append(vocoders, ambe.Vocoder{
+				Name:    t.Name,
+				Address: t.Address,
+				Rate:    t.RateIndex(),
+			})
+		}
+		var transcoders peers.TranscoderSender
+		if len(vocoders) > 0 {
+			a.vocoders = ambe.NewSupervisor(log, vocoders)
+			for _, t := range cfg.DMR.Transcoders {
+				if !t.Enabled {
+					continue
+				}
+				conn, uerr := audio.Listen(t.USRPListen, t.USRPPeer)
+				if uerr != nil {
+					return nil, fmt.Errorf("transcoder %q: %w", t.Name, uerr)
+				}
+				a.closers = append(a.closers, func(context.Context) error { return conn.Close() })
+				ch, cerr := vocoderlink.New(vocoderlink.Options{
+					Name:  t.Name,
+					Chip:  vocoderlink.SupervisedChip(a.vocoders, t.Name),
+					Radio: conn,
+					Log:   log,
+				})
+				if cerr != nil {
+					return nil, fmt.Errorf("transcoder %q: %w", t.Name, cerr)
+				}
+				a.transcodingChannels = append(a.transcodingChannels, ch)
+				log.Info("transcoder configured",
+					slog.String("transcoder", t.Name),
+					slog.String("vocoder", t.Address),
+					slog.String("usrp_listen", t.USRPListen),
+					slog.String("usrp_peer", t.USRPPeer))
+			}
+			a.transcoding = vocoderlink.NewSet(a.transcodingChannels...)
+			// Assigned only when non-nil: a nil *Set in the interface would
+			// be a non-nil sender, and the listener would stop reporting that
+			// nothing receives transcoder frames.
+			transcoders = a.transcoding
+		}
+
 		listener, lerr := peers.NewListener(log, peers.ListenerConfig{
 			ListenAddress: cfg.DMR.ListenAddress,
 			Master:        master,
@@ -398,6 +456,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Parrot:         parrotRecorder,
 			Routing:        core,
 			Upstreams:      upstreamSender(links),
+			Transcoders:    transcoders,
 			ScheduleState:  bridgeState(sched, triggers),
 			Triggers:       triggers,
 			Rebuild:        func(now time.Time) (*routing.Table, error) { return buildTable(cfg, sched, triggers, now) },
@@ -587,24 +646,14 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			registry.MustRegister(a.upstreams.CheckFor(name))
 		}
 	}
-	// Vocoder channels. Built from the enabled transcoders only: a disabled
-	// one is a line in a document and not a thing to go looking for.
-	var vocoders []ambe.Vocoder
-	for _, t := range cfg.DMR.Transcoders {
-		if !t.Enabled {
-			continue
-		}
-		vocoders = append(vocoders, ambe.Vocoder{
-			Name:    t.Name,
-			Address: t.Address,
-			Rate:    t.RateIndex(),
-		})
-	}
-	if len(vocoders) > 0 {
-		a.vocoders = ambe.NewSupervisor(log, vocoders)
+	// Vocoder channels, built with the DMR listener above.
+	if a.vocoders != nil {
 		for _, name := range a.vocoders.Names() {
 			registry.MustRegister(a.vocoders.CheckFor(name))
 		}
+	}
+	for _, ch := range a.transcodingChannels {
+		registry.MustRegister(ch.Checker())
 	}
 
 	for _, s := range unbuiltSubsystems {
@@ -934,6 +983,11 @@ func (a *app) run(ctx context.Context) error {
 	// refused to start without one would be a server that refused to start.
 	if a.vocoders != nil {
 		go a.vocoders.Run(ctx)
+	}
+	// The channels run beside it and ask for a chip at the start of each
+	// call, so a vocoder that opens late is used from the next call on.
+	if a.transcoding != nil {
+		go a.transcoding.Run(ctx)
 	}
 
 	<-ctx.Done()
@@ -1659,8 +1713,8 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 	{"zello", "the Zello connector arrives in phase 6; the vocoder link is built and " +
-		"proved on hardware, and what remains is Opus, the Zello API and a channel " +
-		"policy — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
+		"carries DMR out as USRP, and what remains is USRP back to DMR and the " +
+		"qsp-zello companion — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
 	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 }

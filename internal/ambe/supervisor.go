@@ -187,7 +187,7 @@ func (s *Supervisor) Names() []string {
 
 // ClientFor returns the open client for a channel, or nil.
 //
-// It exists for the delivery path that does not exist yet. Returning nil
+// internal/vocoderlink calls it at the start of every call. Returning nil
 // rather than an error is deliberate: a caller with a frame to transcode and
 // no vocoder has nowhere to put it, and that is a routing decision rather than
 // an exception.
@@ -264,11 +264,19 @@ func (c channelCheck) Check(context.Context) health.Result {
 		detail["carrying"] = h.String()
 	}
 
-	res := health.Degraded(
-		fmt.Sprintf("%s at %s is ready and carrying nothing", client.Product(), c.ch.cfg.Address),
-		"the talkgroup-to-channel mapping exists (ADR-0063) and nothing delivers "+
-			"frames to it yet; this reports degraded rather than healthy because a "+
-			"vocoder that cannot pass audio is not working")
+	// **Degraded until audio can cross both ways.** Frames routed from DMR
+	// are decoded toward USRP (internal/vocoderlink); audio arriving from
+	// USRP is not encoded back to DMR yet, so a Zello user cannot be heard,
+	// and a green line would say otherwise.
+	summary := fmt.Sprintf("%s at %s is ready and carrying nothing", client.Product(), c.ch.cfg.Address)
+	if decoded > 0 {
+		summary = fmt.Sprintf("%s at %s has decoded %d frame(s) toward USRP",
+			client.Product(), c.ch.cfg.Address, decoded)
+	}
+	res := health.Degraded(summary,
+		"DMR to USRP is carried; audio from USRP is not encoded back to DMR yet, "+
+			"so this reports degraded rather than healthy — see transcoder-audio:"+
+			c.ch.cfg.Name+" for the calls")
 	res.Detail = detail
 	return res
 }

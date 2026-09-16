@@ -610,36 +610,24 @@ access list is what puts somebody off the network now, and the panel says so.
   cgo"* rather than running and passing — a gate that declines to run looks
   nothing like a gate that passed, but it scrolls past the same way. `gcc` is
   present, so exporting the variable is the whole fix.
-- **The development container ships without Go, and no allowed domain carries a
-  Go binary.** `go.dev/dl` and the module proxy are both outside the egress
-  allowlist; `golang/go` on GitHub publishes source, not binaries; Ubuntu's
-  newest package is 1.22. So the toolchain is bootstrapped from the source tag
-  on `codeload.github.com`, and 1.22 cannot build 1.27 directly — the bootstrap
-  minimum is enforced at run time, not by a build tag, so the chain is
-  **1.22 → 1.23 → 1.24 → 1.27**, about twenty minutes. Do it first, before
+- **The development container ships without Go; install the prebuilt release
+  from GitHub, which takes seconds.** `go.dev/dl` and the module proxy are
+  outside the egress allowlist, but `actions/go-versions` — the source
+  `setup-go` downloads from — publishes Linux tarballs on
+  `release-assets.githubusercontent.com`, which is inside it. Its
+  `versions-manifest.json` on `raw.githubusercontent.com` gives the URL for
+  each release. `NEW-SESSION.md` has the commands. Do it first, before
   writing anything, because a documentation-only patch still has to pass the
   accuracy gate and the accuracy gate is a Go test.
+- **This bullet described an hour-long source bootstrap, 1.22 → 1.23 → 1.24.6 →
+  1.27, until 2026-09-16.** The claim that no allowed domain carried a binary
+  was reached by checking `go.dev`, Ubuntu and `golang/go`, and never tested
+  against GitHub's own toolchain mirror. One `curl` settled it. A limitation
+  written down becomes a limitation nobody retests.
 - **The container reaps background processes between commands.** Nothing
   survives a `nohup ... &`; a build started in the background is dead by the
   next command, with no error and an empty process table. It is also a single
-  core, so "about twenty minutes" is optimistic.
-- **The bootstrap chain is 1.22 → 1.23 → 1.24.6 → 1.27**, and the patch release
-  matters: `go1.24.0` is refused with *"does not meet the minimum bootstrap
-  requirement of go1.24.6 or later"*. `make.bash` cannot finish inside one
-  command — it spends 3m39s on toolchain1, 2 and 3 before reaching the phase
-  that takes minutes, and re-running repeats all of it. But those phases write
-  `compile`, `link` and `go_bootstrap` into `$GOROOT/pkg/tool/linux_amd64` and
-  they survive, so run `make.bash` once and then finish the last phase directly:
-
-  ```sh
-  cd $GOROOT/src
-  $GOROOT/pkg/tool/linux_amd64/go_bootstrap install std
-  CGO_ENABLED=0 GOFLAGS="-trimpath -ldflags=-w -gcflags=cmd/...=-dwarf=false" \
-    $GOROOT/pkg/tool/linux_amd64/go_bootstrap install cmd
-  ```
-
-  That is the pair of calls Go's own dist bootstrap makes at the end of
-  `make.bash`, with its `toolenv()` spelled out.
+  core.
 - **`modernc.org/sqlite` cannot be fetched in the container either — and moving
   `cmd/qsp/driver_sqlite.go` aside disarms the documentation gate.** Four files
   name that path, so removing it fails `TestDocumentedPathsExist` for a reason

@@ -25,6 +25,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/netip"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -721,6 +722,22 @@ type Transcoder struct {
 	// pin low and therefore not at the DMR rate, so this is a precondition
 	// for audio rather than a refinement — see PROJECT_MEMORY §8q.
 	Rate int `json:"rate,omitempty"`
+
+	// USRPListen is where QSP receives audio from the program on the far
+	// side of this channel, host:port with a literal IP.
+	//
+	// **It may be 0.0.0.0.** A container cannot bind its host's address, and
+	// the protection USRP has is the source check against USRPPeer, not the
+	// interface it listens on. See internal/audio.
+	USRPListen string `json:"usrp_listen,omitempty"`
+	// USRPPeer is the program on the far side — qsp-zello, per ADR-0009 —
+	// host:port with a literal IP. Decoded audio is sent here, and only
+	// datagrams from here are accepted.
+	//
+	// **It must name one machine.** USRP has no authentication; anything
+	// that reaches the listen port could key a transmitter, and this address
+	// is what the socket checks every datagram against.
+	USRPPeer string `json:"usrp_peer,omitempty"`
 
 	// RadioID is the DMR source ID every transmission from this channel
 	// carries.
@@ -1476,6 +1493,40 @@ func (c Config) Validate() error {
 			} else if _, _, err := net.SplitHostPort(addr); err != nil {
 				v.add(tf+".address", fmt.Sprintf("%q is not a host:port address", t.Address),
 					"include a port; AMBEserver conventionally uses 2460")
+			}
+			// **An enabled transcoder with nowhere to send its audio carries
+			// nothing**, and would open, report a ready chip and decode
+			// every call into a socket with no far side. Refused at startup.
+			//
+			// Literal IPs only, because the USRP socket compares the sender
+			// of every datagram against the peer, and a hostname resolving
+			// differently tomorrow would silently start refusing the far
+			// side. This is also what keeps validation off the network.
+			if t.Enabled {
+				listen, lerr := netip.ParseAddrPort(strings.TrimSpace(t.USRPListen))
+				if lerr != nil {
+					v.add(tf+".usrp_listen", fmt.Sprintf("%q is not an IP:port address", t.USRPListen),
+						"give where QSP receives audio from qsp-zello, for example \"127.0.0.1:32001\"")
+				}
+				peer, perr := netip.ParseAddrPort(strings.TrimSpace(t.USRPPeer))
+				switch {
+				case perr != nil:
+					v.add(tf+".usrp_peer", fmt.Sprintf("%q is not an IP:port address", t.USRPPeer),
+						"give where qsp-zello receives audio, for example \"127.0.0.1:32002\"")
+				case peer.Addr().IsUnspecified() || peer.Port() == 0:
+					v.add(tf+".usrp_peer", fmt.Sprintf("%q names no single machine", t.USRPPeer),
+						"USRP has no authentication, and this address is what every "+
+							"arriving datagram is checked against; give qsp-zello's own "+
+							"address and port")
+				case lerr == nil && listen == peer:
+					v.add(tf+".usrp_peer", "is the same as usrp_listen",
+						"QSP would send its audio to itself; give qsp-zello's port")
+				}
+				if perr == nil && strings.TrimSpace(t.USRPPeer) == strings.TrimSpace(t.Address) {
+					v.add(tf+".usrp_peer", "is the AMBEserver address",
+						"the vocoder and qsp-zello are different programs; audio sent "+
+							"to AMBEserver as USRP is read as malformed packets")
+				}
 			}
 			// Table 115 of the AMBE-3000F manual has 62 rate indices, and
 			// index 33 is the one interoperable with DMR. A rate outside the

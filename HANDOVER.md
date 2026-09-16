@@ -14,7 +14,8 @@ look up.
 
 ## Where both servers are
 
-**VERSION 0.1.234. Both servers run 0.1.233**, deployed 2026-09-15 from 0.1.193
+**Both servers run 0.1.233** (the repository's own version is `cat VERSION`,
+which a document restating goes stale on the next patch), deployed 2026-09-15 from 0.1.193
 (production, systemd, 192.168.1.247) and 0.1.191 (test server, Docker,
 192.168.1.27). A forty-version jump, taken because the gap itself had become
 the risk.
@@ -107,11 +108,33 @@ would stop compiling because of a connector it does not run.
 
 ### What is left to build
 
-1. **A `transcoders` block in configuration**, and the UDP socket that speaks
-   USRP.
-2. **A `qsp-zello` companion main**, under `cmd/`. It does not exist yet.
+This list read "a `transcoders` block in configuration" for a day after that
+block existed. **Read it against the code, not the other way round.**
+
+**Built on 2026-09-16: DMR to USRP.** A bridge naming a transcoder now delivers
+to it. `internal/vocoderlink` acquires the chip, decodes each voice burst's
+three frames and sends USRP keyup, audio and release to `usrp_peer` from a
+socket on `usrp_listen` (`internal/audio/conn.go`). Before this, a transcoder
+target fell through the routing core's peer loop and **reached every ready
+peer, including the one that sent it** — latent only because neither server
+configures a transcoder.
+
+1. **USRP back to DMR.** Encode PCM through the chip and build a whole DMR
+   transmission under the transcoder's `radio_id`: voice LC header,
+   superframes with EMB and embedded LC, terminator. Every burst-building piece
+   is in `internal/dmrfec` and proved byte-identical; what is missing is the
+   assembly and handing it to `routing.Core.RouteFromTranscoder`, which nothing
+   calls yet. Audio arriving on the socket today is counted and discarded.
+2. **A `qsp-zello` companion main**, under `cmd/`. It does not exist yet. The
+   open question is how it reads the Zello private key, which lives in QSP's
+   credential store and is returned by no endpoint.
 3. Then the credential goes in through the console and the first connection
    happens.
+
+**Deploy order for any configuration naming `usrp_listen` or `usrp_peer`:
+binary first, then configuration.** QSP refuses unknown fields, so 0.1.233 or
+the 0.1.193 rollback binary refuses a document carrying them — remove them
+before rolling back.
 
 ### What is needed from the operator
 

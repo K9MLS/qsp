@@ -1,0 +1,399 @@
+// Package vocoderlink carries a routed DMR call through a vocoder chip and out
+// as USRP audio.
+//
+// # Where it sits
+//
+// The routing core decides a call reaches a transcoder (ADR-0063), the peers
+// listener hands each frame here, and this package does the rest: acquire the
+// chip, pull the three vocoder frames out of every voice burst, decode each to
+// 20 ms of 8 kHz PCM, and send it to the one program on the far side of the
+// USRP socket — `qsp-zello`, per ADR-0009.
+//
+// **Only DMR toward USRP is built.** Audio arriving on the socket is received,
+// counted and discarded; the health report says so rather than letting a
+// working direction stand for a working path.
+//
+// # Why a queue and a goroutine per channel
+//
+// Send is called on the goroutine that reads every peer's socket. A chip
+// answers one packet at a time over UDP, so decoding a burst is three round
+// trips; doing that inline would stall every call on the server behind one
+// transcoded call. **A full queue drops the frame and counts it.** Blocking
+// instead would move the stall rather than remove it.
+package vocoderlink
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/k9mls/qsp/internal/ambe"
+	"github.com/k9mls/qsp/internal/audio"
+	"github.com/k9mls/qsp/internal/dmrfec"
+	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
+)
+
+// Chip is what a channel needs from a vocoder. *ambe.Client satisfies it.
+type Chip interface {
+	Acquire(h ambe.Holder) error
+	Release()
+	Decode(frame ambe.ChannelFrame) (ambe.SpeechReply, error)
+	Rate() int
+}
+
+// Radio is the USRP side. *audio.Conn satisfies it.
+type Radio interface {
+	Send(f audio.Frame) error
+	Receive(ctx context.Context) (audio.Frame, error)
+}
+
+// ErrQueueFull is returned by Send when the channel is not keeping up.
+//
+// One fixed message, so the listener's once-per-reason log line collapses a
+// second of refusals into one line rather than fifty.
+var ErrQueueFull = errors.New("the transcoder's queue is full; the vocoder is not keeping up")
+
+// QueueDepth is how many frames a channel holds. A burst arrives every 60 ms,
+// so this is about four seconds of a stalled chip before anything is dropped.
+const QueueDepth = 64
+
+// Options configures a Channel.
+type Options struct {
+	// Name is the transcoder's configured name.
+	Name string
+	// Chip returns the open vocoder, or nil when there is none. Called at the
+	// start of every call, because the supervisor reopens a channel that
+	// dropped and the client from the last call may be gone.
+	//
+	// **It must return a nil interface, not a nil *ambe.Client.** Use
+	// SupervisedChip, which exists because the second compiles and is
+	// non-nil.
+	Chip func() Chip
+	// Radio is the USRP socket. Required.
+	Radio Radio
+	// Idle ends a call whose frames stopped without a terminator. Zero
+	// selects routing.StreamTimeout, so the chip is released when the routing
+	// core frees the reservation and not before or long after.
+	Idle time.Duration
+	// Log records what happened. Nil logs nothing.
+	Log *slog.Logger
+}
+
+// Channel carries calls for one transcoder.
+type Channel struct {
+	name  string
+	chip  func() Chip
+	radio Radio
+	idle  time.Duration
+	log   *slog.Logger
+	queue chan hbp.Data
+	seq   atomic.Uint32
+
+	calls, frames, dropped, notVoice, refused, failed, abandoned, fromRadio atomic.Uint64
+
+	mu      sync.Mutex
+	problem string
+	holder  string
+}
+
+// New builds a channel.
+func New(opts Options) (*Channel, error) {
+	if strings.TrimSpace(opts.Name) == "" {
+		return nil, errors.New("vocoderlink: a channel needs a name")
+	}
+	if opts.Chip == nil {
+		return nil, fmt.Errorf("vocoderlink: channel %q has no vocoder", opts.Name)
+	}
+	if opts.Radio == nil {
+		return nil, fmt.Errorf("vocoderlink: channel %q has no USRP socket", opts.Name)
+	}
+	if opts.Idle <= 0 {
+		opts.Idle = routing.StreamTimeout
+	}
+	log := opts.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	return &Channel{
+		name:  opts.Name,
+		chip:  opts.Chip,
+		radio: opts.Radio,
+		idle:  opts.Idle,
+		log:   log.With(slog.String("transcoder", opts.Name)),
+		queue: make(chan hbp.Data, QueueDepth),
+	}, nil
+}
+
+// SupervisedChip adapts a supervisor to Options.Chip.
+//
+// ClientFor returns a nil *ambe.Client when the vocoder is down, and a nil
+// pointer stored in an interface is not a nil interface: the channel would
+// call Acquire on it and panic on the first call after AMBEserver stopped.
+func SupervisedChip(s *ambe.Supervisor, name string) func() Chip {
+	return func() Chip {
+		if c := s.ClientFor(name); c != nil {
+			return c
+		}
+		return nil
+	}
+}
+
+// Send queues a frame without blocking.
+func (c *Channel) Send(frame hbp.Data) error {
+	select {
+	case c.queue <- frame:
+		return nil
+	default:
+		c.dropped.Add(1)
+		return ErrQueueFull
+	}
+}
+
+// call is the transmission a channel is carrying.
+type call struct {
+	stream    hbp.StreamID
+	source    uint32
+	talkgroup uint32
+	lastSeen  time.Time
+	// chip is nil when the call could not get one, or lost it; the rest of
+	// the transmission is then absorbed without a line per frame.
+	chip Chip
+}
+
+// Run carries calls until ctx is done. A call in progress is closed with a
+// USRP release on the way out, so the far side is not left keyed.
+func (c *Channel) Run(ctx context.Context) {
+	go c.drainRadio(ctx)
+
+	tick := time.NewTicker(c.idle / 4)
+	defer tick.Stop()
+
+	var cur *call
+	for {
+		select {
+		case <-ctx.Done():
+			c.finish(cur, "shutting down")
+			return
+		case f := <-c.queue:
+			cur = c.handle(cur, f, time.Now())
+		case now := <-tick.C:
+			if cur != nil && now.Sub(cur.lastSeen) > c.idle {
+				c.abandoned.Add(1)
+				c.finish(cur, "the call stopped without a terminator")
+				cur = nil
+			}
+		}
+	}
+}
+
+// drainRadio receives what the far side sends and discards it.
+//
+// **Received rather than left unread**, so the source filter runs and its
+// counters mean something, and so an operator can see that qsp-zello is
+// sending audio this build does not carry yet.
+func (c *Channel) drainRadio(ctx context.Context) {
+	for {
+		if _, err := c.radio.Receive(ctx); err != nil {
+			if ctx.Err() == nil {
+				c.note(fmt.Sprintf("the USRP socket stopped receiving: %v", err))
+			}
+			return
+		}
+		c.fromRadio.Add(1)
+	}
+}
+
+func (c *Channel) handle(cur *call, f hbp.Data, now time.Time) *call {
+	// A text message is not audio and never reaches the chip: its bursts are
+	// rate-coded blocks, and decoding them produces noise at full scale.
+	if f.IsUserData() || f.FrameType == hbp.FrameTypeReserved {
+		c.notVoice.Add(1)
+		return cur
+	}
+
+	// **A different transmission means the last one ended unannounced.** The
+	// routing core refuses a second call while one holds this chip, so a new
+	// stream reaching here is one the core let through after the first went
+	// silent — its terminator was lost, and it still holds the far side keyed.
+	if cur != nil && (f.StreamID != cur.stream || f.SourceID != cur.source) {
+		c.abandoned.Add(1)
+		c.finish(cur, "another transmission began before this one's terminator arrived")
+		cur = nil
+	}
+
+	if f.IsTerminator() {
+		c.finish(cur, "")
+		return nil
+	}
+
+	if cur == nil {
+		// A voice header opens a call, and so does a voice burst when the
+		// header was lost: late entry is ordinary on a radio network.
+		cur = c.start(f, now)
+	}
+	cur.lastSeen = now
+
+	if cur.chip == nil || f.FrameType == hbp.FrameTypeSync {
+		return cur
+	}
+
+	// The payload is a fixed 33 bytes, so this cannot refuse; the check stays
+	// because VocoderFrames is the one place that says what a burst is.
+	frames, ok := dmrfec.VocoderFrames(f.Payload[:])
+	if !ok {
+		c.fail(cur, "a voice burst is not a DMR burst")
+		return cur
+	}
+	for _, bits := range frames {
+		reply, err := cur.chip.Decode(ambe.ChannelFrame{Bits: dmrfec.ProtectedBits, Data: packBits(bits)})
+		if err != nil {
+			c.fail(cur, fmt.Sprintf("decoding a frame: %v", err))
+			return cur
+		}
+		if len(reply.Samples) != audio.SamplesPerFrame {
+			c.fail(cur, fmt.Sprintf("the vocoder returned %d samples for a 20 ms frame, want %d",
+				len(reply.Samples), audio.SamplesPerFrame))
+			return cur
+		}
+		if err := c.radio.Send(audio.Frame{Sequence: c.seq.Add(1), PTT: true,
+			Talkgroup: cur.talkgroup, Samples: reply.Samples}); err != nil {
+			c.fail(cur, fmt.Sprintf("sending audio: %v", err))
+			return cur
+		}
+		c.frames.Add(1)
+	}
+	return cur
+}
+
+// start opens a call: acquire the chip, then key the far side.
+func (c *Channel) start(f hbp.Data, now time.Time) *call {
+	cur := &call{stream: f.StreamID, source: f.SourceID, talkgroup: f.TargetID, lastSeen: now}
+
+	chip := c.chip()
+	if chip == nil {
+		c.refused.Add(1)
+		c.note("a call arrived and the vocoder is not reachable")
+		return cur
+	}
+	// **The rate is checked before a frame is sent, not inferred from bad
+	// audio.** A DMR burst carries 72-bit frames; a chip at any other rate
+	// accepts them and produces sound nothing identifies as a rate problem.
+	if bits, ok := ambe.FrameBitsForRate(chip.Rate()); !ok || bits != dmrfec.ProtectedBits {
+		c.refused.Add(1)
+		c.note(fmt.Sprintf("the vocoder is at rate index %d, which does not carry DMR's %d-bit frames",
+			chip.Rate(), dmrfec.ProtectedBits))
+		return cur
+	}
+	if err := chip.Acquire(ambe.Holder{Talkgroup: f.TargetID, Source: f.SourceID,
+		Reason: "DMR to USRP"}); err != nil {
+		// The routing core already refuses a second call, so this is the two
+		// layers disagreeing — worth a count of its own, not a quiet retry.
+		c.refused.Add(1)
+		c.note(fmt.Sprintf("the vocoder refused a call: %v", err))
+		return cur
+	}
+	if err := c.radio.Send(audio.Frame{Sequence: c.seq.Add(1), PTT: true, Talkgroup: f.TargetID}); err != nil {
+		chip.Release()
+		c.failed.Add(1)
+		c.note(fmt.Sprintf("cannot key the USRP side: %v", err))
+		return cur
+	}
+	cur.chip = chip
+	c.calls.Add(1)
+	c.setHolder(fmt.Sprintf("radio %d on talkgroup %d", f.SourceID, f.TargetID))
+	c.log.Info("transcoding a call",
+		slog.Uint64("radio", uint64(f.SourceID)),
+		slog.Uint64("talkgroup", uint64(f.TargetID)))
+	return cur
+}
+
+// finish closes a call. **The release is sent before the chip is freed**, so a
+// far side never sees audio from the next call while still keyed for this one.
+func (c *Channel) finish(cur *call, why string) {
+	if cur == nil || cur.chip == nil {
+		return
+	}
+	if err := c.radio.Send(audio.Frame{Sequence: c.seq.Add(1), PTT: false, Talkgroup: cur.talkgroup}); err != nil {
+		c.failed.Add(1)
+		c.note(fmt.Sprintf("cannot unkey the USRP side: %v", err))
+	}
+	cur.chip.Release()
+	cur.chip = nil
+	c.setHolder("")
+	if why != "" {
+		c.note(why)
+	}
+}
+
+// fail ends a call's audio and keeps absorbing its frames.
+func (c *Channel) fail(cur *call, why string) {
+	c.failed.Add(1)
+	c.finish(cur, why)
+}
+
+func (c *Channel) note(problem string) {
+	c.mu.Lock()
+	c.problem = problem
+	c.mu.Unlock()
+	c.log.Warn("transcoder problem", slog.String("problem", problem))
+}
+
+func (c *Channel) setHolder(h string) {
+	c.mu.Lock()
+	c.holder = h
+	c.mu.Unlock()
+}
+
+// packBits turns one-bit-per-byte values into bytes, most significant first.
+func packBits(bits []byte) []byte {
+	out := make([]byte, (len(bits)+7)/8)
+	for i, b := range bits {
+		if b&1 == 1 {
+			out[i/8] |= 1 << uint(7-i%8)
+		}
+	}
+	return out
+}
+
+// Set routes a transcoder name to its channel. It satisfies the peers
+// listener's TranscoderSender.
+type Set struct {
+	channels map[string]*Channel
+}
+
+// NewSet builds a set. Names are matched as configuration matches them:
+// trimmed and without regard to case, so a bridge naming "DVstick" reaches the
+// transcoder named "dvstick" that validation already said it reaches.
+func NewSet(channels ...*Channel) *Set {
+	s := &Set{channels: make(map[string]*Channel, len(channels))}
+	for _, ch := range channels {
+		s.channels[key(ch.name)] = ch
+	}
+	return s
+}
+
+func key(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
+
+// Send queues a frame for the named channel.
+func (s *Set) Send(transcoder string, frame hbp.Data) error {
+	ch, ok := s.channels[key(transcoder)]
+	if !ok {
+		return fmt.Errorf("no transcoder channel is running for %q", transcoder)
+	}
+	return ch.Send(frame)
+}
+
+// Run runs every channel and returns when all have stopped.
+func (s *Set) Run(ctx context.Context) {
+	var wg sync.WaitGroup
+	for _, ch := range s.channels {
+		wg.Go(func() { ch.Run(ctx) })
+	}
+	wg.Wait()
+}

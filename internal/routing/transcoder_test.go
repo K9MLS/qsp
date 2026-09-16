@@ -498,3 +498,98 @@ func TestAWithheldDestinationBecomesADropTheOperatorCanRead(t *testing.T) {
 			res.Deliveries, res.Drops)
 	}
 }
+
+// TestATranscoderTargetIsDeliveredToTheChipAndNowhereElse is the defect found
+// on 2026-09-16, before anything delivered to a vocoder.
+//
+// A transcoder endpoint carries AnyPeer, and the route loop had no branch for
+// it, so it fell into the peer loop and resolved to every ready peer. A bridge
+// from one repeater's TG2 to a chip delivered TG2 to a repeater nobody had
+// bridged, and echoed the call back to the repeater that sent it. Nothing was
+// configured that way on either server, which is the only reason it was
+// latent rather than live.
+//
+// To see it bite: delete the `target.Transcoder != ""` branch in route and
+// every row below fails, the first with peer 315544 in the deliveries.
+func TestATranscoderTargetIsDeliveredToTheChipAndNowhereElse(t *testing.T) {
+	const (
+		sender  = hbp.RepeaterID(312345)
+		bystand = hbp.RepeaterID(315544)
+	)
+	voice := func(stream hbp.StreamID, tg uint32) hbp.Data {
+		return hbp.Data{SourceID: 3100001, TargetID: tg, Timeslot: hbp.Timeslot2,
+			CallType: hbp.CallGroup, FrameType: hbp.FrameTypeVoice, StreamID: stream,
+			RepeaterID: sender}
+	}
+	bridges := []Bridge{
+		{Name: "tg2", Enabled: true, Endpoints: []Endpoint{
+			{Peer: sender, Talkgroup: 2, Timeslot: hbp.Timeslot2},
+			transcoder("dvstick", 2, hbp.Timeslot2),
+		}},
+		{Name: "tg11", Enabled: true, Endpoints: []Endpoint{
+			{Peer: sender, Talkgroup: 11, Timeslot: hbp.Timeslot2},
+			transcoder("dvstick", 11, hbp.Timeslot2),
+		}},
+	}
+
+	tests := []struct {
+		name string
+		// frames are routed in order; the last result is examined.
+		frames []hbp.Data
+		// wantChip is how many transcoder deliveries the last frame makes.
+		wantChip int
+		// wantBusy says the last frame is refused because the chip is held.
+		wantBusy bool
+	}{
+		{name: "a call on a bridged talkgroup reaches the chip",
+			frames: []hbp.Data{voice(1, 2)}, wantChip: 1},
+		{name: "the second frame of the same call keeps the chip",
+			frames: []hbp.Data{voice(1, 2), voice(1, 2)}, wantChip: 1},
+		{name: "another talkgroup while the chip is held is refused",
+			frames: []hbp.Data{voice(1, 2), voice(2, 11)}, wantBusy: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			table, err := NewTable(bridges)
+			if err != nil {
+				t.Fatalf("building a table: %v", err)
+			}
+			core, err := NewCore(CoreOptions{Table: table, Peers: bothReady{}, NoRepeat: true})
+			if err != nil {
+				t.Fatalf("building a core: %v", err)
+			}
+			now := time.Now()
+			var res Result
+			for i, f := range tc.frames {
+				res = core.Route(sender, f, now.Add(time.Duration(i)*60*time.Millisecond))
+			}
+
+			if len(res.Deliveries) != 0 {
+				t.Errorf("a call bridged only to a transcoder reached peers %v; a transcoder "+
+					"endpoint must never resolve as a peer", res.Deliveries)
+			}
+			if len(res.Transcoders) != tc.wantChip {
+				t.Errorf("%d transcoder deliveries, want %d: %+v", len(res.Transcoders),
+					tc.wantChip, res.Transcoders)
+			}
+			for _, d := range res.Transcoders {
+				if d.Transcoder != "dvstick" {
+					t.Errorf("delivered to %q, want dvstick", d.Transcoder)
+				}
+			}
+			busy := false
+			for _, d := range res.Drops {
+				if d.To.Transcoder == "dvstick" && strings.Contains(d.Reason, "one chip is one channel") {
+					busy = true
+				}
+			}
+			if busy != tc.wantBusy {
+				t.Errorf("refused as busy = %v, want %v; drops %v", busy, tc.wantBusy, res.Drops)
+			}
+			if tc.wantChip > 0 && res.Reason != "" {
+				t.Errorf("a frame delivered to the chip came back with reason %q; the "+
+					"listener would log it as not carried", res.Reason)
+			}
+		})
+	}
+}

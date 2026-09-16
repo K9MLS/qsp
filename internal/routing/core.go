@@ -49,6 +49,25 @@ type UpstreamDelivery struct {
 	Bridge string
 }
 
+// TranscoderDelivery is a frame for a vocoder channel.
+//
+// **A third list rather than a peer delivery with a flag**, because a
+// transcoder is neither a peer nor a link (ADR-0063) and the listener has a
+// different thing to do with each: write to a peer's socket, hand to a link's
+// sender, queue for a chip. Before this existed a transcoder target reached
+// the peer loop, resolved as AnyPeer to every ready peer, and delivered the
+// talkgroup to repeaters nobody had bridged — including the one that sent it.
+type TranscoderDelivery struct {
+	// Transcoder names the channel.
+	Transcoder string
+	// Frame is the frame as it arrived. The talkgroup and timeslot are the
+	// bridged endpoint's, so the far side of the vocoder is told what it is
+	// carrying.
+	Frame hbp.Data
+	// Bridge names the bridge responsible, for logging.
+	Bridge string
+}
+
 // routeTarget is a destination and how it was chosen.
 //
 // Repeat and bridging differ in one rule — whether a call may return to the
@@ -106,6 +125,8 @@ type Result struct {
 	Deliveries []Delivery
 	// Upstreams are the frames to send over links to other networks.
 	Upstreams []UpstreamDelivery
+	// Transcoders are the frames to hand to vocoder channels.
+	Transcoders []TranscoderDelivery
 	// Drops explain destinations that were skipped.
 	Drops []Drop
 	// StartedStreams are destinations that began receiving with this frame.
@@ -761,6 +782,14 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	delivered := make(map[hbp.RepeaterID]bool, 8)
 
 	for _, target := range targets {
+		// **A transcoder is checked first, and never resolved as a peer.** Its
+		// Peer field is AnyPeer by construction, and AnyPeer resolves to every
+		// ready peer — which is exactly where it went before this branch
+		// existed.
+		if target.Transcoder != "" {
+			c.deliverTranscoder(&res, target.Endpoint, frame, src, bridge, now)
+			continue
+		}
 		if target.Upstream != "" {
 			// **A link is never sent its own frame.** This half of the loop
 			// rule survives deduplication unchanged: sending a transmission
@@ -938,7 +967,7 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 		c.release(src)
 	}
 
-	if len(res.Deliveries) == 0 && len(res.Upstreams) == 0 && res.Reason == "" {
+	if len(res.Deliveries) == 0 && len(res.Upstreams) == 0 && len(res.Transcoders) == 0 && res.Reason == "" {
 		// **Nothing delivered is not the same as everything refused**, and
 		// writing one sentence for both cost a day of silence. A frame from a
 		// link, on a server whose only station is a Motorola repeater, reaches
@@ -1024,6 +1053,57 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 		Upstream: target.Upstream,
 		Frame:    out,
 		Bridge:   bridge,
+	})
+}
+
+// deliverTranscoder applies contention to a vocoder channel.
+//
+// The shape of deliverUpstream, with one difference that is the whole of
+// ADR-0063: the key comes from contend, which drops the talkgroup and the
+// timeslot, so a chip carrying one call refuses a second on any talkgroup.
+func (c *Core) deliverTranscoder(res *Result, target Endpoint, frame hbp.Data, src sourceKey, bridge string, now time.Time) {
+	if !c.access.Talkgroups(int(target.Timeslot)).Allows(target.Talkgroup) {
+		res.Drops = append(res.Drops, Drop{
+			To: target,
+			Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
+				target.Talkgroup, target.Timeslot),
+		})
+		return
+	}
+
+	key := contend(target)
+	held, occupied := c.busy[key]
+	switch {
+	case occupied && held.source != src:
+		if now.Sub(held.lastSeen) <= c.timeout {
+			res.Drops = append(res.Drops, Drop{
+				To: target,
+				Reason: fmt.Sprintf("transcoder %q is already carrying TG %d from peer %d; "+
+					"one chip is one channel", target.Transcoder,
+					held.endpoint.Talkgroup, held.source.peer),
+			})
+			return
+		}
+		fallthrough
+	case !occupied:
+		c.busy[key] = &reservation{source: src, lastSeen: now, bridge: bridge,
+			endpoint: target, voice: contendsForSlot(frame)}
+		res.StartedStreams = append(res.StartedStreams, target)
+	default:
+		held.lastSeen = now
+		held.voice = held.voice || contendsForSlot(frame)
+	}
+
+	out := frame
+	out.TargetID = target.Talkgroup
+	out.Timeslot = target.Timeslot
+	if len(frame.Trailing) > 0 {
+		out.Trailing = append([]byte(nil), frame.Trailing...)
+	}
+	res.Transcoders = append(res.Transcoders, TranscoderDelivery{
+		Transcoder: target.Transcoder,
+		Frame:      out,
+		Bridge:     bridge,
 	})
 }
 

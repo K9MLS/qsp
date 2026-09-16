@@ -104,6 +104,11 @@ frames is the next patch. **The health report says so explicitly** rather than
 letting a configured transcoder look like a working one — §7's rule about no
 stub that claims success, applied to a subsystem that is half wired.
 
+*2026-09-16:* the next patch arrived, in one direction. Writing it found that
+the routing core had no delivery branch for this endpoint kind, so a
+transcoder target resolved as every ready peer. `routing.Result.Transcoders`
+now carries it, contended by `contend` exactly as decided above.
+
 **Identity is not solved here.** ADR-0062's fourth item — a transcoded
 transmission appearing in Last heard as a station rather than an anonymous
 burst, and a DMR talker's callsign reaching the far side — is a separate

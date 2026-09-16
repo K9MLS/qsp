@@ -4,7 +4,52 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **A bridge naming a transcoder now carries DMR audio out as USRP.**
+  `internal/vocoderlink` takes each routed call, acquires the chip, pulls the
+  three vocoder frames out of every voice burst, decodes each to 20 ms of 8 kHz
+  PCM and sends USRP keyup, audio and release to the program on the far side.
+  It runs a goroutine and a bounded queue per channel, because the listener
+  that hands it frames reads every peer's socket and a chip answers one packet
+  at a time.
+
+  **What it gets right because each is an audible or operational defect:**
+  late entry keys up without a header; a text message is never decoded and
+  never keys the far side; a transmission whose terminator was lost is closed
+  when the next one starts, or after the routing core's stream timeout; the
+  release is sent before the chip is freed; shutdown unkeys a call in
+  progress; and a chip at a rate that does not carry DMR's 72-bit frames is
+  refused before a frame is sent rather than discovered as bad audio.
+
+- **The USRP socket in `internal/audio`.** It exchanges datagrams with one
+  configured peer and discards and counts everything else, because USRP has
+  no authentication and the peer address is the only check there is. The
+  listen address may be a wildcard, for the container install.
+
+- **`dmr.transcoders[].usrp_listen` and `usrp_peer`**, required on an enabled
+  transcoder, literal IPs only. A wildcard peer, a peer equal to the listen
+  address and a peer equal to the AMBEserver address are refused, and the
+  listen address joins `-check` and the collision rule.
+
+  **Deploy the binary before any configuration naming them.** QSP refuses
+  unknown fields, so an older binary — including the rollback — refuses the
+  document.
+
+  **Audio arriving from USRP is counted and discarded.** Encoding it back to
+  DMR is the next patch, and both health checks stay degraded until then.
+
 ### Fixed
+
+- **A transcoder target reached every ready peer.** The routing core's
+  delivery loop had branches for links and peers and none for a transcoder,
+  whose endpoint carries `AnyPeer` by construction — so a bridge from one
+  repeater's talkgroup to a chip delivered that talkgroup to repeaters nobody
+  had bridged, and echoed the call back to the repeater that sent it.
+  `routing.Result.Transcoders` now carries these deliveries, contended per
+  chip as ADR-0063 decided. Neither server configures a transcoder, so it was
+  latent rather than live; a test fails on the old core naming the bystander
+  peer.
 
 - **An IPSC peer was logged as `radio_id` while every other subsystem calls a
   peer `peer_id`** — the mirror of the fault corrected in `internal/peers` on
@@ -26,6 +71,13 @@ All notable changes to QSP. Dates are UTC.
   asserted against the source.
 
 ### Documentation
+
+- **The Go toolchain installs in seconds, not an hour.** `NEW-SESSION.md` and
+  `PROJECT_MEMORY.md` §7 said no allowed domain carried a Go binary and
+  prescribed a four-step source bootstrap. GitHub's `actions/go-versions`
+  publishes release tarballs on a domain the container can reach, and one
+  `curl` found it. The handover also stops restating the repository's version,
+  which went stale in the commit that wrote it.
 
 - **`HANDOVER.md` rewritten for a fresh session.** It had accumulated **three
   separate sections titled "The dongle, proven"** from successive layered
