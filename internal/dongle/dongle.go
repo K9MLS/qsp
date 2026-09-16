@@ -74,11 +74,17 @@ type Status struct {
 	// and the service is run outside QSP.
 	Managed bool `json:"managed"`
 	// Installed is false when systemd does not know the unit.
-	Installed bool      `json:"installed"`
-	Active    string    `json:"active"` // active, inactive, failed, activating
-	Sub       string    `json:"sub"`    // running, dead, ...
-	Since     string    `json:"since,omitempty"`
-	Adapters  []Adapter `json:"adapters"`
+	Installed bool   `json:"installed"`
+	Active    string `json:"active"` // active, inactive, failed, activating
+	Sub       string `json:"sub"`    // running, dead, ...
+	Since     string `json:"since,omitempty"`
+	// Result is systemd's reason for the last stop: "success", or
+	// "start-limit-hit" when the unit was started too often too quickly.
+	Result string `json:"result,omitempty"`
+	// LimitHit is that case: systemd refuses every start until the failure
+	// is reset, which the "reset" verb does.
+	LimitHit bool      `json:"limit_hit"`
+	Adapters []Adapter `json:"adapters"`
 	// Problems are sentences an operator can act on.
 	Problems []string `json:"problems,omitempty"`
 }
@@ -106,7 +112,7 @@ func (d *Dongle) Status(ctx context.Context) Status {
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
 	out, _, err := d.run(ctx, "systemctl", "show", Unit, "--no-pager",
-		"--property=LoadState,ActiveState,SubState,ActiveEnterTimestamp")
+		"--property=LoadState,ActiveState,SubState,ActiveEnterTimestamp,Result")
 	if err != nil {
 		st.Problems = append(st.Problems, fmt.Sprintf("cannot read %s: %v", Unit, err))
 		return st
@@ -115,6 +121,15 @@ func (d *Dongle) Status(ctx context.Context) Status {
 	st.Installed = props["LoadState"] == "loaded"
 	st.Active, st.Sub = props["ActiveState"], props["SubState"]
 	st.Since = props["ActiveEnterTimestamp"]
+	st.Result = props["Result"]
+	// **Said plainly, because on 2026-09-16 it looked like a broken dongle.**
+	// Five starts in five minutes trip ambeserver.service's limit, systemd
+	// then refuses every start, and "failed" was all there was to read.
+	if st.Active == "failed" && st.Result == "start-limit-hit" {
+		st.LimitHit = true
+		st.Problems = append(st.Problems, "AMBEserver was started too many times in a few minutes, so systemd "+
+			"is refusing to start it again. Nothing is broken: Reset and start clears that and starts it.")
+	}
 	if !st.Installed {
 		st.Problems = append(st.Problems, "AMBEserver is not installed as a service; "+
 			"docs/ZELLO.md, \"Running the dongle as a service\", has the steps")
@@ -129,8 +144,9 @@ var ErrNotAuthorized = errors.New("QSP is not allowed to control " + Unit +
 // ErrNotManaged is a control action where there is no systemctl.
 var ErrNotManaged = errors.New("AMBEserver is not managed by systemd on this install")
 
-// Verbs are the only actions allowed, matching the polkit rule.
-var Verbs = []string{"start", "stop", "restart"}
+// Verbs are the only actions allowed, matching the polkit rule. "reset" is
+// reset-failed followed by start.
+var Verbs = []string{"start", "stop", "restart", "reset"}
 
 // Control starts, stops or restarts the service.
 func (d *Dongle) Control(ctx context.Context, verb string) error {
@@ -141,13 +157,27 @@ func (d *Dongle) Control(ctx context.Context, verb string) error {
 		}
 	}
 	if !allowed {
-		return fmt.Errorf("dongle: %q is not start, stop or restart", verb)
+		return fmt.Errorf("dongle: %q is not start, stop, restart or reset", verb)
 	}
 	if _, err := d.lookup("systemctl"); err != nil {
 		return ErrNotManaged
 	}
 	ctx, cancel := context.WithTimeout(ctx, Timeout)
 	defer cancel()
+	steps := []string{verb}
+	if verb == "reset" {
+		steps = []string{"reset-failed", "start"}
+	}
+	for _, step := range steps {
+		if err := d.systemctl(ctx, step); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// systemctl runs one verb on Unit and names a refusal.
+func (d *Dongle) systemctl(ctx context.Context, verb string) error {
 	// --no-ask-password: without it, a refused action waits for a password
 	// prompt nobody can answer, until the timeout.
 	_, stderr, err := d.run(ctx, "systemctl", "--no-ask-password", verb, Unit)

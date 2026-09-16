@@ -4,6 +4,25 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **A tripped start limit says what happened, and offers the way out.** On
+  2026-09-16 AMBEserver was restarted too many times in five minutes, systemd
+  refused to start it again, and "failed" was all there was to read — while
+  Zello was off the air. The dongle panel reads systemd's `Result`; when it is
+  `start-limit-hit` the panel says nothing is broken and shows **Reset and
+  start**, which clears the failure and starts the service (`reset-failed`,
+  added to the polkit rule, then `start`). Every button now pauses fifteen
+  seconds after a press, so the page itself cannot trip the limit. An ordinary
+  failure is not described as a tripped limit.
+
+- **The setup checklist says since when it has been counting.** Its counters
+  start with QSP, so right after a restart a working vocoder and a working
+  transcoder both read "needs attention", which twice looked like a regression
+  the same evening. The vocoder line now says it is reachable and counts since
+  it opened; the audio line says since QSP started, and that a direction not
+  yet heard from after a restart is expected, not a fault.
+
 ### Added
 
 - **The level in each direction is set on the Zello page.** "Level toward

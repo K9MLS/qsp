@@ -59,7 +59,9 @@ func TestASupervisedChannelOpensAndReportsItselfReadyAndCarryingNothing(t *testi
 		t.Errorf("a reachable vocoder reports %q; it carries no audio yet and "+
 			"must not report healthy", res.Status)
 	}
-	for _, want := range []string{"AMBE3000F", "carrying nothing"} {
+	// "reachable" and "since it opened": right after a restart this line is
+	// amber for a working vocoder, and it must not read like a fault.
+	for _, want := range []string{"AMBE3000F", "reachable", "carried nothing", "since it opened at"} {
 		if !strings.Contains(res.Summary, want) {
 			t.Errorf("the summary %q does not mention %q", res.Summary, want)
 		}

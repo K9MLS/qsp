@@ -107,7 +107,10 @@ sudo systemctl enable --now ambeserver
   decode took 26.8 ms against the 20 ms real time allows, so audio going to
   Zello was choppy and stretched; at 1 ms it takes 11.9 ms.
 - **The Zello page shows the service and the adapter**, flags a latency timer
-  above 1 ms, and has Start, Restart and Stop buttons. They need
+  above 1 ms, and has Start, Restart and Stop buttons, with a pause after each
+  press so repeated clicks cannot trip systemd's start limit. If the limit has
+  tripped anyway — five starts in five minutes — the panel says so and offers
+  **Reset and start**. They need
   `deploy/polkit/50-qsp-ambeserver.rules` in `/etc/polkit-1/rules.d/`, which
   lets the `qsp` user do exactly those three things to `ambeserver.service` and
   nothing else; without it they report "not authorized". Every use is audited.

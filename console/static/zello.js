@@ -455,8 +455,14 @@
   var dongleActions = {
     start: { button: document.getElementById("dongle-start"), url: "/api/dongle/start" },
     restart: { button: document.getElementById("dongle-restart"), url: "/api/dongle/restart" },
-    stop: { button: document.getElementById("dongle-stop"), url: "/api/dongle/stop" }
+    stop: { button: document.getElementById("dongle-stop"), url: "/api/dongle/stop" },
+    reset: { button: document.getElementById("dongle-reset"), url: "/api/dongle/reset" }
   };
+  /* **A pause after every press.** systemd refuses a sixth start within five
+   * minutes, and on 2026-09-16 repeated restarts tripped exactly that and took
+   * Zello off the air. Fifteen seconds keeps the page from doing it. */
+  var DONGLE_COOLDOWN_MS = 15000;
+  var dongleCoolingUntil = 0;
 
   function renderDongle(st) {
     show(donglePanel);
@@ -482,10 +488,12 @@
       li.textContent = p;
       dongleProblems.appendChild(li);
     });
-    var controllable = st.managed && st.installed;
+    var controllable = st.managed && st.installed && Date.now() >= dongleCoolingUntil;
     Object.keys(dongleActions).forEach(function (verb) {
       dongleActions[verb].button.disabled = !controllable;
     });
+    /* Offered only when it is the way out, so it is never pressed by habit. */
+    dongleActions.reset.button.hidden = !st.limit_hit;
   }
 
   function loadDongle() {
@@ -501,11 +509,17 @@
   }
 
   function controlDongle(verb) {
-    var warn = verb === "restart"
+    if (Date.now() < dongleCoolingUntil) { return; }
+    var warn = verb === "reset"
+      ? "Clear systemd's refusal and start AMBEserver?"
+      : verb === "restart"
       ? "Restart AMBEserver? A call in progress is dropped; the next one sets the dongle up again."
       : verb === "stop" ? "Stop AMBEserver? Zello is off the air until it is started again."
       : "Start AMBEserver?";
     if (!window.confirm(warn)) { return; }
+    dongleCoolingUntil = Date.now() + DONGLE_COOLDOWN_MS;
+    Object.keys(dongleActions).forEach(function (v) { dongleActions[v].button.disabled = true; });
+    window.setTimeout(loadDongle, DONGLE_COOLDOWN_MS + 100);
     dongleResult.textContent = "Asking systemd…";
     fetch(dongleActions[verb].url, { method: "POST", credentials: "same-origin" })
       .then(function (r) {

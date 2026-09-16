@@ -94,6 +94,11 @@ func TestTheStatusSaysWhatAnOperatorNeedsToAct(t *testing.T) {
 		{"not installed as a service", map[string]ad{"ttyUSB0": {"ftdi_sio", "1"}}, true,
 			"LoadState=not-found\nActiveState=inactive\nSubState=dead\n", true, false, "inactive", "not installed as a service"},
 		{"a container install with no systemctl", map[string]ad{"ttyUSB0": {"ftdi_sio", "1"}}, false, "", false, false, "", ""},
+		{"the start limit tripped", map[string]ad{"ttyUSB0": {"ftdi_sio", "1"}}, true,
+			"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=start-limit-hit\n", true, true, "failed",
+			"started too many times"},
+		{"an ordinary failure is not called a tripped limit", map[string]ad{"ttyUSB0": {"ftdi_sio", "1"}}, true,
+			"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\n", true, true, "failed", ""},
 		{"a non-FTDI adapter has no latency to judge", map[string]ad{"ttyUSB0": {"cp210x", ""}}, true, running, true, true, "active", ""},
 	}
 	for _, tc := range tests {
@@ -177,5 +182,35 @@ func TestNoSystemctlIsNotManagedRatherThanAFailure(t *testing.T) {
 	}
 	if len(*calls) != 0 {
 		t.Error("ran a command with no systemctl present")
+	}
+}
+
+// TestResetClearsTheFailureThenStarts: the page's "Reset and start", which is
+// what brought AMBEserver back on 2026-09-16.
+//
+// To see it bite: map "reset" to a bare start, and systemd refuses it for as
+// long as the limit holds.
+func TestResetClearsTheFailureThenStarts(t *testing.T) {
+	d, calls := fakeDongle(fakeSys(t, nil), true, func(context.Context, string, ...string) ([]byte, []byte, error) {
+		return nil, nil, nil
+	})
+	if err := d.Control(context.Background(), "reset"); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, c := range *calls {
+		got = append(got, strings.Join(c.args, " "))
+	}
+	want := []string{"systemctl --no-ask-password reset-failed " + Unit, "systemctl --no-ask-password start " + Unit}
+	if strings.Join(got, " | ") != strings.Join(want, " | ") {
+		t.Errorf("ran %q, want %q", got, want)
+	}
+}
+
+// TestALimitHitStatusIsFlagged: LimitHit is what shows the reset button.
+func TestALimitHitStatusIsFlagged(t *testing.T) {
+	d, _ := fakeDongle(fakeSys(t, nil), true, show("LoadState=loaded\nActiveState=failed\nResult=start-limit-hit\n"))
+	if !d.Status(context.Background()).LimitHit {
+		t.Error("a tripped start limit is not flagged, so the page offers no way out")
 	}
 }

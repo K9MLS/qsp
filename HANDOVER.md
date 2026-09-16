@@ -85,11 +85,12 @@ learned to run it as a service.
    capture measured DMR audio 13 dB under Zello audio; start at +10, restart
    QSP, and ask the Zello users. A synthetic signal at that level reaches
    Zello's level at +13 in the tests; the real voice is the judge.
-2. **Confirm the dongle panel's buttons on production.** Built (0406): status
-   from `systemctl show` and `/sys`, control through `systemctl` under a polkit
-   rule for one unit. **Not yet run under qsp.service's sandbox**, whose system
-   call filter and hidden devices a test here cannot reproduce. Install
-   `deploy/polkit/50-qsp-ambeserver.rules`, press Restart, read the result.
+2. **The dongle panel's buttons work under qsp.service's sandbox** — confirmed
+   on production on 2026-09-16 by running `systemctl restart` as `qsp` inside a
+   transient unit with every one of qsp.service's restrictions. **Installing
+   0408 needs the polkit rule copied again** (it adds `reset-failed`).
+   **Never test by restarting AMBEserver repeatedly:** five starts in five
+   minutes trips its start limit, which is how that test took Zello off the air.
 3. **A Docker compose service for `qsp-zello`**, for the container install.
    Only systemd is written.
 4. **Talker Alias for Zello transmissions** — whether the transcoder's

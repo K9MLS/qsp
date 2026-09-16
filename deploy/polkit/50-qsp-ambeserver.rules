@@ -1,6 +1,6 @@
 // Lets QSP start, stop and restart the vocoder dongle's AMBEserver service from
-// the console's Zello page — that one unit, those three verbs, the qsp user,
-// and nothing else. QSP stays unprivileged; without this file its buttons say
+// the console's Zello page, and clear its failed state — that one unit, those
+// four verbs, the qsp user, and nothing else. QSP stays unprivileged; without this file its buttons say
 // "not authorized" and nothing else changes.
 //
 // Install: sudo cp 50-qsp-ambeserver.rules /etc/polkit-1/rules.d/
@@ -13,7 +13,8 @@ polkit.addRule(function (action, subject) {
         return polkit.Result.NOT_HANDLED;
     }
     var verb = action.lookup("verb");
-    if (verb === "start" || verb === "stop" || verb === "restart") {
+    // reset-failed clears a tripped start limit: the page's "Reset and start".
+    if (verb === "start" || verb === "stop" || verb === "restart" || verb === "reset-failed") {
         return polkit.Result.YES;
     }
     return polkit.Result.NOT_HANDLED;

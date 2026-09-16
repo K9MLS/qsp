@@ -121,6 +121,8 @@ type Channel struct {
 	fromUSRP  chan audio.Frame
 	toUSRP    Gain
 	toDMR     Gain
+	// started is when this channel's counters began: QSP's start.
+	started time.Time
 
 	calls, frames, dropped, notVoice, refused, failed, abandoned, fromRadio atomic.Uint64
 
@@ -168,6 +170,7 @@ func New(opts Options) (*Channel, error) {
 		timeslot:  opts.Timeslot,
 		deliver:   opts.Deliver,
 		fromUSRP:  make(chan audio.Frame, QueueDepth),
+		started:   time.Now(),
 		toUSRP:    NewGain(opts.GainToUSRPDB),
 		toDMR:     NewGain(opts.GainToDMRDB),
 	}, nil

@@ -300,10 +300,14 @@ func (c channelCheck) Check(context.Context) health.Result {
 	// **Healthy once the chip has worked both ways.** Decoding proves DMR
 	// reaches it and encoding proves audio leaves it; either alone is half a
 	// transcoder, and the summary says which half.
-	summary := fmt.Sprintf("%s at %s is ready and carrying nothing", client.Product(), c.ch.cfg.Address)
+	c.ch.mu.Lock()
+	opened := c.ch.openedAt
+	c.ch.mu.Unlock()
+	since := "since it opened at " + opened.UTC().Format("15:04 UTC")
+	summary := fmt.Sprintf("%s at %s is reachable and has carried nothing %s", client.Product(), c.ch.cfg.Address, since)
 	if encoded > 0 || decoded > 0 {
-		summary = fmt.Sprintf("%s at %s has decoded %d and encoded %d frame(s)",
-			client.Product(), c.ch.cfg.Address, decoded, encoded)
+		summary = fmt.Sprintf("%s at %s is reachable and has decoded %d and encoded %d frame(s) %s",
+			client.Product(), c.ch.cfg.Address, decoded, encoded, since)
 	}
 	if encoded > 0 && decoded > 0 {
 		res := health.Healthy(summary)
@@ -311,8 +315,8 @@ func (c channelCheck) Check(context.Context) health.Result {
 		return res
 	}
 	res := health.Degraded(summary,
-		"a vocoder is working when it has carried audio both ways; see transcoder-audio:"+
-			c.ch.cfg.Name+" for which direction has not")
+		"reachable, so nothing is wrong with the connection; it counts as working once audio has "+
+			"crossed both ways since it opened — see transcoder-audio:"+c.ch.cfg.Name+" for which direction is still to go")
 	res.Detail = detail
 	return res
 }

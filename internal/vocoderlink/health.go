@@ -52,7 +52,11 @@ func (c *Channel) Check(context.Context) health.Result {
 		detail["last_problem"] = problem
 	}
 
-	summary := fmt.Sprintf("%d call(s) from DMR to USRP, %d from USRP to DMR", toUSRP, fromUSRP)
+	// **Since when, in the sentence.** The counts start at zero with QSP, so
+	// right after a restart a transcoder that works reads exactly like one
+	// that does not; twice on 2026-09-16 that looked like a regression.
+	since := "since QSP started at " + c.started.UTC().Format("15:04 UTC")
+	summary := fmt.Sprintf("%d call(s) from DMR to USRP, %d from USRP to DMR %s", toUSRP, fromUSRP, since)
 	var fix string
 	switch {
 	case c.txBadFEC.Load() > 0:
@@ -65,12 +69,14 @@ func (c *Channel) Check(context.Context) health.Result {
 		res.Detail = detail
 		return res
 	case toUSRP == 0 && fromUSRP == 0:
-		fix = "nothing has crossed yet; key up on a bridged talkgroup, and transmit " +
-			"from the far side of the USRP socket"
+		fix = "nothing has crossed " + since + "; key up on a bridged talkgroup, and talk from the " +
+			"far side of the USRP socket — after a restart that is expected, not a fault"
 	case toUSRP == 0:
-		fix = "no DMR call has reached the vocoder yet; key up on a talkgroup bridged to it"
+		fix = "no DMR call has reached the vocoder " + since + "; key up once on a talkgroup bridged to it " +
+			"to confirm this direction — after a restart that is expected, not a fault"
 	default:
-		fix = "no audio has arrived from the USRP side yet; transmit from qsp-zello"
+		fix = "no audio has arrived from the USRP side " + since + "; talk from Zello once to confirm " +
+			"this direction — after a restart that is expected, not a fault"
 	}
 	if problem != "" {
 		fix = "last problem: " + problem + ". " + fix
