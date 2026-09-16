@@ -144,13 +144,13 @@ func (s *Server) handleSetSecret(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := store.Set(r.Context(), name, body.Value, actor); err != nil {
-		s.recordSecret(r, "secret.set", name, audit.OutcomeFailure)
+		s.recordSecret(r, audit.ActionSecretSet, name, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot store the credential: " + err.Error()})
 		return
 	}
 
-	s.recordSecret(r, "secret.set", name, audit.OutcomeSuccess)
+	s.recordSecret(r, audit.ActionSecretSet, name, audit.OutcomeSuccess)
 	writeJSON(w, s.log, http.StatusOK, map[string]string{"name": name})
 }
 
@@ -173,13 +173,13 @@ func (s *Server) handleRemoveSecret(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := store.Delete(r.Context(), name); err != nil {
-		s.recordSecret(r, "secret.removed", name, audit.OutcomeFailure)
+		s.recordSecret(r, audit.ActionSecretRemoved, name, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot remove the credential: " + err.Error()})
 		return
 	}
 
-	s.recordSecret(r, "secret.removed", name, audit.OutcomeSuccess)
+	s.recordSecret(r, audit.ActionSecretRemoved, name, audit.OutcomeSuccess)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -207,7 +207,7 @@ func (s *Server) secretStore(w http.ResponseWriter) (CredentialStore, bool) {
 // **The name and never the value.** An audit trail is read, exported and kept
 // far longer than a session, and a password in it is a password in every copy
 // of it.
-func (s *Server) recordSecret(r *http.Request, action, name string, outcome audit.Outcome) {
+func (s *Server) recordSecret(r *http.Request, action audit.Action, name string, outcome audit.Outcome) {
 	if s.opts.Audit == nil {
 		return
 	}
@@ -218,7 +218,7 @@ func (s *Server) recordSecret(r *http.Request, action, name string, outcome audi
 	if err := s.opts.Audit.Record(r.Context(), audit.Event{
 		OccurredAt: time.Now().UTC(),
 		Actor:      actor,
-		Action:     audit.Action(action),
+		Action:     action,
 		Subject:    name,
 		Outcome:    outcome,
 		SourceIP:   clientIP(r, s.opts.BehindProxy),

@@ -4,6 +4,23 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Credential, backup and peer-credential actions were never audited.** The
+  console's handlers passed their audit actions as string literals —
+  `secret.set`, `secret.removed`, `peer.credential.issued`,
+  `peer.credential.revoked`, `config.exported`, `config.restored`,
+  `config.full_export`, `config.full_restored` — none of them declared, so
+  every one was refused by the audit trail with a warning in the log. Every
+  credential stored or removed (the Zello key and password among them), every
+  backup taken or restored, and every peer credential issued or revoked since
+  those handlers were written left no audit record, though SECURITY.md said
+  they did. It is the peering defect recorded in the audit package, a second
+  time, in code the first fix's type change could not catch: an untyped string
+  literal converts to an Action silently. All eight are declared, all nine call
+  sites use the constants, and a test reads the server package's source and
+  fails on a literal or a conversion passed to an audit helper.
+
 ## [0.1.246] — 2026-09-16
 
 **The first release since 0.1.9, covering everything between.** In short:

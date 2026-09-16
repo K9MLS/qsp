@@ -66,7 +66,7 @@ func (s *Server) handleIssueCredential(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.recordCredential(r, "peer.credential.issued", peer, audit.OutcomeSuccess)
+	s.recordCredential(r, audit.ActionPeerCredentialIssued, peer, audit.OutcomeSuccess)
 
 	writeJSON(w, s.log, http.StatusOK, credentialResponse{
 		Peer:     peer,
@@ -92,7 +92,7 @@ func (s *Server) handleRevokeCredential(w http.ResponseWriter, r *http.Request) 
 	err := os.Remove(path)
 	switch {
 	case err == nil:
-		s.recordCredential(r, "peer.credential.revoked", peer, audit.OutcomeSuccess)
+		s.recordCredential(r, audit.ActionPeerCredentialRevoked, peer, audit.OutcomeSuccess)
 		writeJSON(w, s.log, http.StatusOK, credentialResponse{
 			Peer: peer,
 			Reason: "This peer now uses the shared password again. It stays connected " +
@@ -108,7 +108,7 @@ func (s *Server) handleRevokeCredential(w http.ResponseWriter, r *http.Request) 
 			Reason: "This peer had no password of its own; it was already using the shared one.",
 		})
 	default:
-		s.recordCredential(r, "peer.credential.revoked", peer, audit.OutcomeFailure)
+		s.recordCredential(r, audit.ActionPeerCredentialRevoked, peer, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot remove the password: " + err.Error()})
 	}
@@ -144,7 +144,7 @@ func (s *Server) credentialTarget(w http.ResponseWriter, r *http.Request) (strin
 
 // recordCredential writes the audit event a club asks about afterwards: who
 // removed whom, and when.
-func (s *Server) recordCredential(r *http.Request, action string, peer uint32, outcome audit.Outcome) {
+func (s *Server) recordCredential(r *http.Request, action audit.Action, peer uint32, outcome audit.Outcome) {
 	if s.opts.Audit == nil {
 		return
 	}
@@ -155,7 +155,7 @@ func (s *Server) recordCredential(r *http.Request, action string, peer uint32, o
 	if err := s.opts.Audit.Record(r.Context(), audit.Event{
 		OccurredAt: time.Now().UTC(),
 		Actor:      actor,
-		Action:     audit.Action(action),
+		Action:     action,
 		Subject:    strconv.FormatUint(uint64(peer), 10),
 		Outcome:    outcome,
 		SourceIP:   clientIP(r, s.opts.BehindProxy),

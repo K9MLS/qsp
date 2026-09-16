@@ -75,6 +75,35 @@ const (
 	ActionPeeringAccepted Action = "peering.accepted"
 	// ActionPeeringRemoved records a link removed from the configuration.
 	ActionPeeringRemoved Action = "peering.removed"
+
+	// # The eight below were emitted and never recorded, until 2026-09-16
+	//
+	// **The same defect as the three above, a second time.** The console's
+	// credential, backup and peer-credential handlers passed their actions as
+	// string literals, and an untyped string literal converts to Action
+	// without complaint — so changing the parameter's type did not catch
+	// them. Every one was refused by Validate with a warning in the log:
+	// every credential stored or removed, every backup taken or restored and
+	// every peer credential issued or revoked since those handlers were
+	// written. A test in internal/server now reads the source and refuses a
+	// literal passed to an audit helper.
+
+	// ActionSecretSet records a credential stored or replaced, by name only.
+	ActionSecretSet Action = "secret.set"
+	// ActionSecretRemoved records a credential removed, by name only.
+	ActionSecretRemoved Action = "secret.removed"
+	// ActionPeerCredentialIssued records a per-peer password issued.
+	ActionPeerCredentialIssued Action = "peer.credential.issued"
+	// ActionPeerCredentialRevoked records a per-peer password revoked.
+	ActionPeerCredentialRevoked Action = "peer.credential.revoked"
+	// ActionConfigExported records the shareable configuration downloaded.
+	ActionConfigExported Action = "config.exported"
+	// ActionConfigRestored records a shareable configuration restored.
+	ActionConfigRestored Action = "config.restored"
+	// ActionConfigFullExported records the encrypted full backup taken.
+	ActionConfigFullExported Action = "config.full_export"
+	// ActionConfigFullRestored records the encrypted full backup restored.
+	ActionConfigFullRestored Action = "config.full_restored"
 )
 
 var knownActions = map[Action]bool{
@@ -90,6 +119,15 @@ var knownActions = map[Action]bool{
 	ActionPeeringOffered:    true,
 	ActionPeeringAccepted:   true,
 	ActionPeeringRemoved:    true,
+
+	ActionSecretSet:             true,
+	ActionSecretRemoved:         true,
+	ActionPeerCredentialIssued:  true,
+	ActionPeerCredentialRevoked: true,
+	ActionConfigExported:        true,
+	ActionConfigRestored:        true,
+	ActionConfigFullExported:    true,
+	ActionConfigFullRestored:    true,
 }
 
 // IsKnownAction reports whether a is a declared action.

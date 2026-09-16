@@ -80,7 +80,7 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 
 	values, err := s.allSecrets(r.Context(), store)
 	if err != nil {
-		s.recordBackup(r, "config.full_export", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot read the stored credentials: " + err.Error()})
 		return
@@ -91,7 +91,7 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 
 	var out bytes.Buffer
 	if err := config.WriteFullBackup(&out, full, body.Passphrase); err != nil {
-		s.recordBackup(r, "config.full_export", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": err.Error()})
 		return
@@ -112,7 +112,7 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 	// credential. **Never the passphrase**, and not the names of the secrets
 	// either: a trail listing which credentials exist is a map for somebody
 	// who later gets the file.
-	s.recordBackup(r, "config.full_export", audit.OutcomeSuccess)
+	s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeSuccess)
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
@@ -181,7 +181,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	full, err := config.ReadFullBackup(bytes.NewReader(raw), req.Passphrase)
 	switch {
 	case errors.Is(err, config.ErrNotAFullBackup):
-		s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
 			"error": err.Error(),
 			"fix": "the shareable export is restored through /api/admin/restore; " +
@@ -189,19 +189,19 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	case errors.Is(err, config.ErrWrongPassphrase):
-		s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusUnauthorized,
 			map[string]string{"error": err.Error()})
 		return
 	case err != nil:
-		s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest,
 			map[string]string{"error": err.Error()})
 		return
 	}
 
 	if err := full.Backup.Config.Validate(); err != nil {
-		s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
 			"error": "the configuration in this backup is not valid: " + err.Error(),
 		})
@@ -249,7 +249,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	restored := make([]string, 0, len(full.Secrets))
 	for _, name := range full.SecretNames() {
 		if err := store.Set(r.Context(), name, full.Secrets[name], actor); err != nil {
-			s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+			s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 			writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{
 				"error": fmt.Sprintf("restored %d of %d credentials and then "+
 					"failed on %q: %v; the configuration has not been changed",
@@ -264,7 +264,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("restored from a full backup of %s",
 			full.Backup.ExportedAt.Format("2006-01-02")))
 	if err != nil {
-		s.recordBackup(r, "config.full_restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{
 			"error": "the credentials were restored and the configuration was " +
 				"not: " + err.Error(),
@@ -272,7 +272,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.recordBackup(r, "config.full_restored", audit.OutcomeSuccess)
+	s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeSuccess)
 
 	// **What came back, named.** An operator told "restored" has a different
 	// confidence from one who can see that four credentials returned — and

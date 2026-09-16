@@ -49,7 +49,7 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 	filename := fmt.Sprintf("%s-%s.qspbackup.json",
 		safeFilename(name), backup.ExportedAt.Format("2006-01-02"))
 
-	s.recordBackup(r, "config.exported", audit.OutcomeSuccess)
+	s.recordBackup(r, audit.ActionConfigExported, audit.OutcomeSuccess)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
@@ -173,11 +173,11 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	before := s.opts.Config.Current()
 	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
 	if err != nil {
-		s.recordBackup(r, "config.restored", audit.OutcomeFailure)
+		s.recordBackup(r, audit.ActionConfigRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordBackup(r, "config.restored", audit.OutcomeSuccess)
+	s.recordBackup(r, audit.ActionConfigRestored, audit.OutcomeSuccess)
 
 	writeJSON(w, s.log, http.StatusOK, restoreResponse{
 		Version:      version.Number,
@@ -189,7 +189,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 }
 
 // recordBackup writes the audit event ADR-0032 requires.
-func (s *Server) recordBackup(r *http.Request, action string, outcome audit.Outcome) {
+func (s *Server) recordBackup(r *http.Request, action audit.Action, outcome audit.Outcome) {
 	if s.opts.Audit == nil {
 		return
 	}
@@ -200,7 +200,7 @@ func (s *Server) recordBackup(r *http.Request, action string, outcome audit.Outc
 	if err := s.opts.Audit.Record(r.Context(), audit.Event{
 		OccurredAt: time.Now().UTC(),
 		Actor:      actor,
-		Action:     audit.Action(action),
+		Action:     action,
 		Outcome:    outcome,
 	}); err != nil {
 		s.log.Warn("cannot record a backup in the audit trail", "error", err.Error())

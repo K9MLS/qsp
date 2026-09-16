@@ -103,7 +103,7 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 	version, err := s.opts.Config.Save(r.Context(), cfg,
 		author, fmt.Sprintf("stopped accepting DMR ID %d", id))
 	if err != nil {
-		s.recordCredential(r, "peer.credential.revoked", id, audit.OutcomeFailure)
+		s.recordCredential(r, audit.ActionPeerCredentialRevoked, id, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -117,7 +117,7 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 			revokeErr.Error() + ".")
 	}
 
-	s.recordCredential(r, "peer.credential.revoked", id, audit.OutcomeSuccess)
+	s.recordCredential(r, audit.ActionPeerCredentialRevoked, id, audit.OutcomeSuccess)
 
 	writeJSON(w, s.log, http.StatusOK, refuseResponse{
 		Peer:            id,
