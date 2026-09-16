@@ -53,6 +53,8 @@
   var issuer = document.getElementById("zello-issuer");
   var ambe = document.getElementById("zello-ambe");
   var radioID = document.getElementById("zello-radio-id");
+  var gainUSRP = document.getElementById("zello-gain-usrp");
+  var gainDMR = document.getElementById("zello-gain-dmr");
   var talkgroup = document.getElementById("zello-talkgroup");
   var timeslot = document.getElementById("zello-timeslot");
   var permitAll = document.getElementById("zello-permit-all");
@@ -139,6 +141,8 @@
 
     ambe.value = t.address || DEFAULT_AMBE;
     radioID.value = t.radio_id ? String(t.radio_id) : "";
+    gainUSRP.value = t.gain_to_usrp_db ? String(t.gain_to_usrp_db) : "";
+    gainDMR.value = t.gain_to_dmr_db ? String(t.gain_to_dmr_db) : "";
     usrpListen.value = t.usrp_listen || DEFAULT_USRP_LISTEN;
     usrpPeer.value = t.usrp_peer || DEFAULT_USRP_PEER;
     permitAll.checked = !!t.permit_all_peers;
@@ -225,6 +229,8 @@
     t.enabled = on;
     t.address = ambe.value.trim();
     t.radio_id = parseInt(radioID.value, 10) || 0;
+    t.gain_to_usrp_db = parseFloat(gainUSRP.value) || 0;
+    t.gain_to_dmr_db = parseFloat(gainDMR.value) || 0;
     t.usrp_listen = usrpListen.value.trim();
     t.usrp_peer = usrpPeer.value.trim();
     t.permit_all_peers = permitAll.checked;

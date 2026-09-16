@@ -97,6 +97,11 @@ type Options struct {
 	// Deliver hands a built burst to routing. Nil means audio from USRP is
 	// received and discarded, which is how a channel is tested one-way.
 	Deliver func(frame hbp.Data)
+
+	// GainToUSRPDB and GainToDMRDB scale audio in each direction, in
+	// decibels, soft-limited; see Gain. Zero changes nothing.
+	GainToUSRPDB float64
+	GainToDMRDB  float64
 }
 
 // Channel carries calls for one transcoder.
@@ -114,6 +119,8 @@ type Channel struct {
 	timeslot  hbp.Timeslot
 	deliver   func(hbp.Data)
 	fromUSRP  chan audio.Frame
+	toUSRP    Gain
+	toDMR     Gain
 
 	calls, frames, dropped, notVoice, refused, failed, abandoned, fromRadio atomic.Uint64
 
@@ -161,6 +168,8 @@ func New(opts Options) (*Channel, error) {
 		timeslot:  opts.Timeslot,
 		deliver:   opts.Deliver,
 		fromUSRP:  make(chan audio.Frame, QueueDepth),
+		toUSRP:    NewGain(opts.GainToUSRPDB),
+		toDMR:     NewGain(opts.GainToDMRDB),
 	}, nil
 }
 
@@ -330,7 +339,7 @@ func (c *Channel) handle(cur *call, f hbp.Data, now time.Time) *call {
 			return cur
 		}
 		if err := c.radio.Send(audio.Frame{Sequence: c.seq.Add(1), PTT: true,
-			Talkgroup: cur.talkgroup, Samples: reply.Samples}); err != nil {
+			Talkgroup: cur.talkgroup, Samples: c.toUSRP.Apply(reply.Samples)}); err != nil {
 			c.fail(cur, fmt.Sprintf("sending audio: %v", err))
 			return cur
 		}

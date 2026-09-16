@@ -465,7 +465,10 @@ page generates.
    and private key, each stored the moment its button is pressed. They are
    never shown again, only whether each is stored. A key that cannot sign is
    refused as it is entered, with the reason.
-3. **The vocoder** — the AMBEserver address and the gateway's DMR ID.
+3. **The vocoder** — the AMBEserver address and the gateway's DMR ID, and the
+   level in each direction. DMR audio measured about 13 dB quieter on Zello
+   than Zello audio arrives; "Level toward Zello" at +10 to +13 dB evens it.
+   Levels are soft-limited, so a boost never clips, and need a QSP restart.
 4. **What Zello carries** — the talkgroup and timeslot, and the repeaters whose
    owners have agreed. None is chosen for you; a repeater not listed neither
    hears Zello nor is heard on it. Motorola repeaters are covered by the same

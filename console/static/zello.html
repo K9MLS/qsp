@@ -239,6 +239,16 @@
               <input class="picker__input" id="zello-radio-id" type="text" inputmode="numeric" placeholder="3100999">
               <p class="field__note">Every Zello transmission carries this ID.</p>
             </label>
+            <label class="picker__field">
+              <span class="picker__label">Level toward Zello</span>
+              <input class="picker__input" id="zello-gain-usrp" type="number" min="-20" max="20" step="1" placeholder="0">
+              <p class="field__note">Decibels. Radio audio arriving quiet on Zello: try +10 to +13.</p>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Level toward the radios</span>
+              <input class="picker__input" id="zello-gain-dmr" type="number" min="-20" max="20" step="1" placeholder="0">
+              <p class="field__note">Decibels. Zero leaves Zello audio as it arrives.</p>
+            </label>
           </div>
         </div>
       </section>

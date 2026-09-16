@@ -741,6 +741,15 @@ type Transcoder struct {
 	// is what the socket checks every datagram against.
 	USRPPeer string `json:"usrp_peer,omitempty"`
 
+	// GainToUSRPDB raises or lowers audio going from DMR out to the USRP side
+	// — toward Zello — in decibels, soft-limited so a boost never clips.
+	// Zero, the default, changes nothing. Measured on 2026-09-16, DMR audio
+	// reached Zello about 13 dB quieter than Zello audio arrived.
+	GainToUSRPDB float64 `json:"gain_to_usrp_db,omitempty"`
+	// GainToDMRDB does the same for audio from the USRP side toward the
+	// radios.
+	GainToDMRDB float64 `json:"gain_to_dmr_db,omitempty"`
+
 	// RadioID is the DMR source ID every transmission from this channel
 	// carries.
 	//
@@ -1584,6 +1593,16 @@ func (c Config) Validate() error {
 					v.add(tf+".usrp_peer", "is the AMBEserver address",
 						"the vocoder and qsp-zello are different programs; audio sent "+
 							"to AMBEserver as USRP is read as malformed packets")
+				}
+			}
+			for _, g := range []struct {
+				field string
+				db    float64
+			}{{"gain_to_usrp_db", t.GainToUSRPDB}, {"gain_to_dmr_db", t.GainToDMRDB}} {
+				if g.db < -20 || g.db > 20 {
+					v.add(tf+"."+g.field, fmt.Sprintf("%g dB is outside -20 to +20", g.db),
+						"a source needing more than 20 dB is a problem at the source; past that a gain "+
+							"mostly raises its noise")
 				}
 			}
 			// Table 115 of the AMBE-3000F manual has 62 rate indices, and

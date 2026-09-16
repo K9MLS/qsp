@@ -6,6 +6,20 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The level in each direction is set on the Zello page.** "Level toward
+  Zello" and "Level toward the radios", in decibels from −20 to +20, default 0,
+  which changes nothing. DMR audio measured about 13 dB quieter on Zello than
+  Zello audio arrives. The gain is linear up to 80 % of full scale and limited
+  smoothly above it, on a rational curve that approaches full scale without
+  reaching it — so a boost never wraps a loud sample into a crack and never
+  squares off a peak. The first curve tried was tanh, which a test caught
+  flattening overdriven syllables to a run of full-scale samples: hard clipping
+  under another name. Tests check the level reached, exact scaling below the
+  knee, no wrap and no flat runs at +20 dB, and that the channel applies each
+  gain in its own direction.
+
+### Added
+
 - **The vocoder dongle on the Zello page.** A panel shows whether
   `ambeserver.service` is running and since when, which USB-serial adapters are
   present, and each FTDI adapter's latency timer — flagged when it is above the

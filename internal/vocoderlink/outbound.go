@@ -131,7 +131,7 @@ func (c *Channel) startOutbound(cur *call, now time.Time) *outbound {
 
 // encodeInto encodes 20 ms of PCM and queues the frame.
 func (c *Channel) encodeInto(tx *outbound, samples []int16) error {
-	frame, err := tx.chip.Encode(samples)
+	frame, err := tx.chip.Encode(c.toDMR.Apply(samples))
 	if err != nil {
 		return fmt.Errorf("encoding audio from USRP: %w", err)
 	}

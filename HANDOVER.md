@@ -80,10 +80,11 @@ learned to run it as a service.
 
 ## Open, in the order to take them
 
-1. **DMR audio reaches Zello about 13 dB quieter** than Zello audio arrives
-   (−35 against −22 dBFS, measured from a capture). Ask the Zello users before
-   changing anything; a gain stage belongs in `internal/vocoderlink`, measured
-   against the same capture.
+1. **Set the level toward Zello by ear.** Built (0407): "Level toward Zello"
+   and "Level toward the radios" on the Zello page, in dB, soft-limited. The
+   capture measured DMR audio 13 dB under Zello audio; start at +10, restart
+   QSP, and ask the Zello users. A synthetic signal at that level reaches
+   Zello's level at +13 in the tests; the real voice is the judge.
 2. **Confirm the dongle panel's buttons on production.** Built (0406): status
    from `systemctl show` and `/sys`, control through `systemctl` under a polkit
    rule for one unit. **Not yet run under qsp.service's sandbox**, whose system

@@ -452,13 +452,15 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 				talkgroup, timeslot := transcoderEndpoint(cfg, t.Name)
 				name := t.Name
 				ch, cerr := vocoderlink.New(vocoderlink.Options{
-					Name:      t.Name,
-					Chip:      vocoderlink.SupervisedChip(a.vocoders, t.Name),
-					Radio:     conn,
-					Log:       log,
-					RadioID:   t.RadioID,
-					Talkgroup: talkgroup,
-					Timeslot:  timeslot,
+					Name:         t.Name,
+					Chip:         vocoderlink.SupervisedChip(a.vocoders, t.Name),
+					Radio:        conn,
+					Log:          log,
+					RadioID:      t.RadioID,
+					Talkgroup:    talkgroup,
+					Timeslot:     timeslot,
+					GainToUSRPDB: t.GainToUSRPDB,
+					GainToDMRDB:  t.GainToDMRDB,
 					// Resolved at call time: the listener is built just below,
 					// and channels do not run until run(), by which point a.dmr
 					// is set and never written again.

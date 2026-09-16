@@ -436,3 +436,39 @@ func TestAPausedBridgeMayNameAPausedTranscoder(t *testing.T) {
 		})
 	}
 }
+
+// TestATranscodersGainIsBounded.
+//
+// To see it bite: remove the gain loop from the transcoder block in Validate.
+func TestATranscodersGainIsBounded(t *testing.T) {
+	tests := []struct {
+		name      string
+		toUSRP    float64
+		toDMR     float64
+		wantField string
+	}{
+		{"none", 0, 0, ""},
+		{"the measured +13 toward Zello", 13, 0, ""},
+		{"the limits themselves", 20, -20, ""},
+		{"too loud toward Zello", 21, 0, "gain_to_usrp_db"},
+		{"too quiet toward the radios", 0, -25, "gain_to_dmr_db"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := withTranscoder(t, func(c *Config) {
+				c.DMR.Transcoders[0].GainToUSRPDB = tc.toUSRP
+				c.DMR.Transcoders[0].GainToDMRDB = tc.toDMR
+			})
+			err := c.Validate()
+			if tc.wantField == "" {
+				if err != nil && strings.Contains(err.Error(), "gain_to_") {
+					t.Fatalf("refused: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantField) {
+				t.Fatalf("error %v, want a refusal naming %s", err, tc.wantField)
+			}
+		})
+	}
+}
