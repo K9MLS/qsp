@@ -6,6 +6,15 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **0410 failed a test on a full build.** The health lines for the DMR listener
+  were reworded to name the Network page's switch, and a test still required
+  the configuration key `dmr.enabled`. It went unseen because that test also
+  fails in a build with no SQLite driver, and only failing test names were
+  compared. The test now requires the switch and its page, as the routing test
+  does.
+
+### Fixed
+
 - **A new install's hotspots logged in and heard nothing.** With forwarding off
   QSP builds no routing at all, so not even two stations on the same talkgroup
   hear each other — and the configuration a first boot writes left it off,

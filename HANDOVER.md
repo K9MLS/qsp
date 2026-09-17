@@ -162,7 +162,11 @@ needs `opus-devel`. Never commit `go.mod`/`go.sum`. Machine labels on every
 command block: **FEDORA**, **QSP SERVER**, **TEST SERVER**.
 
 **Seven tests fail in a container with no SQLite driver** and pass on Fedora.
-That is the baseline, not a regression.
+That is the baseline, not a regression — **but compare the failure messages,
+not the test names.** One of the seven checks health wording too, and 0410
+broke that assertion inside a test already expected to fail; it reached Fedora
+before it was seen. The container's baseline is six messages, every one about
+the SQLite driver.
 
 **`qsp-zello` is built in a Debian container on Fedora**, not on Fedora itself:
 Fedora's glibc is newer than the servers', and a cgo binary built against it

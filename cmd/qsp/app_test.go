@@ -151,8 +151,13 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("disabled subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)
 		}
-		if !strings.Contains(got.Summary, "dmr.enabled") {
-			t.Errorf("subsystem %q does not name the setting that enables it: %q", name, got.Summary)
+		// **Named as the console names it** since 0410, when the Network page
+		// gained the switch: "dmr.enabled" is a configuration key a new
+		// operator does not know.
+		for _, want := range []string{"Hotspots and repeaters", "Network settings"} {
+			if !strings.Contains(got.Summary, want) {
+				t.Errorf("subsystem %q does not say where to turn it on (%q): %q", name, want, got.Summary)
+			}
 		}
 	}
 
