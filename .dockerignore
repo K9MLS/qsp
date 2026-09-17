@@ -13,6 +13,7 @@
 # Local environment and configuration. The .example files are tracked and are
 # the ones a reader should see.
 deploy/docker/.env
+deploy/docker/qsp-zello.json
 qsp.json
 *.db
 *.db-shm

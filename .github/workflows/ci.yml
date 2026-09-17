@@ -188,3 +188,21 @@ jobs:
           tags: |
             ghcr.io/k9mls/qsp:${{ steps.version.outputs.version }}
             ghcr.io/k9mls/qsp:latest
+
+      # **The Zello connector's image** (0415), for docker-compose.zello.yml:
+      # ghcr.io/k9mls/qsp-zello:<version> and :latest. It is the one cgo binary,
+      # so its Dockerfile installs the target's C compiler and libopus and links
+      # statically; it still cross-compiles on the runner rather than emulating
+      # arm64, so this job needs no QEMU step. Same job, same gate: nothing here
+      # runs unless `ci` passed and the tag matched VERSION above.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/Dockerfile.zello
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/k9mls/qsp-zello:${{ steps.version.outputs.version }}
+            ghcr.io/k9mls/qsp-zello:latest

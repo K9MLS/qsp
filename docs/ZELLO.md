@@ -491,6 +491,12 @@ page generates.
 5. **The connector** — copy the generated `qsp-zello.json`; build `qsp-zello`;
    install `deploy/systemd/qsp-zello.service`, running as the `qsp` user.
 
+   **On the Docker install**, there is nothing to build: save the file beside
+   the compose files and add `deploy/docker/docker-compose.zello.yml`, which
+   runs the published `qsp-zello` image beside QSP's container.
+   deploy/docker/README.md, "Adding Zello", has the commands. The rest of this
+   step is for the systemd install.
+
    **Build it for the server's C library, not the build machine's.** It is the
    one cgo binary, and one built on a newer distribution will not start on an
    older one. Building in a Debian container gives a binary that runs on

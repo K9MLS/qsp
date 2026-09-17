@@ -126,12 +126,14 @@ can install it and be on the air. Items 1–4 are that goal.
    docs/CONFIGURATION.md. A test ties its ports, console addresses and `.env`
    variables to the code. **Tag `v0.1.256` and push it**, or the compose file
    pins an image that was never published.
-3. **Zello on the Docker install, as an add-on.** The main compose file stays
-   QSP alone; an optional `docker-compose.zello.yml` adds `qsp-zello` — its own
-   image (it is cgo, needing libopus per architecture), host networking so USRP
-   loopback is shared, a shared `/run/qsp` for the logon socket, and UID 65532
-   to match QSP's container, which the socket's peer check requires.
-   AMBEserver stays on the host with the dongle.
+3. **Zello on the Docker install, as an add-on — built in 0415 (0.1.257), not
+   yet on air.** `docker-compose.zello.yml`, `Dockerfile.zello` (static libopus
+   on scratch, UID 65532), a shared `qsp-run` volume for the logon socket, and a
+   second image in the publish job. Compose resolved every file combination;
+   the amd64 static link ran from an empty root. **Unproven until run:** the
+   arm64 cross-compile (first CI run on a tag), and the logon and audio across
+   two containers, which needs the DVstick on QSP SERVER — production, so only
+   in a window K9MLS chooses.
 4. **Rewrite history before switching the repository to public** — see "Before
    this repository is made public" above.
 5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at

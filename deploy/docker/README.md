@@ -154,13 +154,61 @@ set them up.
 | Talkgroups | all carried |
 | Bridges, links to other networks, Zello | **none** until you set them up |
 
+## Adding Zello
+
+Zello is an add-on with its own compose file, `docker-compose.zello.yml`, and
+its own image. An install without a vocoder dongle never needs either.
+
+**Three things come first, and none of them is a container:**
+
+- **The dongle and AMBEserver on this host.** AMBEserver runs as a service
+  beside Docker, not in it; docs/ZELLO.md, "Running the dongle as a service",
+  has the unit and the device settings.
+- **Zello set up on the console's Zello page**, steps 1 to 4 of "Setting it up"
+  in docs/ZELLO.md: the account, the vocoder, and what Zello carries.
+- **The page's generated `qsp-zello.json`**, saved in this directory beside the
+  compose files. It holds no secret: the connector asks QSP for a logon every
+  time it connects.
+
+Then include the add-on, either by uncommenting `COMPOSE_FILE` at the bottom of
+`.env`, which makes every `docker compose` command include it, or by naming both
+files each time:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.zello.yml up -d
+docker compose exec qsp-zello /qsp-zello -version
+```
+
+**QSP restarts once** when this is first applied: its container gains the shared
+`/run/qsp` volume, where it makes the socket the connector asks for a logon on.
+Then switch Zello on under the Zello page, save, and restart QSP as the page
+says. The page's checklist goes green one line at a time.
+
+The connector's own health report is on the host at
+`http://127.0.0.1:18090/healthz`, and names the action any failure needs.
+
+**Both halves have to be the same kind of install.** QSP answers the logon
+socket only for its own user, and both images run as UID 65532. A connector in a
+container and QSP under systemd, or the other way round, are refused, as they
+should be.
+
+Not yet done: Zello on this container install carried on air, and the arm64
+connector image run on a Pi. Zello has been on air from the systemd install.
+
+To build the connector from this checkout as well:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.build.yml \
+  -f docker-compose.zello.yml -f docker-compose.zello.build.yml up -d --build
+```
+
 ## Upgrading
 
 The image tag is pinned rather than `latest`, so an upgrade is a decision you
 make:
 
 ```sh
-nano docker-compose.yml     # change the tag
+nano docker-compose.yml     # change the tag, and in docker-compose.zello.yml if you added Zello
 docker compose pull && docker compose up -d
 docker compose exec qsp /qsp -version
 ```
@@ -251,6 +299,9 @@ docker compose restart
 `ghcr.io/k9mls/qsp` is built by this repository's CI from a release tag, only
 after every test has passed, for amd64 and arm64. It is a single static binary
 on an empty base image — no shell, no package manager — running as UID 65532.
+`ghcr.io/k9mls/qsp-zello`, for "Adding Zello", is built the same way beside it:
+the connector with libopus linked in statically, on the same empty base, as the
+same user.
 
 **Each image carries a record of how it was built** (provenance) and a list of
 what is in it (an SBOM). The package page on GitHub lists these as extra

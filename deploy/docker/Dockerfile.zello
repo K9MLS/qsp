@@ -1,0 +1,89 @@
+# qsp-zello container image: the Zello connector, beside QSP's own.
+#
+# **A separate image because it is the one cgo binary.** Opus needs libopus, and
+# ADR-0009 keeps cgo out of QSP so that QSP stays a pure-Go static binary. This
+# image is added to an install by docker-compose.zello.yml; the QSP image and
+# the main compose file are unchanged by it.
+#
+# **Still one static binary on nothing.** libopus is linked in statically, so the
+# final stage is `scratch` exactly as QSP's is: no shell, no package manager, no
+# shared libraries to match, and the same unprivileged user.
+
+# **Built on the machine's own platform, for the target's**, as QSP's image is.
+# cgo cannot cross-compile with Go alone, so the build stage installs the target
+# architecture's C compiler and libopus from Debian's multiarch packages rather
+# than emulating the target under QEMU. A build for the machine's own
+# architecture uses the compiler already in the image.
+FROM --platform=$BUILDPLATFORM golang:1.27-bookworm AS build
+ARG BUILDARCH
+ARG TARGETOS
+ARG TARGETARCH
+
+# **The toolchain is chosen once and written down**, so the build step below
+# reads the same compiler and pkg-config directory this step installed, rather
+# than repeating the choice and risking two answers.
+RUN set -e; \
+    case "$TARGETARCH" in \
+      amd64) triple=x86_64-linux-gnu; cross=gcc-x86-64-linux-gnu ;; \
+      arm64) triple=aarch64-linux-gnu; cross=gcc-aarch64-linux-gnu ;; \
+      *) echo "qsp-zello is built for amd64 and arm64, not $TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    if [ "$TARGETARCH" = "$BUILDARCH" ]; then cc=gcc; pkgs=""; \
+    else cc="$triple-gcc"; pkgs="$cross libc6-dev:$TARGETARCH"; dpkg --add-architecture "$TARGETARCH"; fi; \
+    apt-get update -qq; \
+    apt-get install -y -qq --no-install-recommends pkg-config "libopus-dev:$TARGETARCH" $pkgs; \
+    rm -rf /var/lib/apt/lists/*; \
+    printf 'CC=%s\nPKG_CONFIG_LIBDIR=/usr/lib/%s/pkgconfig:/usr/share/pkgconfig\n' "$cc" "$triple" > /toolchain.env
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# **Static, and the flags are each load-bearing.**
+#
+# -extldflags "-static -lm": libopus calls sqrt, and in a static link the
+# linker resolves left to right, so libm has to come after libopus or the link
+# fails with "undefined reference to `sqrt'". Found building it, not assumed.
+#
+# netgo and osusergo: glibc's resolver and user lookups cannot be linked
+# statically and still work, so the pure-Go implementations are used instead.
+# The connector resolves Zello's hostname, and that has to work in `scratch`.
+#
+# The version comes from internal/buildinfo, which reads nothing at run time.
+RUN set -e; . /toolchain.env; export CC PKG_CONFIG_LIBDIR; \
+    CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
+      -trimpath \
+      -tags 'zello netgo osusergo' \
+      -ldflags '-s -w -linkmode external -extldflags "-static -lm"' \
+      -o /out/qsp-zello \
+      ./cmd/qsp-zello
+# The logon socket's directory, made here because scratch has no mkdir.
+RUN mkdir -p /out/run/qsp
+
+# ---------------------------------------------------------------------------
+
+FROM scratch
+
+# Certificate roots, for the TLS connection to Zello.
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+COPY --from=build /out/qsp-zello /qsp-zello
+
+# **The same user as QSP's image, and it has to be.** QSP serves the logon
+# socket only to a caller with its own UID, read from the socket itself
+# (SO_PEERCRED), and the kernel compares the number: two containers running as
+# 65532 are the same user to it. A test compares this line with QSP's.
+#
+# /run/qsp is owned by that user for the reason QSP's image owns it: Docker
+# copies a directory's ownership into a fresh named volume from whichever
+# container mounts it first. If this one mounted it root-owned, QSP could not
+# create the socket.
+COPY --from=build --chown=65532:65532 /out/run/qsp /run/qsp
+USER 65532:65532
+
+# The connector's four-line file is mounted here read-only by the compose file.
+# It is not in the data volume, which holds QSP's database and key and has no
+# business in this container.
+ENTRYPOINT ["/qsp-zello"]
+CMD ["-config", "/etc/qsp-zello/qsp-zello.json"]

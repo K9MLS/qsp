@@ -1,0 +1,57 @@
+# Zello, added to a QSP container install. It is an add-on: the main compose
+# file stays QSP alone, and an install without a vocoder dongle never needs this.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.zello.yml up -d
+#
+# or set COMPOSE_FILE in .env once, and plain `docker compose` includes it.
+#
+# **Before it starts you need three things this file cannot provide**: Zello set
+# up on the console's Zello page, AMBEserver running on this host with the
+# dongle (docs/ZELLO.md, "Running the dongle as a service"), and the page's
+# generated qsp-zello.json saved beside this file.
+
+services:
+  # QSP gains one mount and nothing else. **The logon socket is a file**, and
+  # two containers see the same file only through a shared volume; this is the
+  # directory config.DefaultZelloLogonSocket names.
+  qsp:
+    volumes:
+      - qsp-run:/run/qsp
+
+  qsp-zello:
+    image: ghcr.io/k9mls/qsp-zello:0.1.257
+    container_name: qsp-zello
+    restart: unless-stopped
+    depends_on:
+      - qsp
+    # **Host networking, as QSP's service has.** The connector and QSP's
+    # transcoder exchange audio over USRP on 127.0.0.1, and QSP reaches
+    # AMBEserver on this host; both need the host's loopback, not the
+    # container's own.
+    network_mode: host
+    volumes:
+      - qsp-run:/run/qsp
+      # **Long syntax, so a missing file is an error.** The short form creates
+      # whatever is missing on the host as an empty root-owned directory, and
+      # the connector would then fail reading a directory named qsp-zello.json
+      # instead of Compose saying the file is not there.
+      - type: bind
+        source: ./qsp-zello.json
+        target: /etc/qsp-zello/qsp-zello.json
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/qsp-zello", "-version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  qsp-run:

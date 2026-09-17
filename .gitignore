@@ -32,3 +32,8 @@ go.mod.bak
 # are not in the commit", which is exactly what an operator needs to know and
 # now could not learn.
 deploy/docker/.env
+
+# The Zello connector's file, which the console's Zello page generates and an
+# operator saves beside docker-compose.zello.yml. Ignored for the reason .env
+# is: an untracked file marks every build from that checkout +dirty.
+deploy/docker/qsp-zello.json

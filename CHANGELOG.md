@@ -4,6 +4,23 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **Zello on the Docker install, as an add-on.** `docker-compose.zello.yml`
+  runs the connector beside QSP's container without changing the main compose
+  file, and `ghcr.io/k9mls/qsp-zello` is published beside `ghcr.io/k9mls/qsp`
+  on a release tag, after the tests, for amd64 and arm64. The two containers
+  share `/run/qsp` through a volume for the logon socket, share the host's
+  network for USRP and AMBEserver, and run as the same UID, which the socket's
+  peer check requires. The connector's file is mounted read-only on its own;
+  QSP's data volume, with its database and key, stays out of that container.
+  The image links libopus statically and is `scratch`, like QSP's, and
+  cross-compiles with Debian's multiarch compiler rather than emulating arm64.
+  AMBEserver stays on the host with the dongle. A missing `qsp-zello.json` is a
+  Compose error rather than a directory created in its place. Not yet carried
+  on air from the container install; the arm64 connector image has not run on
+  a Pi.
+
 ### Documentation
 
 - **The README is written for an operator arriving cold.** It says what QSP

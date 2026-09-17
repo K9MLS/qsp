@@ -1,0 +1,14 @@
+# Build qsp-zello from this checkout instead of pulling a published image, the
+# way docker-compose.build.yml does for QSP. Use the files together:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml \
+#     -f docker-compose.zello.yml -f docker-compose.zello.build.yml up -d --build
+#
+# Takes longer than QSP's build: it installs a C toolchain and libopus first.
+
+services:
+  qsp-zello:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.zello
+    image: qsp-zello:local
