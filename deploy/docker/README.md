@@ -16,6 +16,11 @@ port on this machine has to be reachable from wherever they are.
   provider's cooperation.
 - **8080/tcp** for the console, which you may prefer to keep on your own
   network.
+- **A 64-bit machine**: a PC or server (amd64), or an ARM board such as a
+  Raspberry Pi 3, 4 or 5 running a **64-bit** operating system (arm64). The
+  ARM image is built but has not yet been run on a Pi. There is no 32-bit
+  image: Docker no longer packages 32-bit Raspberry Pi OS. The plain binary
+  install in the main README runs there instead.
 
 **No container fixes this**, and it defeats more people than any configuration
 file. If hotspots cannot reach the port, QSP will start, look healthy, and
@@ -163,6 +168,25 @@ docker compose exec qsp /qsp -version
 **Check the version.** `docker compose ps` says a container started; only the
 version says what.
 
+### Upgrading from 0.1.253 or earlier: one command first
+
+**From 0.1.254 the container runs as an unprivileged user (UID 65532), not
+root.** A volume created by an older version is owned by root, and the new
+container cannot write to it: it stops at startup unable to write its
+configuration or database. Give the volume to the new user once, **before**
+starting the new version:
+
+```sh
+docker compose down
+docker volume ls | grep qsp-data      # the full name, usually docker_qsp-data
+docker run --rm -v docker_qsp-data:/data busybox chown -R 65532:65532 /data
+docker compose pull && docker compose up -d
+```
+
+Nothing in the volume is changed except who owns it. A **new** install needs
+none of this: the image carries its data directory already owned by that user,
+and Docker gives a fresh volume the same ownership.
+
 ## Your data
 
 Everything is in the `qsp-data` volume: the configuration, the peer password,
@@ -222,6 +246,17 @@ sudo nano /var/lib/docker/volumes/docker_qsp-data/_data/qsp.json
 docker compose restart
 ```
 
+## About the image
+
+`ghcr.io/k9mls/qsp` is built by this repository's CI from a release tag, only
+after every test has passed, for amd64 and arm64. It is a single static binary
+on an empty base image — no shell, no package manager — running as UID 65532.
+
+**Each image carries a record of how it was built** (provenance) and a list of
+what is in it (an SBOM). The package page on GitHub lists these as extra
+`unknown/unknown` platforms beside amd64 and arm64; that is how GitHub displays
+them, not a broken image.
+
 ## Building it yourself
 
 Add the override file rather than editing anything:
@@ -232,6 +267,10 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d
 ```
 
 Takes two or three minutes; most of it is Go compiling.
+
+**Rebuilding an install that ran 0.1.253 or earlier needs the one `chown` in
+"Upgrading" first**, exactly as pulling does: the image you build runs as UID
+65532 too.
 
 ## The other way to run it
 

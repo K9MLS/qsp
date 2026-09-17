@@ -101,11 +101,16 @@ learned to run it as a service.
    reflector: every gateway hears everything and two keyups interleave.
 6. **A session-lifetime control on Administration**, so it stops being a
    file-only setting.
-7. **The Docker image is never published.** `deploy/docker/docker-compose.yml`
-   pins `ghcr.io/k9mls/qsp:<version>` and no workflow pushes one, so anyone
-   following the Docker instructions from GitHub pulls an image that does not
-   exist. Either publish on the release tag or make the build override the
-   documented default. Decide before the repository is public.
+7. **The Docker image is published from 0412** — `ghcr.io/k9mls/qsp:<version>`
+   and `:latest`, amd64 and arm64, by CI on a `v*` tag after `ci` passes.
+   **Still to do on GitHub, by K9MLS:** confirm the Actions runs are green; after
+   the first publish, the package is private until switched to public under the
+   package's settings (Packages → qsp → Package settings → Change visibility).
+   While private, a machine pulling it needs `docker login ghcr.io` with a token
+   that has `read:packages`. **The arm64 image has not run on a Pi.** The test
+   server builds from source, and **its volume needs the one-time
+   `chown -R 65532:65532` before its next rebuild** (deploy/docker/README.md,
+   "Upgrading").
 8. **`leading byte 0x81`** from radio 999998 — an unknown IPSC message type,
    about fifty datagrams on 2026-09-03.
 

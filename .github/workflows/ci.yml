@@ -127,3 +127,64 @@ jobs:
           GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/qsp
           GOOS=linux GOARCH=arm64 go build -trimpath -o /dev/null ./cmd/qsp
           GOOS=linux GOARCH=arm GOARM=7 go build -trimpath -o /dev/null ./cmd/qsp
+
+  # **The published image** (0412), so the Docker instructions work for somebody
+  # who has never built QSP: ghcr.io/k9mls/qsp:<version> and :latest, for amd64
+  # and arm64. 32-bit ARM is not published — Docker Engine 28 was the last to
+  # package 32-bit Raspberry Pi OS — and the plain binary still runs there.
+  #
+  # Only on a release tag, and only after `ci` has passed, so a release whose
+  # tests fail never becomes an image.
+  image:
+    name: Publish image
+    needs: ci
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # Scoped to this job: nothing else in the workflow can publish.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      # **The tag must be the version the tree says it is.** A tag typed wrong
+      # would otherwise publish an image whose tag and whose own -version
+      # disagree — the kind of mismatch §7's check-the-running-binary rule
+      # exists to catch, arriving at somebody else's install.
+      - name: Check the tag matches VERSION
+        id: version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          file="$(cat VERSION)"
+          if [ "$tag" != "$file" ]; then
+            echo "Tag v$tag does not match VERSION ($file); not publishing."
+            exit 1
+          fi
+          echo "version=$file" >> "$GITHUB_OUTPUT"
+
+      # Third-party actions are pinned to full commit SHAs, which GitHub's
+      # documentation calls the only immutable way to use one; a tag can be
+      # moved to different code. The comment names the release each SHA is.
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Provenance at max and an SBOM, so anybody can see what an image was
+      # built from. GHCR's package page lists each as an extra "unknown/unknown"
+      # platform; that is expected, and deploy/docker/README.md says so. No
+      # build argument carries a secret — provenance records them.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/k9mls/qsp:${{ steps.version.outputs.version }}
+            ghcr.io/k9mls/qsp:latest

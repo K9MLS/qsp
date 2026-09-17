@@ -4,6 +4,27 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The QSP image is published** to `ghcr.io/k9mls/qsp`, tagged with the version
+  and `latest`, for amd64 and arm64, so the Docker instructions work for
+  somebody who has never built QSP. CI builds it on a release tag only after
+  every test has passed, and refuses when the tag does not match `VERSION`. The
+  Dockerfile cross-compiles for each target on the build machine's own
+  platform rather than emulating ARM. Each image carries max-level provenance
+  and an SBOM. Only the publishing job may write packages, and the Docker
+  actions are pinned to full commit SHAs. There is no 32-bit ARM image: Docker
+  Engine 28 was the last to package 32-bit Raspberry Pi OS.
+
+### Changed
+
+- **The container runs as UID 65532, not root.** The Dockerfile ran as root on
+  the reasoning that a fresh volume is root-owned; Docker copies a directory's
+  ownership into a fresh named volume, so the image now ships `/var/lib/qsp`
+  and `/run/qsp` owned by that user and stays `scratch`, with no entrypoint
+  script. **An existing volume keeps root ownership: an install from 0.1.253 or
+  earlier needs one `chown` before upgrading**, in deploy/docker/README.md.
+
 ### Fixed
 
 - **0410 failed a test on a full build.** The health lines for the DMR listener

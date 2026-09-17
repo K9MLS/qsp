@@ -7,7 +7,13 @@
 # That property is why this file is short, and it is worth keeping. A container
 # with an operating system in it is a container somebody has to maintain.
 
-FROM golang:1.27-alpine AS build
+# **Built on the machine's own platform, for the target's.** The build stage
+# runs natively and Go cross-compiles, so the arm64 image costs seconds rather
+# than the minutes QEMU emulation takes. BUILDPLATFORM, TARGETOS and TARGETARCH
+# are supplied by buildx; a plain `docker build` supplies them for the host.
+FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 
 WORKDIR /src
 
@@ -43,11 +49,14 @@ COPY . .
 # VERSION is copied in with the source above, so reading it here needs no
 # argument, no override, and nothing to keep in sync. A value derived from the
 # tree cannot drift from it.
-RUN CGO_ENABLED=0 go build \
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
       -trimpath \
       -ldflags="-s -w -X main.version=$(cat VERSION)" \
       -o /out/qsp \
       ./cmd/qsp
+# The directories the unprivileged user writes, made here because scratch has
+# no mkdir. Copied into the final image owned by that user; see below.
+RUN mkdir -p /out/var/lib/qsp /out/run/qsp
 
 # ---------------------------------------------------------------------------
 
@@ -58,21 +67,21 @@ COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 COPY --from=build /out/qsp /qsp
 
-# **Runs as root, deliberately, and this is the one place that is arguable.**
+# **Runs as UID 65532, not root** (0412). This file used to run as root, and
+# said why: the data volume "is created by Docker owned by root, so that UID
+# could not write the configuration". That holds for an empty directory. It does
+# not hold when the image already has /var/lib/qsp owned by the user — Docker
+# copies a directory's ownership into a fresh named volume the first time it is
+# mounted — so no entrypoint script and no shell are needed, and the image
+# stays scratch.
 #
-# The image has no /etc/passwd, so an unprivileged user would be a bare numeric
-# UID; and the data volume is created by Docker owned by root, so that UID
-# could not write the configuration it is supposed to write on first run. The
-# usual answer is an entrypoint script that chowns and drops privileges, which
-# means abandoning scratch for a base image with a shell — the thing this file
-# exists to avoid.
-#
-# What makes it tolerable: the process binds no port below 1024, the image
-# contains one static binary and no shell to escalate into, and the compose
-# file uses host networking so there is no capability needed for the socket.
-# An operator who wants it unprivileged sets `user:` in the compose file and
-# owns the volume themselves.
-
+# **An existing volume keeps its root ownership**, so an install from before
+# 0.1.254 needs one chown before upgrading; deploy/docker/README.md has it.
+# 65532 is the conventional unprivileged ID of distroless images. The logon
+# socket for qsp-zello lives in /run/qsp, so that is owned too.
+COPY --from=build --chown=65532:65532 /out/var/lib/qsp /var/lib/qsp
+COPY --from=build --chown=65532:65532 /out/run/qsp /run/qsp
+USER 65532:65532
 # Documentation only — the compose file uses host networking, where EXPOSE has
 # no effect. Listed so somebody reading the image knows what it binds.
 EXPOSE 8080/tcp 62031/udp 50000/udp
