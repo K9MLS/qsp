@@ -204,8 +204,11 @@ yours to write. See [ADR-0020](docs/adr/ADR-0020-access-control.md).
 relayed to the others with its talkgroup and timeslot translated; the
 originating radio ID is preserved, and a call is never sent back to its source.
 
-**`forwarding` is separate from `enabled` and off by default**, so you can run
-QSP as a master and watch peers connect before it puts audio on a repeater.
+**`forwarding` is separate from `enabled`.** With it off QSP relays nothing,
+not even between stations on the same talkgroup. It is off in the built-in
+defaults and **on in the configuration a first boot writes**; either way it is
+the **Forwarding** switch under Network settings, so you can watch stations
+connect before anything is relayed.
 
 ### Scheduling a net
 

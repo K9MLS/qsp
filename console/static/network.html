@@ -96,6 +96,37 @@
       <section class="panel">
         <div class="panel__head">
           <div class="panel__heading">
+            <h2 class="panel__title">Hotspots and repeaters</h2>
+            <button class="hint" type="button" aria-controls="hint-dmr" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="dmr-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-dmr">
+          <p class="hint__text"><strong>These two switches are what make this a working DMR server.</strong> The first lets hotspots and Homebrew repeaters log in. The second carries what one of them transmits to the others on the same talkgroup, and to any bridge or link you set up. With forwarding off, stations still log in and appear here, but nobody hears anybody. Bridges, links and Zello still do nothing until you configure them, so forwarding on its own relays only between stations on the same talkgroup.</p>
+        </div>
+        <div class="panel__body">
+          <label class="toggle">
+            <input class="toggle__input" id="dmr-enabled" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="dmr-enabled-state">Off</span>
+            <span>Accept hotspots and repeaters</span>
+          </label>
+          <label class="toggle">
+            <input class="toggle__input" id="dmr-forwarding" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="dmr-forwarding-state">Off</span>
+            <span>Forwarding</span>
+          </label>
+          <div class="notice notice--warn" id="dmr-forwarding-off" hidden>
+            <p class="notice__title">Forwarding is off</p>
+            <p class="notice__body">Stations can log in, but nobody will hear anybody, even on the same talkgroup.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
             <h2 class="panel__title">What members see</h2>
             <button class="hint" type="button" aria-controls="hint-members"
                     aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
@@ -392,8 +423,7 @@
         <div class="panel__body">
           <p class="panel__lede">
             IP Site Connect carries Motorola repeaters, which speak a different
-            protocol from hotspots and are configured separately. This was
-            editable only by hand in <code>qsp.json</code> until now.
+            protocol from hotspots and are configured separately.
           </p>
 
           <label class="toggle">

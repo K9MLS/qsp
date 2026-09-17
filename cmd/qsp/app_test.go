@@ -415,8 +415,14 @@ func TestHealthSummariesDescribeTheInstanceNotAPlan(t *testing.T) {
 		if got["routing"].Status != health.StatusUnavailable {
 			t.Errorf("routing = %q, want unavailable", got["routing"].Status)
 		}
-		if !strings.Contains(got["routing"].Summary, "dmr.forwarding") {
-			t.Errorf("routing summary should name the setting: %q", got["routing"].Summary)
+		// **Where to change it, in the console's words, not the file's.** This
+		// once required "dmr.forwarding" — a configuration key a new operator
+		// arriving from GitHub does not know — when the Network page could not
+		// change it. Since 0410 it can.
+		for _, want := range []string{"Forwarding", "Network settings"} {
+			if !strings.Contains(got["routing"].Summary, want) {
+				t.Errorf("routing summary should say where to change it (%q): %q", want, got["routing"].Summary)
+			}
 		}
 	})
 

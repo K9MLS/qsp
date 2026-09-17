@@ -122,27 +122,32 @@ are learned from traffic, and that is the peer working rather than failing.
 
 ### Peers connect but hear nothing from each other
 
-That is a working master. **Repeating between peers on the same talkgroup is
-on; forwarding between talkgroups and to other networks is off**, and the
-journal says so on every start:
+**Forwarding is off.** With it off QSP relays nothing at all — not even between
+two hotspots on the same talkgroup — and the journal says so on every start:
 
 ```
 forwarding disabled; traffic is observed and not relayed
 ```
 
-An instance that relays traffic nobody asked it to relay is the one mistake
-this software must not make on somebody's behalf, so bridges and links are
-things you turn on deliberately.
+Turn on **Forwarding** under **Network settings → Hotspots and repeaters**, save,
+and restart as the page says. A first boot turns it on for you; an install whose
+configuration was written before 0.1.252 may still have it off.
+
+Forwarding alone relays only between stations on the same talkgroup. Bridges
+between talkgroups, links to other networks and Zello carry nothing until you
+set them up.
 
 ## What is on and off to begin with
 
 | | |
 |---|---|
-| Homebrew (hotspots) | **on**, 62031/udp |
+| Hotspots and Homebrew repeaters | **on**, 62031/udp |
+| Forwarding between stations on a talkgroup | **on** |
 | Console | **on**, 8080/tcp, every interface |
-| IP Site Connect (Motorola) | **off** — turn on in `qsp.json` when you have a repeater |
+| Motorola repeaters (IP Site Connect) | **off** — turn on under Network settings when you have one |
+| P25 gateways | **off** — turn on under Network settings |
 | Talkgroups | all carried |
-| Forwarding to other networks | **off** |
+| Bridges, links to other networks, Zello | **none** until you set them up |
 
 ## Upgrading
 

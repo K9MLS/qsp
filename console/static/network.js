@@ -45,6 +45,12 @@
   var parrotTalkgroup = document.getElementById("parrot-talkgroup");
   var parrotTimeslot = document.getElementById("parrot-timeslot");
   var parrotState = document.getElementById("parrot-state");
+  var dmrEnabled = document.getElementById("dmr-enabled");
+  var dmrEnabledState = document.getElementById("dmr-enabled-state");
+  var dmrForwarding = document.getElementById("dmr-forwarding");
+  var dmrForwardingState = document.getElementById("dmr-forwarding-state");
+  var dmrForwardingOff = document.getElementById("dmr-forwarding-off");
+  var dmrState = document.getElementById("dmr-state");
   var p25Enabled = document.getElementById("p25-enabled");
   var p25Listen = document.getElementById("p25-listen");
   var p25Callsign = document.getElementById("p25-callsign");
@@ -175,6 +181,16 @@
         "internet can reach, name the gateways instead.";
   }
 
+  function refreshDMRState() {
+    dmrEnabledState.textContent = dmrEnabled.checked ? "On" : "Off";
+    dmrForwardingState.textContent = dmrForwarding.checked ? "On" : "Off";
+    /* Warned only while stations can log in: with the listener off too there
+     * is nobody to hear anybody, and the count already says off. */
+    if (dmrEnabled.checked && !dmrForwarding.checked) { show(dmrForwardingOff); } else { hide(dmrForwardingOff); }
+    dmrState.textContent = !dmrEnabled.checked ? "off"
+      : dmrForwarding.checked ? "on, forwarding" : "on, not forwarding";
+  }
+
   function refreshIPSCState() {
     ipscEnabledState.textContent = ipscEnabled.checked ? "On" : "Off";
     ipscSlot2State.textContent = ipscSlot2.checked ? "Yes" : "No";
@@ -238,6 +254,10 @@
     var calls = (cfg.dmr && cfg.dmr.calls) || {};
     setIfOffered(retain, calls.retain);
     refreshRetainState();
+
+    dmrEnabled.checked = !!(cfg.dmr && cfg.dmr.enabled);
+    dmrForwarding.checked = !!(cfg.dmr && cfg.dmr.forwarding);
+    refreshDMRState();
 
     var ipsc = cfg.ipsc || {};
     ipscEnabled.checked = !!ipsc.enabled;
@@ -371,6 +391,15 @@
      * operator turning this on should not have to know a port number. */
     if (next.p25.enabled && !next.p25.listen_address) {
       next.p25.listen_address = "0.0.0.0:41000";
+    }
+
+    next.dmr = next.dmr || {};
+    next.dmr.enabled = dmrEnabled.checked;
+    next.dmr.forwarding = dmrForwarding.checked;
+    /* Supplied rather than left empty, which validation refuses: turning the
+     * server on should not need a port number. */
+    if (next.dmr.enabled && !next.dmr.listen_address) {
+      next.dmr.listen_address = "0.0.0.0:62031";
     }
 
     next.ipsc = next.ipsc || {};
@@ -517,6 +546,20 @@
   subTimeout.addEventListener("change", refreshSubState);
   retain.addEventListener("change", refreshRetainState);
   ipscEnabled.addEventListener("change", refreshIPSCState);
+  /* Turning either off takes the network off the air for everyone, so it is
+   * confirmed; turning on is not. */
+  dmrEnabled.addEventListener("change", function () {
+    if (!dmrEnabled.checked && !window.confirm("Stop accepting hotspots and repeaters? Every station is disconnected once you save and restart.")) {
+      dmrEnabled.checked = true;
+    }
+    refreshDMRState();
+  });
+  dmrForwarding.addEventListener("change", function () {
+    if (!dmrForwarding.checked && !window.confirm("Turn forwarding off? Stations stay logged in but nobody hears anybody once you save and restart.")) {
+      dmrForwarding.checked = true;
+    }
+    refreshDMRState();
+  });
   ipscSlot2.addEventListener("change", refreshIPSCState);
   ipscPeers.addEventListener("input", refreshIPSCState);
   p25Enabled.addEventListener("change", refreshP25State);

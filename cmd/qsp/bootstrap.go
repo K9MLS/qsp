@@ -310,6 +310,13 @@ func starterConfig(passwordPath string, allowed []string) config.Config {
 			Timeslot2: config.ACL{Mode: "deny", IDs: []string{}},
 		},
 	}
+	// **Forwarding on from the first boot** (0410, decided by K9MLS). Without
+	// it no routing is built at all, so a new operator's hotspots logged in and
+	// heard nothing — while the Docker README called that "a working master".
+	// It is safe to default: bridges, links and Zello relay nothing until they
+	// are configured, so forwarding alone carries only between stations on the
+	// same talkgroup, which is what a hotspot connects to a server for.
+	cfg.DMR.Forwarding = true
 	cfg.IPSC.Enabled = false
 	cfg.Server.ListenAddress = "0.0.0.0:8080"
 	// The contact is taken from the environment when it is there, so a

@@ -732,7 +732,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		registry.MustRegister(zellologon.ConnectorChecker(addr))
 	} else {
 		registry.MustRegister(health.CheckerFunc{CheckName: "zello", Fn: func(context.Context) health.Result {
-			return health.Unavailable("Zello is switched off on this server; the Zello page turns it on")
+			return health.Unavailable("Zello is switched off on this server. Turn it on from the Zello page.")
 		}})
 	}
 
@@ -890,7 +890,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 // than not running one.
 func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Master, string, error) {
 	if !cfg.DMR.Enabled {
-		return nil, "the DMR listener is disabled; set dmr.enabled to accept peers", nil
+		return nil, "Hotspots and repeaters are not accepted. Turn it on in Network settings.", nil
 	}
 
 	if err := checkPasswordFileMode(cfg.DMR.PasswordFile); err != nil {
@@ -1721,8 +1721,8 @@ func (routingCheck) Name() string { return "routing" }
 func (c routingCheck) Check(context.Context) health.Result {
 	if !c.enabled {
 		return health.Unavailable(
-			"forwarding is off, so peers on a talkgroup cannot hear each other; " +
-				"set dmr.forwarding")
+			"Forwarding is off, so stations cannot hear each other, even on the same " +
+				"talkgroup. Turn on Forwarding in Network settings.")
 	}
 	// **A master with no bridges is healthy, not degraded.**
 	//
@@ -1826,10 +1826,8 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// and that keeps the operator's hardware available to the operator. What
 	// is missing for each connector below is the connector, not the codec
 	// path.
-	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
-		"built (internal/ambe, ADR-0061) and the connector is not"},
-	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
-		"built (internal/ambe, ADR-0061) and the connector is not"},
+	{"allstar", "AllStar linking is not built yet; it is planned for roadmap phase 5."},
+	{"echolink", "EchoLink linking is not built yet; it is planned for roadmap phase 6."},
 }
 
 // unbuilt returns a check for a subsystem that does not exist yet.

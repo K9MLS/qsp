@@ -203,7 +203,7 @@
       peersCount.textContent = "disabled";
       peersBody.innerHTML = emptyState(
         "The DMR listener is not enabled",
-        payload.reason || "Set dmr.enabled in the configuration to accept peers."
+        payload.reason || "Turn on Accept hotspots and repeaters in Network settings."
       );
       return;
     }
@@ -678,7 +678,7 @@
       trafficNote.textContent = "disabled";
       trafficBody.innerHTML = emptyState(
         "The DMR listener is not enabled",
-        payload.reason || "Set dmr.enabled in the configuration to accept peers."
+        payload.reason || "Turn on Accept hotspots and repeaters in Network settings."
       );
       return;
     }

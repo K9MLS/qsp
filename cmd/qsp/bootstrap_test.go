@@ -62,6 +62,13 @@ func TestAFirstRunWritesAConfigurationThatValidates(t *testing.T) {
 			cfg.Database.DSN)
 	}
 
+	// **Forwarding on from the first boot** (0410). Off, no routing is built
+	// and a new operator's hotspots log in and hear nothing.
+	//
+	// To see it bite: remove cfg.DMR.Forwarding = true from starterConfig.
+	if !cfg.DMR.Forwarding {
+		t.Error("a first run leaves forwarding off, so stations that log in cannot hear each other")
+	}
 	if !cfg.DMR.Enabled {
 		t.Error("the Homebrew listener is off, so nothing can connect at all")
 	}

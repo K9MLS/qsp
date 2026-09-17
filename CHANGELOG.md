@@ -6,6 +6,40 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A new install's hotspots logged in and heard nothing.** With forwarding off
+  QSP builds no routing at all, so not even two stations on the same talkgroup
+  hear each other — and the configuration a first boot writes left it off,
+  while the Docker README's troubleshooting called that "a working master" and
+  said same-talkgroup repeating was on. **A first boot now turns forwarding on**
+  (decided by K9MLS). It is safe to default: bridges, links and Zello relay
+  nothing until configured, so forwarding alone carries only between stations
+  on the same talkgroup. An install whose configuration predates this may still
+  have it off.
+
+### Added
+
+- **"Hotspots and repeaters" on the Network page**: switches for accepting
+  hotspots and repeaters and for forwarding, the two most basic settings of a
+  DMR server, which until now only a hand-edited `qsp.json` could change.
+  Turning either off is confirmed, a warning shows while stations can log in
+  but forwarding is off, and turning the server on fills in the standard listen
+  address. It follows the rule that a feature is never withheld silently.
+
+### Changed
+
+- **Health lines speak to an operator, not a developer.** "set dmr.enabled" and
+  "set dmr.forwarding" become the switch to use in Network settings; AllStar
+  and EchoLink no longer cite package paths and decision-record numbers; Zello's
+  line matches the others. The dashboard's fallback message and its "Forwarding
+  is off" panel point at the switch, the Zello page loses a decision-record
+  number, and the Motorola panel loses a line saying it "was editable only by
+  hand until now".
+- **The Docker README's defaults table and troubleshooting** now match the
+  code: forwarding on, Motorola repeaters and P25 turned on under Network
+  settings, bridges, links and Zello absent until set up.
+
+### Fixed
+
 - **Health said Zello "arrives in phase 6" while Zello was on the air.** The
   line was a placeholder from before Zello was built, left in QSP's list of
   unbuilt subsystems five patches after it shipped — beneath two healthy lines
