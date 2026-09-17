@@ -2177,7 +2177,31 @@ never by reading.
 **Also settled:** `azp: dev` logs on in production; the Zello app declares
 16 kHz, two 60 ms frames per packet; all 1,917 frames the chip encoded from
 Zello audio passed DMR FEC uncorrected; DMR audio reaches Zello about 13 dB
-quieter than Zello audio arrives (open).
+quieter than Zello audio arrives — a setting since 0407, not yet tuned by ear.
+
+**The evening after, getting it clean for going public, taught five more.**
+
+- **A placeholder outlives the work unless the patch that builds the thing
+  removes it.** Health said Zello "arrives in phase 6" five patches after it
+  shipped, beneath two healthy Zello lines. The unbuilt list's own test states
+  the rule; nothing enforced it on the patches that built Zello.
+- **Two mistakes can cancel out.** A console test matched the real Zello link in
+  every sidebar and passed only because Zello was also wrongly listed as
+  unbuilt. Fixing the second exposed the first. A green test is evidence the
+  assertion held, not that it was the right assertion.
+- **Compare failure messages, not test names.** Seven tests fail in a build
+  with no SQLite driver; one of them also checks health wording, and a new
+  failure inside it reached Fedora unseen because only names were compared.
+  The container's baseline is now six messages, all about the driver.
+- **Read the product as a stranger does.** Running the real binary with a fresh
+  configuration and reading every health line found config keys where the
+  console had switches, developer notes in operator text, and — worst — a new
+  install whose hotspots heard nothing while its README called that correct.
+  No regex found that; reading did.
+- **Diagnosing on production must not act on production.** A script bisecting
+  qsp.service's sandbox restarted AMBEserver in a loop, tripped its start limit
+  and took Zello off the air. Build and verify in the container or on the test
+  server; the operator installs when it suits them.
 
 ## 8i. Where the next session starts, as of 2026-09-04
 

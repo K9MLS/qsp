@@ -4,6 +4,17 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **A handover for the end of 2026-09-16.** HANDOVER.md records the versions
+  each place runs, as confirmed rather than assumed — GitHub at 0.1.254,
+  production on QSP 0.1.253, the test server on 0.1.254 running unprivileged —
+  what was proven on hardware that day, what is not yet confirmed (the image
+  job's first CI run, the arm64 image on a Pi), and the open list in the order
+  set for going public: confirm the image published, a README for an operator
+  arriving cold, Zello on the Docker install, and the history rewrite.
+  PROJECT_MEMORY §8s gains the evening's five lessons.
+
 ### Added
 
 - **The QSP image is published** to `ghcr.io/k9mls/qsp`, tagged with the version

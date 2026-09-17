@@ -1,4 +1,4 @@
-# Handover, 2026-09-16
+# Handover, 2026-09-17
 
 Read `NEW-SESSION.md`, then **§8a** and **§8s** of `PROJECT_MEMORY.md`, then
 **ADR-0052**, the frame everything about linking sits inside. For the Zello and
@@ -32,16 +32,47 @@ range or a public service.
 
 ## Where things stand
 
-**Zello is on the air.** Since 2026-09-16 a Zello channel is linked to TG2 on
-production, both ways, heard on the Homebrew hotspots and the Motorola
-repeaters whose owners agreed. The whole path — console setup, logon handoff,
-vocoder, USRP, `qsp-zello` — has carried real calls with real users.
+**Zello is on the air, both ways, on real radios.** Since 2026-09-16 a Zello
+channel is linked to TG2 on production, heard on the Homebrew hotspots and on
+the Motorola repeaters whose owners agreed — IPSC included, since 0400. The
+whole path has carried real calls with real users: console setup, logon
+handoff, vocoder through a DVstick 30, USRP, `qsp-zello`.
 
-**Servers.** Production (systemd, 192.168.1.247) runs QSP, `qsp-zello` and
-AMBEserver; it was confirmed on 0.1.242 during the day, and the patches after
-it were delivered for deployment that evening. The test server (Docker,
-192.168.1.27) carries the BCARA upstream and no Zello. **Check what each runs
-with `-version`**; a version written here goes stale with the next deploy.
+**Versions, as confirmed at the end of 2026-09-16** (check with `-version`
+before trusting these; they go stale with the next deploy):
+
+| Where | Runs | Confirmed how |
+|---|---|---|
+| **GitHub** `main` | 0.1.254, tagged `v0.1.254` (this handover adds 0.1.255) | pushed |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.253**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Test server** (Docker, 192.168.1.27) | **0.1.254 built from source, running as UID 65532**; BCARA link connected | `ps` on the container, its log |
+
+Production's differences from 0.1.254 are Docker-only (the published image and
+the unprivileged container), so it needs nothing until the next code change.
+
+**Proven on hardware on 2026-09-16:**
+- Zello both ways on Homebrew and Motorola repeaters; all 1,917 captured voice
+  frames the chip encoded passed DMR FEC uncorrected.
+- A vocoder restarted underneath QSP is set up again: every call sent its rate
+  and init packets as a pair (5 and 5 in a minute's capture).
+- The dongle panel's `systemctl` control works under qsp.service's full
+  sandbox, and the polkit rule grants exactly start, stop, restart and
+  reset-failed on `ambeserver.service` to `qsp`.
+- The unprivileged container: an existing volume after its one `chown`, and a
+  brand-new volume whose every file was created owned by 65532.
+
+**Not yet confirmed:**
+- **The first CI run of the image job** (`Publish image`, triggered by the
+  `v0.1.254` tag). If it failed, fixing it is the first job.
+- **The Actions runs for `v0.1.246`, `v0.1.249` and `v0.1.254`** as a whole,
+  including the zello-tagged step's first runs on GitHub.
+- **The arm64 image on a Raspberry Pi.**
+- **The Zello level toward Zello set by ear** — it is at 0 dB.
+
+**On production, set by hand and also in the repository:** AMBEserver as
+`/etc/systemd/system/ambeserver.service`, the FTDI latency rule in
+`/etc/udev/rules.d/`, and the polkit rule in `/etc/polkit-1/rules.d/` (the 0408
+version, with reset-failed).
 
 **Rollback binaries** are kept beside each install as `~/qsp-previous-<version>`
 on production, and `~/qsp-zello-previous-<version>` for the connector.
@@ -80,39 +111,50 @@ learned to run it as a service.
 
 ## Open, in the order to take them
 
-1. **Set the level toward Zello by ear.** Built (0407): "Level toward Zello"
-   and "Level toward the radios" on the Zello page, in dB, soft-limited. The
-   capture measured DMR audio 13 dB under Zello audio; start at +10, restart
-   QSP, and ask the Zello users. A synthetic signal at that level reaches
-   Zello's level at +13 in the tests; the real voice is the judge.
-2. **The dongle panel's buttons work under qsp.service's sandbox** — confirmed
-   on production on 2026-09-16 by running `systemctl restart` as `qsp` inside a
-   transient unit with every one of qsp.service's restrictions. **Installing
-   0408 needs the polkit rule copied again** (it adds `reset-failed`).
-   **Never test by restarting AMBEserver repeatedly:** five starts in five
-   minutes trips its start limit, which is how that test took Zello off the air.
-3. **A Docker compose service for `qsp-zello`**, for the container install.
-   Only systemd is written.
-4. **Talker Alias for Zello transmissions** — whether the transcoder's
+**The goal before the P25 push, set by K9MLS:** QSP at a clean point for going
+public — the console looks right and works, the code is solid, and a stranger
+can install it and be on the air. Items 1–4 are that goal.
+
+1. **Confirm CI published the image.** Actions tab: `Check`, then `Publish
+   image`, both green for `v0.1.254`; the `qsp` package under the K9MLS
+   profile. It stays private until switched under Package settings → Change
+   visibility, and a private package needs `docker login ghcr.io` with a
+   `read:packages` token to pull. The publish job has never run before.
+2. **A README for an operator arriving cold.** Today's opening is a developer's
+   status report — captures, decision-record numbers, what has not been
+   exercised. It should say what QSP does, what you need, and how to be on the
+   air in minutes, with the detail moved further down. The first thing the
+   community reads about QSP.
+3. **Zello on the Docker install, as an add-on.** The main compose file stays
+   QSP alone; an optional `docker-compose.zello.yml` adds `qsp-zello` — its own
+   image (it is cgo, needing libopus per architecture), host networking so USRP
+   loopback is shared, a shared `/run/qsp` for the logon socket, and UID 65532
+   to match QSP's container, which the socket's peer check requires.
+   AMBEserver stays on the host with the dongle.
+4. **Rewrite history before switching the repository to public** — see "Before
+   this repository is made public" above.
+5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
+   +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
+6. **Talker Alias for Zello transmissions** — whether the transcoder's
    configured `alias` is sent. The standing rule is "passed through, never
    injected"; the operator decides whether a gateway's own alias is an
    exception.
-5. **Talkgroup routing and contention in `internal/p25link`.** QSP is a flat P25
-   reflector: every gateway hears everything and two keyups interleave.
-6. **A session-lifetime control on Administration**, so it stops being a
+7. **Talkgroup routing and contention in `internal/p25link`**, the start of
+   the P25 push. QSP is a flat P25 reflector: every gateway hears everything
+   and two keyups interleave.
+8. **A session-lifetime control on Administration**, so it stops being a
    file-only setting.
-7. **The Docker image is published from 0412** — `ghcr.io/k9mls/qsp:<version>`
-   and `:latest`, amd64 and arm64, by CI on a `v*` tag after `ci` passes.
-   **Still to do on GitHub, by K9MLS:** confirm the Actions runs are green; after
-   the first publish, the package is private until switched to public under the
-   package's settings (Packages → qsp → Package settings → Change visibility).
-   While private, a machine pulling it needs `docker login ghcr.io` with a token
-   that has `read:packages`. **The arm64 image has not run on a Pi.** The test
-   server builds from source, and **its volume needs the one-time
-   `chown -R 65532:65532` before its next rebuild** (deploy/docker/README.md,
-   "Upgrading").
-8. **`leading byte 0x81`** from radio 999998 — an unknown IPSC message type,
+9. **`leading byte 0x81`** from radio 999998 — an unknown IPSC message type,
    about fifty datagrams on 2026-09-03.
+
+**Two operating rules learned the hard way on 2026-09-16:**
+- **Never test by restarting a service in a loop.** AMBEserver's unit allows
+  five starts in five minutes; a diagnostic script restarting it repeatedly
+  tripped that and took Zello off the air. The panel now pauses after each
+  press and explains a tripped limit, but a script has no such guard.
+- **No command that restarts or stops something on production unless the
+  operator asked for it.** Build and verify in the container or on the test
+  server; the operator installs when it suits them.
 
 ## Waiting on the operator
 
