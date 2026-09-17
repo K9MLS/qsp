@@ -4,110 +4,145 @@
 
 QSP is named for the Q-code meaning *"I will relay your message."*
 
-> **Status: in production on two servers, and not yet used by anybody else.**
-> QSP accepts peers, repeats between them, bridges talkgroups on a schedule or
-> on demand, links to other QSP servers, and is administered entirely from a
-> web console.
->
-> **Validated against real hardware.** A WPSD hotspot completed the login
-> handshake and held its session; a live transmission reached the codec and
-> decoded, with five voice streams and 556 frames, none dropped, every one of
-> 576 payloads round-tripping byte-for-byte. The capture is committed at
-> [`testdata/hbp/hbp-voice-live.pcap`](testdata/hbp/hbp-voice-live.pcap); see
-> [`docs/architecture/hbp-protocol.md`](docs/architecture/hbp-protocol.md) for
-> what those runs confirmed and what they did not.
->
-> **Motorola repeaters, over IPSC.** A Motorola repeater points at QSP directly,
-> with no master repeater alongside it and nothing commercial in the path. Audio
-> crosses in both directions on air. See
-> [ADR-0036](docs/adr/ADR-0036-ipsc-voice-is-not-a-dmr-burst.md) and
-> [ADR-0043](docs/adr/ADR-0043-qsp-is-the-master.md).
->
-> **The master repeats.** A group call reaches every other peer on that
-> talkgroup, with no bridge and no configuration — the ordinary behaviour of a
-> DMR network. Bridges are additional, and move traffic *between* talkgroups.
-> See [ADR-0019](docs/adr/ADR-0019-master-repeats.md).
->
-> **Linking two QSP servers** is a peer registration rather than a bridge: the
-> talkgroup and the timeslot cross unchanged, and a link is offered, accepted,
-> refused and readdressed from the console. Confirmed on air in both directions.
-> See [ADR-0051](docs/adr/ADR-0051-a-qsp-link-is-a-peer.md) and
-> [ADR-0052](docs/adr/ADR-0052-qsp-is-federated.md). OpenBridge remains for
-> reaching a network QSP did not build.
->
-> **What has not happened**: a third server, so relaying between more than two
-> and the deduplication that goes with it are built, unit-tested and never
-> exercised. No operator other than the author has run QSP. The two-week
-> unattended soak has not started.
->
-> **P25 over IP** is built — QSP can serve P25 gateways and hotspots as a
-> reflector, carrying IMBE frames untouched exactly as it carries AMBE. Linking
-> a Motorola Quantar is a different problem and is not built: a Quantar links
-> over a V.24 daughtercard running HDLC rather than over IP.
->
-> **Zello** is built and has carried calls both ways on a live network: a
-> Zello channel is linked to a talkgroup through an AMBE vocoder dongle (tested
-> with the DVstick 30, bought separately), heard
-> on Homebrew hotspots and Motorola repeaters whose owners agreed. It is set up
-> from the console's Zello page; see [`docs/ZELLO.md`](docs/ZELLO.md). DMR-to-DMR
-> still needs no codec at all — only a bridge to a transcoder decodes audio.
->
-> **Not yet built:** AllStar and EchoLink. The health endpoint reports each as
-> `unavailable`.
->
-> See [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) for what is built and where
-> the line is, [`BLUEPRINT.md`](BLUEPRINT.md) for the product specification, and
-> [`ARCHITECTURE.md`](ARCHITECTURE.md) for how this is put together.
+Run it on a machine you own, point your hotspots and repeaters at it, and run
+your club's network from a web browser. No dealer, no licence fee, no INI files.
 
-## Why
+## What it does
 
-Every tool in this space is technically capable and operationally miserable.
-The commercial options are proprietary and dealer-quoted. The open alternatives
-require hand-editing config files and matching port numbers between INI stanzas
-whose field names disagree with each other.
+- **Hotspots and repeaters connect to it.** Pi-Star and WPSD hotspots, and
+  Homebrew repeaters, log in as they would to any DMR master. Stations on the
+  same talkgroup hear each other with no configuration at all.
+- **Motorola repeaters connect directly**, over IP Site Connect, with nothing
+  commercial in the path.
+- **Talkgroups are bridged on a schedule or on demand.** Link a talkgroup for a
+  net every Tuesday at 20:00, or only while somebody is keyed up. No other free
+  tool does this, and it is why QSP exists.
+- **Two QSP servers link** as peers, agreed from each console.
+- **P25 gateways and hotspots** connect to it as a reflector.
+- **Zello channels** are linked to a talkgroup through an AMBE vocoder dongle,
+  bought separately. See [`docs/ZELLO.md`](docs/ZELLO.md).
+- **Everything is set up from a web console**: who may connect, bridges, the
+  schedule, links, accounts, the call record, backup and restore.
 
-The protocols are solved. The operations are not. QSP is the operations layer.
+Not built: AllStar and EchoLink.
 
-The feature that justifies its existence is **scheduled and PTT-triggered
-bridging** — link a talkgroup for a net every Tuesday at 20:00, or only while
-somebody is actually keyed up. No free tool does this today.
+## What you need
 
-## Requirements
+- **A 64-bit Linux machine** that stays on: a PC, a server, a VPS, or a
+  Raspberry Pi 3, 4 or 5 running a 64-bit operating system.
+- **Docker** with the compose plugin.
+- **Your DMR ID**, and the ID each hotspot registers with, shown on its
+  dashboard.
+- **62031/udp reachable from wherever your hotspots are.** On a home connection
+  that means a port forward at your router, and it means **not being behind
+  CGNAT**: if your router's WAN address starts 100.64 to 100.127, no port
+  forward is possible and you need a VPS instead. This defeats more people than
+  anything else. If hotspots cannot reach the port, QSP starts, looks healthy,
+  and receives nothing.
 
-- Docker, or Go 1.27 and later to build from source
-- Linux, macOS, or Windows for development
-- Ubuntu Server 24.04 LTS is the supported deployment target
+## On the air in minutes
 
-## Install
-
-**With Docker**, which needs no toolchain and is how the author's own test
-server runs:
+**1. Get the files and set two values.**
 
 ```sh
-cd deploy/docker
-cp .env.example .env       # set QSP_PEER_PASSWORD and QSP_ALLOWED_PEERS
-docker compose up -d
+git clone https://github.com/K9MLS/qsp.git
+cd qsp/deploy/docker
+cp .env.example .env
+nano .env
 ```
 
-QSP writes its configuration on the first run and never touches that file
-again — after it exists, it is yours and the console edits it. See
-[ADR-0048](docs/adr/ADR-0048-container-install.md).
+`QSP_PEER_PASSWORD` is a password you choose; your hotspots will use it.
+`QSP_ALLOWED_PEERS` is the IDs allowed to connect, comma-separated. QSP will
+not start a master that accepts anybody, so it asks who first.
 
-**From source:**
+**2. Start it.**
+
+```sh
+docker compose up -d
+docker logs qsp 2>&1 | grep setup_token
+```
+
+The setup token is printed once per start. If you miss it,
+`docker compose restart` prints a new one.
+
+**3. Make your administrator account.** Open `http://<this machine>:8080` in a
+browser. The console is reachable from your whole network, so keep 8080/tcp off
+the internet unless you mean it to be there. The first page asks for a callsign,
+a password and the setup token. From a browser on the QSP machine itself, no
+token is needed.
+
+**4. Point a hotspot at it.** In Pi-Star or WPSD, add a custom DMR master with
+this machine's address, port **62031**, and your `QSP_PEER_PASSWORD`. The
+hotspot appears in the console once it logs in, and stations on the same
+talkgroup hear each other.
+
+Bridges, the schedule, links and Zello are all on the console's pages.
+[`deploy/docker/README.md`](deploy/docker/README.md) has the rest: what is on
+and off to begin with, upgrading, where your data lives, and troubleshooting.
+
+## Project status
+
+**In production on its author's two servers. Not yet run by other operators
+long enough to call it proven.** Issues from a first install are
+exactly what is wanted.
+
+What has been confirmed on air: Homebrew hotspots, including a live capture
+committed at [`testdata/hbp/hbp-voice-live.pcap`](testdata/hbp/hbp-voice-live.pcap);
+Motorola repeaters over IPSC in both directions; two QSP servers linked in both
+directions; and Zello both ways, heard on hotspots and Motorola repeaters.
+
+What has not happened yet: a third linked server, so relaying between more than
+two is unit-tested and never exercised; the arm64 image run on a Raspberry Pi;
+and the two-week unattended soak. A Motorola Quantar needs a V.24 interface
+rather than IP, and linking one is not something QSP does.
+
+[`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) is the full list of what is
+built and where the line is. [`BLUEPRINT.md`](BLUEPRINT.md) is the product
+specification and [`ARCHITECTURE.md`](ARCHITECTURE.md) is how it is put
+together.
+
+## Accounts
+
+Administrative endpoints require a session. **The first administrator is made in
+the browser**: a fresh server sends every page to a setup form, which asks for a
+callsign and a password. Over a network it also asks for a one-time token that
+QSP prints once at startup — there is none to type from the machine itself. See
+[ADR-0056](docs/adr/ADR-0056-first-administrator-in-a-browser.md).
+
+Every account after the first is added from the administration page. If every
+administrator is lost, one can be made on the host:
+
+```sh
+qsp -config /path/to/qsp.json adduser YOURCALL
+```
+
+## Without Docker
+
+For a 32-bit Raspberry Pi, where Docker is no longer packaged, or if you would
+rather run a plain binary. You need Go 1.27 or later:
 
 ```sh
 go build ./cmd/qsp
-./qsp
-```
-
-The console listens on `127.0.0.1:8080` by default.
-
-```sh
 ./qsp -print-config > qsp.json   # write the effective configuration
 ./qsp -config qsp.json           # run with it
 ./qsp -check                     # validate a configuration and exit
 ./qsp -version
 ```
+
+**Built this way, QSP starts with the DMR listener off and the console on
+`127.0.0.1:8080`**, reachable only from the machine itself. That is the built-in
+default, which is more cautious than the Docker install's first run.
+[`docs/CONFIGURATION.md`](docs/CONFIGURATION.md) covers turning on the
+listener, access control, bridges and the schedule by hand. `deploy/systemd`
+holds the unit file the author runs QSP with.
+
+## Persistence
+
+QSP persists its configuration history, the call record and the audit trail to
+SQLite. **The driver is imported by the binary rather than by the storage
+package**, keeping that dependency at the edge of the program — so a build that
+omits it runs without persistence and says so in the health report rather than
+failing. See [`docs/adr/ADR-0005-sqlite-driver.md`](docs/adr/ADR-0005-sqlite-driver.md).
 
 ## Endpoints
 
@@ -123,167 +158,6 @@ The console listens on `127.0.0.1:8080` by default.
 Administrative endpoints are omitted here because they change; `SECURITY.md`
 lists every one and what it does, and a test refuses to pass if that list and
 the routes disagree.
-
-## Accepting peers
-
-The DMR listener is **off by default**. To enable it:
-
-```sh
-printf 'your-shared-password' > /etc/qsp/peer.pass
-chmod 600 /etc/qsp/peer.pass
-```
-
-Then in the configuration:
-
-```json
-"dmr": {
-  "enabled": true,
-  "listen_address": "0.0.0.0:62031",
-  "password_file": "/etc/qsp/peer.pass",
-  "access": {
-    "registration": {"mode": "deny", "ids": []}
-  }
-}
-```
-
-The password is a **file path, never a value** — configuration is versioned,
-exported and diffed, and a secret in it would land in all three. See
-[ADR-0012](docs/adr/ADR-0012-peer-password-file.md).
-
-### Access control
-
-**A listener on an address reachable from beyond this host must have an
-`access` block, or QSP refuses to start.** The block above is the permissive
-one: deny nobody, so everything is permitted. It exists so that permitting
-everything is something an operator wrote down rather than something that
-happened, and so it appears in a diff.
-
-Four lists decide who is carried. Each has a `mode` of `permit`, which refuses
-anything not named, or `deny`, which allows anything not named. An entry is an
-ID or an inclusive range.
-
-```json
-"access": {
-  "registration": {"mode": "permit", "ids": ["312100", "312100101"]},
-  "subscribers":  {"mode": "deny",   "ids": []},
-  "talkgroups": {
-    "timeslot_1": {"mode": "permit", "ids": ["3100-3199"]},
-    "timeslot_2": {"mode": "permit", "ids": ["9", "91"]}
-  }
-}
-```
-
-`registration` names repeater IDs permitted to log in — six digits for a
-repeater, nine for a hotspot using an operator's ID and a two-digit suffix.
-`subscribers` names radio IDs permitted to transmit, and refusing one does not
-disconnect the hotspot carrying it. `talkgroups` names what is carried on each
-timeslot, checked both when a frame arrives and again for each peer it would
-reach, so that traffic from a bridge or a link is subject to the same list.
-
-**QSP ships no network's talkgroup numbers.** They differ between networks, and
-a list copied into this repository would be stale within the week. The lists are
-yours to write. See [ADR-0020](docs/adr/ADR-0020-access-control.md).
-
-### Bridging talkgroups
-
-```json
-"dmr": {
-  "forwarding": true,
-  "bridges": [{
-    "name": "tuesday-net",
-    "enabled": true,
-    "endpoints": [
-      {"peer": 3132910, "talkgroup": 3148, "timeslot": 1},
-      {"peer": 0,       "talkgroup": 91,   "timeslot": 2}
-    ]
-  }]
-}
-```
-
-`"peer": 0` means every connected peer. Traffic arriving at one endpoint is
-relayed to the others with its talkgroup and timeslot translated; the
-originating radio ID is preserved, and a call is never sent back to its source.
-
-**`forwarding` is separate from `enabled`.** With it off QSP relays nothing,
-not even between stations on the same talkgroup. It is off in the built-in
-defaults and **on in the configuration a first boot writes**; either way it is
-the **Forwarding** switch under Network settings, so you can watch stations
-connect before anything is relayed.
-
-### Scheduling a net
-
-```json
-"schedule": [{
-  "bridge":   "tuesday-net",
-  "days":     [2],
-  "start":    "20:00",
-  "duration": "1h",
-  "timezone": "America/Chicago",
-  "enabled":  true
-}]
-```
-
-Days are 0 for Sunday through 6 for Saturday. **A bridge named by any window is
-controlled entirely by the schedule** — its own `enabled` field is ignored — so
-there is never a question of which setting won.
-
-Times are local wall-clock times in the named zone, so a net at 20:00 stays at
-20:00 all year. Use an IANA name such as `America/Chicago`, not an abbreviation:
-`CST` cannot express "20:00 local all year".
-
-QSP logs the next occurrence of every window at startup, and warns about any
-that daylight saving will skip.
-
-### Linking on demand
-
-```json
-"triggers": [{
-  "bridge":    "on-demand",
-  "on":        [{"peer": 3132910, "talkgroup": 3148, "timeslot": 1}],
-  "hang_time": "3m",
-  "enabled":   true
-}]
-```
-
-Transmitting on a listed endpoint opens the bridge; it closes three minutes
-after the last transmission. **Trigger endpoints are separate from the bridge's
-endpoints**, so a local repeater can open a link outward without the wider
-network opening it inward.
-
-A bridge may be scheduled, triggered, both, or neither. Either mechanism opening
-it is enough, and the frame that opens it is itself relayed — no clipped first
-syllable.
-
-Point a hotspot at QSP as a custom DMR master. The console shows connected
-peers live, and `/healthz` reports the bound address and datagram counters.
-
-## The console
-
-Everything above can be done from a browser instead, and that is the point of
-the project: access lists, bridges, the schedule, links, peer credentials, the
-call record, backup and restore, and a page saying what this server is and
-whether it matches its own configuration.
-
-Administrative endpoints require a session. **The first administrator is made in
-the browser**: a fresh server sends every page to a setup form, which asks for a
-callsign and a password. Over a network it also asks for a one-time token that
-QSP prints once at startup — there is none to type from the machine itself. See
-[ADR-0056](docs/adr/ADR-0056-first-administrator-in-a-browser.md).
-
-Every account after the first is added from the administration page. If every
-administrator is lost, one can be made on the host:
-
-```sh
-qsp -config /path/to/qsp.json adduser YOURCALL
-```
-
-## Persistence
-
-QSP persists its configuration history, the call record and the audit trail to
-SQLite. **The driver is imported by the binary rather than by the storage
-package**, keeping that dependency at the edge of the program — so a build that
-omits it runs without persistence and says so in the health report rather than
-failing. See [`docs/adr/ADR-0005-sqlite-driver.md`](docs/adr/ADR-0005-sqlite-driver.md).
 
 ## Development
 

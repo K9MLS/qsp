@@ -120,11 +120,12 @@ can install it and be on the air. Items 1–4 are that goal.
    profile. It stays private until switched under Package settings → Change
    visibility, and a private package needs `docker login ghcr.io` with a
    `read:packages` token to pull. The publish job has never run before.
-2. **A README for an operator arriving cold.** Today's opening is a developer's
-   status report — captures, decision-record numbers, what has not been
-   exercised. It should say what QSP does, what you need, and how to be on the
-   air in minutes, with the detail moved further down. The first thing the
-   community reads about QSP.
+2. **A README for an operator arriving cold — done in 0414 (0.1.256).** It
+   leads with what QSP does, what you need and four steps to be on the air; the
+   status report moved below them, and the configuration reference moved to
+   docs/CONFIGURATION.md. A test ties its ports, console addresses and `.env`
+   variables to the code. **Tag `v0.1.256` and push it**, or the compose file
+   pins an image that was never published.
 3. **Zello on the Docker install, as an add-on.** The main compose file stays
    QSP alone; an optional `docker-compose.zello.yml` adds `qsp-zello` — its own
    image (it is cgo, needing libopus per architecture), host networking so USRP

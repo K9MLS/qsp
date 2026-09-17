@@ -6,6 +6,16 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The README is written for an operator arriving cold.** It says what QSP
+  does, what you need — including the port forward and CGNAT, which defeat more
+  installs than anything else — and four steps from `git clone` to a hotspot
+  logged in. The status report that opened it moved below those steps, kept
+  honest about what has not been exercised. The by-hand configuration reference
+  moved to docs/CONFIGURATION.md unchanged. **The README told a Docker operator
+  the console was on 127.0.0.1:8080**, which is the source build's default; the
+  Docker install's first run listens on every interface. A test now reads the
+  ports, both console addresses and the `.env` variable names from the code and
+  checks each is stated in the section it belongs to.
 - **A handover for the end of 2026-09-16.** HANDOVER.md records the versions
   each place runs, as confirmed rather than assumed — GitHub at 0.1.254,
   production on QSP 0.1.253, the test server on 0.1.254 running unprivileged —
