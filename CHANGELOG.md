@@ -4,6 +4,42 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Health said Zello "arrives in phase 6" while Zello was on the air.** The
+  line was a placeholder from before Zello was built, left in QSP's list of
+  unbuilt subsystems five patches after it shipped — beneath two healthy lines
+  showing it carry calls both ways. The list's own test says an entry leaves it
+  in the patch that builds the thing; this one did not. The `zello` line now
+  reads `qsp-zello`'s health and says what an operator needs: connected to
+  which channel since when, or what to do — start the connector, store
+  credentials, check channel membership, check the internet connection. With
+  Zello off it says so and where to turn it on. The connector's health address
+  is `zello.connector_health`, default `127.0.0.1:18090`, and must be loopback:
+  QSP fetches from it, so it fails closed.
+
+### Added
+
+- **The Zello page, ZELLO.md and the README say a vocoder dongle is needed**,
+  before anything else: an AMBE dongle bought separately, tested with the
+  DVstick 30, others that AMBEserver supports untested, one conversation at a
+  time.
+
+### Documentation
+
+- **A third rule that breaks ties, set by K9MLS: features fail open, security
+  fails closed** (PROJECT_MEMORY §0 and §6c). A feature the operator turned on
+  is never silently withheld; only logins, credentials and who may ask for them
+  refuse by default. It follows the rule that withheld Zello audio from every
+  Motorola repeater.
+- **PROJECT_MEMORY's "Still missing" table** no longer lists IPSC, the vocoder
+  or Zello as missing; the documentation accuracy test caught the Zello row once
+  Zello counted as built.
+- **A console test had been passing by accident.** It fails a page whose
+  navigation names a planned subsystem, matching the label anywhere, so the real
+  Zello link on every page counted — and it passed only because Zello was also
+  wrongly listed as unbuilt. Zello leaves its list of planned names.
+
 ### Changed
 
 - **A tripped start limit says what happened, and offers the way out.** On

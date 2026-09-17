@@ -17,14 +17,18 @@ administrator configuration. When a question sounds like "which talkgroup does
 the club want?", the answer is "that is a field, not a decision". K9MLS's club
 (BCARA) is the test bed, not the specification.
 
-**Two rules break ties.** When a decision could reasonably go either way, these
-settle it rather than leaving it to taste. Both are stated in full in §6c.
+**Three rules break ties.** When a decision could reasonably go either way, these
+settle it rather than leaving it to taste. All are stated in full in §6c.
 
 1. **Audio is king.** The best audio that can be delivered to the amateur
    community is the first requirement, and it overrules features, convenience
    and elegance.
 2. **Talkgroup numbers are never renumbered.** 2 is 2 and 11 is 11, on both
    sides of a hotspot. See §6b.
+3. **Features fail open; security fails closed.** A feature the operator turned
+   on is never silently withheld: deliver it, and make any limit visible and
+   configurable. Only logins, credentials and who may ask for them refuse by
+   default. See §6c.
 
 **The layers, in order. Build downward before upward.**
 
@@ -537,7 +541,7 @@ events in three seconds from one operator, six distinct IDs.
 Do not theorise further without a packet capture. Four theories were proposed for
 the private call and none was the answer.
 
-## 6c. Two rules that break ties, 2026-08-31
+## 6c. Three rules that break ties, 2026-08-31 and 2026-09-16
 
 ### Audio is king
 
@@ -565,6 +569,29 @@ and copying it would cost more than it returns.
 vocoders; routing one through the other is tandem vocoding, and tandem vocoding
 is the single worst thing that can be done to speech in this hobby. A P25
 network and a DMR network on one instance are two networks, not one.
+
+### Features fail open; security fails closed
+
+**Set by K9MLS on 2026-09-16, after a rule of this project's own took a working
+feature off the air.** Transcoded audio was withheld from every Motorola
+repeater, because the only IPSC path could not honour the Zello page's
+per-repeater agreement. Nothing said so: a repeater whose owner had agreed
+simply never keyed up for a Zello reply, which read as a fault. Withholding
+from everyone to avoid reaching someone who had not agreed was the wrong
+trade, and the fix was a path that honours the agreement (0400), not a wider
+block.
+
+**For traffic and features, deliver.** When a feature cannot yet do everything
+the operator asked, it does what it can, and says what it cannot — in health,
+on the page, in the log — with a setting where there is a choice to make. A
+limit nobody can see is indistinguishable from a bug, and a rule that blocks by
+default is a feature the operator cannot use.
+
+**For security, refuse.** Logins, sessions, credentials, the logon socket's
+check of who is asking, the addresses QSP will fetch from: these fail closed,
+because a wrong guess hands someone the network. The dividing question is
+whether a wrong "yes" gives control to someone it should not. If it does, the
+answer is no until proven yes; if it only delivers audio, the answer is yes.
 
 ### A member is removed without changing everybody's password
 
@@ -808,10 +835,11 @@ it is more use than a list of what exists today.
 
 | Still missing | Consequence |
 |---|---|
-| **IPSC** | a club with a Motorola repeater cannot use QSP. Blocked on a capture, deliberately — see [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) |
-| **A vocoder** | QSP relays audio without decoding it, which is why parrot works and transcoding does not |
+| **IPSC** | built since this table was written, from captures as [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) required; Motorola repeaters link today |
+| **A vocoder** | built since this table was written: QSP decodes through an AMBE dongle (ADR-0061, `internal/ambe`) for bridges that name a transcoder, and still relays DMR-to-DMR untouched |
 | **Hotspot configuration guidance** | a member's own hotspot needs `TGRewrite` and `PCRewrite` rules QSP cannot supply, and the join page does not mention them. Every new member repeats the same afternoon. See §6a |
-| **AllStar, Zello, EchoLink** | later phases, each reporting `unavailable`, and each needing an external transcoder with an AMBE dongle |
+| **AllStar, EchoLink** | later phases, each reporting `unavailable`, and each needing an external transcoder with an AMBE dongle |
+| **Zello** | built since this table was written: on the air 2026-09-16 through a DVstick 30 — §8s |
 | **P25** | built 2026-09-11 — a P25 reflector over IP, off unless `p25.enabled`. Not a Quantar link; that is V.24/HDLC and unbuilt |
 
 The live map is built, and `/api/peers` is deliberately unauthenticated: it

@@ -105,12 +105,13 @@
           <p class="hint__text"><strong>None of these can be done from QSP</strong>, and each one is a common reason a first attempt does not connect. The channel must be joined by the gateway's own account in the Zello app before QSP can use it: logging on from a server does not join a channel. A Zello user has no radio, so the gateway transmits under a DMR ID of its own; sharing a repeater's or a hotspot's makes Zello traffic indistinguishable from that station's everywhere it is logged.</p>
         </div>
         <div class="panel__body">
+          <p class="acl__state"><strong>Zello needs an AMBE vocoder dongle</strong>, bought separately and plugged into this server. It turns DMR's digital voice into ordinary audio and back, and nothing on this page works without one. QSP is tested with the <strong>DVstick 30</strong>; other AMBE-3000 dongles that AMBEserver supports should work but have not been tested. One dongle carries one conversation at a time.</p>
           <ul class="notice__list">
+            <li>The AMBE vocoder dongle, plugged in, with AMBEserver running as a service.</li>
             <li>A Zello account for the gateway, separate from your own.</li>
             <li>An API key pair from Zello's developer portal: the <strong>issuer</strong> string and the <strong>private key</strong> file.</li>
             <li>A Zello channel, <strong>joined in the Zello app with the gateway's account</strong>, moderated, and set to Zelect.</li>
             <li>A DMR ID for the gateway from RadioID.net &mdash; its own, not a repeater's or a hotspot's.</li>
-            <li>The AMBE dongle plugged in, with AMBEserver running.</li>
             <li>The <code>qsp-zello</code> connector installed beside QSP (the last step shows how).</li>
           </ul>
         </div>

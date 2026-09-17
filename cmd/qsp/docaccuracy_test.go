@@ -517,9 +517,12 @@ func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
 		"vocoder pool": "vocoder",
 		"p25":          "p25",
 		"allstar":      "allstar",
-		"zello":        "zello",
 		"echolink":     "echolink",
 	}
+	// **Zello left this map in 0409.** It is built and has a page, so every
+	// sidebar names it in a real link — and this test, matching the label
+	// anywhere, passed only because Zello was also wrongly listed as unbuilt.
+	// Two mistakes cancelled out; removing one exposed the other.
 
 	for _, page := range pages {
 		b, err := fs.ReadFile(assets, page)

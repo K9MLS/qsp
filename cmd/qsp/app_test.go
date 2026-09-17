@@ -118,7 +118,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// becomes a lie the moment it ships, and §8a records four instances in one
 	// day of exactly that kind of staleness — so it moves in the same patch
 	// that builds the thing rather than the next one.
-	for _, name := range []string{"allstar", "zello", "echolink"} {
+	for _, name := range []string{"allstar", "echolink"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("unbuilt subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)
@@ -130,7 +130,9 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 
 	// Built-but-inactive subsystems name the setting that would turn them on,
 	// which is a different statement from "not implemented".
-	for _, name := range []string{"routing", "scheduler", "p25"} {
+	// **Zello joined this list in 0409**, five patches after it was built; its
+	// line said "arrives in phase 6" beneath two healthy Zello lines.
+	for _, name := range []string{"routing", "scheduler", "p25", "zello"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("inactive subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)

@@ -722,6 +722,20 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		registry.MustRegister(a.zelloLogon.Checker(a.secrets))
 	}
 
+	// **Zello is built** (0394–0400) and left the unbuilt list in 0409, five
+	// patches late. Its line reports the connector itself.
+	if cfg.Zello.Enabled {
+		addr := cfg.Zello.ConnectorHealth
+		if addr == "" {
+			addr = config.DefaultZelloConnectorHealth
+		}
+		registry.MustRegister(zellologon.ConnectorChecker(addr))
+	} else {
+		registry.MustRegister(health.CheckerFunc{CheckName: "zello", Fn: func(context.Context) health.Result {
+			return health.Unavailable("Zello is switched off on this server; the Zello page turns it on")
+		}})
+	}
+
 	for _, s := range unbuiltSubsystems {
 		registry.MustRegister(unbuilt(s.name, s.arrives))
 	}
@@ -1814,9 +1828,6 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// path.
 	{"allstar", "the AllStar connector arrives in phase 5; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
-	{"zello", "the Zello connector arrives in phase 6; the vocoder link is built and " +
-		"carries DMR and USRP both ways, and qsp-zello is built and has not made " +
-		"its first connection — Opus stays outside QSP because every Go binding is cgo (ADR-0062)"},
 	{"echolink", "the EchoLink connector arrives in phase 6; the vocoder link it needs is " +
 		"built (internal/ambe, ADR-0061) and the connector is not"},
 }

@@ -6,6 +6,17 @@ the hardware meets a plan rather than a question.
 Nothing here is built. `AMBE_AUDIO` appears in this repository only in prose —
 README, BLUEPRINT and PROJECT_MEMORY — and in no Go file.
 
+
+## What you need to buy
+
+**An AMBE vocoder dongle.** Zello carries ordinary audio and DMR carries
+AMBE+2 digital voice, and the conversion between them is done in hardware
+QSP talks to through AMBEserver. **QSP is tested with the DVstick 30**
+(AMBE-3000F). Other AMBE-3000 USB dongles that AMBEserver supports should work
+and have not been tested. One dongle carries one conversation at a time, in one
+direction at a time. Everything else — the Zello account, the API key, the
+connector — is free.
+
 ## Recovery, first, because it was needed
 
 **If the dongle stops answering, unplug it physically for ten seconds.**

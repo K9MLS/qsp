@@ -46,7 +46,8 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 > over a V.24 daughtercard running HDLC rather than over IP.
 >
 > **Zello** is built and has carried calls both ways on a live network: a
-> Zello channel is linked to a talkgroup through an AMBE vocoder dongle, heard
+> Zello channel is linked to a talkgroup through an AMBE vocoder dongle (tested
+> with the DVstick 30, bought separately), heard
 > on Homebrew hotspots and Motorola repeaters whose owners agreed. It is set up
 > from the console's Zello page; see [`docs/ZELLO.md`](docs/ZELLO.md). DMR-to-DMR
 > still needs no codec at all — only a bridge to a transcoder decodes audio.

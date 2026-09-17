@@ -834,7 +834,18 @@ type Zello struct {
 	// handed to the connector with the logon, so everything an operator
 	// changes about Zello is in one place.
 	Channel string `json:"channel,omitempty"`
+
+	// ConnectorHealth is qsp-zello's health_listen address, which QSP reads to
+	// report the connector in its own health. Loopback only: QSP will not be
+	// pointed at another machine by this setting. Empty means
+	// DefaultZelloConnectorHealth, what the Zello page writes into the
+	// connector's file.
+	ConnectorHealth string `json:"connector_health,omitempty"`
 }
+
+// DefaultZelloConnectorHealth is where qsp-zello serves /healthz unless told
+// otherwise, matching the connector file the Zello page generates.
+const DefaultZelloConnectorHealth = "127.0.0.1:18090"
 
 // DefaultZelloLogonSocket is where a service install puts the socket:
 // qsp.service's RuntimeDirectory.
@@ -1238,6 +1249,17 @@ func (c Config) Validate() error {
 	// Zello. Checked only when on, so a paused configuration keeps whatever
 	// was entered without having to be complete.
 	if c.Zello.Enabled {
+		if h := strings.TrimSpace(c.Zello.ConnectorHealth); h != "" {
+			host, _, err := net.SplitHostPort(h)
+			ip := net.ParseIP(host)
+			if err != nil || ip == nil || !ip.IsLoopback() {
+				// **Fails closed**: a health address QSP fetches from is a
+				// request QSP makes on an operator's say-so, and the only
+				// connector it describes runs beside it.
+				v.add("zello.connector_health", fmt.Sprintf("%q is not a loopback address and port", h),
+					"qsp-zello runs beside QSP; use its health_listen, 127.0.0.1:18090 by default")
+			}
+		}
 		sock := strings.TrimSpace(c.Zello.LogonSocket)
 		switch {
 		case sock == "":
