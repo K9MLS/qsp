@@ -4,6 +4,27 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A vocoder dongle that is replugged, or moved to another port, recovers on
+  its own.** AMBEserver does not notice its dongle leaving: it keeps running,
+  keeps 2460 bound, accepts QSP's datagrams and answers none of them, while
+  systemctl still reports it active. QSP reports failing and warns on every
+  call, and nothing recovers until somebody restarts AMBEserver by hand.
+  Production ran three days that way after the dongle came back on a different
+  ttyUSB, with Zello silent both ways, 21 minutes of CPU burnt and 34 kB queued
+  on the socket. A new udev rule asks the new ambeserver-replug.service to
+  restart AMBEserver whenever an FTDI serial adapter appears. The rule only
+  signals: systemctl in a udev RUN+= is discouraged upstream and can hang a
+  udev worker until it is killed. The unit's guard is an is-enabled check
+  rather than try-restart, because try-restart does nothing to a failed unit
+  and an absent dongle trips AMBEserver's start limit, which is exactly the
+  case a later replug has to recover; a machine that disabled AMBEserver on
+  purpose is left alone. QSP itself needs nothing — it reopens a vocoder that
+  stopped answering within seconds — so the fix restarts AMBEserver and not
+  QSP. docs/ZELLO.md gains the symptom, the two commands that identify it, and
+  how it differs from a wedged chip.
+
 ### Added
 
 - **Zello on the Docker install, as an add-on.** `docker-compose.zello.yml`

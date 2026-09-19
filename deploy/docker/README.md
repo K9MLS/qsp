@@ -163,7 +163,10 @@ its own image. An install without a vocoder dongle never needs either.
 
 - **The dongle and AMBEserver on this host.** AMBEserver runs as a service
   beside Docker, not in it; docs/ZELLO.md, "Running the dongle as a service",
-  has the unit and the device settings.
+  has the unit, both udev rules and the device settings. Install all of them:
+  the restart rule and `ambeserver-replug.service` are what put AMBEserver back
+  on the dongle after it is replugged, and without them Zello goes silent both
+  ways until somebody restarts it by hand.
 - **Zello set up on the console's Zello page**, steps 1 to 4 of "Setting it up"
   in docs/ZELLO.md: the account, the vocoder, and what Zello carries.
 - **The page's generated `qsp-zello.json`**, saved in this directory beside the

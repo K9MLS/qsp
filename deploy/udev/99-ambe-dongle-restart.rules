@@ -1,0 +1,21 @@
+# Restart AMBEserver when the vocoder dongle appears (docs/ZELLO.md).
+#
+# **AMBEserver survives losing its dongle, and that is the problem.** Unplug
+# the dongle, or move it to another port, and the process keeps running: it
+# holds a file descriptor for a device that no longer exists, keeps 2460 bound,
+# accepts QSP's datagrams and never answers. systemctl still reports it active.
+# QSP reports failing and warns on every call, but nothing recovers. Observed
+# on production 2026-09-16 to 09-19: three days, 21 minutes of CPU burnt, 34 kB
+# queued on the socket, and Zello silent both ways until AMBEserver was
+# restarted by hand.
+#
+# **The rule only signals; it does not act.** systemctl in a udev RUN+= is
+# discouraged upstream and can hang a udev worker until it is killed, so the
+# work is in ambeserver-replug.service and this rule just asks for it. The
+# device needs TAG+="systemd" for a .device unit to exist to hang that Wants on.
+#
+# Any FTDI serial adapter matches, not this dongle alone: narrowing it by serial
+# number would mean every operator editing the file, and a needless AMBEserver
+# restart is cheaper than a rule nobody adapts. It costs the call in progress.
+ACTION=="add", SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", \
+  TAG+="systemd", ENV{SYSTEMD_WANTS}+="ambeserver-replug.service"

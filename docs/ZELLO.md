@@ -104,6 +104,9 @@ latency rule with it:
 sudo cp deploy/systemd/ambeserver.service /etc/systemd/system/
 sudo systemctl edit ambeserver      # set AMBE_DEVICE to the dongle's /dev/serial/by-id path
 sudo cp deploy/udev/99-ambe-dongle-latency.rules /etc/udev/rules.d/
+sudo cp deploy/udev/99-ambe-dongle-restart.rules /etc/udev/rules.d/
+sudo cp deploy/systemd/ambeserver-replug.service /etc/systemd/system/
+sudo systemctl daemon-reload
 sudo udevadm control --reload-rules
 echo 1 | sudo tee /sys/bus/usb-serial/devices/ttyUSB0/latency_timer   # now, without replugging
 sudo systemctl enable --now ambeserver
@@ -125,10 +128,61 @@ sudo systemctl enable --now ambeserver
   `deploy/polkit/50-qsp-ambeserver.rules` in `/etc/polkit-1/rules.d/`, which
   lets the `qsp` user do exactly those three things to `ambeserver.service` and
   nothing else; without it they report "not authorized". Every use is audited.
+- **The restart rule is what makes a replug survivable.** AMBEserver does not
+  notice its dongle leaving: it keeps running, keeps 2460 bound, and answers
+  nothing, while `systemctl` still calls it active. Moving the dongle to another
+  port is enough, because the device comes back as a different `ttyUSB`. The
+  rule asks `ambeserver-replug.service` to restart AMBEserver whenever an FTDI
+  adapter appears, and it is not enabled on purpose: udev starts it, and a
+  machine where AMBEserver is disabled stays untouched. **QSP needs nothing
+  after that** — it reopens a vocoder that stopped answering, within seconds.
 - **AMBEserver restarting is survivable.** QSP sets the DMR rate at the start of
   every call and reopens a vocoder that stops answering, so a restart costs at
   most the call in progress. Before 0.1.243 it silently garbled every call
   until QSP was restarted too.
+
+## When Zello goes quiet both ways
+
+**Symptom, from production on 2026-09-19.** Zello transmissions arrive and are
+logged, radios key up and are relayed, and nothing is heard in either
+direction. `systemctl is-active qsp qsp-zello ambeserver` says active three
+times. The connector reports `state: connected`. The only sign is QSP warning
+on every call:
+
+```
+"transcoder problem" ... "a call arrived and the vocoder is not reachable"
+"transcoder problem" ... "audio from USRP arrived and the vocoder is not reachable"
+```
+
+**Cause.** AMBEserver is holding a dongle that is no longer there. It was
+started while the dongle was on another port or another machine, and it kept
+its file descriptor. Check whether it predates the device:
+
+```sh
+systemctl show ambeserver -p ExecMainStartTimestamp
+ls -l /dev/ttyUSB* /dev/serial/by-id/
+ss -lunp | grep 2460      # bytes queued here mean audio arriving and nothing draining
+```
+
+A start timestamp older than the device's is the answer.
+
+**Fix.** Restart AMBEserver alone. QSP reopens the vocoder within seconds, so
+there is no need to restart QSP or the connector, and doing so costs airtime
+for nothing:
+
+```sh
+sudo systemctl restart ambeserver
+journalctl -u qsp --since '1 min ago' | grep vocoder    # want: vocoder ready ... AMBE3000F
+```
+
+**Not this.** A chip that answers but garbles audio is the wedged case, and no
+restart clears it; unplug the dongle for ten seconds instead. The difference is
+whether QSP says the vocoder is unreachable, which is this, or reports it
+reachable while audio is wrong, which is that.
+
+From 0.1.258 the restart rule above does this on replug, so this section
+applies to installs without it, and to a dongle moved while AMBEserver was
+stopped.
 
 ## The dongle, in detail
 

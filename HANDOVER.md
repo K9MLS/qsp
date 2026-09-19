@@ -126,6 +126,14 @@ can install it and be on the air. Items 1–4 are that goal.
    docs/CONFIGURATION.md. A test ties its ports, console addresses and `.env`
    variables to the code. **Tag `v0.1.256` and push it**, or the compose file
    pins an image that was never published.
+3. **Test the replug recovery on hardware — 0416 (0.1.258) is unproven.** The
+   rule and unit are written and the guard was exercised against a stub
+   systemctl, but there is no udev or systemd in the build container, so
+   nothing has fired for real. On QSP SERVER, after installing both rules and
+   the unit: unplug the dongle, plug it into another port, and watch
+   `journalctl -u ambeserver -u ambeserver-replug` and QSP's log for `vocoder
+   ready`. Costs a few seconds of Zello. If it works, no human is needed for
+   the failure that cost three days on 2026-09-16 to 09-19.
 3. **Zello on the Docker install, as an add-on — built in 0415 (0.1.257), not
    yet on air.** `docker-compose.zello.yml`, `Dockerfile.zello` (static libopus
    on scratch, UID 65532), a shared `qsp-run` volume for the logon socket, and a

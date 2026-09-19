@@ -1,0 +1,21 @@
+# Started by 99-ambe-dongle-restart.rules when an FTDI serial adapter appears,
+# to put AMBEserver back on the dongle it now has (docs/ZELLO.md).
+#
+# It has no [Install] section and is not enabled: udev asks for it through the
+# device unit's Wants, and nothing else should start it.
+[Unit]
+Description=Restart AMBEserver after the vocoder dongle was replugged
+Documentation=https://github.com/K9MLS/qsp/blob/main/docs/ZELLO.md
+
+[Service]
+Type=oneshot
+# **The enabled check is the whole guard, and it is not try-restart.**
+# try-restart does nothing to a unit in the failed state, and AMBEserver reaches
+# that state easily: a dongle absent at boot fails it five times and trips the
+# start limit, so a later replug would have been ignored — the case this file
+# exists for. is-enabled is true for a unit that is active, failed, or stopped
+# but installed, and false for one an operator disabled. So a machine without
+# the dongle, where AMBEserver was disabled on purpose, stays quiet; that is the
+# test server, and plugging any FTDI adapter into it should not start a vocoder
+# service. reset-failed clears a tripped start limit so the restart can proceed.
+ExecStart=/bin/sh -c 'systemctl is-enabled --quiet ambeserver.service || exit 0; systemctl reset-failed ambeserver.service; exec systemctl restart ambeserver.service'
