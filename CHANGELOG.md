@@ -4,6 +4,24 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The three P25 captures carried the operator's household, and now carry only
+  radio.** Taken with no capture filter, they held mDNS naming five devices and
+  twelve service types — AirPlay, HomeKit, SmartThings, SSH, a printer —
+  Syncthing local discovery with a device ID and the operator's public address,
+  Plex discovery, and SSDP with router UUIDs. In p25-register.pcap, 1,448 of
+  1,876 packets were not radio. The 2026-09-16 scrub could not have found any
+  of it: `git grep` skips binary files, and a string scan would have caught the
+  addresses and left the device inventory. `scripts/filter-capture.py` keeps
+  only the radio ports, copying each kept packet's record header and payload
+  untouched, so the evidence `internal/p25link` cites still holds — the poll
+  counts were compared before and after and are identical, 96 out and 96 back
+  in p25-register, and every p25link test passes on the filtered files. Two
+  tests now read every capture in testdata: one fails on a packet that is not
+  on a radio port, the other on an mDNS name, a device ID, a UPnP UUID or a
+  relay URL inside one. The other 23 captures were already clean.
+
 ### Changed
 
 - **EchoLink is no longer in the health report.** It had a check reporting

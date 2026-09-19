@@ -48,3 +48,16 @@ thing between the port and anybody who knows a callsign.
 **A second radio.** Every transmission in every capture is the same one, so the
 source field is confirmed as a 24-bit identifier matching this radio and not yet
 proven to follow a different one.
+
+## Filtered, 2026-09-19
+
+**This capture was taken with no capture filter and held 1448 packets that were
+not radio**: mDNS naming household devices and their services, Syncthing local
+discovery with a device ID and a public address, Plex discovery, and SSDP with
+router UUIDs. They are removed (`scripts/filter-capture.py`, keeping the radio
+ports only).
+
+**What remains is byte-identical to what arrived.** The file header and every
+kept packet's record header and payload are untouched, so the counts this
+document cites still hold: the poll and voice figures were compared before and
+after and are the same. `internal/p25link`'s tests pass on the filtered file.

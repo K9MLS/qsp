@@ -60,3 +60,16 @@ audio.
 The sixteen-bit identifier is returned separately from the byte above it, which
 was zero throughout. A capture showing it non-zero produces a visible surprise
 rather than a talkgroup number sixty-five thousand too large.
+
+## Filtered, 2026-09-19
+
+**This capture was taken with no capture filter and held 1062 packets that were
+not radio**: mDNS naming household devices and their services, Syncthing local
+discovery with a device ID and a public address, Plex discovery, and SSDP with
+router UUIDs. They are removed (`scripts/filter-capture.py`, keeping the radio
+ports only).
+
+**What remains is byte-identical to what arrived.** The file header and every
+kept packet's record header and payload are untouched, so the counts this
+document cites still hold: the poll and voice figures were compared before and
+after and are the same. `internal/p25link`'s tests pass on the filtered file.

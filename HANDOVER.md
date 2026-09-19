@@ -1,3 +1,34 @@
+## Before this repository is made public
+
+**1. The captures are clean as of 0418 (0.1.261).** The three P25 captures held
+mDNS, Syncthing and SSDP traffic from the operator's own network — device
+names, service types, a Syncthing device ID, router UUIDs and the operator's
+public address — because they were taken with no capture filter. Filtered with
+`scripts/filter-capture.py`; two tests in `internal/p25link` now fail on any
+capture carrying non-radio traffic or an identity string. **The originals are
+still in history**, so the rewrite below has to handle the old capture blobs as
+well as the text.
+
+**2. The history still holds what the working tree no longer does.** The tree
+was scrubbed on 2026-09-16: other operators' first names, towns and home public
+addresses were replaced — a first name by the callsign, a town by its state, an
+address by `203.0.113.x` — in text, tests and two HBP captures, payloads
+byte-identical. **Every earlier commit still contains the originals.** A scan on
+2026-09-19 found five strings absent from HEAD and present in history: two
+public addresses and three names or towns, reaching 155 to 292 commits each
+across 2 to 9 paths. Three other candidates were common words still in the tree,
+so not sensitive. Emails are clean: example.com/org samples, the operator's own
+address, `mike@192.168.1.x` from scp lines, and `pi-star.local`.
+
+**3. Then rewrite**, with `git filter-repo --replace-text` for the five strings
+plus the old capture blobs, or publish a fresh history from a single commit.
+Tag a backup first: a force-push is the one irreversible operation in this
+project. Scan again afterwards and confirm the five strings return nothing.
+
+**4. Then the packages.** `qsp` and `qsp-zello` are private by default and are
+switched separately under Package settings; a stranger's `docker compose up`
+fails until that is done. The final push needs its tag, or the compose files pin
+an image that was never built.
 # Handover, 2026-09-17
 
 Read `NEW-SESSION.md`, then **§8a** and **§8s** of `PROJECT_MEMORY.md`, then
