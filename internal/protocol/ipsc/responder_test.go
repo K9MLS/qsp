@@ -117,7 +117,7 @@ func TestF1CarriesNoPeerIdentity(t *testing.T) {
 	}{
 		{"peer radio ID, big endian", []byte{0x00, 0x04, 0xd0, 0x98}},
 		{"peer radio ID, little endian", []byte{0x98, 0xd0, 0x04, 0x00}},
-		{"peer IP 198.51.100.2", []byte{66, 188, 183, 60}},
+		{"peer IP 203.0.113.60", []byte{66, 188, 183, 60}},
 		{"master IP 192.168.1.233", []byte{192, 168, 1, 233}},
 	} {
 		if bytes.Contains(body, tc.needle) {

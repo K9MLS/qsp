@@ -289,7 +289,7 @@ func TestAnAddressIsNotPublished(t *testing.T) {
 				Address: "203.0.113.172:45383"},
 		}},
 		fixedPeers{peers: []PeerView{
-			{ID: 315544, Protocol: ProtocolIPSC, Address: "198.51.100.2:50004"},
+			{ID: 315544, Protocol: ProtocolIPSC, Address: "203.0.113.60:50004"},
 		}},
 	)
 

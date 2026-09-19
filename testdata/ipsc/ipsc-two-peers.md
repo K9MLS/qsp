@@ -15,7 +15,7 @@ SHA-256 `cbf0dca974aaff248cb5c051dff2cc0c69c56fe1c14c7faf37e24a3f9e2cae0a`
 | Date | 2026-09-02, 19:36 UTC |
 | Master | QSP 0.1.34 in production, `192.168.1.247:50000` |
 | Peer | XPR8300, firmware R02.30.20, radio ID 3132910, `192.168.1.233` |
-| Peer | SLR5700 (KD9EJA), radio ID 315544, `198.51.100.2` |
+| Peer | SLR5700 (KD9EJA), radio ID 315544, `203.0.113.60` |
 | Peer | KB9TYC's repeater, radio ID 3155412, `203.0.113.172` — model not yet recorded |
 | Capture | `tcpdump -n -i any udp port 50000` on the VM |
 | Link type | LINUX_SLL2 (276), not Ethernet |

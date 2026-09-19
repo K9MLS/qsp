@@ -129,3 +129,19 @@ Reviewers ask:
 
 Be decent. This is a hobby project for amateur radio operators; nobody is paid
 to be here, including you.
+
+## Addresses
+
+**No public IP address goes in this repository**, in code, tests, documents or
+captures. Use a documentation range — `203.0.113.x`, `198.51.100.x`,
+`192.0.2.x` — or a private one where that is what is meant. A test refuses
+anything else, including addresses that are public infrastructure: a reflector,
+a DMR master, a resolver in an example. That rule exists because judging each
+address on its merits is exactly how another operator's home address ended up
+in ten files, four of them Go tests written from a real capture.
+
+**Captures carry more than the address.** Take them with a capture filter, or
+run `scripts/filter-capture.py` before committing: three captures here held
+mDNS, Syncthing and SSDP traffic from a home network, naming devices and
+services. Two tests in `internal/p25link` refuse a capture with traffic that is
+not radio, or with a device identity inside it.

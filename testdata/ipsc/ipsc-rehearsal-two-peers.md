@@ -16,7 +16,7 @@ through the bridge instead of directly.
 
 ## What was not expected
 
-The capture contains a **third party**: `198.51.100.2`, already sending `0x90`
+The capture contains a **third party**: `203.0.113.60`, already sending `0x90`
 to the XPR8300 every ten seconds, and receiving ICMP unreachable because the
 repeater was in peer mode. A remote repeater had been pointed at this network
 for some time, patiently retrying.

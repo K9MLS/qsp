@@ -385,7 +385,7 @@ interface Serial0/0
 ### The router: settled on the operator's own 2921, 2026-09-13
 
 **A CISCO2921/K9 on 15.4(3)M3 `universalk9` runs STUN.** Verified at the
-console rather than inferred: `stun peer-name 198.51.100.1` was accepted in
+console rather than inferred: `stun peer-name 192.0.2.1` was accepted in
 configuration mode, which on IOS means it exists.
 
 The licence was the blocker and it is **self-activating**:

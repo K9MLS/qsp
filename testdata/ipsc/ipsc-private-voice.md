@@ -13,9 +13,9 @@ SHA-256 `ef1f097db292132ac0266469533f85b0f23155d86237f182231ee2fff355285f`
 | Date | 2026-09-05, 12:54–12:56 UTC |
 | Master | QSP 0.1.61 in production, `192.168.1.247:50000` |
 | Peer A | XPR8300, radio ID 999999, `192.168.1.233`, K9MLS |
-| Peer B | SLR5700, radio ID 315544, `198.51.100.2`, KD9EJA |
+| Peer B | SLR5700, radio ID 315544, `203.0.113.60`, KD9EJA |
 | Radios | K9MLS 3132910, KD9HDR 3155373 |
-| Capture | `tcpdump -i any -s0 'host 198.51.100.2 or host 192.168.1.233'` on the VM |
+| Capture | `tcpdump -i any -s0 'host 203.0.113.60 or host 192.168.1.233'` on the VM |
 | Packets | 1004 records, 998 UDP, over 120 seconds |
 
 Both repeaters were registered to the production listener. QSP's own relayed

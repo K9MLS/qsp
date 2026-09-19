@@ -11,7 +11,7 @@ import (
 // changed.
 //
 // **The bytes below were read out of ipsc-phase2-registration.pcap**, from
-// 198.51.100.2 (sender 0x0004d098) to an XPR8300 in master role at
+// 203.0.113.60 (sender 0x0004d098) to an XPR8300 in master role at
 // 192.168.1.233. They are the whole of the peer's vocabulary.
 //
 // This is the only assertion available about the tool. Most of these bytes have

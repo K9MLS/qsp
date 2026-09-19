@@ -14,7 +14,7 @@ captures. 82 packets after trimming.
 
 ## What it shows
 
-Fifty-three `0x90` requests from `198.51.100.2:50004` to `192.168.1.233:50000`,
+Fifty-three `0x90` requests from `203.0.113.60:50004` to `192.168.1.233:50000`,
 every ten seconds, each answered by an **ICMP port unreachable from the
 repeater's own IP stack** — not from a firewall, not from the router. The
 repeater itself was saying nothing is bound to 50000.

@@ -14,7 +14,7 @@ SHA-256 `69db0ad650eaa24aa0e6ca328efdec6cc0366091d1e9667f955b8467d30a6c5e`
 | Captured by | K9MLS, Denton TX |
 | Date | 2026-09-01, 13:22–13:25 UTC |
 | Master | XPR8300, firmware R02.30.20, `192.168.1.233`, radio ID **3132910** |
-| Peer | remote repeater at `198.51.100.2`, radio ID **315544**, TTL 50 on arrival so roughly fourteen hops |
+| Peer | remote repeater at `203.0.113.60`, radio ID **315544**, TTL 50 on arrival so roughly fourteen hops |
 | Capture host | Fedora workstation bridging `eno1` and a USB NIC, captured on the repeater-facing port |
 | Link type | EN10MB |
 | Authentication | disabled both ends |

@@ -198,7 +198,7 @@ func TestTheOutboundVoiceShapeMatchesARepeater(t *testing.T) {
 // Control alone and requires it back byte for byte against one a real SLR5700
 // sent, with only the two bytes this project cannot derive excluded.
 //
-// The captured header, bytes 30 to 53 of a 54-byte datagram from 198.51.100.2
+// The captured header, bytes 30 to 53 of a 54-byte datagram from 203.0.113.60
 // in ipsc-two-peers.pcap, source 0x3025ad, destination 2, colour code 1:
 //
 //	01 c0 00 0a 80 0a 00 60 00 00 00 00 00 02 30 25 ad ea d1 50 00 11 1e 7b

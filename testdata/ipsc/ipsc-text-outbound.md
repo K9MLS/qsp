@@ -14,7 +14,7 @@ SHA-256 `22b6efa6484cdd503d2551e16b2667adf30e3f69951390d40dd8fe5163260ae3`
 | Captured by | K9MLS, Denton TX |
 | Date | 2026-09-06, 17:40 to 17:41 UTC |
 | Master | QSP 0.1.84 at `192.168.1.247:50000` |
-| Remote peer | `198.51.100.2:50004` |
+| Remote peer | `203.0.113.60:50004` |
 | Link type | Linux cooked v2 (276) |
 | Packets | 42 |
 

@@ -6,6 +6,21 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **No public IP address is published anywhere, and a test refuses one.** The
+  2026-09-16 scrub replaced the addresses somebody had noticed; another
+  operator's home address was still in ten files, four of them Go tests, because
+  a test written from a real capture keeps whatever address was on the wire. It
+  is now `203.0.113.60`. So are a P25 reflector, a DMR master and a resolver in
+  a console example, replaced with documentation ranges even though they are
+  public infrastructure: judging each address on its merits is how the first one
+  survived. The test reads every file including captures, since an address in a
+  capture is ASCII on the wire, and allows private, loopback, link-local,
+  multicast and the documentation ranges. ETSI clause numbers are listed
+  explicitly, because 5.1.2.2 and a host look identical to a regular
+  expression. CONTRIBUTING.md records the rule and the capture filter.
+
+### Fixed
+
 - **The three P25 captures carried the operator's household, and now carry only
   radio.** Taken with no capture filter, they held mDNS naming five devices and
   twelve service types — AirPlay, HomeKit, SmartThings, SSH, a printer —
