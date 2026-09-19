@@ -4,6 +4,24 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **How to connect a P25 gateway, and the two traps that are not QSP's.**
+  docs/P25-GATEWAY.md: the QSP side from the console, that a callsign in a poll
+  is a claim the protocol cannot verify, that an empty allow list answers every
+  gateway, and how to confirm a link from a capture and the log. The traps cost
+  an hour on 2026-09-19: P25Gateway reads two host files and the first wins, so
+  an entry in Pi-Star's P25HostsLocal.txt cannot override one in the downloaded
+  P25Hosts.txt; and a published hostname pointing at a public address is
+  unreachable from a gateway on the same LAN without hairpin NAT. Also that an
+  edit needs a restart and a relink, because a live link keeps the address it
+  resolved. CAPABILITIES.md now describes P25 as it is — a flat reflector that
+  registers gateways and relays voice to all of them without routing on the
+  talkgroup — and records that one gateway has linked on a LAN, on production,
+  2026-09-19. A test ties the guide's poll interval, miss count, success log
+  line and health summary to p25link, and fails if the P25 configuration ever
+  gains a credential while the guide still says a callsign is all there is.
+
 ### Fixed
 
 - **A vocoder dongle that is replugged, or moved to another port, recovers on

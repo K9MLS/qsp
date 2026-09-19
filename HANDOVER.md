@@ -151,8 +151,11 @@ can install it and be on the air. Items 1–4 are that goal.
    injected"; the operator decides whether a gateway's own alias is an
    exception.
 7. **Talkgroup routing and contention in `internal/p25link`**, the start of
-   the P25 push. QSP is a flat P25 reflector: every gateway hears everything
-   and two keyups interleave.
+   making P25 a network rather than a flat reflector: voice reads the talkgroup
+   and relays to every registered gateway regardless. **Now testable rather
+   than theoretical** — K9MLS's Pi-Star registered on production 2026-09-19, so
+   a second gateway on another talkgroup would demonstrate the defect. See
+   P25-NETWORK.md §2 and §6, and P25-GATEWAY.md for the operator view.
 8. **A session-lifetime control on Administration**, so it stops being a
    file-only setting.
 9. **`leading byte 0x81`** from radio 999998 — an unknown IPSC message type,

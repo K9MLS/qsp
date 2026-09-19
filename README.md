@@ -18,7 +18,9 @@ your club's network from a web browser. No dealer, no licence fee, no INI files.
   net every Tuesday at 20:00, or only while somebody is keyed up. No other free
   tool does this, and it is why QSP exists.
 - **Two QSP servers link** as peers, agreed from each console.
-- **P25 gateways and hotspots** connect to it as a reflector.
+- **P25 gateways and hotspots** connect to it as a reflector, as a flat one
+  today: every linked gateway hears every transmission.
+  [`docs/P25-GATEWAY.md`](docs/P25-GATEWAY.md) is how to point one at it.
 - **Zello channels** are linked to a talkgroup through an AMBE vocoder dongle,
   bought separately. See [`docs/ZELLO.md`](docs/ZELLO.md).
 - **Everything is set up from a web console**: who may connect, bridges, the

@@ -77,10 +77,19 @@ decoded, which is ADR-0062's line.
 which is deliberate: an absent capability that says so is better than one that
 is silently missing.
 
-**P25.** `internal/protocol/p25` exists with a health check standing by, and the
-capture in `testdata/p25/` holds polling traffic only. Not the current focus;
-the point is that there is somewhere for it to land. P25-to-P25 relaying would
-need no transcoding, for the same reason DMR-to-DMR does not.
+**P25 is a flat reflector, not a network.** The listener accepts gateway polls,
+checks the asserted callsign against the allow list, registers the gateway,
+forgets one after three missed polls, and relays voice to every other
+registered gateway. **The talkgroup is read and not routed on**, so a gateway
+on one talkgroup hears another's audio; `P25-NETWORK.md` §2 has why that is the
+first thing to fix and §6 what the fan-out costs. Voice from a gateway that has
+not polled is dropped rather than relayed from an unidentified source. P25-to-
+P25 needs no transcoding, for the same reason DMR-to-DMR does not.
+
+**One gateway has linked, on a LAN**: K9MLS from a Pi-Star, on production,
+2026-09-19, registered and polling. Not yet done: a second gateway, a gateway
+from outside the network, audio confirmed on air through QSP, and talkgroup
+routing. `P25-GATEWAY.md` is the operator guide and repeats these limits.
 
 ---
 
