@@ -103,10 +103,68 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// what exists and what does not.
 	for _, name := range []string{
 		"process", "database", "network", "peers", "routing", "scheduler",
-		"ipsc", "p25", "allstar", "zello", "echolink",
+		"ipsc", "p25", "allstar", "zello",
 	} {
 		if _, ok := byName[name]; !ok {
 			t.Errorf("subsystem %q is missing from the health report", name)
+		}
+	}
+
+	// **EchoLink is reported nowhere, and that is the point of 0418.** The
+	// operator has no plan to build it, so a check calling it a future phase
+	// promised work that will not happen. This asserts the absence rather than
+	// trusting the list, because a check can be registered from anywhere and
+	// the failure mode is silent: a name back in the report reads to a
+	// stranger as a feature in progress.
+	for _, name := range []string{"echolink"} {
+		if got, ok := byName[name]; ok {
+			t.Errorf("subsystem %q is in the health report as %q; EchoLink is not built and not planned, so it is reported nowhere",
+				name, got.Status)
+		}
+	}
+	for _, s := range unbuiltSubsystems {
+		if s.name == "echolink" {
+			t.Error("echolink is back in unbuiltSubsystems; it was removed in 0418 because nobody intends to build it")
+		}
+	}
+
+	// **And no document may promise it either.** The check was the visible
+	// half; a README or capability list tying EchoLink to a roadmap phase makes
+	// the same promise in the place a stranger reads first, and nothing else
+	// here would notice.
+	for _, doc := range []string{"README.md", "docs/CAPABILITIES.md", "PROJECT_MEMORY.md"} {
+		b, err := os.ReadFile(filepath.Join(repoRoot, doc))
+		if err != nil {
+			t.Fatalf("reading %s: %v", doc, err)
+		}
+		for _, sentence := range strings.Split(strings.Join(strings.Fields(string(b)), " "), ". ") {
+			lower := strings.ToLower(sentence)
+			if !strings.Contains(lower, "echolink") {
+				continue
+			}
+			// **A promise, not a mention.** These documents have to be able to
+			// explain the removal, and explaining it means using the words
+			// "phase" and "unavailable" in order to deny them; a row that
+			// flagged any co-occurrence failed on its own changelog entry.
+			// So it looks for the forms the promise actually took, and lets a
+			// sentence that disclaims it through.
+			promising := false
+			for _, form := range []string{"planned for roadmap phase", "later phase", "later phases", "reporting `unavailable`"} {
+				if strings.Contains(lower, form) {
+					promising = true
+				}
+			}
+			if !promising {
+				continue
+			}
+			for _, disclaimed := range []string{"no plan", "not planned", "without being built", "says nothing about", "rather than calling it", "dropped from the report"} {
+				if strings.Contains(lower, disclaimed) {
+					promising = false
+				}
+			}
+			if promising {
+				t.Errorf("%s promises EchoLink: %q", doc, sentence)
+			}
 		}
 	}
 
@@ -118,7 +176,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// becomes a lie the moment it ships, and §8a records four instances in one
 	// day of exactly that kind of staleness — so it moves in the same patch
 	// that builds the thing rather than the next one.
-	for _, name := range []string{"allstar", "echolink"} {
+	for _, name := range []string{"allstar"} {
 		got := byName[name]
 		if got.Status != health.StatusUnavailable {
 			t.Errorf("unbuilt subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)

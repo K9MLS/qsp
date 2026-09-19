@@ -2,9 +2,10 @@
 //
 // This build implements the DMR Homebrew Protocol, the peer lifecycle, call
 // observation, and routing with scheduled and PTT-triggered bridging, behind a
-// web console. P25, the vocoder pool and the analog connectors (AllStar, Zello,
-// EchoLink) are later phases and are not present; the health endpoint reports
-// each of them as unavailable.
+// web console, with IPSC for Motorola repeaters, a P25 reflector, and Zello
+// through an AMBE dongle. AllStar is a later phase and is not present; the
+// health endpoint reports it as unavailable. EchoLink is neither built nor
+// reported — see unbuiltSubsystems in app.go for why.
 package main
 
 import (

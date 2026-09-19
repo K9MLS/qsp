@@ -4,6 +4,22 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **EchoLink is no longer in the health report.** It had a check reporting
+  `unavailable` with "planned for roadmap phase 6", and there is no plan to
+  build it. Reporting a subsystem nobody intends to write is not honesty about
+  a gap; it advertises work that will not happen, and it put a promise on the
+  index page the project was not making. AllStar keeps its check, since it is
+  still a later phase. The rule that a subsystem leaves `unbuiltSubsystems`
+  only when it is built now has one recorded exception, said where the list is
+  so its absence cannot be read as a shipped feature. BLUEPRINT.md keeps the
+  protocol notes and the community-policy question. README, CAPABILITIES.md,
+  PROJECT_MEMORY and the package comment in main.go no longer claim QSP reports
+  on EchoLink; the console test that allowed a page to name a planned subsystem
+  now forbids naming EchoLink at all, and a test asserts no such check is
+  registered from anywhere.
+
 ### Documentation
 
 - **How to connect a P25 gateway, and the two traps that are not QSP's.**

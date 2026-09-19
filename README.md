@@ -26,7 +26,8 @@ your club's network from a web browser. No dealer, no licence fee, no INI files.
 - **Everything is set up from a web console**: who may connect, bridges, the
   schedule, links, accounts, the call record, backup and restore.
 
-Not built: AllStar and EchoLink.
+Not built: AllStar. EchoLink is researched and not planned, so QSP does not
+report on it at all; BLUEPRINT.md has the notes.
 
 ## What you need
 

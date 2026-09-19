@@ -73,9 +73,15 @@ dongle service.
 carry vocoder payloads untouched; only traffic bridged to a transcoder is
 decoded, which is ADR-0062's line.
 
-**AllStar and EchoLink** have registered health checks and no implementations,
-which is deliberate: an absent capability that says so is better than one that
-is silently missing.
+**AllStar** has a registered health check and no implementation, which is
+deliberate: an absent capability that says so is better than one that is
+silently missing.
+
+**EchoLink has no health check either**, and that is the exception. Reporting a
+subsystem nobody intends to write advertises work that will not happen, so from
+0.1.260 QSP says nothing about EchoLink rather than calling it a future phase.
+BLUEPRINT.md keeps the protocol notes and the community-policy question that
+made it awkward in the first place.
 
 **P25 is a flat reflector, not a network.** The listener accepts gateway polls,
 checks the asserted callsign against the allow list, registers the gateway,

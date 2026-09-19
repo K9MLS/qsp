@@ -140,10 +140,13 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
 
 ### Not built
 
-P25, AllStar, Zello, EchoLink. Each registers a health check
-reporting `unavailable` with the phase that brings it; the authoritative list is
-`unbuiltSubsystems` in `cmd/qsp/app.go`, and a subsystem leaves it on the commit
-that implements it.
+AllStar. It registers a health check reporting `unavailable` with the phase that
+brings it; the authoritative list is `unbuiltSubsystems` in `cmd/qsp/app.go`,
+and a subsystem leaves it on the commit that implements it. P25 and Zello left
+it by being built, in 0.1.x and 0.1.243 respectively. **EchoLink left it in 0418
+without being built**, because the operator has no plan for it and a check
+naming a future phase promised otherwise; that is the one departure from the
+rule, and app.go says so where the list is.
 
 Runtime status is *not* the source of truth for this. `StatusUnavailable` is
 also what a built-but-disabled listener reports, so the two must be
@@ -838,7 +841,8 @@ it is more use than a list of what exists today.
 | **IPSC** | built since this table was written, from captures as [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) required; Motorola repeaters link today |
 | **A vocoder** | built since this table was written: QSP decodes through an AMBE dongle (ADR-0061, `internal/ambe`) for bridges that name a transcoder, and still relays DMR-to-DMR untouched |
 | **Hotspot configuration guidance** | a member's own hotspot needs `TGRewrite` and `PCRewrite` rules QSP cannot supply, and the join page does not mention them. Every new member repeats the same afternoon. See §6a |
-| **AllStar, EchoLink** | later phases, each reporting `unavailable`, and each needing an external transcoder with an AMBE dongle |
+| **AllStar** | a later phase, reporting `unavailable`, and needing the AMBE dongle path QSP now has (ADR-0061) |
+| **EchoLink** | dropped from the report in 0418 with no plan to build it; BLUEPRINT.md keeps the notes |
 | **Zello** | built since this table was written: on the air 2026-09-16 through a DVstick 30 — §8s |
 | **P25** | built 2026-09-11 — a P25 reflector over IP, off unless `p25.enabled`. Not a Quantar link; that is V.24/HDLC and unbuilt |
 

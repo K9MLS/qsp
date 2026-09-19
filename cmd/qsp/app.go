@@ -1827,7 +1827,18 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// is missing for each connector below is the connector, not the codec
 	// path.
 	{"allstar", "AllStar linking is not built yet; it is planned for roadmap phase 5."},
-	{"echolink", "EchoLink linking is not built yet; it is planned for roadmap phase 6."},
+
+	// **EchoLink left this list in 0418 without being built**, which is the one
+	// exception to the rule above, and it is recorded here so nobody reads its
+	// absence as a shipped feature. The operator has no plan to build it, and a
+	// check saying "planned for roadmap phase 6" was a promise the project was
+	// not making. Reporting a subsystem nobody intends to write is not honesty
+	// about a gap; it is an advertisement for work that will not happen.
+	//
+	// BLUEPRINT.md keeps the protocol notes and the community-policy question,
+	// so the research is not lost, and the day EchoLink is taken up it comes
+	// back here first. What is deliberately not claimed anywhere is that QSP
+	// does EchoLink.
 }
 
 // unbuilt returns a check for a subsystem that does not exist yet.
