@@ -4,6 +4,33 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/scrub-history.py`, which rewrites history and derives what to
+  replace rather than storing it.** A file listing club members' names and home
+  addresses would be the same disclosure in another place, and it would be
+  committed here. So the tool learns the names and towns from the 2026-09-16
+  scrub commit's own before-and-after pairs, keeping only strings absent from
+  HEAD — a word still in the tree was never sensitive, which is what separates
+  a name from a reworded sentence, and the real scan found three such words.
+  Two gaps the deliberate breaks found: nothing covered the capture filtering,
+  so the tool could have shipped ignoring captures entirely — the leak that
+  started this work — and `go test` served a cached pass after the script
+  changed, because a script run through exec is not an input it can see. There
+  is a row for a synthetic leaky capture now, and the test reads both scripts so
+  the cache tracks them.
+  Addresses come from scanning every object, captures included, for anything
+  public, mapped into 198.51.100.x by the same rule 0420 enforces on the tree;
+  a last octet is kept for readability, and a collision falls back to a counter,
+  because two addresses here shared one and merging them would have made
+  history say two hosts were one. Leaky captures are filtered by
+  scripts/filter-capture.py, the same code that cleaned the tree, each
+  historical blob on its own. It reports and changes nothing by default,
+  verifies after applying, and refuses to continue if a filtered capture still
+  carries an identity. Four table-driven tests build a repository with a
+  planted name and address and run it end to end, including that verification
+  fails on a history nobody cleaned.
+
 ### Fixed
 
 - **No public IP address is published anywhere, and a test refuses one.** The

@@ -37,3 +37,8 @@ deploy/docker/.env
 # operator saves beside docker-compose.zello.yml. Ignored for the reason .env
 # is: an untracked file marks every build from that checkout +dirty.
 deploy/docker/qsp-zello.json
+
+# Python bytecode from scripts/, which importlib writes when one script
+# imports another.
+__pycache__/
+*.pyc

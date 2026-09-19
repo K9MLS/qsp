@@ -20,10 +20,24 @@ across 2 to 9 paths. Three other candidates were common words still in the tree,
 so not sensitive. Emails are clean: example.com/org samples, the operator's own
 address, `mike@192.168.1.x` from scp lines, and `pi-star.local`.
 
-**3. Then rewrite**, with `git filter-repo --replace-text` for the five strings
-plus the old capture blobs, or publish a fresh history from a single commit.
-Tag a backup first: a force-push is the one irreversible operation in this
-project. Scan again afterwards and confirm the five strings return nothing.
+**3. Then rewrite, with `scripts/scrub-history.py`.** It derives the list
+itself, so nothing sensitive is written down. Run it in the real repository
+after tagging and bundling a backup:
+
+```sh
+git tag pre-rewrite-backup && git bundle create ~/Documents/QSP/qsp-pre-rewrite.bundle --all
+scripts/scrub-history.py                 # reports; changes nothing
+scripts/scrub-history.py --show          # the mapping, which names people
+scripts/scrub-history.py --apply         # rewrites, then verifies
+./scripts/check.sh                       # the gates, on the rewritten tree
+```
+
+Verified on a clone of this repository on 2026-09-19: 428 commits preserved,
+three names or towns and ten addresses replaced, three capture blobs filtered,
+and afterwards none of it in any object, any commit message or any capture.
+`git filter-repo` is needed (`pip install git-filter-repo`). The push is
+`--force-with-lease`, and every hash changes, so anyone else with a clone has
+to re-clone.
 
 **4. Then the packages.** `qsp` and `qsp-zello` are private by default and are
 switched separately under Package settings; a stranger's `docker compose up`
