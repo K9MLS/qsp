@@ -100,6 +100,18 @@ func (r *memoryRepo) DeleteExpiredSessions(_ context.Context, now time.Time) (in
 	return n, nil
 }
 
+func (r *memoryRepo) CountSessions(_ context.Context, now time.Time) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var n int
+	for _, s := range r.sessions {
+		if now.Before(s.ExpiresAt) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (r *memoryRepo) sessionCount() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()

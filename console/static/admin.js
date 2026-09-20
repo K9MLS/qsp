@@ -87,6 +87,56 @@
     renderAgreement(body.agreement || {});
     renderServices(body.services || {});
     renderCallsigns((body.services || {}).callsigns || {});
+    renderSessions(body.sessions || {});
+  }
+
+  /* The sessions block: what a login lasts, and what that means now.
+   *
+   * **It reports before it edits**, which is the condition this page is held
+   * to. The three facts it states are the ones the configuration file cannot:
+   * which value is in force, whether that is the operator's choice or the
+   * built-in default, and when the session reading the page ends -- the last
+   * being what an operator part-way through a restore actually wants. */
+  function renderSessions(x) {
+    var parts = [];
+    parts.push("A login lasts " + duration(x.lifetime_seconds) +
+      (x.default ? ", the built-in default." : ", from this server's configuration."));
+    if (x.active) {
+      parts.push(x.active === 1 ? "One session is active." :
+        x.active + " sessions are active.");
+    }
+    if (x.expires_in_seconds) {
+      parts.push("Yours ends in " + duration(x.expires_in_seconds) + ".");
+    }
+    say(el("sessions-state"), parts.join(" "));
+
+    if (!editing) {
+      el("sessions-lifetime").value = duration(x.lifetime_seconds);
+    }
+  }
+
+  /* Seconds as an operator writes them: 12h, 90m, 45s. */
+  function duration(seconds) {
+    var n = Number(seconds) || 0;
+    if (n % 3600 === 0) { return (n / 3600) + "h"; }
+    if (n % 60 === 0) { return (n / 60) + "m"; }
+    return n + "s";
+  }
+
+  /* And back again, refusing what the server would refuse.
+   *
+   * **The bounds come from the report, not from this file.** A page carrying
+   * its own copy is a page that accepts a value the configuration will not
+   * load, which is worse than a round trip. */
+  function seconds(text) {
+    var m = /^\s*(\d+)\s*([hms])\s*$/i.exec(text || "");
+    if (!m) { throw new Error("Write it like 12h, 24h or 90m."); }
+    var n = Number(m[1]);
+    switch (m[2].toLowerCase()) {
+      case "h": return n * 3600;
+      case "m": return n * 60;
+      default: return n;
+    }
   }
 
   function renderServer(s) {
@@ -448,6 +498,47 @@
   if (contact) {
     contact.addEventListener("focus", function () { editing = true; });
     contact.addEventListener("blur", function () { editing = false; });
+  }
+
+  var lifetime = el("sessions-lifetime");
+  if (lifetime) {
+    lifetime.addEventListener("focus", function () { editing = true; });
+    lifetime.addEventListener("blur", function () { editing = false; });
+  }
+
+  var saveSessions = el("sessions-save");
+  if (saveSessions) {
+    saveSessions.addEventListener("click", function () {
+      hide(el("sessions-error"));
+      var wanted;
+      try {
+        wanted = seconds(el("sessions-lifetime").value);
+      } catch (e) {
+        say(el("sessions-error"), e.message);
+        return;
+      }
+      saveSessions.disabled = true;
+      saveSessions.textContent = "Saving";
+      fetch("/api/admin/session-lifetime", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ seconds: wanted })
+      }).then(function (r) {
+        return r.json().then(function (b) {
+          if (!r.ok) { throw new Error(b.error || "could not save"); }
+          return b;
+        });
+      }).then(function () {
+        editing = false;
+        load();
+      }).catch(function (e) {
+        say(el("sessions-error"), e.message);
+      }).then(function () {
+        saveSessions.disabled = false;
+        saveSessions.textContent = "Save";
+      });
+    });
   }
 
   var save = el("callsigns-save");

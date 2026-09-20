@@ -6,6 +6,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The session lifetime is on the Administration page**, and no longer a
+  file-only setting. It is a report before it is a field, which is the
+  condition ADR-0055 puts on the page editing anything: the block states which
+  lifetime is in force, whether that is the operator's choice or the built-in
+  twelve hours — a distinction the file hides, since a configuration that says
+  nothing and one that says 12h read identically — how many sessions are
+  active, and when the reader's own session ends, which is the question an
+  operator part-way through a restore has. It sits under Administrators rather
+  than in a panel of its own, because a session is the live half of "who can
+  get into this console". **A change does not log anybody out**, including the
+  person making it; the new value applies at the next login, and the page says
+  so. The bounds are the configuration validator's own, exported so the page
+  and `-check` cannot disagree, and the endpoint saves through the same path
+  rather than checking again. `auth` gained a session count, taken from the
+  rows rather than tracked in memory, where it would be wrong after a restart.
+
+### Fixed
+
+- **The configuration stub in the server tests now validates, as the real
+  manager does.** It accepted anything, so a handler could have shipped a value
+  `-check` refuses with its test passing. Found while writing the endpoint
+  above, which relies on Save for its bounds.
+
+### Added
+
 - **Talker Alias on transmissions built from Zello audio.** The `alias` setting
   existed, was length-checked, and was never transmitted, which is worse than
   not having it: an operator could set it and hear nothing about why radios

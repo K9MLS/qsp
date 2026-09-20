@@ -45,6 +45,13 @@ func (c *stubConfig) Save(_ context.Context, cfg config.Config, author, summary 
 	if c.saveErr != nil {
 		return config.Version{}, c.saveErr
 	}
+	// **Validated, because the real manager validates.** A stub that accepts
+	// anything lets a handler ship a value `-check` would refuse, and the test
+	// that should have caught it passes. Found writing the session-lifetime
+	// endpoint, which relies on Save for its bounds rather than restating them.
+	if err := cfg.Validate(); err != nil {
+		return config.Version{}, err
+	}
 	c.saved = append(c.saved, cfg)
 	c.authors = append(c.authors, author)
 	c.current = cfg

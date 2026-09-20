@@ -172,6 +172,23 @@
 
         <p class="link__advice" id="users-error" hidden></p>
         <p class="field__note" id="users-secret" hidden></p>
+
+        <!-- Sessions: the live half of "who can get into this console", which
+             is why it is here rather than in a panel of its own. -->
+        <h3 class="panel__heading">Sessions</h3>
+        <p class="field__note" id="sessions-state"></p>
+        <label class="picker__field">
+          <span class="picker__label" for="sessions-lifetime">A login lasts</span>
+          <input class="picker__input" id="sessions-lifetime" type="text"
+                 spellcheck="false" placeholder="12h">
+          <p class="field__note">
+            Hours or minutes, like <code>12h</code>, <code>24h</code> or
+            <code>90m</code>. A change applies to the next login: nobody
+            currently signed in is logged out, including you.
+          </p>
+        </label>
+        <button class="button" id="sessions-save" type="button">Save</button>
+        <p class="link__advice" id="sessions-error" hidden></p>
       </div>
     </section>
 

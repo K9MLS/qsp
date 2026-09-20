@@ -204,10 +204,14 @@ can install it and be on the air. Items 1–4 are that goal.
    than theoretical** — K9MLS's Pi-Star registered on production 2026-09-19, so
    a second gateway on another talkgroup would demonstrate the defect. See
    P25-NETWORK.md §2 and §6, and P25-GATEWAY.md for the operator view.
-8. **A session-lifetime control on Administration**, so it stops being a
-   file-only setting.
-9. **`leading byte 0x81`** from radio 999998 — an unknown IPSC message type,
-   about fifty datagrams on 2026-09-03.
+8. **A session-lifetime control on Administration — done in 0423 (0.1.265).**
+   Reported and editable under Administrators: the value in force, whether it
+   is the default, the active count, and the reader's own expiry. Not seen in a
+   browser yet — the tests cover the report and the endpoint, not the page.
+9. **`leading byte 0x81` — closed as unreproducible.** About fifty datagrams
+   from radio 999998 on 2026-09-03 and **none since 2026-09-10**, checked on
+   production on 2026-09-21. Nothing to reproduce and nothing to fix; if it
+   returns, the datagrams are the evidence to keep.
 
 **Two operating rules learned the hard way on 2026-09-16:**
 - **Never test by restarting a service in a loop.** AMBEserver's unit allows

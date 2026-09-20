@@ -966,6 +966,18 @@ type Endpoint struct {
 const OpenBridgeTimeslot = 1
 
 // Server configures the HTTP console listener.
+// MinSessionLifetime and MaxSessionLifetime bound a console login.
+//
+// **Exported because the console offers the same setting.** The page states the
+// bounds so an operator is not refused after a round trip, and taking them from
+// here rather than restating them keeps the page and `-check` from disagreeing
+// about what is valid -- which is how a console comes to accept a value the
+// file will not load.
+const (
+	MinSessionLifetime = time.Minute
+	MaxSessionLifetime = 7 * 24 * time.Hour
+)
+
 type Server struct {
 	// Identifier is what every other server calls this one (ADR-0053).
 	//
@@ -1368,10 +1380,10 @@ func (c Config) Validate() error {
 	// have to say so rather than reach it by typing a large number.
 	if c.Server.SessionLifetime != 0 {
 		switch d := time.Duration(c.Server.SessionLifetime); {
-		case d < time.Minute:
+		case d < MinSessionLifetime:
 			v.add("server.session_lifetime", "is shorter than a minute",
 				"use \"12h\", or \"24h\" to stay logged in overnight; leave it out for the default")
-		case d > 7*24*time.Hour:
+		case d > MaxSessionLifetime:
 			v.add("server.session_lifetime", "is longer than a week",
 				"use \"24h\" or \"168h\"; this console can add administrators and restart the server")
 		}

@@ -99,6 +99,13 @@ type Repository interface {
 	DeleteSession(ctx context.Context, token string) error
 	// DeleteExpiredSessions removes every session that has expired.
 	DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error)
+	// CountSessions returns how many sessions have not expired.
+	//
+	// **Counted in storage rather than tracked in memory.** A counter kept
+	// here would be wrong after a restart, wrong about the sessions another
+	// process issued, and would need its own sweep to stay right; the rows
+	// already know.
+	CountSessions(ctx context.Context, now time.Time) (int, error)
 	// Accounts returns every account, oldest first.
 	Accounts(ctx context.Context) ([]Account, error)
 	// SetPassword replaces one account's hash.
@@ -359,6 +366,16 @@ func (s *Service) EndSession(ctx context.Context, token string) error {
 // SweepSessions removes expired sessions.
 func (s *Service) SweepSessions(ctx context.Context) (int, error) {
 	return s.repo.DeleteExpiredSessions(ctx, s.now().UTC())
+}
+
+// ActiveSessions is how many logins are currently valid.
+//
+// **The console reports it so that a number higher than the number of people
+// who should be logged in is visible at all.** Expired sessions are swept on a
+// timer rather than at expiry, so the count excludes them explicitly instead
+// of trusting the sweep to have run.
+func (s *Service) ActiveSessions(ctx context.Context) (int, error) {
+	return s.repo.CountSessions(ctx, s.now().UTC())
 }
 
 // NewToken returns a session token.

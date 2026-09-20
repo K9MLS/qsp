@@ -254,6 +254,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"POST /api/admin/full-backup", s.requireSession(s.handleFullBackup)},
 		{"POST /api/admin/full-restore", s.requireSession(s.handleFullRestore)},
 		{"PUT /api/admin/callsigns", s.requireSession(s.handleCallsigns)},
+		{"PUT /api/admin/session-lifetime", s.requireSession(s.handleSessionLifetime)},
 		{"POST /api/restart", s.requireSession(s.handleRestart)},
 		{"POST /api/links/offer", s.requireSession(s.handleOfferPeering)},
 		{"POST /api/links/offer-link", s.requireSession(s.handleOfferLink)},

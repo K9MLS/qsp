@@ -172,6 +172,17 @@ func (r *SQLRepository) DeleteSession(ctx context.Context, token string) error {
 // chronologically and every value is UTC. Storing local times, or a format
 // where "2026-9-1" precedes "2026-10-1", would make this quietly wrong rather
 // than fail.
+// CountSessions counts the sessions that have not expired.
+func (r *SQLRepository) CountSessions(ctx context.Context, now time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sessions WHERE expires_at > ?`, storeTime(now)).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("auth: counting sessions: %w", err)
+	}
+	return n, nil
+}
+
 func (r *SQLRepository) DeleteExpiredSessions(ctx context.Context, now time.Time) (int, error) {
 	res, err := r.db.ExecContext(ctx,
 		`DELETE FROM sessions WHERE expires_at <= ?`, storeTime(now))

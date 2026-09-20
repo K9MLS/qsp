@@ -406,13 +406,25 @@ An export from a newer QSP is refused outright with both versions named, because
 importing three-quarters of a configuration leaves the missing quarter invisible.
 
 `/api/admin/callsigns`, on PUT, turns the callsign lookup on or off and sets
-the contact address. **It is the only setting the administration page may
-change**, under the rule that a page may edit a setting when it is the page that
-reports the problem — and, binding harder, may not otherwise. Enabling it
-without a contact address is refused rather than saved: the registry asks
-automated clients to identify themselves, so a lookup with no contact never
-runs, and a stored setting that says on and does nothing is the shape §7
-forbids.
+the contact address. Enabling it without a contact address is refused rather
+than saved: the registry asks automated clients to identify themselves, so a
+lookup with no contact never runs, and a stored setting that says on and does
+nothing is the shape §7 forbids.
+
+`/api/admin/session-lifetime`, on PUT, sets how long a console login lasts.
+**Existing sessions keep the expiry they were issued**, so a change is not an
+outage and the operator making it is not logged out; the new value applies at
+the next login. The bounds — not under a minute, not over a week — are the
+configuration validator's, reached by saving through the same path `-check`
+uses rather than by checking again here, so the console cannot accept a value
+the file will not load. Zero returns to the built-in twelve hours.
+
+**These two are the only settings the administration page may change**, under
+the rule that a page may edit a setting when it is the page that reports it —
+and, binding harder, may not otherwise. The session lifetime qualifies because
+the block above the field is what reports the value in force, whether it is the
+operator's choice or the default, and when the reader's own session ends; none
+of which anything said before.
 
 `/api/restart`, on POST, stops QSP so that its supervisor starts it again. It
 requires a session like every other administrative action, is recorded in the

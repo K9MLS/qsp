@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
@@ -37,7 +40,49 @@ type adminBody struct {
 	Server   adminServer    `json:"server"`
 	Agree    adminAgreement `json:"agreement"`
 	Services adminServices  `json:"services"`
+	Sessions adminSessions  `json:"sessions"`
 }
+
+// adminSessions is how long a login lasts, and what that means right now.
+//
+// **Reported before it is editable, which is ADR-0055's condition.** A
+// lifetime box on its own would be a settings editor, which this page is not;
+// what makes it this page's business is that nothing anywhere said which value
+// was in force, whether it was the operator's choice or the built-in default,
+// or when the session doing the reading would end. An operator part-way
+// through a restore wants the last of those.
+type adminSessions struct {
+	// LifetimeSeconds is the lifetime a new login gets.
+	LifetimeSeconds int64 `json:"lifetime_seconds"`
+	// Default reports that nothing is configured, so the built-in twelve
+	// hours applies. The distinction is the one the file hides: a
+	// configuration that says nothing and a configuration that says twelve
+	// hours read identically from the outside.
+	Default bool `json:"default"`
+	// Active is how many logins are valid now, expired ones excluded.
+	Active int `json:"active"`
+	// ExpiresAt and ExpiresInSeconds are the requesting session's own end,
+	// stated twice for the reason uptime is: a timestamp answers "when" and
+	// the remainder answers "will this outlast what I am about to do".
+	ExpiresAt        time.Time `json:"expires_at,omitzero"`
+	ExpiresInSeconds int64     `json:"expires_in_seconds,omitempty"`
+	// Limits are what the configuration validator will accept, so the page
+	// can refuse a value before a round trip and say the same thing.
+	MinSeconds int64 `json:"min_seconds"`
+	MaxSeconds int64 `json:"max_seconds"`
+}
+
+// sessionCounter is the part of the accounts service the sessions block needs.
+//
+// **Optional rather than added to AccountAdmin**, so that a server built for a
+// test without one reports no count instead of failing to compile. The risk in
+// that is a production wiring where the count is silently always absent, which
+// is what the assertion below exists to catch.
+type sessionCounter interface {
+	ActiveSessions(ctx context.Context) (int, error)
+}
+
+var _ sessionCounter = (*auth.Service)(nil)
 
 // adminServer is what this server is.
 type adminServer struct {
@@ -142,6 +187,8 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	if s.health != nil {
 		body.Services.Health = s.health.Run(r.Context())
 	}
+
+	body.Sessions = s.sessionState(r)
 
 	writeJSON(w, s.log, http.StatusOK, body)
 }
@@ -248,5 +295,88 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 		"callsigns":     callsignState(cfg.DMR.Callsigns),
 		"version":       version.Number,
 		"needs_restart": config.NeedsRestart(s.opts.Config.Current(), cfg),
+	})
+}
+
+// sessionState reports the lifetime, the count, and this session's own end.
+func (s *Server) sessionState(r *http.Request) adminSessions {
+	out := adminSessions{
+		LifetimeSeconds: int64(auth.DefaultSessionLifetime.Seconds()),
+		Default:         true,
+		MinSeconds:      int64(config.MinSessionLifetime.Seconds()),
+		MaxSeconds:      int64(config.MaxSessionLifetime.Seconds()),
+	}
+	if s.opts.Config != nil {
+		if d := time.Duration(s.opts.Config.Current().Server.SessionLifetime); d > 0 {
+			out.LifetimeSeconds = int64(d.Seconds())
+			out.Default = false
+		}
+	}
+	if counter, ok := s.opts.Accounts.(sessionCounter); ok && counter != nil {
+		if n, err := counter.ActiveSessions(r.Context()); err == nil {
+			out.Active = n
+		} else {
+			s.log.Warn("cannot count sessions", "error", err)
+		}
+	}
+	if sess, ok := SessionFrom(r.Context()); ok && !sess.ExpiresAt.IsZero() {
+		out.ExpiresAt = sess.ExpiresAt.UTC()
+		if left := time.Until(sess.ExpiresAt); left > 0 {
+			out.ExpiresInSeconds = int64(left.Seconds())
+		}
+	}
+	return out
+}
+
+// sessionLifetimeRequest is the new lifetime, in seconds.
+type sessionLifetimeRequest struct {
+	Seconds int64 `json:"seconds"`
+}
+
+// handleSessionLifetime sets how long a console login lasts.
+//
+// **The second setting this page edits, and it qualifies the same way**: the
+// block above it is what reports the value in force, whether it is the default
+// and when the reader's own session ends. Before this it was a line in a file
+// on a page whose purpose is to keep an operator out of the file.
+//
+// **Existing sessions keep the expiry they were issued.** A change that logged
+// everybody out would make a setting adjustment an outage, and the operator
+// making it would be the first one out. The new value applies at the next
+// login, and the page says so.
+func (s *Server) handleSessionLifetime(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Config == nil {
+		writeJSON(w, s.log, http.StatusServiceUnavailable,
+			map[string]string{"error": "this instance cannot be configured from here"})
+		return
+	}
+
+	var req sessionLifetimeRequest
+	if !decodeJSON(w, s.log, r, &req) {
+		return
+	}
+
+	cfg := s.opts.Config.Current()
+	cfg.Server.SessionLifetime = config.Duration(time.Duration(req.Seconds) * time.Second)
+
+	author := "unknown"
+	if sess, ok := SessionFrom(r.Context()); ok {
+		author = sess.Username
+	}
+
+	// **Saved through the same validator `-check` runs**, rather than checked
+	// again here: two places that decide what a valid lifetime is are two
+	// places that disagree later. The bounds and their reasons come back as
+	// the error the page shows.
+	version, err := s.opts.Config.Save(r.Context(), cfg, author,
+		fmt.Sprintf("session lifetime %s", time.Duration(req.Seconds)*time.Second))
+	if err != nil {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, s.log, http.StatusOK, map[string]any{
+		"sessions": s.sessionState(r),
+		"version":  version.Number,
 	})
 }
