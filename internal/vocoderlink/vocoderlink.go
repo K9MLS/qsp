@@ -102,6 +102,20 @@ type Options struct {
 	// decibels, soft-limited; see Gain. Zero changes nothing.
 	GainToUSRPDB float64
 	GainToDMRDB  float64
+
+	// Alias is the Talker Alias text sent with every transmission built from
+	// USRP audio, empty for none.
+	//
+	// **Configuration is the only source, per ADR-0064 §3.** A Zello display
+	// name is chosen by its user, so an alias derived from one would let a
+	// Zello user appear on a licensed operator's repeater under that
+	// operator's callsign. This field is administrator-set or empty; nothing
+	// in the audio path can reach it.
+	//
+	// Display data rather than station identification: a receiving radio may
+	// not support it, may have it switched off, and a network may strip it.
+	// The operator identifies by voice.
+	Alias string
 }
 
 // Channel carries calls for one transcoder.
@@ -121,6 +135,14 @@ type Channel struct {
 	fromUSRP  chan audio.Frame
 	toUSRP    Gain
 	toDMR     Gain
+	// aliasMiddles is the configured Talker Alias, already encoded: one set
+	// of four burst middles per PDU, nil when no alias is configured.
+	//
+	// **Encoded once, here, rather than per call.** The alias is fixed
+	// configuration, and a transmission that has to build it is a
+	// transmission that can fail on it -- badly, because by then the header
+	// has gone out and a radio is listening.
+	aliasMiddles [][dmrfec.EmbeddedLCBursts]uint64
 	// started is when this channel's counters began: QSP's start.
 	started time.Time
 
@@ -158,6 +180,10 @@ func New(opts Options) (*Channel, error) {
 		return nil, fmt.Errorf("vocoderlink: channel %q would build transmissions with no "+
 			"source; a frame from radio 0 is not a DMR frame", opts.Name)
 	}
+	aliasMiddles, err := encodeAlias(opts.Alias)
+	if err != nil {
+		return nil, fmt.Errorf("vocoderlink: channel %q: %w", opts.Name, err)
+	}
 	return &Channel{
 		name:      opts.Name,
 		chip:      opts.Chip,
@@ -173,7 +199,44 @@ func New(opts Options) (*Channel, error) {
 		started:   time.Now(),
 		toUSRP:    NewGain(opts.GainToUSRPDB),
 		toDMR:     NewGain(opts.GainToDMRDB),
+
+		aliasMiddles: aliasMiddles,
 	}, nil
+}
+
+// encodeAlias turns configured alias text into burst middles, one set per PDU.
+//
+// **7-bit, and there is no choice to make.** An operator setting an alias is
+// answering "what should radios show", not "which of table 7.25's four
+// encodings", and the encodings decide it anyway: 7-bit carries the most
+// characters -- 31, the most the length element can even state -- and is what a
+// radio sends for plain text.
+//
+// **Non-ASCII is refused rather than encoded.** The multi-byte formats are 8
+// bits per character, and dmrfec will not encode non-ASCII at that width
+// because §7.2.19 calls the length element bytes while its own table 7.26 calls
+// it characters: the two differ for multi-byte text, and a radio told the wrong
+// number shows a truncated or padded alias. Refusing at startup is a
+// configuration error the operator can read; guessing is an alias that looks
+// wrong on somebody else's radio and cannot be diagnosed from here.
+func encodeAlias(alias string) ([][dmrfec.EmbeddedLCBursts]uint64, error) {
+	alias = strings.TrimSpace(alias)
+	if alias == "" {
+		return nil, nil
+	}
+	pdus, err := dmrfec.TalkerAliasPDUs(alias, dmrfec.TalkerAlias7Bit)
+	if err != nil {
+		return nil, fmt.Errorf("talker alias %q: %w", alias, err)
+	}
+	out := make([][dmrfec.EmbeddedLCBursts]uint64, 0, len(pdus))
+	for i, pdu := range pdus {
+		middles, err := dmrfec.EmbeddedLCMiddles(pdu, GeneratedColourCode)
+		if err != nil {
+			return nil, fmt.Errorf("talker alias %q, PDU %d of %d: %w", alias, i+1, len(pdus), err)
+		}
+		out = append(out, middles)
+	}
+	return out, nil
 }
 
 // SupervisedChip adapts a supervisor to Options.Chip.

@@ -461,6 +461,8 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 					Timeslot:     timeslot,
 					GainToUSRPDB: t.GainToUSRPDB,
 					GainToDMRDB:  t.GainToDMRDB,
+					// Administrator-set or empty, never from Zello (ADR-0064).
+					Alias: t.Alias,
 					// Resolved at call time: the listener is built just below,
 					// and channels do not run until run(), by which point a.dmr
 					// is set and never written again.

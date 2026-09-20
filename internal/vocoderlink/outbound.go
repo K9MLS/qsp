@@ -36,10 +36,40 @@ type outbound struct {
 	// position is the next burst's place in the six-burst superframe.
 	position int
 	// frames holds encoded 72-bit frames waiting to fill a burst of three.
-	frames   [][]byte
-	lc       []byte
-	middles  [dmrfec.EmbeddedLCBursts]uint64
-	lastSeen time.Time
+	frames  [][]byte
+	lc      []byte
+	middles [dmrfec.EmbeddedLCBursts]uint64
+	// superframe counts complete superframes sent, which selects what rides
+	// in the embedded signalling: the Link Control, then one Talker Alias
+	// PDU per superframe, then round again. See middlesFor.
+	superframe int
+	lastSeen   time.Time
+}
+
+// middlesFor returns the four embedded-signalling middles for the superframe
+// being sent.
+//
+// **The Link Control comes first and comes back.** A radio that joined late,
+// or missed a burst to a fade, needs the LC again rather than a cycle of alias
+// blocks it cannot attribute to anybody; the standard puts no obligation on a
+// transmitter to send an alias at all, so the LC is what repeats and the alias
+// is what fills the gaps between repeats.
+//
+// A transmission shorter than the cycle carries part of it, which is inherent:
+// a superframe is 360 ms, so a 31-character alias is a second or so of talking
+// before the text is complete. Yesterday's production log has a 142 ms Zello
+// transmission -- it will carry the LC and nothing else, which is exactly what
+// it carries today.
+func (c *Channel) middlesFor(tx *outbound) [dmrfec.EmbeddedLCBursts]uint64 {
+	if len(c.aliasMiddles) == 0 {
+		return tx.middles
+	}
+	switch at := tx.superframe % (1 + len(c.aliasMiddles)); at {
+	case 0:
+		return tx.middles
+	default:
+		return c.aliasMiddles[at-1]
+	}
 }
 
 // handleUSRP takes one frame from the far side.
@@ -162,7 +192,7 @@ func (c *Channel) emitVoice(tx *outbound) {
 	case tx.position == 0:
 		middle = dmrfec.VoiceSyncBS
 	case tx.position <= dmrfec.EmbeddedLCBursts:
-		middle = tx.middles[tx.position-1]
+		middle = c.middlesFor(tx)[tx.position-1]
 	default:
 		// Burst F: the single-LCSS EMB and no fragment, as every capture shows.
 		m, err := dmrfec.MiddleForPosition(tx.position, GeneratedColourCode, 0)
@@ -184,6 +214,9 @@ func (c *Channel) emitVoice(tx *outbound) {
 	c.send(tx, frameType, uint8(tx.position), burst)
 	tx.frames = tx.frames[:0]
 	tx.position = (tx.position + 1) % dmrfec.SuperframeBursts
+	if tx.position == 0 {
+		tx.superframe++
+	}
 }
 
 // endOutbound finishes a transmission: flush, terminate, release.

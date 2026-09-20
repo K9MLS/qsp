@@ -191,10 +191,13 @@ can install it and be on the air. Items 1–4 are that goal.
    this repository is made public" above.
 5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
-6. **Talker Alias for Zello transmissions** — whether the transcoder's
-   configured `alias` is sent. The standing rule is "passed through, never
-   injected"; the operator decides whether a gateway's own alias is an
-   exception.
+6. **Talker Alias for Zello transmissions — done in 0422 (0.1.264), not seen
+   on a radio.** The configured alias is transmitted: Link Control first, then
+   one PDU per superframe, cycling. Decoded back out of the built burst stream
+   in tests, and the PDU bytes match `testdata/hbp/hbp-talker-alias.pcap`,
+   where a MOTOTRBO sent one. **What no test can show is whether a radio
+   displays it** — that needs K9MLS's radios, with `alias` set on the
+   transcoder, and production has none set so nothing changes until it is.
 7. **Talkgroup routing and contention in `internal/p25link`**, the start of
    making P25 a network rather than a flat reflector: voice reads the talkgroup
    and relays to every registered gateway regardless. **Now testable rather

@@ -6,6 +6,33 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Talker Alias on transmissions built from Zello audio.** The `alias` setting
+  existed, was length-checked, and was never transmitted, which is worse than
+  not having it: an operator could set it and hear nothing about why radios
+  showed a bare ID. Now the configured string is encoded once at startup and
+  rides the embedded signalling, the Link Control in the first superframe and
+  one alias PDU per superframe after it, cycling so a radio that joined late or
+  lost a burst gets both. ASCII up to 31 characters, in the 7-bit format, the
+  only one that reaches 31; `-check` now refuses non-ASCII rather than letting
+  startup fail, because the multi-byte formats are eight bits per character and
+  §7.2.19 states their length in bytes while table 7.26 states it in
+  characters. Off unless configured, and configuration is the only source
+  (ADR-0064 §3): a Zello display name is chosen by its user, so an alias taken
+  from one would let a Zello user appear on a licensed operator's repeater as
+  them. A short transmission carries part of the cycle and no alias, which is
+  inherent — a superframe is 360 ms.
+
+### Fixed
+
+- **docs/ZELLO.md told an operator to confirm a vocoder recovery by grepping
+  for `vocoder ready`**, which a recovery does not print. A replug on
+  production on 2026-09-20 reopened the vocoder and carried audio within
+  seconds while QSP logged nothing: that line is printed when a channel opens
+  the chip, not when a supervisor reconnects one. The troubleshooting section
+  now points at the health check, which names the chip and counts frames.
+
+### Added
+
 - **`scripts/scrub-history.py`, which rewrites history and derives what to
   replace rather than storing it.** A file listing club members' names and home
   addresses would be the same disclosure in another place, and it would be

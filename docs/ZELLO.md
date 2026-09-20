@@ -172,8 +172,16 @@ for nothing:
 
 ```sh
 sudo systemctl restart ambeserver
-journalctl -u qsp --since '1 min ago' | grep vocoder    # want: vocoder ready ... AMBE3000F
+curl -s http://<this machine>:8080/healthz | grep -A3 '"transcoder:zello"'
 ```
+
+**Health, not the log**, and a replug on production on 2026-09-20 is why: the
+vocoder reopened and carried audio again within seconds, and QSP logged nothing
+at all about it. `vocoder ready` is printed when a channel opens the chip, not
+every time a supervisor reconnects one, so an operator grepping for it after a
+recovery finds nothing and concludes the recovery failed. The health check
+names the chip and counts the frames it has carried, which is the thing being
+asked about. The console's Zello page shows the same.
 
 **Not this.** A chip that answers but garbles audio is the wedged case, and no
 restart clears it; unplug the dongle for ten seconds instead. The difference is
@@ -313,7 +321,33 @@ there.
 Baseline before the hardware arrived: no `/dev/ttyUSB*` and no `/dev/ttyACM*`
 on either server. Afterwards there should be exactly one new device.
 
-## Talker Alias: the PDUs are built, and nothing carries them
+## Talker Alias
+
+**Configured, and sent from 0.1.264.** Set `alias` on the transcoder and every
+transmission QSP builds from Zello audio carries it; leave it empty and none
+does, which is the default. It is the operator's string and only theirs: a
+Zello display name is chosen by its user, so an alias taken from one would let
+a Zello user appear on a licensed operator's repeater under that operator's
+callsign (ADR-0064 §3).
+
+**ASCII, up to 31 characters.** It goes out in the 7-bit format, the only one
+that reaches 31; `-check` refuses anything else, because the multi-byte formats
+are eight bits per character and the standard states their length element in
+bytes in one place and characters in another.
+
+**The Link Control comes first, then the alias, then round again.** A
+superframe is 360 ms and each PDU takes one, so a callsign lands about
+three-quarters of a second into an over and a longer alias later than that. A
+short transmission carries part of the cycle and no alias, which is inherent
+rather than a fault: a 142 ms Zello over has room for the Link Control and
+nothing more. The repeat is what serves a radio that joined late or lost a
+burst to a fade.
+
+**Display data, not station identification.** A receiving radio may not support
+it, may have it switched off, and a network may strip it. The operator
+identifies by voice.
+
+### How it is built
 
 `TalkerAliasPDUs` in `internal/dmrfec` builds the Link Control PDUs for an alias:
 one header and up to three blocks, nine bytes each. From **ETSI TS 102 361-2

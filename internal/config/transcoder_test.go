@@ -326,12 +326,24 @@ func TestTheAliasIsOptionalAndBounded(t *testing.T) {
 	if !strings.Contains(err.Error(), "31") {
 		t.Errorf("the refusal does not state the limit: %v", err)
 	}
-	// Counted in characters rather than bytes, because a callsign is not the
-	// only thing anybody will put here.
-	if err := withTranscoder(t, func(c *Config) {
+	// **Multi-byte text is refused, and not for its length.** From 0.1.264 the
+	// alias is actually transmitted, in the 7-bit format -- the only one that
+	// reaches 31 characters -- so non-ASCII cannot be carried at all. Before
+	// that it was configuration nothing read, and 31 multi-byte characters
+	// were accepted here to show the limit counted characters rather than
+	// bytes. The limit still counts characters, which is what the second
+	// assertion below checks: the refusal names the encoding, not the length.
+	err = withTranscoder(t, func(c *Config) {
 		c.DMR.Transcoders[0].Alias = strings.Repeat("é", 31)
-	}).Validate(); err != nil {
-		t.Errorf("31 multi-byte characters were refused as too long: %v", err)
+	}).Validate()
+	if err == nil {
+		t.Fatal("a multi-byte alias was accepted; it cannot be sent in the 7-bit format")
+	}
+	if !strings.Contains(err.Error(), "ASCII") {
+		t.Errorf("the refusal does not say the alias must be ASCII: %v", err)
+	}
+	if strings.Contains(err.Error(), "62") {
+		t.Errorf("the refusal counts bytes rather than characters: %v", err)
 	}
 }
 

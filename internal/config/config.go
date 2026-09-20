@@ -1680,6 +1680,23 @@ func (c Config) Validate() error {
 					"Talker Alias carries up to 31; a longer one is truncated on the "+
 						"air rather than refused, which is worse")
 			}
+			// **ASCII only, and the reason is in the standard.** An alias goes
+			// out in the 7-bit format, which is the only one that reaches 31
+			// characters. The multi-byte formats are 8 bits per character, and
+			// §7.2.19 states the length element in bytes while its own table
+			// 7.26 states it in characters: a radio told the wrong number
+			// shows a truncated or padded alias. Caught here so `-check` says
+			// so, rather than at startup once the operator has restarted.
+			for _, r := range t.Alias {
+				if r > 0x7F {
+					v.add(tf+".alias", fmt.Sprintf("contains %q", r),
+						"Talker Alias goes out in the 7-bit format, so the alias must be "+
+							"ASCII; the standard's length element is stated in bytes in "+
+							"one place and characters in another, which differ for "+
+							"multi-byte text")
+					break
+				}
+			}
 			if t.Enabled && t.PermitAllPeers && len(t.PermitPeers) > 0 {
 				v.add(tf+".permit_peers",
 					fmt.Sprintf("lists %d peer(s) while permit_all_peers is true", len(t.PermitPeers)),
