@@ -6,6 +6,30 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Zello audio no longer echoes on Motorola repeaters.** QSP sent each burst
+  of Zello audio as soon as it was encoded, and Zello delivers in clumps. A
+  capture of production's traffic to a Motorola repeater on 2026-09-21 showed
+  bursts leaving 44 to 51 ms apart, then stalls of 113 to 219 ms; the IPSC
+  captures in testdata show real repeaters and a real master keeping 57 to 65
+  ms, 60.0 on average, with no gap over 100. A repeater playing out at 60 ms
+  runs dry in a stall and repeats audio to fill it -- MMDVMHost logs exactly
+  that, "returning the last received frame" -- and the operator heard an echo.
+  The capture also showed QSP sending no frame twice, so the content was
+  never the fault. Bursts now go out through an ordered queue released on the
+  channel's own goroutine: no two voice bursts closer than 60 ms, a 120 ms
+  head-start after the header, and a burst that arrives after its slot sent on
+  arrival rather than followed by a catch-up clump. The head-start is sized
+  from the same capture: replaying its arrival times against a 60 ms clock
+  needed 0 and 2 ms, because Zello runs fast enough overall that its lead
+  covers the stalls, so 120 ms is margin for a stall before any lead exists.
+  Replayed through the pacer, both captured calls leave at exactly 60 ms with
+  none late. The queue belongs to the channel rather than the call, so a
+  transmission that ends with audio still queued drains fully, terminator
+  last; on shutdown everything goes at once, so no repeater is left keyed.
+  Health reports `late_to_dmr`, the bursts that still missed their slot.
+
+### Fixed
+
 - **QSP no longer tells a Motorola repeater two different things in one
   superframe.** On the IPSC path the encoder copied each burst's embedded
   fragment through and attached a Link Control rebuilt from the call, so a

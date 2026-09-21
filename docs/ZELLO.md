@@ -351,6 +351,16 @@ burst to a fade.
 it, may have it switched off, and a network may strip it. The operator
 identifies by voice.
 
+**Zello audio goes out at a radio's pace, from 0.1.268.** Zello delivers
+audio in clumps -- runs faster than real time, then stalls -- and QSP used to
+pass that straight on. A capture on 2026-09-21 showed bursts leaving 44 to 51 ms
+apart with stalls of up to 219 ms, where Motorola equipment keeps 57 to 65 ms
+and never pauses. A repeater that runs dry in a stall repeats what it has to
+fill the gap, and the operator heard that as an echo. QSP now releases one
+burst every 60 ms, with a 120 ms head-start after the header. Health's
+`late_to_dmr` counts bursts that still missed their slot; if it climbs on your
+server, Zello is stalling longer than the head-start covers.
+
 **Hotspots get it; Motorola repeaters do not.** Toward a hotspot QSP forwards the
 bursts untouched, and a WPSD hotspot on 2026-09-21 logged `Talker Alias
 "KD9BXO"` from QSP's own transmissions — an independent decoder reading the

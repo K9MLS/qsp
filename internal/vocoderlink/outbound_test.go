@@ -111,6 +111,7 @@ func TestUSRPAudioBecomesAWholeDMRTransmission(t *testing.T) {
 			for _, f := range tc.in {
 				tx = ch.handleUSRP(tx, nil, f, time.Now())
 			}
+			ch.flushPaced()
 			got := out.snapshot()
 			if k := kinds(got); k != tc.want {
 				t.Errorf("bursts %q, want %q", k, tc.want)
@@ -147,6 +148,7 @@ func TestTheBuiltTransmissionDecodesAsDMR(t *testing.T) {
 		tx = ch.handleUSRP(tx, nil, pcm(int16(i+1)), time.Now())
 	}
 	ch.handleUSRP(tx, nil, usrpRelease, time.Now())
+	ch.flushPaced()
 
 	got := out.snapshot()
 	if kinds(got) != "HABCDEFT" {
@@ -218,6 +220,7 @@ func TestUSRPKeyingIsRefusedWhileTheNetworkIsTalking(t *testing.T) {
 		for _, f := range []audio.Frame{usrpKeyup, pcm(1), pcm(2), pcm(3), usrpRelease} {
 			tx = ch.handleUSRP(tx, cur, f, time.Now())
 		}
+		ch.flushPaced()
 		if n := len(out.snapshot()); n != 0 {
 			t.Errorf("%d bursts built over a DMR call in progress", n)
 		}

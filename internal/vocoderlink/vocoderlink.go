@@ -152,6 +152,14 @@ type Channel struct {
 	// handed to routing, USRP frames dropped because Run was not keeping up,
 	// keyups refused, and encoded frames that failed DMR's own FEC check.
 	txCalls, txBursts, txDropped, txRefused, txBadFEC, txAbandoned atomic.Uint64
+	// txLate counts voice bursts released after their 60 ms slot: an
+	// underrun, audible as a gap. It is the number that says whether
+	// PacerHeadStart is large enough on this server's Zello traffic.
+	txLate atomic.Uint64
+
+	// pace orders and times everything this channel sends. It is touched
+	// only on the Run goroutine, like the rest of the call state. See pace.go.
+	pace pacer
 
 	mu      sync.Mutex
 	problem string
@@ -283,6 +291,16 @@ func (c *Channel) Run(ctx context.Context) {
 	tick := time.NewTicker(c.idle / 4)
 	defer tick.Stop()
 
+	// The pacing timer, armed to the next frame due and idle otherwise.
+	pace := time.NewTimer(time.Hour)
+	pace.Stop()
+	defer pace.Stop()
+	arm := func(now time.Time) {
+		if when, ok := c.pace.due(); ok {
+			pace.Reset(max(when.Sub(now), 0))
+		}
+	}
+
 	// **Both directions' state lives on this goroutine and nowhere else**, so
 	// "is the chip held by the other direction" is a plain read, not a race.
 	var cur *call
@@ -292,7 +310,14 @@ func (c *Channel) Run(ctx context.Context) {
 		case <-ctx.Done():
 			c.finish(cur, "shutting down")
 			c.endOutbound(tx, "shutting down")
+			// **Everything queued goes now, terminator included.** A repeater
+			// sent a header and no terminator stays keyed, and waiting out
+			// the cadence during shutdown is waiting on a process that is
+			// leaving.
+			c.flushPaced()
 			return
+		case now := <-pace.C:
+			c.releasePaced(now)
 		case f := <-c.queue:
 			if tx != nil && tx.chip != nil && !f.IsUserData() {
 				// A Zello user holds the chip. The DMR call is refused once,
@@ -308,6 +333,7 @@ func (c *Channel) Run(ctx context.Context) {
 			cur = c.handle(cur, f, time.Now())
 		case f := <-c.fromUSRP:
 			tx = c.handleUSRP(tx, cur, f, time.Now())
+			c.releasePaced(time.Now())
 		case now := <-tick.C:
 			if cur != nil && now.Sub(cur.lastSeen) > c.idle {
 				if cur.chip != nil {
@@ -324,6 +350,23 @@ func (c *Channel) Run(ctx context.Context) {
 				tx = nil
 			}
 		}
+		arm(time.Now())
+	}
+}
+
+// releasePaced delivers every frame the pacer says is due by now.
+func (c *Channel) releasePaced(now time.Time) {
+	out, late := c.pace.release(now)
+	c.txLate.Add(uint64(late))
+	for _, f := range out {
+		c.deliver(f)
+	}
+}
+
+// flushPaced delivers everything queued, without waiting for its slot.
+func (c *Channel) flushPaced() {
+	for _, f := range c.pace.flush() {
+		c.deliver(f)
 	}
 }
 

@@ -87,6 +87,8 @@ func talk(t *testing.T, alias string, superframes int) []hbp.Data {
 		tx = ch.handleUSRP(tx, nil, pcm(int16(i+1)), time.Now())
 	}
 	ch.handleUSRP(tx, nil, usrpRelease, time.Now())
+	// Paced output is released by the run loop; drain it here.
+	ch.flushPaced()
 	return out.snapshot()
 }
 

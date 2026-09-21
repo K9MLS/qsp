@@ -288,7 +288,9 @@ func (c *Channel) send(tx *outbound, frameType hbp.FrameType, dataType uint8, bu
 	copy(d.Payload[:], burst)
 	tx.sequence++
 	c.txBursts.Add(1)
-	c.deliver(d)
+	// Queued rather than delivered: the run loop releases it on a 60 ms
+	// cadence. See pace.go.
+	c.pace.push(d, time.Now())
 }
 
 // unpackBits turns bytes into one-bit-per-byte values, most significant first.

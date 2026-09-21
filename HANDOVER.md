@@ -191,6 +191,12 @@ can install it and be on the air. Items 1–4 are that goal.
    this repository is made public" above.
 5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
+5a. **Confirm the Zello echo is gone on air — fixed in 0426 (0.1.268).** Zello
+   audio heard on a Motorola repeater echoed; a capture showed QSP sending clean
+   single frames at bursty timing, and bursts are now paced at 60 ms. Proof is
+   a Zello over through K9MLS/R or KD9HDR/R without the echo, and `late_to_dmr`
+   in the transcoder's health staying at or near zero. A plain radio call
+   through a repeater was never affected, and should be checked unchanged.
 6. **Talker Alias for Zello transmissions — done in 0422 (0.1.264), not seen
    on a radio.** The configured alias is transmitted: Link Control first, then
    one PDU per superframe, cycling. Decoded back out of the built burst stream
