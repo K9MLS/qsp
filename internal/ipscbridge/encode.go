@@ -81,8 +81,14 @@ func (e *Encoder) now() time.Time {
 }
 
 type encodeState struct {
-	stream    hbp.StreamID
-	seen      bool
+	stream hbp.StreamID
+	seen   bool
+	// lc is the call's own Link Control, split into the four fragments that
+	// ride bursts B to E, and lcFor is the call it was built for. See
+	// lcFragment.
+	lc        [dmrfec.EmbeddedLCBursts]uint32
+	lcFor     lcCall
+	lcOK      bool
 	sequence  uint16
 	timestamp uint32
 	counter   uint8
@@ -420,6 +426,9 @@ const _ = uint(bodyTail + ipsc.HeaderTailLen - (ipsc.HeaderLenTotal - ipsc.Heade
 // fragment" over bytes that are a continuation.
 func (e *Encoder) voice(st *encodeState, src hbp.Data, slot int, core []byte) ipsc.Message {
 	class, lcss, fragment, withLC := e.position(src)
+	if f, ok := e.lcFragment(st, src, lcss); ok {
+		fragment = f
+	}
 
 	trailer := 0
 	switch {
@@ -461,6 +470,79 @@ func (e *Encoder) voice(st *encodeState, src hbp.Data, slot int, core []byte) ip
 	}
 
 	return ipsc.Message{Kind: voiceKindFor(src), SenderID: e.masterID, Body: body}
+}
+
+// lcCall is what a Link Control is built from.
+type lcCall struct {
+	source, target uint32
+	private        bool
+}
+
+// lcFragment is the embedded fragment for this burst, taken from the call's own
+// Link Control rather than from the burst.
+//
+// # Why a repeater is never sent the burst's own fragment
+//
+// **Every captured Motorola superframe says one thing, twice.** In testdata/ipsc,
+// 288 of 290 superframes sent by real XPR repeaters and a real master carry
+// four fragments that reassemble to exactly the Link Control attached to the
+// fifth burst; the other two are one superframe seen twice that decodes as no
+// Link Control at all. Only group and private voice appear, and no Talker
+// Alias, ever -- including from a radio that was sending one.
+//
+// This encoder attaches a Link Control rebuilt from the call, and it used to
+// copy each burst's fragment through untouched. A superframe whose fragments
+// carried anything else therefore went out contradicting itself: a radio's own
+// Talker Alias arriving through a hotspot, which MMDVMHost forwards and
+// hbp-talker-alias.pcap shows, and from 0.1.264 the alias QSP puts on Zello
+// calls. Nobody has measured what an XPR does with that, and ADR-0029 forbids
+// guessing. So the fragments now come from the same Link Control as the copy,
+// which is what a real repeater sends.
+//
+// **The cost is that Motorola repeaters get no alias**, which they have never
+// been seen to relay anyway. A hotspot still gets it: this is the IPSC path
+// only, and the Homebrew path forwards bursts untouched.
+//
+// # Why the position comes from the frame and not the EMB
+//
+// The EMB's LCSS says first, continuation, continuation, last: the two middle
+// bursts are indistinguishable by it, and swapping their fragments would still
+// pass every check that reads LCSS. The Homebrew frame's DataType is the
+// burst's place in the superframe, 1 to 4 for B to E. The parser declines to
+// name that field because its first capture did not establish it; across 724
+// superframes of real MMDVMHost traffic since, reassembling by it gives a
+// valid Link Control every time.
+//
+// A burst whose LCSS does not match its position is left alone rather than
+// corrected: that is input nobody has seen, and inventing a meaning for it is
+// the thing this package does not do.
+func (e *Encoder) lcFragment(st *encodeState, src hbp.Data, lcss uint8) (uint32, bool) {
+	position := int(src.DataType)
+	if src.FrameType != hbp.FrameTypeVoice || position < 1 || position > dmrfec.EmbeddedLCBursts {
+		return 0, false
+	}
+	if want, ok := dmrfec.LCSSForPosition(position); !ok || want != lcss {
+		return 0, false
+	}
+
+	call := lcCall{source: src.SourceID, target: src.TargetID, private: src.CallType == hbp.CallPrivate}
+	if !st.lcOK || st.lcFor != call {
+		// **Keyed on the call, not the stream.** A stream ID is reused
+		// across legs -- hbp-voice-live.pcap carries one stream on TG 11
+		// and, rewritten in flight, TG 9 -- and the Link Control has to
+		// follow what the frame says rather than what came before it.
+		middles, err := dmrfec.EmbeddedLCMiddles(
+			dmrfec.LinkControlFor(call.target, call.source, call.private), e.colourCode)
+		if err != nil {
+			return 0, false
+		}
+		for i, m := range middles {
+			_, st.lc[i] = dmrfec.SplitMiddle(m)
+		}
+		st.lcFor = call
+		st.lcOK = true
+	}
+	return st.lc[position-1], true
 }
 
 // voiceKindFor picks the leading byte for a transmission QSP is sending.

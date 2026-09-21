@@ -351,6 +351,25 @@ burst to a fade.
 it, may have it switched off, and a network may strip it. The operator
 identifies by voice.
 
+**Hotspots get it; Motorola repeaters do not.** Toward a hotspot QSP forwards the
+bursts untouched, and a WPSD hotspot on 2026-09-21 logged `Talker Alias
+"KD9BXO"` from QSP's own transmissions — an independent decoder reading the
+encoding correctly. Toward a Motorola repeater, every superframe carries the
+voice Link Control instead, because that is what every captured Motorola
+superframe does: 288 of 290 in testdata/ipsc reassemble to the Link Control
+attached beside them, and none carries an alias. Sending one would be guessing
+at what an XPR does with it.
+
+**A radio's contact list wins over the alias**, and a hotspot dashboard's
+Callsign column is a lookup of the ID, not the alias. So a Zello call shows the
+gateway's number there unless the gateway ID is a registered one. A registered
+ID names the call almost everywhere; the alias only reaches radios that display
+Talker Alias.
+
+**QSP's own Last heard names the call by the alias**, since QSP knows the ID it
+put on it. It uses the alias the running transcoder was built with, so one saved
+and not yet restarted is not shown until it is on the air.
+
 ### How it is built
 
 `TalkerAliasPDUs` in `internal/dmrfec` builds the Link Control PDUs for an alias:

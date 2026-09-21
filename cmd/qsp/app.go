@@ -748,9 +748,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		return nil, fmt.Errorf("cannot open embedded console assets: %w", err)
 	}
 
+	// The IDs QSP itself puts on calls, named as it names them on the air.
+	gateways := gatewayNames(cfg)
+
 	var peerSource server.PeerSource
 	if a.dmr != nil {
-		peerSource = peerViews{listener: a.dmr, names: a.names}
+		peerSource = peerViews{listener: a.dmr, names: a.names, gateways: gateways}
 	}
 
 	// Nil when there is no database, which is a working state: an instance
@@ -825,7 +828,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		BehindProxy:         cfg.Server.BehindProxy,
 		ConsoleAssets:       assets,
 		Calls:               callHistory(callStore),
-		Callsign:            func(id uint32) string { return resolve(id, nil, a.names) },
+		Callsign:            func(id uint32) string { return resolve(id, gateways, a.names) },
 		Links:               linkSource(a.upstreams, cfg),
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
@@ -1568,6 +1571,8 @@ type peerViews struct {
 	listener *peers.Listener
 	// names resolves radio IDs the peer list cannot. Nil when lookups are off.
 	names *callsigns.Service
+	// gateways names the IDs QSP itself puts on calls. See gatewayNames.
+	gateways map[uint32]string
 }
 
 func (p peerViews) PeerViews(now time.Time) []server.PeerView {
@@ -1664,11 +1669,30 @@ func (p peerViews) CallViews(now time.Time) (active, recent []server.CallView) {
 // would be worse than a number. Resolving those needs a registry, which is a
 // decision (§0) rather than a lookup.
 func (p peerViews) callsigns() map[uint32]string {
-	out := map[uint32]string{}
+	registered := map[uint32]string{}
 	for _, peer := range p.listener.Snapshot() {
 		if peer.Callsign() != "" {
-			out[uint32(peer.ID)] = peer.Callsign()
+			registered[uint32(peer.ID)] = peer.Callsign()
 		}
+	}
+	return knownNames(p.gateways, registered)
+}
+
+// knownNames merges the two kinds of ID QSP can name without a database: the
+// gateway IDs it puts on calls itself, and each hotspot's own registration.
+//
+// **A hotspot registering with a gateway's ID wins.** It is on the network
+// transmitting as that ID right now, which is a fact, where the gateway's name
+// is a setting. The two sharing an ID is the misconfiguration ADR-0064 warns
+// against, and letting the live registration show makes it visible rather
+// than hiding it behind the alias.
+func knownNames(gateways, registered map[uint32]string) map[uint32]string {
+	out := make(map[uint32]string, len(gateways)+len(registered))
+	for id, name := range gateways {
+		out[id] = name
+	}
+	for id, name := range registered {
+		out[id] = name
 	}
 	return out
 }
@@ -2166,6 +2190,36 @@ func resolve(id uint32, known map[uint32]string, names *callsigns.Service) strin
 		return e.Display()
 	}
 	return ""
+}
+
+// gatewayNames maps each transcoder's gateway ID to its Talker Alias.
+//
+// **QSP knows these IDs itself, because it put them on the calls.** A Zello
+// call carries the gateway ID, which is no hotspot's registration and usually
+// nobody's registered DMR ID, so Last heard showed a bare number for every one.
+// The rule for naming a caller without anybody's database is an exact match on
+// an ID QSP already knows, and this is that rule applied to the one ID QSP
+// knows best.
+//
+// **Only with an alias.** A gateway with none has told QSP nothing to call it,
+// and inventing a name here -- "Zello", the transcoder's name -- would put a
+// label in Last heard that no radio shows. An operator who clears the alias
+// sees the registry's answer again, which is what a registered gateway ID is
+// for.
+//
+// **Built from the configuration the process started with**, the same one the
+// transcoders were built from, so Last heard names a call the way it went out.
+// An alias saved and not yet restarted is not on the air, and is not shown.
+func gatewayNames(cfg config.Config) map[uint32]string {
+	out := map[uint32]string{}
+	for _, t := range cfg.DMR.Transcoders {
+		alias := strings.TrimSpace(t.Alias)
+		if !t.Enabled || t.RadioID == 0 || alias == "" {
+			continue
+		}
+		out[t.RadioID] = alias
+	}
+	return out
 }
 
 // privateTargetName resolves the called party, for a private call only.

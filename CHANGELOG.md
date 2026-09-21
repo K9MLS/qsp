@@ -4,6 +4,38 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **QSP no longer tells a Motorola repeater two different things in one
+  superframe.** On the IPSC path the encoder copied each burst's embedded
+  fragment through and attached a Link Control rebuilt from the call, so a
+  superframe carrying a Talker Alias went out with alias fragments beside a
+  voice Link Control. Two sources: a radio's own alias arriving through a
+  hotspot, which MMDVMHost forwards, and from 0.1.264 the alias QSP puts on
+  Zello calls. Every captured Motorola superframe does the opposite — 288 of
+  290 in testdata/ipsc reassemble to exactly the Link Control attached beside
+  them, the other two being one superframe seen twice that decodes as nothing —
+  and none carries an alias. The fragments now come from the same Link Control
+  as the attached copy. Ordinary voice is unchanged: encoding the three
+  plain-voice captures, 3,795 messages, with the old and new encoder gives
+  identical bytes, and the two alias captures change in exactly the four
+  fragment bursts of each alias superframe. The burst's position is taken from
+  the Homebrew frame's DataType, which across 724 superframes of real MMDVMHost
+  traffic reassembles a valid Link Control every time; the EMB alone cannot tell
+  the two middle bursts apart. Motorola repeaters therefore get no alias, which
+  none has been seen to relay; hotspots still get it.
+
+### Added
+
+- **Last heard names a Zello call by the configured alias**, rather than the
+  gateway's bare number. QSP put that ID on the call, so it can name it without
+  anybody's database, which is the rule it already follows for a hotspot's own
+  ID. Only with an alias set, only while the transcoder is enabled, and from the
+  configuration the process started with, so an alias saved and not yet
+  restarted is not shown until it is on the air. A hotspot registering with the
+  gateway's ID is shown instead, because it is transmitting as that ID and the
+  two sharing one is a misconfiguration worth seeing.
+
 ### Added
 
 - **The Talker Alias is set on the Zello page.** 0.1.264 made the alias
