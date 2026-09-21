@@ -4,6 +4,28 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **A Zello stall is filled with silence rather than left for a repeater to
+  fill by repeating audio.** Pacing (0.1.268) removed the echo on every call,
+  and a capture of paced output showed what remained: Zello itself stalling,
+  once for 526 ms. A repeater covers a gap by repeating its last audio —
+  MMDVMHost's insertSilence, despite its name, copies the last audio block —
+  which for a gap of nine bursts is a stutter. The pacer now fills each slot
+  that passes with nothing arrived, while a transmission is open, with the
+  vocoder frame DMR equipment sends for silence: 0x1F003533F19C1, produced
+  identically by a Motorola XPR8300 over IP Site Connect and an MMDVM hotspot
+  over Homebrew, and the most common frame in testdata/hbp. A burst that
+  arrives within 20 ms of its slot still goes as itself, because a capture of
+  paced output showed QSP's own jitter at up to 8 ms, and replacing that with
+  silence would push real audio a slot later for nothing. Burst assembly moved
+  from encode time to release time so a fill can take a position without
+  leaving every later burst at the wrong one; with no stall the output is
+  byte-identical to 0.1.268's, compared frame by frame across plain, aliased
+  and mid-burst-ending transmissions. Sequence numbers are assigned at release
+  too, so they follow the order frames leave. `late_to_dmr` now counts filled
+  slots.
+
 ### Fixed
 
 - **Zello audio no longer echoes on Motorola repeaters.** QSP sent each burst

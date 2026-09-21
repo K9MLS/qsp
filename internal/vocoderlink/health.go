@@ -36,9 +36,9 @@ func (c *Channel) Check(context.Context) health.Result {
 		"dropped_from_usrp":   fmt.Sprintf("%d", c.txDropped.Load()),
 		"refused_from_usrp":   fmt.Sprintf("%d", c.txRefused.Load()),
 		"abandoned_from_usrp": fmt.Sprintf("%d", c.txAbandoned.Load()),
-		// Bursts toward the network that missed their 60 ms slot because audio
-		// from USRP arrived late: each is a gap a listener hears. Non-zero on
-		// a server whose Zello traffic stalls longer than PacerHeadStart.
+		// Slots toward the network that audio from USRP missed, each filled
+		// with a silent burst: a short dropout a listener hears, rather than
+		// the stutter a repeater makes filling it by repeating audio.
 		"late_to_dmr":         fmt.Sprintf("%d", c.txLate.Load()),
 		"encoded_needing_fec": fmt.Sprintf("%d", c.txBadFEC.Load()),
 	}

@@ -152,9 +152,9 @@ type Channel struct {
 	// handed to routing, USRP frames dropped because Run was not keeping up,
 	// keyups refused, and encoded frames that failed DMR's own FEC check.
 	txCalls, txBursts, txDropped, txRefused, txBadFEC, txAbandoned atomic.Uint64
-	// txLate counts voice bursts released after their 60 ms slot: an
-	// underrun, audible as a gap. It is the number that says whether
-	// PacerHeadStart is large enough on this server's Zello traffic.
+	// txLate counts slots Zello missed, each filled with a silent burst
+	// rather than left for a repeater to fill by repeating audio. It is the
+	// number that says how often this server's Zello traffic stalls.
 	txLate atomic.Uint64
 
 	// pace orders and times everything this channel sends. It is touched
@@ -356,17 +356,21 @@ func (c *Channel) Run(ctx context.Context) {
 
 // releasePaced delivers every frame the pacer says is due by now.
 func (c *Channel) releasePaced(now time.Time) {
-	out, late := c.pace.release(now)
-	c.txLate.Add(uint64(late))
-	for _, f := range out {
-		c.deliver(f)
+	out, filled := c.pace.release(now)
+	c.txLate.Add(uint64(filled))
+	for _, item := range out {
+		if d, ok := c.finalize(item); ok {
+			c.deliver(d)
+		}
 	}
 }
 
 // flushPaced delivers everything queued, without waiting for its slot.
 func (c *Channel) flushPaced() {
-	for _, f := range c.pace.flush() {
-		c.deliver(f)
+	for _, item := range c.pace.flush() {
+		if d, ok := c.finalize(item); ok {
+			c.deliver(d)
+		}
 	}
 }
 

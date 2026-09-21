@@ -155,7 +155,7 @@ func (c *Channel) startOutbound(cur *call, now time.Time) *outbound {
 	c.log.Info("transmitting audio from USRP",
 		slog.Uint64("radio", uint64(c.radioID)),
 		slog.Uint64("talkgroup", uint64(c.talkgroup)))
-	c.send(tx, hbp.FrameTypeSync, dmrfec.DataTypeVoiceLCHeader, header)
+	c.pace.push(pacedItem{kind: pacedHeader, tx: tx, burst: header, at: now})
 	return tx
 }
 
@@ -185,8 +185,40 @@ func (c *Channel) encodeInto(tx *outbound, samples []int16) error {
 	return nil
 }
 
-// emitVoice sends the three queued frames as the next burst of the superframe.
+// emitVoice queues the three frames of a burst for the pacer.
+//
+// **It no longer assembles the burst.** Position, embedded signalling and
+// sequence number are decided when the pacer releases it, in finalize, so a
+// silent burst can be inserted into a stall without leaving every burst after
+// it at the wrong position. The frames are copied: tx.frames is reused for the
+// next burst while this one waits.
 func (c *Channel) emitVoice(tx *outbound) {
+	frames := make([][]byte, len(tx.frames))
+	for i, f := range tx.frames {
+		frames[i] = append([]byte(nil), f...)
+	}
+	c.pace.push(pacedItem{kind: pacedVoice, tx: tx, frames: frames, at: time.Now()})
+	tx.frames = tx.frames[:0]
+}
+
+// finalize turns a released item into the frame that goes on the wire.
+//
+// **What emitVoice and send did at encode time, done at release instead**,
+// in the order frames leave: the sequence number, and for voice the superframe
+// position, the embedded signalling and the burst itself. The logic is
+// unchanged -- the output for a transmission with no stall is byte-identical
+// to 0.1.268's -- only the moment it runs has moved. A silent burst from the
+// pacer is finalized exactly like a real one, so it takes the next position
+// and carries the Link Control or alias fragment that position calls for.
+func (c *Channel) finalize(item pacedItem) (hbp.Data, bool) {
+	tx := item.tx
+	switch item.kind {
+	case pacedHeader:
+		return c.frame(tx, hbp.FrameTypeSync, dmrfec.DataTypeVoiceLCHeader, item.burst), true
+	case pacedTerminator:
+		return c.frame(tx, hbp.FrameTypeSync, dmrfec.DataTypeTerminatorWithLC, item.burst), true
+	}
+
 	var middle uint64
 	switch {
 	case tx.position == 0:
@@ -194,36 +226,32 @@ func (c *Channel) emitVoice(tx *outbound) {
 	case tx.position <= dmrfec.EmbeddedLCBursts:
 		middle = c.middlesFor(tx)[tx.position-1]
 	default:
-		// Burst F: the single-LCSS EMB and no fragment, as every capture shows.
 		m, err := dmrfec.MiddleForPosition(tx.position, GeneratedColourCode, 0)
 		if err != nil {
-			c.failOutbound(tx, fmt.Sprintf("building burst F: %v", err))
-			return
+			c.failed.Add(1)
+			c.note(fmt.Sprintf("building burst F: %v", err))
+			return hbp.Data{}, false
 		}
 		middle = m
 	}
-	burst, ok := dmrfec.AssembleBurst(tx.frames, middle)
+	burst, ok := dmrfec.AssembleBurst(item.frames, middle)
 	if !ok {
-		c.failOutbound(tx, "assembling a voice burst")
-		return
+		c.failed.Add(1)
+		c.note("assembling a voice burst")
+		return hbp.Data{}, false
 	}
 	frameType := hbp.FrameTypeVoice
 	if tx.position == 0 {
 		frameType = hbp.FrameTypeVoiceSync
 	}
-	c.send(tx, frameType, uint8(tx.position), burst)
-	tx.frames = tx.frames[:0]
+	d := c.frame(tx, frameType, uint8(tx.position), burst)
 	tx.position = (tx.position + 1) % dmrfec.SuperframeBursts
 	if tx.position == 0 {
 		tx.superframe++
 	}
+	return d, true
 }
 
-// endOutbound finishes a transmission: flush, terminate, release.
-//
-// **The last partial burst is padded with silence, not dropped.** A
-// transmission is rarely a multiple of three frames, and dropping the remainder
-// clips the last word of every over.
 func (c *Channel) endOutbound(tx *outbound, why string) {
 	if tx == nil || tx.chip == nil {
 		return
@@ -263,7 +291,7 @@ func (c *Channel) failOutbound(tx *outbound, why string) {
 func (c *Channel) terminate(tx *outbound) {
 	if tx.lc != nil {
 		if term, err := dmrfec.BuildDataBurst(GeneratedColourCode, dmrfec.DataTypeTerminatorWithLC, tx.lc); err == nil {
-			c.send(tx, hbp.FrameTypeSync, dmrfec.DataTypeTerminatorWithLC, term)
+			c.pace.push(pacedItem{kind: pacedTerminator, tx: tx, burst: term, at: time.Now()})
 		} else {
 			c.note(fmt.Sprintf("cannot build a terminator: %v", err))
 		}
@@ -274,7 +302,9 @@ func (c *Channel) terminate(tx *outbound) {
 	c.setHolder("")
 }
 
-func (c *Channel) send(tx *outbound, frameType hbp.FrameType, dataType uint8, burst []byte) {
+// frame builds one frame of a transmission and numbers it. It runs at release,
+// so sequence numbers follow the order frames actually leave.
+func (c *Channel) frame(tx *outbound, frameType hbp.FrameType, dataType uint8, burst []byte) hbp.Data {
 	d := hbp.Data{
 		Sequence:  tx.sequence,
 		SourceID:  c.radioID,
@@ -288,12 +318,9 @@ func (c *Channel) send(tx *outbound, frameType hbp.FrameType, dataType uint8, bu
 	copy(d.Payload[:], burst)
 	tx.sequence++
 	c.txBursts.Add(1)
-	// Queued rather than delivered: the run loop releases it on a 60 ms
-	// cadence. See pace.go.
-	c.pace.push(d, time.Now())
+	return d
 }
 
-// unpackBits turns bytes into one-bit-per-byte values, most significant first.
 func unpackBits(data []byte, n int) []byte {
 	out := make([]byte, n)
 	for i := range n {

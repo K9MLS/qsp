@@ -191,6 +191,11 @@ can install it and be on the air. Items 1–4 are that goal.
    this repository is made public" above.
 5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
+5b. **Hear a Zello stall as a dropout, not a stutter — 0427 (0.1.269).** A
+   stall Zello makes is filled with silence. Proof is a long Zello over through
+   a Motorola repeater with no stutter, and `late_to_dmr` rising only when
+   Zello actually stalls. Whether a clean dropout sounds better than a repeat
+   is a judgement only a listener can make; MMDVMHost chose repeating.
 5a. **Confirm the Zello echo is gone on air — fixed in 0426 (0.1.268).** Zello
    audio heard on a Motorola repeater echoed; a capture showed QSP sending clean
    single frames at bursty timing, and bursts are now paced at 60 ms. Proof is
