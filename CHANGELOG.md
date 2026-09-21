@@ -4,6 +4,26 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The Quantar router is configured, and needs no new card.** The operator's
+  2921 has an HWIC-2A/S, not the HWIC-1T docs/P25-PLANNING.md called for, and it
+  carries STUN: `encapsulation stun` was accepted and IOS set the 2104-byte MTU
+  the published builds use. The planning document records the configuration as
+  saved, that `stun peer-name` is the router's own address — the first
+  configuration got that wrong — that `stun route` and `no shutdown` wait for a
+  Quantar on the cable, the clock fixed to CDT and synchronised, the secrets
+  moved to scrypt, and that Fedora cannot SSH to it without weakening its crypto
+  policy, so the test server is the hop. The parts still needed drop to the V.24
+  daughtercard and a CAB-SS-232FC.
+- **HANDOVER.md opened mid-thought, before its own title.** A 0419 edit meant to
+  replace the pre-public section inserted a second one above the document's
+  heading and left the first in place, and the open list had two items numbered
+  3. It is rewritten: the repository is public and why, versions as of
+  2026-09-21, what is proven on hardware — including the replug recovery and
+  Zello across two containers — and an open list with the finished items moved
+  out of it.
+
 ### Changed
 
 - **A Zello stall is filled with silence rather than left for a repeater to

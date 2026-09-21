@@ -1,126 +1,86 @@
-## Before this repository is made public
-
-**1. The captures are clean as of 0418 (0.1.261).** The three P25 captures held
-mDNS, Syncthing and SSDP traffic from the operator's own network — device
-names, service types, a Syncthing device ID, router UUIDs and the operator's
-public address — because they were taken with no capture filter. Filtered with
-`scripts/filter-capture.py`; two tests in `internal/p25link` now fail on any
-capture carrying non-radio traffic or an identity string. **The originals are
-still in history**, so the rewrite below has to handle the old capture blobs as
-well as the text.
-
-**2. The history still holds what the working tree no longer does.** The tree
-was scrubbed on 2026-09-16: other operators' first names, towns and home public
-addresses were replaced — a first name by the callsign, a town by its state, an
-address by `203.0.113.x` — in text, tests and two HBP captures, payloads
-byte-identical. **Every earlier commit still contains the originals.** A scan on
-2026-09-19 found five strings absent from HEAD and present in history: two
-public addresses and three names or towns, reaching 155 to 292 commits each
-across 2 to 9 paths. Three other candidates were common words still in the tree,
-so not sensitive. Emails are clean: example.com/org samples, the operator's own
-address, `mike@192.168.1.x` from scp lines, and `pi-star.local`.
-
-**3. Then rewrite, with `scripts/scrub-history.py`.** It derives the list
-itself, so nothing sensitive is written down. Run it in the real repository
-after tagging and bundling a backup:
-
-```sh
-git tag pre-rewrite-backup && git bundle create ~/Documents/QSP/qsp-pre-rewrite.bundle --all
-scripts/scrub-history.py                 # reports; changes nothing
-scripts/scrub-history.py --show          # the mapping, which names people
-scripts/scrub-history.py --apply         # rewrites, then verifies
-./scripts/check.sh                       # the gates, on the rewritten tree
-```
-
-Verified on a clone of this repository on 2026-09-19: 428 commits preserved,
-three names or towns and ten addresses replaced, three capture blobs filtered,
-and afterwards none of it in any object, any commit message or any capture.
-`git filter-repo` is needed (`pip install git-filter-repo`). The push is
-`--force-with-lease`, and every hash changes, so anyone else with a clone has
-to re-clone.
-
-**4. Then the packages.** `qsp` and `qsp-zello` are private by default and are
-switched separately under Package settings; a stranger's `docker compose up`
-fails until that is done. The final push needs its tag, or the compose files pin
-an image that was never built.
-# Handover, 2026-09-17
+# Handover, 2026-09-21
 
 Read `NEW-SESSION.md`, then **§8a** and **§8s** of `PROJECT_MEMORY.md`, then
 **ADR-0052**, the frame everything about linking sits inside. For the Zello and
 transcoder work read **ADR-0062**, **0063**, **0064**, **0065** and **0066** in
 order — they build on each other — and `docs/ZELLO.md`.
 
-**The history was rewritten on 2026-09-09** to remove a product name from every
-commit, message and path, and force-pushed. **Every commit hash predating that
-no longer resolves** — they are a record of what happened, not something to
-look up.
+**History has been rewritten twice**, and every hash from before a rewrite no
+longer resolves. On 2026-09-09, to remove a product name. On **2026-09-19**, to
+remove other operators' names, towns and home addresses, the household traffic
+in three P25 captures, and every public address, with `scripts/scrub-history.py`
+deriving what to replace rather than storing it. The GitHub repository was then
+deleted and recreated so nothing unscrubbed stayed reachable by hash. Old hashes
+are a record of what happened, not something to look up.
 
 ---
 
-## Before this repository is made public
+## The repository is public
 
-**The working tree was scrubbed on 2026-09-16; the history was not.** Other
-operators' first names, towns and home public addresses were replaced — a first
-name by the callsign, a town by its state, an address by a reserved
-documentation address (`203.0.113.x`) in text, tests and the two HBP captures
-that carried them, with the captures' payloads byte-identical. **Every earlier
-commit still contains the originals.** The repository is private
-(PROJECT_MEMORY §1), so that costs nothing today; before it is made public,
-either rewrite history (`git filter-repo --replace-text`) or publish a fresh
-history from a single commit. Scan again first: the scrub commit's diff
-(`git show` on "Other operators' names, towns and home addresses are out of the
-working tree") lists every kind of detail removed, so search the tree and the
-history for those, and for any public address that is not a documentation
-range or a public service.
+**Public since 2026-09-20**, with the `qsp` and `qsp-zello` packages public too.
+What went before it, in order, so the reasons survive:
+
+- **The captures carried a household** (0419): mDNS, Syncthing and SSDP from the
+  operator's network in three P25 captures. Filtered to radio ports; two tests in
+  `internal/p25link` refuse any capture with non-radio traffic or an identity.
+- **No public address anywhere** (0420): another operator's home address was
+  still in ten files. The rule is now none at all, enforced by
+  `cmd/qsp/addresses_test.go`, including public infrastructure.
+- **The history rewrite** (0421, run 2026-09-19): 428 commits preserved,
+  verified clean in every object, commit message and capture.
+- **The pipeline** was first seen to work on `v0.1.263`, after the recreated
+  repository's Actions token was given write access and the old package, built
+  from the unscrubbed tree, was deleted.
+
+**On Fedora in `~/Documents/QSP`:** `qsp-0.1.263-rewritten.bundle` is the
+scrubbed history, also copied to the test server. `qsp-pre-scrub.bundle` is the
+**unscrubbed** one and still holds the data removed from the repository; delete
+it once nothing needs it.
 
 ---
 
 ## Where things stand
 
-**Zello is on the air, both ways, on real radios.** Since 2026-09-16 a Zello
-channel is linked to TG2 on production, heard on the Homebrew hotspots and on
-the Motorola repeaters whose owners agreed — IPSC included, since 0400. The
-whole path has carried real calls with real users: console setup, logon
-handoff, vocoder through a DVstick 30, USRP, `qsp-zello`.
+**Zello is on the air, both ways, on real radios**, linked to TG2 on production
+since 2026-09-16, heard on the Homebrew hotspots and on the Motorola repeaters
+whose owners agreed. **On Motorola repeaters it now sounds right**: 0.1.268
+paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
+fills a stall Zello makes with silence rather than leaving the repeater to
+repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as confirmed at the end of 2026-09-16** (check with `-version`
+**Versions, as confirmed at the end of 2026-09-21** (check with `-version`
 before trusting these; they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **GitHub** `main` | 0.1.254, tagged `v0.1.254` (this handover adds 0.1.255) | pushed |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.253**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
-| **Test server** (Docker, 192.168.1.27) | **0.1.254 built from source, running as UID 65532**; BCARA link connected | `ps` on the container, its log |
+| **GitHub** `main` | 0.1.269, tagged `v0.1.269`; images published for it | pushed, Actions |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.269**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 
-Production's differences from 0.1.254 are Docker-only (the published image and
-the unprivileged container), so it needs nothing until the next code change.
-
-**Proven on hardware on 2026-09-16:**
-- Zello both ways on Homebrew and Motorola repeaters; all 1,917 captured voice
-  frames the chip encoded passed DMR FEC uncorrected.
-- A vocoder restarted underneath QSP is set up again: every call sent its rate
-  and init packets as a pair (5 and 5 in a minute's capture).
-- The dongle panel's `systemctl` control works under qsp.service's full
-  sandbox, and the polkit rule grants exactly start, stop, restart and
-  reset-failed on `ambeserver.service` to `qsp`.
-- The unprivileged container: an existing volume after its one `chown`, and a
-  brand-new volume whose every file was created owned by 65532.
+**Proven on hardware:**
+- Zello both ways on Homebrew and Motorola repeaters (2026-09-16).
+- **A replugged dongle recovers with nobody touching it** (2026-09-20): the
+  udev rule fired, `ambeserver-replug.service` restarted AMBEserver in the same
+  second, and Zello audio followed 26 seconds later.
+- **Zello across two containers** (2026-09-19, test server): the logon crossed
+  the shared socket and the connector reached Zello. USRP audio between the two
+  containers was not exercised.
+- **The Talker Alias on the wire** (2026-09-21): MMDVMHost decoded `KD9BXO`
+  from production's own transmissions.
 
 **Not yet confirmed:**
-- **The first CI run of the image job** (`Publish image`, triggered by the
-  `v0.1.254` tag). If it failed, fixing it is the first job.
-- **The Actions runs for `v0.1.246`, `v0.1.249` and `v0.1.254`** as a whole,
-  including the zello-tagged step's first runs on GitHub.
-- **The arm64 image on a Raspberry Pi.**
+- **The arm64 images on a Raspberry Pi** — the operator is setting one up.
+- **The Talker Alias on a radio's display** — waiting on a registered DMR ID for
+  the gateway; 9898 is nobody's.
 - **The Zello level toward Zello set by ear** — it is at 0 dB.
 
 **On production, set by hand and also in the repository:** AMBEserver as
-`/etc/systemd/system/ambeserver.service`, the FTDI latency rule in
-`/etc/udev/rules.d/`, and the polkit rule in `/etc/polkit-1/rules.d/` (the 0408
-version, with reset-failed).
+`/etc/systemd/system/ambeserver.service`, the FTDI latency and replug rules in
+`/etc/udev/rules.d/`, `ambeserver-replug.service`, and the polkit rule in
+`/etc/polkit-1/rules.d/`.
 
-**Rollback binaries** are kept beside each install as `~/qsp-previous-<version>`
-on production, and `~/qsp-zello-previous-<version>` for the connector.
+**The rollback binary** is `~/qsp-rollback-<version>` in the operator's home on
+production, the version it replaced — `~/qsp-rollback-0.1.268` today.
 
 **The credential key is `/var/lib/qsp/secrets.key`** — 32 bytes, mode 0600,
 owned by `qsp`. **Losing it loses every stored credential**, including the
@@ -156,78 +116,36 @@ learned to run it as a service.
 
 ## Open, in the order to take them
 
-**The goal before the P25 push, set by K9MLS:** QSP at a clean point for going
-public — the console looks right and works, the code is solid, and a stranger
-can install it and be on the air. Items 1–4 are that goal.
-
-1. **Confirm CI published the image.** Actions tab: `Check`, then `Publish
-   image`, both green for `v0.1.254`; the `qsp` package under the K9MLS
-   profile. It stays private until switched under Package settings → Change
-   visibility, and a private package needs `docker login ghcr.io` with a
-   `read:packages` token to pull. The publish job has never run before.
-2. **A README for an operator arriving cold — done in 0414 (0.1.256).** It
-   leads with what QSP does, what you need and four steps to be on the air; the
-   status report moved below them, and the configuration reference moved to
-   docs/CONFIGURATION.md. A test ties its ports, console addresses and `.env`
-   variables to the code. **Tag `v0.1.256` and push it**, or the compose file
-   pins an image that was never published.
-3. **Test the replug recovery on hardware — 0416 (0.1.258) is unproven.** The
-   rule and unit are written and the guard was exercised against a stub
-   systemctl, but there is no udev or systemd in the build container, so
-   nothing has fired for real. On QSP SERVER, after installing both rules and
-   the unit: unplug the dongle, plug it into another port, and watch
-   `journalctl -u ambeserver -u ambeserver-replug` and QSP's log for `vocoder
-   ready`. Costs a few seconds of Zello. If it works, no human is needed for
-   the failure that cost three days on 2026-09-16 to 09-19.
-3. **Zello on the Docker install, as an add-on — built in 0415 (0.1.257), not
-   yet on air.** `docker-compose.zello.yml`, `Dockerfile.zello` (static libopus
-   on scratch, UID 65532), a shared `qsp-run` volume for the logon socket, and a
-   second image in the publish job. Compose resolved every file combination;
-   the amd64 static link ran from an empty root. **Unproven until run:** the
-   arm64 cross-compile (first CI run on a tag), and the logon and audio across
-   two containers, which needs the DVstick on QSP SERVER — production, so only
-   in a window K9MLS chooses.
-4. **Rewrite history before switching the repository to public** — see "Before
-   this repository is made public" above.
-5. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
+1. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
-5b. **Hear a Zello stall as a dropout, not a stutter — 0427 (0.1.269).** A
-   stall Zello makes is filled with silence. Proof is a long Zello over through
-   a Motorola repeater with no stutter, and `late_to_dmr` rising only when
-   Zello actually stalls. Whether a clean dropout sounds better than a repeat
-   is a judgement only a listener can make; MMDVMHost chose repeating.
-5a. **Confirm the Zello echo is gone on air — fixed in 0426 (0.1.268).** Zello
-   audio heard on a Motorola repeater echoed; a capture showed QSP sending clean
-   single frames at bursty timing, and bursts are now paced at 60 ms. Proof is
-   a Zello over through K9MLS/R or KD9HDR/R without the echo, and `late_to_dmr`
-   in the transcoder's health staying at or near zero. A plain radio call
-   through a repeater was never affected, and should be checked unchanged.
-6. **Talker Alias for Zello transmissions — done in 0422 (0.1.264), not seen
-   on a radio.** The configured alias is transmitted: Link Control first, then
-   one PDU per superframe, cycling. Decoded back out of the built burst stream
-   in tests, and the PDU bytes match `testdata/hbp/hbp-talker-alias.pcap`,
-   where a MOTOTRBO sent one. **Set on the Zello page from 0424** (section 2,
-   "Name radios show"). **Verified on the wire, 2026-09-21**: a capture of
-   production's traffic to the WPSD hotspot decoded 11 alias PDUs reading
-   `KD9BXO`, and MMDVMHost logged the same text itself. Not yet seen on a
-   radio's display; the gateway ID 9898 is unregistered, and a registered one
-   has been requested, which will name Zello calls on dashboards and in
-   contact lists regardless. From 0425 Motorola repeaters get the voice Link
-   Control rather than the alias, and Last heard shows the alias.
-7. **Talkgroup routing and contention in `internal/p25link`**, the start of
-   making P25 a network rather than a flat reflector: voice reads the talkgroup
-   and relays to every registered gateway regardless. **Now testable rather
-   than theoretical** — K9MLS's Pi-Star registered on production 2026-09-19, so
-   a second gateway on another talkgroup would demonstrate the defect. See
-   P25-NETWORK.md §2 and §6, and P25-GATEWAY.md for the operator view.
-8. **A session-lifetime control on Administration — done in 0423 (0.1.265).**
-   Reported and editable under Administrators: the value in force, whether it
-   is the default, the active count, and the reader's own expiry. Not seen in a
-   browser yet — the tests cover the report and the endpoint, not the page.
-9. **`leading byte 0x81` — closed as unreproducible.** About fifty datagrams
-   from radio 999998 on 2026-09-03 and **none since 2026-09-10**, checked on
-   production on 2026-09-21. Nothing to reproduce and nothing to fix; if it
-   returns, the datagrams are the evidence to keep.
+2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
+   ID. A registered ID also names Zello calls on dashboards and in contact
+   lists, which an alias cannot. Set both on the Zello page.
+3. **The Quantar link, ADR-0060.** The router is ready (see Waiting on the
+   operator); the next step is the adapter cable, then the loopback test that
+   makes the wireline LED go steady, then the first capture on the test server.
+   **The Quantar link's code waits for captured bytes**, per ADR-0060; the plan
+   is in `docs/P25-PLANNING.md`.
+4. **Talkgroup routing and contention in `internal/p25link`**: voice reads the
+   talkgroup and relays to every registered gateway regardless. Waiting on a
+   second gateway to demonstrate it. P25-NETWORK.md §2 and §6.
+5. **The arm64 images on a Pi.** `docker pull ghcr.io/k9mls/qsp` with no login,
+   then `-version`. The first time either arm64 image has run anywhere.
+6. **USRP audio between two containers**, the one part of the Docker Zello
+   add-on not yet exercised. Needs the DVstick moved to the test server again.
+
+**Done since the last handover, kept here so the reasons are findable:**
+- **Zello echo on Motorola repeaters** — 0426 (0.1.268). QSP sent clean single
+  frames at bursty timing; a repeater that ran dry repeated audio. Paced at 60 ms.
+- **Zello stalls** — 0427 (0.1.269). Filled with the measured silence frame
+  rather than left to the repeater, which fills a gap by repeating audio.
+- **A Motorola repeater was sent contradictory signalling** — 0425. Alias
+  fragments beside a voice Link Control; the IPSC path now sends only the voice
+  Link Control, which is what every captured Motorola superframe carries.
+- **Talker Alias** transmitted (0422) and set on the Zello page (0424);
+  **session lifetime** on Administration (0423); the **replug recovery** (0416)
+  proven on hardware; the **0x81 byte** closed as unreproducible, none since
+  2026-09-10.
 
 **Two operating rules learned the hard way on 2026-09-16:**
 - **Never test by restarting a service in a loop.** AMBEserver's unit allows
@@ -242,7 +160,10 @@ can install it and be on the air. Items 1–4 are that goal.
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
 - **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
-- **Three Quantar parts**, and **12 November** for the Cisco licence.
+- **Two Quantar parts**: the V.24 daughtercard and a **CAB-SS-232FC** cable.
+  The router needs nothing more: its HWIC-2A/S carries STUN, configured and
+  saved 2026-09-21. **12 November** is when the router's evaluation licence
+  ends; see `docs/P25-PLANNING.md` for the fallback.
 - **Colour codes 1, 2 and 8** EMB captures — completeness, not confidence;
   method in `testdata/hbp/EMB-CAPTURE-REQUEST.md`.
 

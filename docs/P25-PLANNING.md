@@ -312,8 +312,8 @@ QSP
 | RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below | **needed** |
 | Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering | **needed** |
 | Router | **Settled: the operator's CISCO2921/K9**, 15.4(3)M3 universalk9, STUN verified at the console 2026-09-13 after self-activating the `datak9` right-to-use licence. Sixty days from that date | **held** |
-| Serial card | **HWIC-1T** — Smart Serial. Legacy WICs do not fit an ISR G2. Slots 0/2 and 0/3 are free | **needed** |
-| Console cable | Light blue RJ-45 to DB-9 plus a USB serial adapter. One ships with every Cisco router and can often be had for the asking | **needed** |
+| Serial card | **HWIC-2A/S in slot 0/3**, two Smart Serial ports. `encapsulation stun` accepted on `Serial0/3/0`, 2026-09-21, so the HWIC-1T this row used to name is not needed. Legacy WICs still do not fit an ISR G2 | **held** |
+| Console cable | Light blue RJ-45 to DB-9 plus a USB serial adapter. One ships with every Cisco router and can often be had for the asking | **held** |
 | Dummy load | For bench work. Named in every published build | **needed** |
 | RS-232 breakout box | Shows the handshake states and clock activity. Strongly recommended — there is no other instrument for a synchronous serial link | recommended |
 | P25 handheld | An APX, already used for the talkgroup captures | **held** |
@@ -421,8 +421,9 @@ the sort of thing this project is supposed to check before asserting.
 
 **What is still true about the chassis.** Legacy WIC-1T and WIC-2T are *not*
 supported in ISR G2 EHWIC slots — a c2921 boots with
-`%MAINBOARD-1-UNKNOWN_WIC ... unknown id 0x2`. So it is an **HWIC-1T** with a
-**CAB-SS-232FC**, not the WIC-1T and CAB-232FC of the published builds.
+`%MAINBOARD-1-UNKNOWN_WIC ... unknown id 0x2`. So it is an HWIC card with a
+**CAB-SS-232FC**, not the WIC-1T and CAB-232FC of the published builds. The
+operator's is an **HWIC-2A/S**, which carries STUN: see below.
 
 **And the slots are free.** `show inventory` on the operator's unit lists
 `VWIC3-2MFT-T1/E1` in 0/0 and `EHWIC-4ESG` in 0/1, leaving 0/2 and 0/3 empty.
@@ -435,6 +436,72 @@ Ethernet interface.
 configuration corrected it. A router capture and a QSP log that cannot be lined
 up by timestamp cost real time, and the whole diagnostic method here is two
 readings of one event. Point it at NTP before the first capture.
+
+### The router, configured: 2026-09-21
+
+**The HWIC-2A/S carries STUN.** It is an asynchronous-or-synchronous card, where
+the published builds used a synchronous-only one, so this was asked of IOS
+rather than assumed: `encapsulation stun` was accepted on `Serial0/3/0`, and IOS
+set `mtu 2104` itself, the MTU the published builds use. The port is
+synchronous by default.
+
+**`stun peer-name` is the router's own address, not the far end's.** This
+document's working configuration above shows that, with the peer name equal to
+the Ethernet address, but it does not say it, and the first configuration today
+set it to the QSP server's address by mistake. The far end is `stun route`.
+Removing the peer name also removes the protocol group, so the group has to be
+entered again after changing it.
+
+What is saved on the operator's router:
+
+```
+ip name-server <the LAN's DNS server>
+stun peer-name 192.168.1.45
+stun protocol-group 1 basic
+!
+interface GigabitEthernet0/0
+ ip address dhcp                 ! reserved as 192.168.1.45 on the LAN
+!
+interface Serial0/3/0
+ mtu 2104
+ no ip address
+ encapsulation stun
+ stun group 1
+ shutdown
+ clock rate 125000
+!
+clock timezone CST -6 0
+clock summer-time CDT recurring
+ntp server pool.ntp.org
+```
+
+**Deliberately absent: `stun route all tcp …`**, the line naming the far end.
+It goes in when a V.24 cable is in `Serial0/3/0` and a Quantar is on the other
+end, and it points at the test server for the first capture, never production.
+`no shutdown` on the port waits for the same moment.
+
+**The clock is synchronised, stratum 3**, and reads CDT: the configuration had a
+timezone and no summer-time rule, so local time was an hour behind until it was
+added. Its log timestamps are UTC, which is what lines up with QSP's.
+
+**The enable and `admin` secrets are scrypt, type 9**, replacing MD5 hashes.
+
+**Reaching it from Fedora needs a hop.** The router offers only an `ssh-rsa`
+host key, and Fedora's system crypto policy refuses SHA-1 signatures below what
+`ssh -o HostKeyAlgorithms=+ssh-rsa` can override. From the test server, which
+runs Ubuntu, this works:
+
+```sh
+ssh -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa \
+    -o MACs=+hmac-sha1 admin@192.168.1.45
+```
+
+Re-enabling SHA-1 on Fedora system-wide (`update-crypto-policies --set
+DEFAULT:SHA1`) would also work, and was not done: it weakens every connection
+the development machine makes, to reach one old router.
+
+**Step 1 of the bring-up below is done.** The previous configuration was the
+operator's own, so it was kept rather than wiped.
 
 ### Bring-up order, each step with a checkpoint
 
