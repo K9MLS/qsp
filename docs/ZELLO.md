@@ -323,9 +323,13 @@ on either server. Afterwards there should be exactly one new device.
 
 ## Talker Alias
 
-**Configured, and sent from 0.1.264.** Set `alias` on the transcoder and every
-transmission QSP builds from Zello audio carries it; leave it empty and none
-does, which is the default. It is the operator's string and only theirs: a
+**Configured on the Zello page, and sent from 0.1.264.** Section 2, "Name
+radios show", beside the gateway's DMR ID — both answer what a radio sees when
+Zello talks, one as a number and one as text. Every transmission QSP builds
+from Zello audio carries it; leave it empty and none does, which is the
+default. It is the transcoder's `alias` in the configuration file, and the page
+is the way to set it: saving there is versioned and validated, and editing the
+file by hand is neither. It is the operator's string and only theirs: a
 Zello display name is chosen by its user, so an alias taken from one would let
 a Zello user appear on a licensed operator's repeater under that operator's
 callsign (ADR-0064 §3).

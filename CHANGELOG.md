@@ -6,6 +6,21 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Talker Alias is set on the Zello page.** 0.1.264 made the alias
+  transmit, but the only way to set it was editing the configuration file,
+  which is unversioned, unvalidated until restart, and exactly what the console
+  exists to spare an operator. It is now "Name radios show" in section 2, beside
+  the gateway's DMR ID, since both answer what a radio sees when Zello talks.
+  It saves through the same versioned, validated path as the rest of the page,
+  so a non-ASCII or over-long alias is refused with the reason. The field says
+  plainly that it is always this text and never a Zello user's name.
+  A console test ties every transcoder key the page writes to a JSON tag on
+  `config.Transcoder`, read by reflection: a renamed tag would otherwise leave
+  the page writing a key the decoder ignores, reporting "saved", and a radio
+  showing a bare ID with nothing to say why.
+
+### Added
+
 - **The session lifetime is on the Administration page**, and no longer a
   file-only setting. It is a report before it is a field, which is the
   condition ADR-0055 puts on the page editing anything: the block states which

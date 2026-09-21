@@ -53,6 +53,7 @@
   var issuer = document.getElementById("zello-issuer");
   var ambe = document.getElementById("zello-ambe");
   var radioID = document.getElementById("zello-radio-id");
+  var alias = document.getElementById("zello-alias");
   var gainUSRP = document.getElementById("zello-gain-usrp");
   var gainDMR = document.getElementById("zello-gain-dmr");
   var talkgroup = document.getElementById("zello-talkgroup");
@@ -141,6 +142,7 @@
 
     ambe.value = t.address || DEFAULT_AMBE;
     radioID.value = t.radio_id ? String(t.radio_id) : "";
+    alias.value = t.alias || "";
     gainUSRP.value = t.gain_to_usrp_db ? String(t.gain_to_usrp_db) : "";
     gainDMR.value = t.gain_to_dmr_db ? String(t.gain_to_dmr_db) : "";
     usrpListen.value = t.usrp_listen || DEFAULT_USRP_LISTEN;
@@ -229,6 +231,10 @@
     t.enabled = on;
     t.address = ambe.value.trim();
     t.radio_id = parseInt(radioID.value, 10) || 0;
+    /* **The operator's string and nothing else** (ADR-0064 §3). The server
+     * validates it -- ASCII, 31 characters -- and refuses the whole save with
+     * the reason if it is wrong, so this does not check it a second time. */
+    t.alias = alias.value.trim();
     t.gain_to_usrp_db = parseFloat(gainUSRP.value) || 0;
     t.gain_to_dmr_db = parseFloat(gainDMR.value) || 0;
     t.usrp_listen = usrpListen.value.trim();

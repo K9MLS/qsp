@@ -241,6 +241,19 @@
               <p class="field__note">Every Zello transmission carries this ID.</p>
             </label>
             <label class="picker__field">
+              <span class="picker__label">Name radios show</span>
+              <input class="picker__input" id="zello-alias" type="text"
+                     maxlength="31" spellcheck="false" autocapitalize="characters"
+                     placeholder="K9MLS">
+              <p class="field__note">
+                Optional. Sent as a Talker Alias, so a radio that supports it
+                shows this instead of a bare ID. Plain letters and digits, up to
+                31. <strong>It is always this text</strong>, never a Zello
+                user's name: a Zello user is not necessarily licensed, and their
+                name on your repeater would read as your station.
+              </p>
+            </label>
+            <label class="picker__field">
               <span class="picker__label">Level toward Zello</span>
               <input class="picker__input" id="zello-gain-usrp" type="number" min="-20" max="20" step="1" placeholder="0">
               <p class="field__note">Decibels. Radio audio arriving quiet on Zello: try +10 to +13.</p>
