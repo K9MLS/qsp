@@ -2,7 +2,7 @@
 
 **Status:** the reflector half is built and running; the Motorola half is scope.
 
-**Updated 2026-09-12.** [ADR-0057](adr/ADR-0057-p25-is-a-full-network.md)
+**Updated 2026-09-26.** [ADR-0057](adr/ADR-0057-p25-is-a-full-network.md)
 commits QSP to a **full P25 network** — a Motorola P25 repeater is a peer of a
 QSP server in the same sense a Motorola DMR repeater already is, speaking an
 interface that is QSP's own. This document records the route to that, and the
@@ -308,9 +308,9 @@ QSP
 |---|---|---|
 | Quantar with wireline card | CLN695X or newer | **held** |
 | GTR 8000 | Same V.24 pinout as a Quantar; CSS-configured, features licensed | **held** |
-| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first | **needed** |
-| RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below | **needed** |
-| Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering | **needed** |
+| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first. **Still the open question on 2026-09-26**: the router sees nothing arriving, which is what a missing or unconfigured card looks like | **needed** |
+| RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below. **Built, and the jumper proven electrically** on 2026-09-26 by `DTR=up` — see bring-up step 2 | **held** |
+| Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering. **In `Serial0/3/0` and confirmed DCE RS-232 on 2026-09-26** — the card reads the cable's own identification and `show controllers` prints it, which settles the DTE question without unscrewing anything | **held** |
 | Router | **Settled: the operator's CISCO2921/K9**, 15.4(3)M3 universalk9, STUN verified at the console 2026-09-13 after self-activating the `datak9` right-to-use licence. Sixty days from that date | **held** |
 | Serial card | **HWIC-2A/S in slot 0/3**, two Smart Serial ports. `encapsulation stun` accepted on `Serial0/3/0`, 2026-09-21, so the HWIC-1T this row used to name is not needed. Legacy WICs still do not fit an ISR G2 | **held** |
 | Console cable | Light blue RJ-45 to DB-9 plus a USB serial adapter. One ships with every Cisco router and can often be had for the asking | **held** |
@@ -467,18 +467,38 @@ interface Serial0/3/0
  no ip address
  encapsulation stun
  stun group 1
- shutdown
- clock rate 125000
+ clock rate 9600
 !
 clock timezone CST -6 0
 clock summer-time CDT recurring
 ntp server pool.ntp.org
 ```
 
+**The clock rate was `125000` until 2026-09-26, and it was wrong.** It was set
+while proving `encapsulation stun` parsed, with no radio attached and nothing
+depending on the rate. A Quantar's wireline card expects 9600, which this
+document said twice in the clocking section above while the saved configuration
+said otherwise — two statements individually defensible and together a lie,
+§8a's pattern exactly. At 125 kbps the link would never have synchronised and
+nothing in any log would have said why; the afternoon would have gone on the
+cable, the jumper and the daughtercard switches.
+
+**`BW` is not the instrument for the clock rate.** `show interfaces` reports
+`BW 128 Kbit/sec` on this card regardless, because bandwidth is a static routing
+default rather than a live read of the clock generator. It did not change when
+the rate did. The hardware is the instrument, and it is the same command that
+found the 125000 in the first place:
+
+```
+show controllers Serial0/3/0 | include clock
+```
+
 **Deliberately absent: `stun route all tcp …`**, the line naming the far end.
-It goes in when a V.24 cable is in `Serial0/3/0` and a Quantar is on the other
-end, and it points at the test server for the first capture, never production.
-`no shutdown` on the port waits for the same moment.
+It points at the test server for the first capture, never production, and it
+goes in when the Quantar is demonstrably sending — not merely cabled. See the
+counter differential in step 3 below: a tunnel pointed at a silent wire produces
+an empty capture and an afternoon of wondering whether the rig or the radio is
+at fault.
 
 **The clock is synchronised, stratum 3**, and reads CDT: the configuration had a
 timezone and no summer-time rule, so local time was an hour behind until it was
@@ -486,10 +506,24 @@ added. Its log timestamps are UTC, which is what lines up with QSP's.
 
 **The enable and `admin` secrets are scrypt, type 9**, replacing MD5 hashes.
 
-**Reaching it from Fedora needs a hop.** The router offers only an `ssh-rsa`
-host key, and Fedora's system crypto policy refuses SHA-1 signatures below what
-`ssh -o HostKeyAlgorithms=+ssh-rsa` can override. From the test server, which
-runs Ubuntu, this works:
+**Reaching it from Fedora needs a hop, and there are two walls rather than one.**
+This paragraph named only the host key until 2026-09-26, when both were measured
+in order:
+
+1. **Key exchange fails first.** A bare `ssh admin@192.168.1.45` from Fedora
+   never reaches the host key: every method the router offers is SHA-1
+   (`diffie-hellman-group-exchange-sha1`, `group14-sha1`, `group1-sha1`) and
+   Fedora's policy permits none. `-o KexAlgorithms=+diffie-hellman-group14-sha1`
+   clears this one, which is how the second wall became visible at all.
+2. **The `ssh-rsa` host key fails next, and `-o HostKeyAlgorithms=+ssh-rsa`
+   does not clear it.** The option is accepted and the connection still fails
+   with *no matching host key type found. Their offer: ssh-rsa*, because the
+   crypto policy bans SHA-1 signatures below ssh's configuration layer: ssh
+   prunes `ssh-rsa` from the usable set, and `+ssh-rsa` appends something that is
+   then filtered out. The failure looks like a configuration error and is a
+   policy one.
+
+From the test server, which runs Ubuntu, this works and is the documented route:
 
 ```sh
 ssh -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa \
@@ -498,7 +532,11 @@ ssh -o KexAlgorithms=+diffie-hellman-group14-sha1 -o HostKeyAlgorithms=+ssh-rsa 
 
 Re-enabling SHA-1 on Fedora system-wide (`update-crypto-policies --set
 DEFAULT:SHA1`) would also work, and was not done: it weakens every connection
-the development machine makes, to reach one old router.
+the development machine makes, to reach one old router. A per-process
+`OPENSSL_CONF` override is the third option and was **not** tested; it is
+recorded as untested rather than as a limitation, because §7 says a limitation
+written down becomes a limitation nobody retests. The hop costs one command and
+the console cable is always there.
 
 **Step 1 of the bring-up below is done.** The previous configuration was the
 operator's own, so it was kept rather than wiped.
@@ -509,16 +547,72 @@ operator's own, so it was kept rather than wiped.
    within 60 seconds of power-on, `confreg 0x2142`, `reset`, then
    `config-register 0x2102` and `write erase`. **Checkpoint:** `stun peer-name`
    parses.
-2. Build the adapter. **Checkpoint:** continuity, and the 6-to-20 jumper
-   actually present.
-3. **Loopback test, no second Quantar needed.** Loop TXD to RXD at the far end
-   and take CD from the router to drive RTS and DTR back. Every keepalive the
-   Quantar sends returns over the IP route. **Checkpoint:** the wireline card's
-   LED goes steady — it flashes while the link is down — and `show stun` shows
-   the circuit open.
-4. Point the tunnel at a QSP host and capture. **Checkpoint:** bytes on disk.
+2. Build the adapter, cable it, and bring the port up with **no `stun route`**.
+   **Checkpoint:** `DTR=up` in `show interfaces Serial0/3/0`. As DCE the router
+   drives DCD, DSR and CTS and reads DTR and RTS, so DSR out on pin 6 through
+   the jumper and back in on pin 20 as DTR tests the jumper electrically, in
+   place, with no multimeter. **This checkpoint proves the hood and nothing
+   else** — the loop is entirely inside the DB-25 shell and reads `up` with
+   nothing plugged into the RJ-45 end at all. It was written as "continuity, and
+   the jumper actually present" until 2026-09-26; the electrical test is
+   strictly better and the caveat is the half that matters.
+3. **Is the Quantar sending anything?** `RTS` is the only line in that list the
+   Quantar itself drives, but it is not conclusive: the link comes up on the
+   jumper alone, and a Quantar may hold RTS low while idle. The counters settle
+   it, because HDLC frames on RXD are counted whether RTS is up or not.
+   `clear counters Serial0/3/0`, wait fifteen seconds, then read
+   `show interfaces Serial0/3/0 | include packets input|input errors|abort`.
+   **Three outcomes, and they mean different things:**
+   - **`packets input` climbing** — the Quantar is talking and RTS is a red
+     herring. Go to step 4.
+   - **Zero in, zero errors** — nothing on RXD at all. The radio end is not
+     connected or not configured: the daughtercard, then
+     `Digital Idle Link Check`, which is what makes a Quantar put idle frames on
+     a quiet link and whose absence makes silence the *correct* behaviour.
+   - **Zero packets with input errors or aborts climbing** — something is on the
+     wire and the framing or clock is wrong. The most informative of the three,
+     and it points at the clocking direction or a DIP switch rather than the
+     codeplug.
+4. Point the tunnel at a QSP host and capture: `stun route all tcp <test
+   server>`, `scripts/stun-capture.py` on the far end, `tcpdump` alongside it.
+   **Checkpoint:** bytes on disk.
 
 Steps 1–3 are all instrument, no QSP code. Step 4 is ADR-0060 phase 1.
+
+**Step 3 used to describe a loopback rig and did not hold together.** It called
+for looping TXD to RXD at the far end while also claiming "every keepalive the
+Quantar sends returns over the IP route", and named the wireline LED as its
+checkpoint — but a loopback plug where the Quantar should be means the Quantar
+is disconnected and sending nothing, and the LED is on the Quantar. The two
+halves described different rigs. What replaces it needs no loopback plug and
+tests more: the counters distinguish a silent radio from a mis-framed one, which
+the LED cannot.
+
+### The router half is finished: 2026-09-26
+
+Steps 1 to 3 are done and the router is not the open question any more. Each row
+is a fact with the instrument that produced it, because a fact without one is
+what put `clock rate 125000` in this document for five days:
+
+| Fact | Instrument |
+|---|---|
+| The HWIC-2A/S carries STUN and the encapsulation is up | `show stun`, `Serial0/3/0 is up, line protocol is up` |
+| A **DCE RS-232** cable is attached, not the male-DB-25 DTE trap | `show controllers` naming the cable it reads |
+| The clock is **9600** at the hardware | `show controllers ... include clock` |
+| The hood and the pin 6-to-20 jumper work | `DTR=up` with the port no longer shut |
+| **Nothing is arriving from the Quantar** | zero packets **and zero errors** after `clear counters` |
+
+The last row is the whole state of the project on this path. Zero input with
+zero errors is a silent wire, not a mis-framed one — something on the wire with
+the wrong framing shows CRC errors or aborts — so the fault is on the radio side
+of the DB-25 hood, and `RTS=down` is consistent with that.
+
+**What is not yet known**, and none of it can be answered from the router: the
+daughtercard's presence, board and DIP settings, and whether the codeplug has
+`Wireline Interface: V.24 ONLY`, `Digital Idle Link Check: ENABLED`,
+`External Transmit Clock: ENABLED` and `RT/RT Configuration: ENABLED`. The
+wireline card's LED is the cheapest of these — flashing means it is alive and
+the link is down, dark means the card is not being driven at all.
 
 ## What QSP replaces, and what the existing stack gets wrong
 
@@ -570,6 +664,9 @@ which means QSP learns it the way it learned IPSC: from captures taken here.
    survives every route, including the one that replaces all of this.
 5. **Build the capture rig**: router, serial card, cable, the DTR jumper in the
    DB-25 hood, tunnel pointed at a QSP host. No bridge host, no DVSwitch.
+   **The router half is done as of 2026-09-26** and the radio half is not: see
+   "The router half is finished" above for what each instrument proved and what
+   is still unknown.
 6. **Phase 1 and 2** — capture the keepalive, then answer it. The wireline
    card's LED going steady is the milestone.
 7. **Phase 3 and 4** — voice, then relay.

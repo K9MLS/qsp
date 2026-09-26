@@ -4,8 +4,57 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/stun-capture.py`, the instrument for ADR-0060 phase 1.** It accepts
+  the router's serial tunnel on TCP 1994, writes each connection's stream to a
+  `.bin` byte for byte, and writes frame arrival times and sizes to a `.log`
+  beside it, because a keepalive's period is a fact about the far end and is
+  invisible in a hex dump. **It records and does not answer.** Phase 2 cannot be
+  written yet: STUN basic wraps each frame in a header this project has never
+  seen, so a reply would be a guess about framing nobody here holds, and a
+  listener that echoed bytes back would be indistinguishable from one that had
+  learned something. Run it, prove it: 45 bytes across three writes came back
+  byte-identical, the timing log matched the sender's 250 ms spacing, the client
+  received nothing in reply, and the listener survived an abrupt reset and served
+  a second connection.
+
 ### Documentation
 
+- **The router half of the Quantar link is finished, and the radio half is the
+  open question.** Five facts, each with the instrument that produced it: the
+  HWIC-2A/S carries STUN with the line protocol up; a DCE RS-232 cable is
+  attached rather than the male-DB-25 DTE trap, which `show controllers` settles
+  by reading the cable's own identification; the clock is 9600 at the hardware;
+  the hood and its pin 6-to-20 jumper work, proven by `DTR=up`; and **nothing is
+  arriving from the Quantar** — zero packets *and* zero errors after
+  `clear counters`, which is a silent wire rather than a mis-framed one.
+- **`clock rate 125000` was wrong and was live on the card for five days.** The
+  clocking section of docs/P25-PLANNING.md said 9600 twice while the saved
+  configuration said 125000 — two statements individually defensible and
+  together a lie. At 125 kbps the link would never have synchronised and no log
+  would have said why. Corrected to 9600, with the note that `BW` is not the
+  instrument for it: `show interfaces` reports `BW 128 Kbit/sec` regardless,
+  because bandwidth is a static routing default, and it did not change when the
+  rate did. `show controllers` is the instrument, and it is what found the fault.
+- **Reaching the router from Fedora fails at two walls, not one.** The document
+  named only the `ssh-rsa` host key; key exchange fails first, since every
+  method the router offers is SHA-1, and
+  `-o KexAlgorithms=+diffie-hellman-group14-sha1` clears it. Only then does the
+  host key fail, and `-o HostKeyAlgorithms=+ssh-rsa` does **not** clear that one:
+  the crypto policy bans SHA-1 signatures below ssh's configuration layer, so
+  ssh prunes `ssh-rsa` and the appended option is filtered out. The hop from the
+  test server stands. A per-process `OPENSSL_CONF` override is recorded as
+  untested rather than as a limitation, per §7.
+- **Bring-up steps 2 and 3 are rewritten.** Step 2's checkpoint becomes the
+  `DTR=up` electrical test, which proves the jumper in place with no multimeter
+  — **and proves the hood only**, since the loop is inside the DB-25 shell and
+  reads `up` with nothing on the RJ-45 end. Step 3 described a loopback rig that
+  did not hold together: it called for a loopback plug where the Quantar should
+  be while also claiming the Quantar's keepalives returned over the IP route, and
+  named an LED on the Quantar as its checkpoint. It is replaced by the
+  `clear counters` differential, which separates a silent radio from a mis-framed
+  one — three outcomes with three different causes — where the LED cannot.
 - **The Quantar router is configured, and needs no new card.** The operator's
   2921 has an HWIC-2A/S, not the HWIC-1T docs/P25-PLANNING.md called for, and it
   carries STUN: `encapsulation stun` was accepted and IOS set the 2104-byte MTU
