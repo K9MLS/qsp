@@ -121,11 +121,27 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **The Quantar link, ADR-0060.** The router is ready (see Waiting on the
-   operator); the next step is the adapter cable, then the loopback test that
-   makes the wireline LED go steady, then the first capture on the test server.
-   **The Quantar link's code waits for captured bytes**, per ADR-0060; the plan
-   is in `docs/P25-PLANNING.md`.
+3. **The Quantar link, ADR-0060. Waiting on one part: the TTN4010.**
+   On 2026-09-26 everything else was proven, each with its own instrument:
+
+   | Proven | How |
+   |---|---|
+   | Router configuration | matches the published build line for line |
+   | Serial path, cable, hood, 9600 clock | HDLC loopback: `up (looped)`, 552 bytes, **zero errors** |
+   | Codeplug | all five ASTRO settings read back from the station |
+   | DIP switches | S101 switch 1 on, rest off, the published Motorola setting |
+
+   Against that, nothing ever reached the router and **with zero framing
+   errors** — two ends that cannot hear each other, not one that is mis-set. The
+   wireline board is a `TRN7477D11` with **no TTN4010 fitted**, and the TTN4010
+   is a level converter from the TTL present on the wireline board: without it
+   the RJ-45 is TTL against the Cisco's RS-232. `RT/RT Configuration` was also
+   found disabled and corrected on the way.
+
+   When the card arrives: fit it to the **bottom** V.24 port, re-run the
+   bring-up steps in `docs/P25-PLANNING.md`, and the capture rig is already
+   written — `scripts/stun-capture.py`, which records and deliberately does not
+   answer. **The Quantar link's code waits for captured bytes**, per ADR-0060.
 4. **Talkgroup routing and contention in `internal/p25link`**: voice reads the
    talkgroup and relays to every registered gateway regardless. Waiting on a
    second gateway to demonstrate it. P25-NETWORK.md §2 and §6.
@@ -160,10 +176,14 @@ learned to run it as a service.
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
 - **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
-- **Two Quantar parts**: the V.24 daughtercard and a **CAB-SS-232FC** cable.
-  The router needs nothing more: its HWIC-2A/S carries STUN, configured and
-  saved 2026-09-21. **12 November** is when the router's evaluation licence
-  ends; see `docs/P25-PLANNING.md` for the fallback.
+- **One Quantar part: the V.24 daughtercard (TTN4010).** The `CAB-SS-232FC` is
+  in hand and proven — `show controllers` reads the cable's own identification
+  as DCE RS-232, and the HDLC loopback carried frames through it with zero
+  errors. The router needs nothing more: its HWIC-2A/S carries STUN, configured
+  and saved 2026-09-21, clock corrected to 9600 on 2026-09-26. **12 November**
+  is when the router's evaluation licence ends; see `docs/P25-PLANNING.md` for
+  the fallback, and note the card is now the only thing between here and a
+  first capture.
 - **Colour codes 1, 2 and 8** EMB captures — completeness, not confidence;
   method in `testdata/hbp/EMB-CAPTURE-REQUEST.md`.
 

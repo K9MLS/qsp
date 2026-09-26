@@ -4,6 +4,50 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The Quantar link needs one part, and everything else is proven.** A full
+  bring-up on 2026-09-26 eliminated the router configuration (line-for-line
+  against the published build), the serial path, cable, hood and 9600 clock (an
+  HDLC loopback returning 552 bytes with zero errors), the codeplug (all five
+  ASTRO settings read back from the station) and the DIP switches. Nothing ever
+  reached the router, **with zero framing errors**, which is two ends that
+  cannot hear each other rather than one that is mis-set. The wireline board is
+  a `TRN7477D11` with **no TTN4010 fitted**, and the TTN4010 is a level
+  converter from the TTL present on that board — so the RJ-45 is TTL against the
+  Cisco's RS-232. `RT/RT Configuration` was found disabled and corrected on the
+  way; it changed nothing by itself but had never been verified.
+- **A loopback with HDLC keepalives is the best instrument this project has for
+  a synchronous serial link, and it costs one jumper wire.** STUN generates no
+  traffic, so `encapsulation hdlc` with a keepalive is borrowed to make the
+  router talk to itself: `line protocol is up (looped)` with clean counters
+  proves the router, the clock, the cable and the hood in a single command, with
+  the radio disconnected. It replaces the meter-and-continuity checkpoint, and
+  it is what the old step 3 was reaching for — that step called for a loopback
+  plug where the Quantar should be while also claiming the Quantar's keepalives
+  returned over the IP route, two different rigs in one instruction.
+- **`up/up` under STUN means nothing**, because STUN runs no keepalives: the
+  interface read up through an entire afternoon of a completely dead link. Under
+  HDLC it only comes up if frames actually return. Recorded next to the test
+  that depends on it.
+- **The wireline LED is a phase 2 instrument, not a phase 1 one.** It goes
+  steady on keepalives *received*, so against a record-only capture script it
+  can never go steady however good the wiring is. It was named as a phase 1
+  checkpoint and that was wrong.
+- **`debug stun packet` printing nothing is evidence the router is idle by
+  design**, not a broken debug — with `debug serial interface` logging in the
+  same session. Likewise `show stun` reading `closed`: Cisco's own guide shows a
+  `closed` circuit alongside 5,729 received packets, so the word carries no
+  information and the counters carry all of it.
+- **The published RJ-45 to DB-25 adapter pinout** is now in the document rather
+  than referenced, with the note that it grounds on DB-25 pin 1 where RS-232
+  references signals to pin 7 — worth a continuity check on any hand-built hood.
+- **The OEM and W9CR DIP settings are for different boards**, which the document
+  said and a summary of it did not. Quoting "1 and 4" at a Motorola wireline
+  board on 2026-09-26 changed nothing and was reverted. Also recorded: **S102
+  exists and no public source documents it**; the Motorola manuals
+  68P81088E90-E and 6881095E05-D are where switch-level answers live.
+
 ### Added
 
 - **`scripts/stun-capture.py`, the instrument for ADR-0060 phase 1.** It accepts

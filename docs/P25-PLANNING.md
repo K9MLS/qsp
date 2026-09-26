@@ -308,7 +308,7 @@ QSP
 |---|---|---|
 | Quantar with wireline card | CLN695X or newer | **held** |
 | GTR 8000 | Same V.24 pinout as a Quantar; CSS-configured, features licensed | **held** |
-| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first. **Still the open question on 2026-09-26**: the router sees nothing arriving, which is what a missing or unconfigured card looks like | **needed** |
+| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first. **Confirmed missing 2026-09-26** and confirmed to be the whole remaining fault: it is a level converter from the TTL present on the wireline board, and without it the RJ-45 is TTL against the Cisco's RS-232 | **needed — the only thing still needed** |
 | RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below. **Built, and the jumper proven electrically** on 2026-09-26 by `DTR=up` — see bring-up step 2 | **held** |
 | Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering. **In `Serial0/3/0` and confirmed DCE RS-232 on 2026-09-26** — the card reads the cable's own identification and `show controllers` prints it, which settles the DTE question without unscrewing anything | **held** |
 | Router | **Settled: the operator's CISCO2921/K9**, 15.4(3)M3 universalk9, STUN verified at the console 2026-09-13 after self-activating the `datak9` right-to-use licence. Sixty days from that date | **held** |
@@ -337,8 +337,41 @@ daughtercard switches:
 - **W9CR board:** DIP 1 and 4 on. Cisco provides clock on TX and RX, sends CTS
   while the Quantar sends RTS, and needs CD active. Verified 2024-06-26.
 
+**These two lines are for different boards and the distinction is load-bearing.**
+On 2026-09-26 the "1 and 4" figure was quoted at a station carrying a Motorola
+wireline board, where the published setting is switch 1 of S101 on and the rest
+off. Setting 4 on changed nothing and was reverted. Read the board first, then
+the line.
+
+**S102 exists and no source describes it.** The wireline board carries a second
+four-way bank beside S101. Neither the published builds, the W9CR wiki nor
+Repeater-Builder mention it; all three point at the Motorola manuals
+(**68P81088E90-E**, **6881095E05-D**) for switch-level documentation, which is
+where to look rather than guessing.
+
 **And a port gotcha:** the published adapter table refers to the *top* V.24
 port, but it is the *bottom* port with a real TTN4010 daughter board.
+
+### The adapter pinout, from the published table
+
+RJ-45 at the daughtercard, DB-25 male at the Cisco DCE cable:
+
+| RJ-45 | Signal | DB-25 |
+|---|---|---|
+| 1 | RCLK, receive clock | 17 |
+| 2 | CD, carrier detect | 8 |
+| 3 | TCLK, transmit clock | 15 |
+| 4 | GND | 1 |
+| 5 | RxD | 3 |
+| 6 | TxD | 2 |
+| 7 | CTS | 5 |
+| 8 | RTS | 4 |
+
+Plus the pin 6 to pin 20 jumper inside the hood, above. **Note the table grounds
+on DB-25 pin 1**, which is protective ground, where RS-232 references signals to
+pin 7; many Cisco cables tie the two, and if a hand-built hood does not, nothing
+crossing the RJ-45 has a return path. Worth a continuity check between 1 and 7
+on any adapter built from this table.
 
 ### Codeplug, from the ASTRO tab
 
@@ -556,10 +589,56 @@ operator's own, so it was kept rather than wiped.
    nothing plugged into the RJ-45 end at all. It was written as "continuity, and
    the jumper actually present" until 2026-09-26; the electrical test is
    strictly better and the caveat is the half that matters.
-3. **Is the Quantar sending anything?** `RTS` is the only line in that list the
-   Quantar itself drives, but it is not conclusive: the link comes up on the
-   jumper alone, and a Quantar may hold RTS low while idle. The counters settle
-   it, because HDLC frames on RXD are counted whether RTS is up or not.
+3. **Prove the whole physical path with a loopback, before blaming the radio.**
+   This is the single best instrument this project has for a synchronous serial
+   link and it needs no test equipment at all — one jumper wire.
+
+   STUN generates no traffic of its own, so borrow an encapsulation that does.
+   Jumper **RJ-45 pin 5 to pin 6** (RxD to TxD) on a spare plug and put it where
+   the daughtercard's cable goes, so the hood and the Cisco cable stay in the
+   path. The DCE generates both clocks itself, so the data loop alone is enough.
+
+   ```
+   conf t
+   interface Serial0/3/0
+    encapsulation hdlc
+    keepalive 5
+   end
+   clear counters Serial0/3/0
+   ```
+
+   Twenty seconds later, `show interfaces Serial0/3/0 | include line
+   protocol|packets input|input errors|abort`. **`line protocol is up (looped)`
+   with packets in and zero errors** proves the router's serial path, the clock
+   rate, the cable, the hood and its wiring, end to end, with the radio out of
+   the picture. Zero means the fault is in the hood or the cable — move the loop
+   to **DB-25 pin 2 to pin 3** to take the hood out and diff the two.
+
+   On 2026-09-26 this returned 552 bytes in 8 frames with zero CRC, frame and
+   abort errors, which is what cleared the entire router side in one command.
+
+   Restore afterwards — changing encapsulation drops the STUN lines from the
+   interface:
+
+   ```
+   conf t
+   interface Serial0/3/0
+    no keepalive
+    encapsulation stun
+    stun group 1
+    stun route all tcp <far end>
+   end
+   ```
+
+   **`up/up` under STUN means nothing.** STUN runs no keepalives, so the
+   interface reads up with a dead far end, an unplugged cable or no radio at all.
+   It read `up/up` through an entire afternoon of a completely silent link. Under
+   HDLC with a keepalive the line protocol only comes up if frames genuinely
+   return, which is the whole reason this test works.
+4. **Is the Quantar sending anything?** `RTS` is the only signal the Quantar
+   itself drives, but it is not conclusive: the link comes up on the DTR jumper
+   alone, and a Quantar may hold RTS low while idle. The counters settle it,
+   because HDLC frames on RXD are counted whether RTS is up or not.
    `clear counters Serial0/3/0`, wait fifteen seconds, then read
    `show interfaces Serial0/3/0 | include packets input|input errors|abort`.
    **Three outcomes, and they mean different things:**
@@ -573,20 +652,36 @@ operator's own, so it was kept rather than wiped.
      wire and the framing or clock is wrong. The most informative of the three,
      and it points at the clocking direction or a DIP switch rather than the
      codeplug.
-4. Point the tunnel at a QSP host and capture: `stun route all tcp <test
-   server>`, `scripts/stun-capture.py` on the far end, `tcpdump` alongside it.
+5. Point the tunnel at a QSP host and capture: `stun route all tcp <far end>`,
+   `scripts/stun-capture.py` there, `tcpdump` alongside it.
    **Checkpoint:** bytes on disk.
 
-Steps 1–3 are all instrument, no QSP code. Step 4 is ADR-0060 phase 1.
+Steps 1–4 are all instrument, no QSP code. Step 5 is ADR-0060 phase 1.
 
-**Step 3 used to describe a loopback rig and did not hold together.** It called
+**`debug stun packet` printing nothing is evidence, not a broken debug.** With
+`debug serial interface` logging the port coming up in the same session, STUN
+logging nothing at all means it has no frame to forward and is idle by design.
+Likewise `show stun` reading `closed` with `0 rx_pkts, 0 tx_pkts`: Cisco's own
+troubleshooting guide shows a `closed` circuit alongside 5,729 received packets,
+so **the word `closed` carries no information and the counters carry all of it.**
+
+**The old step 3 described a loopback rig that did not hold together.** It called
 for looping TXD to RXD at the far end while also claiming "every keepalive the
 Quantar sends returns over the IP route", and named the wireline LED as its
 checkpoint — but a loopback plug where the Quantar should be means the Quantar
 is disconnected and sending nothing, and the LED is on the Quantar. The two
-halves described different rigs. What replaces it needs no loopback plug and
-tests more: the counters distinguish a silent radio from a mis-framed one, which
-the LED cannot.
+halves described different rigs. The instinct was right and the mechanism was
+missing: a loopback **does** settle this, but only with an encapsulation that
+generates its own traffic.
+
+**And the wireline LED is a phase 2 instrument, not a phase 1 one.** The
+published build says it "flashes when the link is not up and will go steady on
+when keep alives are being **received**." Received — so against
+`scripts/stun-capture.py`, which deliberately answers nothing, that LED cannot
+go steady however perfect the wiring is. A flashing LED during a phase 1 capture
+is the expected state and says nothing at all about whether the link works. It
+becomes an instrument only once QSP answers, which is exactly what ADR-0060
+phase 2 is.
 
 ### The router half is finished: 2026-09-26
 
@@ -602,17 +697,48 @@ what put `clock rate 125000` in this document for five days:
 | The hood and the pin 6-to-20 jumper work | `DTR=up` with the port no longer shut |
 | **Nothing is arriving from the Quantar** | zero packets **and zero errors** after `clear counters` |
 
-The last row is the whole state of the project on this path. Zero input with
-zero errors is a silent wire, not a mis-framed one — something on the wire with
-the wrong framing shows CRC errors or aborts — so the fault is on the radio side
-of the DB-25 hood, and `RTS=down` is consistent with that.
+Zero input with zero errors is a silent wire, not a mis-framed one — something
+on the wire with the wrong framing shows CRC errors or aborts.
 
-**What is not yet known**, and none of it can be answered from the router: the
-daughtercard's presence, board and DIP settings, and whether the codeplug has
-`Wireline Interface: V.24 ONLY`, `Digital Idle Link Check: ENABLED`,
-`External Transmit Clock: ENABLED` and `RT/RT Configuration: ENABLED`. The
-wireline card's LED is the cheapest of these — flashing means it is alive and
-the link is down, dark means the card is not being driven at all.
+### And the fault is a missing level converter: 2026-09-26, later
+
+The same afternoon closed it out. Everything else was eliminated with an
+instrument rather than an argument:
+
+| Eliminated | By what |
+|---|---|
+| Router configuration | compared line for line against the published build; identical |
+| Serial path, cable, hood, 9600 clock | the HDLC loopback in step 3: `up (looped)`, 552 bytes, **zero errors** |
+| Codeplug | all five ASTRO settings read back from the station |
+| DIP switches | S101 switch 1 on, rest off — the published setting for a Motorola board |
+
+**`RT/RT Configuration` was found DISABLED and was corrected** during this pass.
+It changed nothing on its own, but it was genuinely wrong and would have bitten
+later. It is the one setting that had never been verified rather than assumed.
+
+**What remains is that the station has no TTN4010 fitted.** The wireline board is
+a `TRN7477D11` — the older 4-wire board of the CLN6955 family — carrying an
+MC68302, two 1995 firmware EPROMs and a Peripheral TDM device, sandwiched with
+the line-interface half that holds the ETAL transformers, the `J500` LINE 1–4
+header, both RJ-45 jacks, S101, S102 and the DS100/DS101 red and green LEDs.
+There is no third board.
+
+W9CR describes the TTN4010 as **"a level converter board from the TTL levels
+present on the wireline"**, and that is its entire job. Without it the RJ-45
+presents **TTL** while the Cisco drives and expects **RS-232**. The two cannot
+talk, and the failure is silent in both directions: no bytes, no framing errors,
+`RTS` never asserted, and a station whose own view is that the link is simply
+down — which is precisely what was measured, all afternoon, from three layers.
+
+**A caution for whoever fits the card.** RS-232 swings to ±12 V and TTL inputs
+expect 0–5 V, and the Cisco was connected to that jack for roughly two hours on
+2026-09-26. The board may well have protection and was still driving its LEDs
+afterwards, but confirm the wireline board behaves before blaming a new TTN4010.
+
+**And note the port gotcha above**: with a real TTN4010 fitted it is the
+**bottom** V.24 port, not the top one the published adapter table names. Both
+jacks were tried on 2026-09-26 and neither produced anything, which is expected
+with no level converter on either.
 
 ## What QSP replaces, and what the existing stack gets wrong
 
@@ -664,9 +790,9 @@ which means QSP learns it the way it learned IPSC: from captures taken here.
    survives every route, including the one that replaces all of this.
 5. **Build the capture rig**: router, serial card, cable, the DTR jumper in the
    DB-25 hood, tunnel pointed at a QSP host. No bridge host, no DVSwitch.
-   **The router half is done as of 2026-09-26** and the radio half is not: see
-   "The router half is finished" above for what each instrument proved and what
-   is still unknown.
+   **Everything except the TTN4010 was proven on 2026-09-26** — router, cable,
+   hood, 9600 clock and codeplug, each with its own instrument. The level
+   converter is the only outstanding item; see the two 2026-09-26 sections above.
 6. **Phase 1 and 2** — capture the keepalive, then answer it. The wireline
    card's LED going steady is the milestone.
 7. **Phase 3 and 4** — voice, then relay.
