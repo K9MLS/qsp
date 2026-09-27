@@ -121,8 +121,16 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **The Quantar link, ADR-0060. Waiting on one part: the TTN4010.**
-   On 2026-09-26 everything else was proven, each with its own instrument:
+3. **The Quantar link, ADR-0060. Waiting on a replacement card from KD9EJA.**
+   **The station's V.24 interface has never been alive: its AUX LED has never
+   lit**, which is the board's own report and was identified on 2026-09-27. A
+   card is on the way; which one was not known when this was written, and what
+   to re-check depends on it — see `docs/P25-PLANNING.md`. An earlier reading
+   that the TTN4010 was simply *not fitted* was wrong: both front-panel RJ-45
+   jacks belong to that card, so its presence was never in doubt.
+
+   **Check the AUX LED before anything else** on this path. Everything else was
+   proven, each with its own instrument:
 
    | Proven | How |
    |---|---|
@@ -138,10 +146,21 @@ learned to run it as a service.
    the RJ-45 is TTL against the Cisco's RS-232. `RT/RT Configuration` was also
    found disabled and corrected on the way.
 
-   When the card arrives: fit it to the **bottom** V.24 port, re-run the
-   bring-up steps in `docs/P25-PLANNING.md`, and the capture rig is already
-   written — `scripts/stun-capture.py`, which records and deliberately does not
-   answer. **The Quantar link's code waits for captured bytes**, per ADR-0060.
+   Also found on 2026-09-27: **`Station is Currently ACCESS DISABLED`**, printed
+   at the foot of every RSS Alignment screen and unnoticed through six rounds of
+   counter tests at the router. The Service screens — Status Report, Status
+   Panel, Version — are where a silent station explains itself, and they are now
+   the first place to look rather than the last.
+
+   **The router is parked and correct**: `clock rate 9600`, `stun group 1` and
+   `stun route all tcp 192.168.1.247`, with `shutdown` saved to startup so a
+   reload parks it safely. One `no shutdown` from live.
+
+   When the card arrives: the **bottom** V.24 port, the AUX LED, then the
+   bring-up steps in `docs/P25-PLANNING.md`. The capture rig is already written
+   and tested — `scripts/stun-capture.py`, which records and deliberately does
+   not answer. **The Quantar link's code waits for captured bytes**, per
+   ADR-0060.
 4. **Talkgroup routing and contention in `internal/p25link`**: voice reads the
    talkgroup and relays to every registered gateway regardless. Waiting on a
    second gateway to demonstrate it. P25-NETWORK.md §2 and §6.
@@ -176,7 +195,8 @@ learned to run it as a service.
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
 - **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
-- **One Quantar part: the V.24 daughtercard (TTN4010).** The `CAB-SS-232FC` is
+- **One Quantar part: a replacement V.24 card, inbound from KD9EJA.** The
+  station's AUX LED has never lit. The `CAB-SS-232FC` is
   in hand and proven — `show controllers` reads the cable's own identification
   as DCE RS-232, and the HDLC loopback carried frames through it with zero
   errors. The router needs nothing more: its HWIC-2A/S carries STUN, configured

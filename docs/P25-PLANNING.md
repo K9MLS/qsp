@@ -308,7 +308,7 @@ QSP
 |---|---|---|
 | Quantar with wireline card | CLN695X or newer | **held** |
 | GTR 8000 | Same V.24 pinout as a Quantar; CSS-configured, features licensed | **held** |
-| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route** — buy this first. **Confirmed missing 2026-09-26** and confirmed to be the whole remaining fault: it is a level converter from the TTL present on the wireline board, and without it the RJ-45 is TTL against the Cisco's RS-232 | **needed — the only thing still needed** |
+| V.24 daughtercard | Motorola TTN4010, the W9CR level shifter sold by W3AXL, or an aftermarket board from AE4ML on the DVSwitch group. **The only item that survives every route.** The station's V.24 interface has never been alive — its **AUX LED has never lit**, identified 2026-09-27 — and a replacement card is on the way from KD9EJA; which card it is was not yet known when this was written | **inbound — the only thing still needed** |
 | RJ-45 to DB-25 male adapter | Norcomp RJADK25P7080831 hood hardware, plus loose pins (Norcomp 100 170-101-170L001) for the jumper below. **Built, and the jumper proven electrically** on 2026-09-26 by `DTR=up` — see bring-up step 2 | **held** |
 | Cisco serial cable | CAB-232FC for a WIC-1T, CAB-SS-232FC for WIC-2T/HWIC. Male DB-60 to **female** DB-25, with "Cisco" and "DCE" moulded in. **Not** the DTE cable with the male DB-25. A group thread discusses using CAB-SS-232MT instead; unresolved from the title alone, so check what is actually in hand before ordering. **In `Serial0/3/0` and confirmed DCE RS-232 on 2026-09-26** — the card reads the cable's own identification and `show controllers` prints it, which settles the DTE question without unscrewing anything | **held** |
 | Router | **Settled: the operator's CISCO2921/K9**, 15.4(3)M3 universalk9, STUN verified at the console 2026-09-13 after self-activating the `datak9` right-to-use licence. Sixty days from that date | **held** |
@@ -716,19 +716,38 @@ instrument rather than an argument:
 It changed nothing on its own, but it was genuinely wrong and would have bitten
 later. It is the one setting that had never been verified rather than assumed.
 
-**What remains is that the station has no TTN4010 fitted.** The wireline board is
-a `TRN7477D11` — the older 4-wire board of the CLN6955 family — carrying an
+**What remains is a V.24 interface on the station that has never been alive.**
+
+**Corrected 2026-09-27.** This section previously said the station had *no*
+TTN4010 fitted, reasoned from a missing object in a photograph plus W9CR's
+description of the TTN4010 as "a level converter board from the TTL levels
+present on the wireline". Right location, wrong mechanism, and the evidence was
+thin: a thing absent from a picture is weak grounds for a hardware claim. What
+settled it was **the AUX LED, which should be lit and never has been** — the
+board's own report that its V.24 section is not running. A replacement card is
+on the way. Keep the reasoning visible rather than quietly editing the
+conclusion: the measurements were sound throughout and the interpretation of
+them was not.
+
+**Check the AUX LED first, before anything else.** It is the cheapest
+observation available on this whole path and it is the one that would have saved
+two days. On 2026-09-26 and 27 the router side was proven three separate ways
+while the radio's own indicator sat dark the entire time and nobody looked.
+
+For the record, the assembly examined on 2026-09-26: the wireline board is a
+`TRN7477D11` — the older 4-wire board of the CLN6955 family — carrying an
 MC68302, two 1995 firmware EPROMs and a Peripheral TDM device, sandwiched with
 the line-interface half that holds the ETAL transformers, the `J500` LINE 1–4
-header, both RJ-45 jacks, S101, S102 and the DS100/DS101 red and green LEDs.
-There is no third board.
+header, both RJ-45 jacks, S101, S102 and the DS100/DS101 red and green LEDs. Per
+the published daughtercard documentation, **both front-panel RJ-45 jacks belong
+to the TTN4010 and the bottom one is the V.24 port** — so two jacks implies the
+card is present, which is what made the "not fitted" reading wrong.
 
-W9CR describes the TTN4010 as **"a level converter board from the TTL levels
-present on the wireline"**, and that is its entire job. Without it the RJ-45
-presents **TTL** while the Cisco drives and expects **RS-232**. The two cannot
-talk, and the failure is silent in both directions: no bytes, no framing errors,
-`RTS` never asserted, and a station whose own view is that the link is simply
-down — which is precisely what was measured, all afternoon, from three layers.
+**When the replacement arrives, what to re-check depends on which card it is.**
+A daughtercard alone: the bottom V.24 jack, S101 at switch 1 on and the rest
+off, and the AUX LED. A whole wireline board: all of that plus the codeplug's
+`Options → Wireline` hardware declaration, both switch banks, and the analog
+line levels on the Alignment screen.
 
 **A caution for whoever fits the card.** RS-232 swings to ±12 V and TTL inputs
 expect 0–5 V, and the Cisco was connected to that jack for roughly two hours on
@@ -737,8 +756,35 @@ afterwards, but confirm the wireline board behaves before blaming a new TTN4010.
 
 **And note the port gotcha above**: with a real TTN4010 fitted it is the
 **bottom** V.24 port, not the top one the published adapter table names. Both
-jacks were tried on 2026-09-26 and neither produced anything, which is expected
-with no level converter on either.
+jacks were tried on 2026-09-26 with the original adapter and the bottom jack
+again on 2026-09-27 with a replacement adapter, and neither produced anything —
+expected from an interface that was never running.
+
+### Ask the station before measuring it: the Service screens
+
+**`Station Note: Station is Currently ACCESS DISABLED`** was found on
+2026-09-27, printed at the foot of every RSS Alignment screen. An
+access-disabled Quantar is out of service. Six rounds of counter tests were run
+at the router before anyone opened a screen where the station says what it
+thinks of itself.
+
+The RSS tree under **Service** holds `Version Screen`, `Alignment Screen`,
+`Metering Screen`, `Status Report Screen`, `Test And Measurement Screen` and
+`Status Panel Screen`. **Open these first** when the radio appears silent:
+
+- The **station note and status** at the foot of the Alignment screens — access
+  state and keyed state, in the station's own words.
+- **Status Report** and **Status Panel** for alarms and link state.
+- **Version Screen** for the firmware in those 1995 EPROMs, since V.24 support
+  is firmware-dependent.
+- On the Alignment screen, note whether **`TDATA Calibration` and `RX Wireline
+  (line 4)`** are greyed out. TDATA is the ASTRO digital path; on 2026-09-27
+  both were grey while the analog TX/RX wireline tabs were live, and whether
+  that is a consequence of access being disabled is not yet known.
+
+This is §8a's rule in its original form: when several changes in a row produce
+nothing visible, that is evidence about the feedback path, not a reason for a
+cleverer fix — make the system report its own state.
 
 ## What QSP replaces, and what the existing stack gets wrong
 
@@ -790,9 +836,11 @@ which means QSP learns it the way it learned IPSC: from captures taken here.
    survives every route, including the one that replaces all of this.
 5. **Build the capture rig**: router, serial card, cable, the DTR jumper in the
    DB-25 hood, tunnel pointed at a QSP host. No bridge host, no DVSwitch.
-   **Everything except the TTN4010 was proven on 2026-09-26** — router, cable,
-   hood, 9600 clock and codeplug, each with its own instrument. The level
-   converter is the only outstanding item; see the two 2026-09-26 sections above.
+   **Everything on the router side was proven across 2026-09-26 and 27** —
+   configuration, cable, two separate adapters, 9600 clock and the codeplug,
+   each with its own instrument, and the router is saved in that state with the
+   port shut. What is outstanding is the station's V.24 interface, whose AUX LED
+   has never lit; a replacement card is inbound.
 6. **Phase 1 and 2** — capture the keepalive, then answer it. The wireline
    card's LED going steady is the milestone.
 7. **Phase 3 and 4** — voice, then relay.

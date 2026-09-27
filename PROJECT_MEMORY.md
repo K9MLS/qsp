@@ -746,6 +746,22 @@ Every one of these was learned by getting it wrong on a live network this week.
   up only as `Permission denied, please try again`. It cost a `scp` retry this
   week and was the leading theory for half an hour of a deploy that had actually
   worked. `sudo -v` on its own line first, then paste.
+- **Never background a `sudo` command — it does not eat a line, it silently
+  never runs.** `sudo tcpdump ... &` was pasted on 2026-09-26 and the shell
+  reported a job number, so it looked started. A background job that tries to
+  read standard input gets `SIGTTIN` and is suspended, so it sat frozen at the
+  password prompt for two hours. `pgrep tcpdump` found nothing and the capture
+  directory stayed empty, which read as "the capture caught nothing" rather than
+  "the capture never existed" — and `jobs` showing `Stopped` was the only
+  evidence, three hours later. Authenticate in the foreground first, or give the
+  privileged command its own terminal.
+- **A quoted configuration excerpt is not a command block, and must say so.**
+  On 2026-09-27 a router configuration was quoted back to the operator as
+  evidence, in a fenced block identical in shape to the blocks this project asks
+  them to paste. They pasted it. Five lines were rejected as invalid input and
+  nothing was harmed, but only because the router was not in configuration mode.
+  The machine-label rule exists so a block's destination is never in doubt;
+  material to *read* needs marking just as clearly as material to *run*.
 - **A command in the wrong terminal can succeed and mean nothing.** A
   `systemctl restart qsp` meant for the server ran on Fedora, where there is no
   such unit, and `MainPID` came back `0` — so the next command read

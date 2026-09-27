@@ -6,6 +6,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The station's V.24 interface has never been alive, and the AUX LED said so
+  all along.** Identified 2026-09-27 by KD9EJA off one indicator, after two days
+  of measuring silence from the far end. A replacement card is inbound.
+  **This corrects the previous entry**, which said the TTN4010 was *not fitted* —
+  reasoned from a missing object in a photograph, when both front-panel RJ-45
+  jacks belong to that card and its presence was never in doubt. Right location,
+  wrong mechanism, and the reasoning is left visible in
+  `docs/P25-PLANNING.md` rather than quietly replaced: the measurements were
+  sound throughout and the interpretation of them was not. The AUX LED is now
+  the first check on this path.
+- **`Station is Currently ACCESS DISABLED`** was printed at the foot of every RSS
+  Alignment screen through six rounds of counter tests at the router. An
+  access-disabled Quantar is out of service. The RSS **Service** screens — Status
+  Report, Status Panel, Version — are now documented as the first place to look
+  when the radio appears silent, which is §8a's rule in its original form: when
+  several changes in a row produce nothing visible, that is evidence about the
+  feedback path, not a reason for a cleverer fix.
+- **Two working conventions in §7, both learned by getting them wrong.**
+  A backgrounded `sudo` command does not eat a line — it silently never runs:
+  `sudo tcpdump ... &` reported a job number, then sat suspended on `SIGTTIN` at
+  the password prompt for two hours, so an empty capture directory read as "the
+  capture caught nothing" rather than "the capture never existed". And a quoted
+  configuration excerpt is not a command block: one was handed over as evidence
+  in a fenced block shaped exactly like a paste block, and was pasted. Nothing
+  was harmed only because the router was not in configuration mode.
 - **The Quantar link needs one part, and everything else is proven.** A full
   bring-up on 2026-09-26 eliminated the router configuration (line-for-line
   against the published build), the serial path, cable, hood and 9600 clock (an
