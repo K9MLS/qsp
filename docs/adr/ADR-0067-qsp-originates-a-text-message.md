@@ -288,3 +288,21 @@ preambles counting down, a five-block header, a clean end. The fault, if it
 is QSP's, is in something a radio checks and a hotspot does not. The control
 that would say — a real radio's group text, captured, received by the same
 radio — has not been run yet.
+
+## Displayed, and the reason it did not on a hotspot, 2026-09-28
+
+**A composed text displayed on a radio** on the Motorola repeater, through
+production, the linked test server and IPSC. Phase 2's instrument is met on
+that path, and the encoder is proven by a radio rather than by a capture.
+
+**On the hotspot nothing displayed, from any source, and the reason was
+QSP's.** MMDVMHost expects one preamble from the network and makes fifteen of
+its own from each it receives (`NO_PREAMBLE_CSBK`). QSP sent sixteen — the
+count a hotspot sends *outbound*, which the composer was built to match — so
+240 went on the air. From 0443 a hotspot receives one per text, the last,
+immediately before the header, whatever the text's origin.
+
+The lesson is §8a's: the frames were checked against a capture and against
+MMDVMHost's own log, and both agreed, because both describe what arrives.
+What happens to a frame after it arrives was in MMDVMHost's source, and
+reading it settled in minutes what a morning of radio tests had not.

@@ -96,10 +96,12 @@ func TestAComposedTextReachesThePeer(t *testing.T) {
 		t.Fatalf("SendText: %v", err)
 	}
 
-	want, err := tms.Frames(aText, hbp.Timeslot2, 11, func() hbp.StreamID { return 1 })
+	all, err := tms.Frames(aText, hbp.Timeslot2, 11, func() hbp.StreamID { return 1 })
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	// A hotspot is sent the last preamble only; see preamble.go.
+	want := all[tms.Preambles-1:]
 	for i := range want {
 		d, ok := c.recv().(hbp.Data)
 		if !ok {
@@ -108,9 +110,9 @@ func TestAComposedTextReachesThePeer(t *testing.T) {
 		if d.RepeaterID != testID {
 			t.Errorf("frame %d names repeater %d, want the peer's own %d", i, d.RepeaterID, testID)
 		}
-		if d.Sequence != uint8(i) || d.DataType != want[i].DataType || d.Payload != want[i].Payload {
+		if d.Sequence != want[i].Sequence || d.DataType != want[i].DataType || d.Payload != want[i].Payload {
 			t.Errorf("frame %d: seq %d type %#x, want seq %d type %#x, bursts equal %v",
-				i, d.Sequence, d.DataType, i, want[i].DataType, d.Payload == want[i].Payload)
+				i, d.Sequence, d.DataType, want[i].Sequence, want[i].DataType, d.Payload == want[i].Payload)
 		}
 		if cc, _, _ := dmrfec.SlotTypeOf(d.Payload[:]); cc != 11 {
 			t.Errorf("frame %d carries colour code %d, and the peer announced 11", i, cc)
@@ -271,10 +273,12 @@ func TestATextToTheTalkgroupReachesEveryHotspotOnIt(t *testing.T) {
 		t.Errorf("a second network text while the first is going out: %v, want %v", err, peers.ErrTextBusy)
 	}
 
-	want, err := tms.Frames(aText, hbp.Timeslot2, 1, func() hbp.StreamID { return 1 })
+	all, err := tms.Frames(aText, hbp.Timeslot2, 1, func() hbp.StreamID { return 1 })
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
+	// One preamble per text to a hotspot; see preamble.go.
+	want := all[tms.Preambles-1:]
 	for _, tc := range []struct {
 		c  *client
 		id hbp.RepeaterID

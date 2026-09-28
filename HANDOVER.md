@@ -40,18 +40,22 @@ was wrong** (0439), so every data header and Rate 1/2 block QSP has ever relayed
 to a hotspot carried two wrong slot-type bits; MMDVMHost corrected them, which is
 why nobody saw it.
 
-**The first test on air, 2026-09-28, sent to one hotspot, showed nothing on
-the radio's screen.** The radio's LEDs showed it received something, and Pi-Star's
-MMDVMHost log decoded every composed frame exactly as meant: sixteen
-preambles counting 21 down to 6, a header announcing five blocks, a clean
-end. So QSP to hotspot is proven and the loss is between the hotspot's RF
-and the display — the radio's text settings, or something in the message a
-radio checks that a hotspot does not. **The control test was not run**: a
-group text from a second radio to TG2, captured with `tcpdump` on the QSP
-server, would say which. Run it if a network-wide send also shows nothing.
+**Texts on the air, 2026-09-28.** A composed text to TG2 **displayed on a
+radio on the Motorola repeater**, across production and the linked test server
+— the first text QSP ever wrote to reach a screen. **Nothing displayed on the
+R7 through the Pi-Star**, from any source, and the cause was QSP's (0443):
+MMDVMHost turns each network preamble into fifteen on the air, and QSP was
+sending sixteen, so the hotspot transmitted about fourteen seconds of
+preambles and the radio gave up. Hotspots now get one preamble per text.
+**Test it first**: a console text to TG2, hotspot field empty, watched on the
+R7. Note that **the operator's R7 and the radio on the repeater both transmit
+as 3132910**, so a text between those two can never display on either —
+a radio discards a text from its own ID. A second radio with its own ID is
+being programmed for that test.
 
-**What to deploy, and why.** Production ran 0.1.283 from 2026-09-28, which
-carries the Golay fix. **0.1.284 is the network-wide send.** Everything else since
+**What to deploy, and why.** Production runs 0.1.284 from 2026-09-28: the
+Golay fix and the network-wide send. **0.1.285 is the preamble fix, and every
+hotspot radio needs it** — relayed texts included, not only composed ones. Everything else since
 0.1.269 is documents, and code nothing calls unless an administrator presses
 Send. Deploy when it suits, by the usual path below; nothing here restarts
 anything on its own.
@@ -126,9 +130,9 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.284 | `cat VERSION` |
+| **Fedora working tree** | 0.1.285 | `cat VERSION` |
 | **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.283** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.284** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 
 **The compose files pin the working tree's version, enforced by

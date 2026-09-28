@@ -42,6 +42,10 @@ type playback struct {
 	mu    sync.Mutex
 	addrs map[hbp.RepeaterID]netip.AddrPort
 	conn  playbackWriter
+	// gate is the listener's preamble gate, so a replayed or composed text
+	// reaches a hotspot with one preamble like any other. Nil passes every
+	// frame, which is what a test constructing a playback alone wants.
+	gate *preambleGate
 }
 
 func newPlayback(log *slog.Logger, conn playbackWriter) *playback {
@@ -75,8 +79,12 @@ func (p *playback) Deliver(peer hbp.RepeaterID, frame hbp.Data) error {
 		// would be a poor trade for an impossible case.
 		return errNoSocket
 	}
-	_, err := conn.WriteToUDPAddrPort(frame.Marshal(), to)
-	return err
+	for _, f := range p.gate.pass(peer, frame, time.Now()) {
+		if _, err := conn.WriteToUDPAddrPort(f.Marshal(), to); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Start replays a recording to one peer at an address.

@@ -4,6 +4,38 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **No text reached a radio on a hotspot, because QSP sent the hotspot
+  sixteen preambles and MMDVMHost made each of them fifteen.** MMDVMHost
+  expects one preamble from the network and builds its own wake-up train from
+  it: every network preamble becomes fifteen on the air, counting down from
+  its blocks-to-follow plus fourteen (`DMRSlot.cpp`, `NO_PREAMBLE_CSBK = 15`).
+  A text arrives at QSP with sixteen — a radio's own, a Motorola repeater's
+  and QSP's composed ones alike — and QSP passed all sixteen on, so the
+  hotspot transmitted 240 preambles, about fourteen seconds of them, with the
+  countdown jumping back up sixteen times. The radio gave up on a message
+  that arrived long after its count. On 2026-09-28 not one text displayed on
+  the operator's R7 through the Pi-Star, while the same composed text
+  displayed through a Motorola repeater, which transmits preambles as it
+  receives them. The September capture that recorded hotspot delivery
+  working shows QSP sending headers and blocks and no preambles at all.
+
+  Hotspots are now sent **one preamble per text: the last, immediately before
+  the header**, whose count is the header and blocks still to come. The gate
+  sits where frames leave for a hotspot, so it covers every origin — another
+  hotspot, a repeater, a link, parrot and the text sender — and keeps a state
+  per hotspot and timeslot. A preamble no header follows within three seconds
+  is dropped, and any other CSBK, voice and everything else pass untouched.
+  The Motorola side keeps all sixteen.
+
+  **This corrects a conclusion reached earlier the same day** — that the loss
+  was in the radio or the hotspot rather than in anything QSP wrote. Every
+  frame QSP sent was well formed, and MMDVMHost logged every one; what was
+  wrong was how many, and it took reading MMDVMHost's source rather than its
+  log to see it.
+
+
 ### Changed
 
 - **A text from the console goes to everybody on the talkgroup.** It was

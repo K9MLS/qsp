@@ -207,6 +207,10 @@ type Listener struct {
 
 	// playback replays parrot recordings. Nil when parrot is off.
 	playback *playback
+	// preambles holds each hotspot's preambles back to one per text. Never
+	// nil. Shared with the playbacks, so a hotspot has one state whichever
+	// path a frame takes. See preamble.go.
+	preambleGate *preambleGate
 	// texts plays composed text messages out to one peer. Never nil. See
 	// text.go.
 	texts *playback
@@ -250,14 +254,17 @@ func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
 		return nil, errors.New("peers: a listen address is required, for example \"0.0.0.0:62031\"")
 	}
 	l := &Listener{cfg: cfg, log: logging.Subsystem(log, "network")}
+	l.preambleGate = newPreambleGate()
 	if cfg.Parrot != nil {
 		// Constructed here rather than when the socket opens, so that the
 		// field is written once before any other goroutine exists. Stats reads
 		// it, and a field assigned during serve would be a race the tests
 		// would only sometimes schedule.
 		l.playback = newPlayback(l.log, nil)
+		l.playback.gate = l.preambleGate
 	}
 	l.texts = newPlaybackAs(l.log, nil, "text sent")
+	l.texts.gate = l.preambleGate
 	l.network = parrot.NewPlayerAs(l.log, networkSink{l: l}, "text sent to the network")
 
 	// **Published once at construction**, so a tracker seeded from the record
@@ -929,25 +936,29 @@ func (l *Listener) noteRoutingDrop(d routing.Drop) bool {
 }
 
 func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
+	now := time.Now()
 	for _, d := range res.Deliveries {
 		peer, ok := l.cfg.Master.Lookup(d.Peer)
 		if !ok {
 			// The peer left between the routing decision and this write.
 			continue
 		}
-		if _, err := l.conn.WriteToUDPAddrPort(d.Frame.Marshal(), peer.Addr); err != nil {
-			l.writeErr.Add(1)
-			l.log.Warn("cannot forward a frame",
-				logging.PeerID(uint32(d.Peer)),
-				slog.String("error", err.Error()),
-			)
-			continue
+		// A hotspot gets one preamble per text, not sixteen. See preamble.go.
+		for _, f := range l.preambleGate.pass(d.Peer, d.Frame, now) {
+			if _, err := l.conn.WriteToUDPAddrPort(f.Marshal(), peer.Addr); err != nil {
+				l.writeErr.Add(1)
+				l.log.Warn("cannot forward a frame",
+					logging.PeerID(uint32(d.Peer)),
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+			l.forwarded.Add(1)
+			l.sent.Add(1)
+			// Per peer as well as per instance. The totals answer "is this
+			// server busy"; only this answers "is this link carrying".
+			l.cfg.Master.CountSent(d.Peer)
 		}
-		l.forwarded.Add(1)
-		l.sent.Add(1)
-		// Per peer as well as per instance. The totals answer "is this server
-		// busy"; only this answers "is this link carrying".
-		l.cfg.Master.CountSent(d.Peer)
 	}
 
 	for _, u := range res.Upstreams {
