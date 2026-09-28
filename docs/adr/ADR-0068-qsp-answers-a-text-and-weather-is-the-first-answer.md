@@ -1,6 +1,6 @@
 # ADR-0068: QSP answers a text, and weather is the first answer
 
-**Status:** Proposed — depends on [ADR-0067](ADR-0067-qsp-originates-a-text-message.md)
+**Status:** Accepted — depends on [ADR-0067](ADR-0067-qsp-originates-a-text-message.md), whose phase 1 is built
 **Date:** 2026-09-27
 **Relates to:** [ADR-0067](ADR-0067-qsp-originates-a-text-message.md),
 [ADR-0020](ADR-0020-access-control.md),

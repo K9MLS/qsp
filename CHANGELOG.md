@@ -4,6 +4,60 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **QSP can compose a text message.** ADR-0067 phase 1: `internal/tms` builds
+  and reads the IPv4/UDP datagram a Motorola text message is, and
+  `internal/dmrfec` gained the Rate 3/4 block segmentation and the confirmed
+  data header to carry it. **Every complete transmission in
+  `testdata/ipsc/ipsc-text-rate34.pcap` reassembles, parses, rebuilds and cuts
+  back into blocks that are identical octet for octet** — control pairs, serial
+  numbers and CRC-9s included. The first of them decodes to "I can't talk right
+  now...", which is how you know the offsets are right.
+- **Measured on the way**: the TMS header is six octets whose first two are the
+  length of the rest, holding for payloads of 68, 26 and 36; octets 2, 3 and 5
+  read `e0 00 .. 04` in all three and octet 4 varies and is carried; the body is
+  UTF-16 **little-endian** prefixed with CRLF; the addresses are Motorola's
+  radio-IP, `0x0c` then the 24-bit radio ID; and both checksums are ordinary, so
+  they are computed rather than carried.
+- **The data header's CRC-16 mask is 0x3333, and ETSI clause B.3.9 says
+  0xCCCC.** One hundred and twenty-eight combinations were searched and exactly
+  one reproduces all three captured headers: CCITT, initial value zero, no
+  reflection, masked 0x3333. Same shape as the CRC-9 note in `rate34.go` — the
+  standard's arrangement matched nothing and the wire settled it. A test exists
+  whose stated way to break it is to trust the standard.
+- **Octet 1 of the data header is a pad count beside a service access point**,
+  derived rather than read: its low nibble equalled blocks×16 − payload − 4 in
+  all three headers, giving 4, 14 and 4. That the payload is an IPv4 datagram
+  and the header independently says SAP 4, IP based packet data, is the kind of
+  agreement this project treats as a measurement.
+
+### Fixed
+
+- **A capture nearly became a fixture that was noise.** The outbound text
+  capture's only multi-block confirmed message has four blocks per its header
+  and one fails its own CRC-9. Because a block's serial number lives under that
+  CRC, the bad burst reads as another serial and replaces a good block — and the
+  transmission then reassembles into a datagram that parses, checksums and all,
+  to the text "Hkgmgd1mg". An earlier analysis that did not check CRC-9 reported
+  it as a real message. The reader now drops any burst failing its own CRC and
+  takes the data header as the authority on how many blocks a transmission has,
+  and a test records that the outbound capture yields no complete message at
+  all. Two mistakes cancelling out, as §8s describes.
+
+### Known unsolved
+
+- **The four-octet packet CRC that ends a confirmed data packet.** Six
+  polynomials against both initial values, both bit reflections, both output
+  masks and both stored byte orders, over eight candidate regions — three
+  thousand and seventy-two combinations, no match on any of the three
+  transmissions. `dmrfec.PacketCRC` returns an error rather than a plausible
+  number, because §7 forbids a stub that claims success and a guessed value
+  there is a message a radio silently refuses. **It carries, so ADR-0067 phase 1
+  is complete and phase 2 is blocked**: the encoder is right about ninety-two
+  octets of ninety-six.
+- The preamble CSBK's CRC-16, on 128 combinations. Not needed for phase 1.
+
 ### Documentation
 
 - **ADR-0067 and ADR-0068: the text messaging service, and the capability it

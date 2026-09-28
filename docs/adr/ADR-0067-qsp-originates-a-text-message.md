@@ -1,6 +1,6 @@
 # ADR-0067: QSP originates a text message, and that is a capability it does not have
 
-**Status:** Proposed — gates ADR-0068 and everything built on it
+**Status:** Accepted — phase 1 built and measured 2026-09-27; gates ADR-0068
 **Date:** 2026-09-27
 **Relates to:** [ADR-0029](ADR-0029-ipsc-from-capture.md),
 [ADR-0045](ADR-0045-ipsc-text-messages.md),
