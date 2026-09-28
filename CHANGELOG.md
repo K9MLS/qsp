@@ -6,6 +6,34 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A Motorola repeater and a hotspot transmitting together could end the
+  process.** `calls.Tracker` was documented as owned by the goroutine that
+  reads the socket, and stopped being so when Motorola repeaters arrived: the
+  IPSC listener records a repeater's transmissions from its own goroutine, and
+  links and the transcoder do the same, while the serve loop records hotspots'
+  and expires calls. Go treats concurrent map writes as fatal, not
+  recoverable. The tracker is now locked, and the listener publishes its call
+  snapshot under a lock of its own so an older one cannot land over a newer.
+  Found by the race detector while 0440's tests were being written; the
+  production journal showed no `concurrent map writes` since 2026-09-16.
+  `TestARepeaterAndAHotspotCanBeRecordedAtOnce` reproduces it over a real
+  socket and fails under `-race` without the lock.
+
+### Added
+
+- **A text sent to the talkgroup appears in Last heard** under its sender's
+  ID, like a Zello call does. It could not be recorded until the tracker was
+  locked.
+
+### Documentation
+
+- **The R7 displayed a composed text through the Pi-Star** with 0.1.285 on
+  production, 2026-09-28: one preamble, a header and six blocks in MMDVMHost's
+  log. The handover records it, and that production is on 0.1.285.
+
+
+### Fixed
+
 - **No text reached a radio on a hotspot, because QSP sent the hotspot
   sixteen preambles and MMDVMHost made each of them fifteen.** MMDVMHost
   expects one preamble from the network and builds its own wake-up train from

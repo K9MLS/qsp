@@ -234,6 +234,8 @@ type Listener struct {
 	// callSnapshot holds the most recent active and recent call lists, for the
 	// same reason as snapshot below.
 	callSnapshot atomic.Pointer[CallSnapshot]
+	// callSnapMu orders publications of callSnapshot. See refreshCalls.
+	callSnapMu sync.Mutex
 
 	// snapshot holds the most recent peer list for readers on other
 	// goroutines.
@@ -1450,7 +1452,13 @@ func (l *Listener) refreshCalls() {
 	if l.cfg.Calls == nil {
 		return
 	}
-	snap := CallSnapshot{Active: l.cfg.Calls.Active(), Recent: l.cfg.Calls.History()}
+	// Taken and published under one lock: calls are observed from several
+	// goroutines, and without it an older snapshot could be stored over a
+	// newer one and Last heard would step backwards until the next frame.
+	l.callSnapMu.Lock()
+	defer l.callSnapMu.Unlock()
+	active, recent := l.cfg.Calls.Snapshot()
+	snap := CallSnapshot{Active: active, Recent: recent}
 	l.callSnapshot.Store(&snap)
 }
 

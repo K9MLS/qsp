@@ -12,6 +12,7 @@ import (
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/tms"
 )
 
@@ -203,12 +204,6 @@ func TestASendIsRefusedWhereItCouldNotArrive(t *testing.T) {
 
 // activeCall makes a voice call exist on a timeslot: the registered peer
 // keys up, over the socket, so the serve loop records it.
-//
-// **Not through ObserveFromIPSC.** That writes the call tracker from the
-// caller's goroutine while the serve loop writes it from its own, which is a
-// data race the race detector finds within seconds; see the handover. A test
-// that called it here would fail check.sh's race stage for a reason that has
-// nothing to do with sending a text.
 func activeCall(t *testing.T, l *peers.Listener, c *client, slot hbp.Timeslot) {
 	t.Helper()
 	c.send(hbp.Data{
@@ -332,4 +327,93 @@ func TestATextToTheTalkgroupIsOfferedToTheMotorolaSide(t *testing.T) {
 			t.Errorf("frame %d offered from origin %d, want 0", i, o)
 		}
 	}
+}
+
+// TestATextToTheTalkgroupIsInLastHeard: it is a transmission like any other,
+// so the console's record shows it under its sender's ID. It could not be
+// recorded until the call tracker was locked.
+//
+// To see it fail: remove the observe call from networkSink.Deliver.
+func TestATextToTheTalkgroupIsInLastHeard(t *testing.T) {
+	master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+		Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+	})
+	if err != nil {
+		t.Fatalf("NewMaster: %v", err)
+	}
+	table, err := routing.NewTable(nil)
+	if err != nil {
+		t.Fatalf("NewTable: %v", err)
+	}
+	core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: readyFromMaster{m: master}})
+	if err != nil {
+		t.Fatalf("NewCore: %v", err)
+	}
+	l, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+		ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+		Calls: calls.NewTracker(calls.Options{}),
+	})
+	if err != nil {
+		t.Fatalf("NewListener: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if err := l.Start(ctx); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+
+	if err := l.SendText(hbp.Timeslot2, aText, 0); err != nil {
+		t.Fatalf("SendText: %v", err)
+	}
+	waitFor(t, "the text to be recorded", func() bool {
+		s := l.Calls()
+		for _, c := range append(s.Active, s.Recent...) {
+			if c.Source == aText.From && c.Target == aText.To {
+				return true
+			}
+		}
+		return false
+	})
+}
+
+// TestARepeaterAndAHotspotCanBeRecordedAtOnce reproduces the race found on
+// 2026-09-28: the IPSC listener records a repeater's transmission from its own
+// goroutine while the serve loop records a hotspot's — one transmission each,
+// three hundred frames, every one a write to the tracker. Run under -race, which
+// check.sh does. Before calls.Tracker was locked this failed within seconds,
+// and in production the same collision was a fatal concurrent map write.
+//
+// To see it fail: delete the t.mu.Lock() at the top of calls.Tracker.Update
+// and run with -race.
+func TestARepeaterAndAHotspotCanBeRecordedAtOnce(t *testing.T) {
+	l, c := startTextListener(t)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 300 {
+			l.ObserveFromIPSC(motorola, hbp.Data{
+				RepeaterID: motorola, SourceID: 3155373, TargetID: 2,
+				Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
+				FrameType: hbp.FrameTypeVoice, StreamID: 0xC0000001, Sequence: uint8(i),
+			})
+		}
+	}()
+	for i := range 300 {
+		c.send(hbp.Data{
+			RepeaterID: testID, SourceID: 3132910, TargetID: 2,
+			Timeslot: hbp.Timeslot2, CallType: hbp.CallGroup,
+			FrameType: hbp.FrameTypeVoice, StreamID: 0xD0000001, Sequence: uint8(i), Trailing: []byte{0, 0},
+		})
+	}
+	<-done
+	waitFor(t, "both sides to be recorded", func() bool {
+		var repeater, hotspot bool
+		s := l.Calls()
+		for _, call := range append(s.Active, s.Recent...) {
+			repeater = repeater || call.Source == 3155373
+			hotspot = hotspot || call.Source == 3132910
+		}
+		return repeater && hotspot
+	})
 }

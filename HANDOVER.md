@@ -46,21 +46,21 @@ radio on the Motorola repeater**, across production and the linked test server
 R7 through the Pi-Star**, from any source, and the cause was QSP's (0443):
 MMDVMHost turns each network preamble into fifteen on the air, and QSP was
 sending sixteen, so the hotspot transmitted about fourteen seconds of
-preambles and the radio gave up. Hotspots now get one preamble per text.
-**Test it first**: a console text to TG2, hotspot field empty, watched on the
-R7. Note that **the operator's R7 and the radio on the repeater both transmit
+preambles and the radio gave up. Hotspots now get one preamble per text, and
+**with 0.1.285 on production the text displayed on the R7** — Pi-Star's log
+showing one preamble, "7 to follow", the header with six blocks and a clean
+end. So a text QSP composes now reaches both kinds of radio. Note that **the operator's R7 and the radio on the repeater both transmit
 as 3132910**, so a text between those two can never display on either —
 a radio discards a text from its own ID. A second radio with its own ID is
 being programmed for that test.
 
-**What to deploy, and why.** Production runs 0.1.284 from 2026-09-28: the
-Golay fix and the network-wide send. **0.1.285 is the preamble fix, and every
-hotspot radio needs it** — relayed texts included, not only composed ones. Everything else since
-0.1.269 is documents, and code nothing calls unless an administrator presses
-Send. Deploy when it suits, by the usual path below; nothing here restarts
-anything on its own.
-
-**A crash risk found on the way, not yet fixed** — see item 0 of the open list.
+**What to deploy, and why.** Production runs 0.1.285 from 2026-09-28: the
+Golay fix, the network-wide send and the preamble fix. **0.1.286 closes a
+crash risk** that has been live since Motorola repeaters were first observed:
+the call tracker was written from several goroutines at once, and Go treats
+that as fatal. The journal showed no `concurrent map writes` since
+2026-09-16, so it had not fired, but it could at any moment a repeater and a
+hotspot transmitted together. Deploy when it suits, by the usual path below.
 
 ## Three readings that wasted a day between them
 
@@ -130,9 +130,9 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.285 | `cat VERSION` |
+| **Fedora working tree** | 0.1.286 | `cat VERSION` |
 | **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.284** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.285** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 
 **The compose files pin the working tree's version, enforced by
@@ -165,7 +165,8 @@ pull` must not become an unannounced upgrade of a live repeater network.
 `/etc/polkit-1/rules.d/`.
 
 **The rollback binary** is `~/qsp-rollback-<version>` in the operator's home on
-production, the version it replaced — `~/qsp-rollback-0.1.268` today.
+production, the version it replaced — `~/qsp-rollback-0.1.284` as of 2026-09-28,
+with `~/qsp-rollback-0.1.269` still there from the morning's first install.
 
 **The credential key is `/var/lib/qsp/secrets.key`** — 32 bytes, mode 0600,
 owned by `qsp`. **Losing it loses every stored credential**, including the
@@ -201,20 +202,6 @@ learned to run it as a service.
 
 ## Open, in the order to take them
 
-0. **A data race in the call tracker that can crash QSP.**
-   `peers.Listener.ObserveFromIPSC` runs on the IPSC listener's goroutine and
-   calls `calls.Tracker.Update` directly, while the serve loop calls `Update`
-   and `Expire` on its own; the tracker is documented as not safe for
-   concurrent use, and Go treats concurrent map writes as fatal rather than
-   recoverable. So a Motorola repeater transmitting while a hotspot does, or as
-   the sweep runs, can end the process. The race detector finds it in seconds
-   when a test calls `ObserveFromIPSC` beside a running listener; the existing
-   tests happen not to. Found while writing 0440's tests, which were changed to
-   avoid it rather than fixing it in passing. **Propose a design before
-   touching it** — a lock around the tracker, or handing IPSC frames to the
-   serve loop, which ADR-0002 would prefer — and check the production journal
-   for `concurrent map writes` first, because an unexplained restart would be
-   this.
 1. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR

@@ -306,3 +306,8 @@ The lesson is §8a's: the frames were checked against a capture and against
 MMDVMHost's own log, and both agreed, because both describe what arrives.
 What happens to a frame after it arrives was in MMDVMHost's source, and
 reading it settled in minutes what a morning of radio tests had not.
+
+**Confirmed the same morning.** With 0443 on production, a composed text to
+TG2 displayed on the R7 through the Pi-Star, and MMDVMHost's log showed one
+preamble ("7 to follow"), a six-block header and a clean end. Phase 2's
+instrument is met on both paths.

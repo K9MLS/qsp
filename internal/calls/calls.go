@@ -36,6 +36,7 @@ package calls
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/k9mls/qsp/internal/protocol/hbp"
@@ -130,9 +131,22 @@ type Options struct {
 
 // Tracker reassembles frames into calls.
 //
-// It is not safe for concurrent use and is designed to be owned by the same
-// goroutine that reads the socket, consistent with ADR-0002.
+// # Why this is locked
+//
+// **It was documented as owned by the goroutine that reads the socket, and
+// that stopped being true when Motorola repeaters arrived.** The IPSC
+// listener records a repeater's transmissions from its own goroutine, and so
+// do links and the transcoder, while the serve loop records hotspots' and
+// expires calls. Go treats concurrent map writes as fatal rather than
+// recoverable, so a repeater and a hotspot transmitting together could end
+// the process. The race detector found it within seconds of a test calling
+// ObserveFromIPSC beside a running listener, on 2026-09-28, which is the same
+// way routing.Core's identical race was found. It is enforced here rather
+// than asserted in prose, for the reason Core gives: every caller is then
+// safe without having to know.
 type Tracker struct {
+	mu sync.Mutex
+
 	timeout   time.Duration
 	maxActive int
 
@@ -169,6 +183,8 @@ func NewTracker(opts Options) *Tracker {
 // be nil. A single frame can do both: a transmission consisting of one frame
 // that is also a terminator starts and immediately ends.
 func (t *Tracker) Update(peer hbp.RepeaterID, frame hbp.Data, now time.Time) (started, ended *Call) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	now = now.UTC()
 	key := Key{Peer: peer, Stream: frame.StreamID, Timeslot: frame.Timeslot}
 
@@ -225,6 +241,8 @@ func (t *Tracker) Update(peer hbp.RepeaterID, frame hbp.Data, now time.Time) (st
 // EndTimedOut so that a lossy link is visible rather than looking like a short
 // transmission.
 func (t *Tracker) Expire(now time.Time) []Call {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	now = now.UTC()
 
 	var lost []Key
@@ -358,6 +376,12 @@ func (t *Tracker) mergeableData(c Call) *Call {
 
 // Active returns in-progress calls, most recently started first.
 func (t *Tracker) Active() []Call {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.activeLocked()
+}
+
+func (t *Tracker) activeLocked() []Call {
 	out := make([]Call, 0, len(t.active))
 	for _, c := range t.active {
 		out = append(out, *c)
@@ -368,6 +392,20 @@ func (t *Tracker) Active() []Call {
 
 // History returns completed calls, most recent first.
 func (t *Tracker) History() []Call {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.historyLocked()
+}
+
+// Snapshot returns the in-progress and completed calls as of one instant, so
+// a reader never sees a call in neither list or in both.
+func (t *Tracker) Snapshot() (active, history []Call) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.activeLocked(), t.historyLocked()
+}
+
+func (t *Tracker) historyLocked() []Call {
 	out := make([]Call, len(t.history))
 	for i, c := range t.history {
 		out[len(t.history)-1-i] = c
@@ -376,7 +414,11 @@ func (t *Tracker) History() []Call {
 }
 
 // ActiveCount returns the number of in-progress calls.
-func (t *Tracker) ActiveCount() int { return len(t.active) }
+func (t *Tracker) ActiveCount() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return len(t.active)
+}
 
 // Seed fills the history from a record kept across restarts.
 //
@@ -393,7 +435,12 @@ func (t *Tracker) ActiveCount() int { return len(t.active) }
 // Ignored once anything has been heard, so a late seed cannot displace live
 // traffic.
 func (t *Tracker) Seed(newestFirst []Call) {
-	if t == nil || len(newestFirst) == 0 || len(t.history) > 0 {
+	if t == nil || len(newestFirst) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(t.history) > 0 {
 		return
 	}
 	n := len(newestFirst)

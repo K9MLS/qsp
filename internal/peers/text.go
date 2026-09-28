@@ -31,11 +31,10 @@ import (
 //
 // Either way the frames are paced by a parrot.Player, sixty milliseconds
 // apart, on a goroutine of their own — the same narrow exception to ADR-0002
-// that parrot makes, for the same reason. The routing core and the master are
-// locked; the socket is safe for concurrent writes. **The call tracker is
-// not**, which is why a composed text is logged rather than put in Last
-// heard: recording it here would be one more writer in the race the handover
-// lists as open item 0.
+// that parrot makes, for the same reason. The routing core, the master and
+// the call tracker are locked, and the socket is safe for concurrent writes.
+// A text sent to the talkgroup is recorded like any transmission, so it
+// appears in Last heard under its sender's ID.
 //
 // **It refuses rather than queues.** A text dropped into the middle of a call
 // on the same timeslot is discarded by MMDVMHost, and the failure would look
@@ -154,6 +153,9 @@ type networkSink struct{ l *Listener }
 // Deliver implements parrot.Sink.
 func (s networkSink) Deliver(_ hbp.RepeaterID, frame hbp.Data) error {
 	l := s.l
+	// Last heard: a transmission on the talkgroup is a transmission, whoever
+	// composed it, as DeliverFromTranscoder records a Zello call.
+	l.observe(0, frame)
 	res := l.cfg.Routing.RouteFromServer(frame, time.Now())
 	l.deliver(routing.ServerOrigin, res)
 	// Origin 0: no Motorola repeater sent this, so none is excluded.

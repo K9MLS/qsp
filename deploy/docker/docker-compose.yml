@@ -15,7 +15,7 @@
 
 services:
   qsp:
-    image: ghcr.io/k9mls/qsp:0.1.285
+    image: ghcr.io/k9mls/qsp:0.1.286
 
     container_name: qsp
     restart: unless-stopped
