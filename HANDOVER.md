@@ -17,22 +17,35 @@ the cable, two separate adapters, the 9600 clock and the codeplug each have an
 instrument behind them. The router is parked with `shutdown` saved to startup
 and is one `no shutdown` from live. See `docs/P25-PLANNING.md`.
 
-**2. The text service's encoder is complete to the last octet.** ADR-0067
-phase 1 is done for both block formats, **packet CRC included** (0437):
-`internal/tms` and `internal/dmrfec` round-trip every captured text octet for
-octet, CRC and all. The CRC is CRC-32, polynomial `0x04C11DB7`, init and mask
-zero, **over the octets in swapped pairs** and carried least-significant first;
-it holds for all sixteen captured transmissions, in both block formats. ADR-0067
-says how it was found and `scripts/crc-solve.py` repeats it. **Phase 2 is
-next**: a composed message through a hotspot and read off a radio's screen,
-which needs a sending path nothing has yet — `internal/tms` is still called
-only by tests. After that the build order is `TIME`, then `WX`, then the alert
-poller, per ADR-0068.
+**2. The text service can send, and waits on a radio's display.** ADR-0067
+phase 2 is built (0438–0441). An administrator composes a group text on the
+**Administration** page — hotspot ID, talkgroup, timeslot, sender ID, message —
+and QSP sends it to that one hotspot. The composed frames reproduce the
+operator's captured "K9MLS" burst for burst, all twenty-two, before any radio
+is involved. **The instrument is the display**: send to a talkgroup the radio
+listens to (TG2 on timeslot 2 is what it sent on), from an ID that is not the
+radio's own, and watch. Group only: a private text is a confirmed packet whose
+acknowledgement is phase 3. The send is refused, with the reason, while any
+call is active on the timeslot, while the hotspot is hearing a parrot or
+another text, or for a hotspot not registered. After phase 2 the order is
+phase 3 on a Motorola repeater — the relay path already turns Homebrew text
+into IPSC — then `TIME`, `WX` and the alert poller per ADR-0068.
 
-**Nothing needs deploying.** Production runs 0.1.269 and is correct. Everything
-since is documents, decision records and two new packages that nothing calls
-yet, so there is no patch waiting to go on air and no reason to touch a running
-network to make progress.
+The phase found two things before a radio was involved. The preamble CSBK's
+CRC is CRC-CCITT with mask `0x5A5A` (0438), and both CRC-16 masks turned out to
+be ETSI's once the standard's inversion is folded in. And **a Golay (20,8) row
+was wrong** (0439), so every data header and Rate 1/2 block QSP has ever relayed
+to a hotspot carried two wrong slot-type bits; MMDVMHost corrected them, which is
+why nobody saw it.
+
+**What to deploy, and why.** Production runs 0.1.269. **0.1.283 is worth
+installing**: it carries the Golay fix, which corrects what the text relay puts
+on the wire today, and the send form phase 2 needs. Everything else since
+0.1.269 is documents, and code nothing calls unless an administrator presses
+Send. Deploy when it suits, by the usual path below; nothing here restarts
+anything on its own.
+
+**A crash risk found on the way, not yet fixed** — see item 0 of the open list.
 
 ## Three readings that wasted a day between them
 
@@ -102,7 +115,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.280 | `cat VERSION` |
+| **Fedora working tree** | 0.1.283 | `cat VERSION` |
 | **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.269**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
@@ -173,6 +186,20 @@ learned to run it as a service.
 
 ## Open, in the order to take them
 
+0. **A data race in the call tracker that can crash QSP.**
+   `peers.Listener.ObserveFromIPSC` runs on the IPSC listener's goroutine and
+   calls `calls.Tracker.Update` directly, while the serve loop calls `Update`
+   and `Expire` on its own; the tracker is documented as not safe for
+   concurrent use, and Go treats concurrent map writes as fatal rather than
+   recoverable. So a Motorola repeater transmitting while a hotspot does, or as
+   the sweep runs, can end the process. The race detector finds it in seconds
+   when a test calls `ObserveFromIPSC` beside a running listener; the existing
+   tests happen not to. Found while writing 0440's tests, which were changed to
+   avoid it rather than fixing it in passing. **Propose a design before
+   touching it** — a lock around the tracker, or handing IPSC frames to the
+   serve loop, which ADR-0002 would prefer — and check the production journal
+   for `concurrent map writes` first, because an unexplained restart would be
+   this.
 1. **Set the level toward Zello by ear** (0407): start "Level toward Zello" at
    +10, restart QSP, ask the Zello users. DMR audio measured 13 dB under Zello.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR

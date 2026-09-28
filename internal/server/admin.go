@@ -11,6 +11,7 @@ import (
 	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/health"
+	"github.com/k9mls/qsp/internal/tms"
 )
 
 // The administration page's one endpoint (ADR-0055).
@@ -41,6 +42,7 @@ type adminBody struct {
 	Agree    adminAgreement `json:"agreement"`
 	Services adminServices  `json:"services"`
 	Sessions adminSessions  `json:"sessions"`
+	Texts    adminTexts     `json:"texts"`
 }
 
 // adminSessions is how long a login lasts, and what that means right now.
@@ -189,6 +191,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Sessions = s.sessionState(r)
+	body.Texts = adminTexts{Available: s.opts.Texts != nil, MaxCharacters: tms.MaxText}
 
 	writeJSON(w, s.log, http.StatusOK, body)
 }

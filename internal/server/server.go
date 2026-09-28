@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
@@ -105,6 +106,10 @@ type Options struct {
 	// nothing — an operator who typed a password into a page that discarded
 	// it would believe the link was configured.
 	Secrets CredentialStore
+	// Texts sends a text an administrator composes to one hotspot. Nil when
+	// the DMR listener is not running; the page then does not offer the form.
+	Texts TextSender
+
 	// Dongle reports on and controls the vocoder dongle's AMBEserver service.
 	// Nil when no transcoder is configured; the page then shows no panel.
 	Dongle DongleControl
@@ -141,6 +146,9 @@ type Server struct {
 	// restarted a minute ago shows a small number, which is correct and reads
 	// as a fault; the start time makes "4m" legible as *since 08:14*.
 	startedAt time.Time
+	// textReference counts the TMS reference octet of composed texts. See
+	// handleSendText.
+	textReference atomic.Uint32
 	// setup holds the one-time token until the first administrator exists.
 	setup setupState
 	// offered holds passphrases this instance has offered and not yet seen
@@ -269,6 +277,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/secrets", s.requireSession(s.handleSecrets)},
 		{"GET /api/dongle", s.requireSession(s.handleDongle)},
 		{"POST /api/dongle/{verb}", s.requireSession(s.handleDongleControl)},
+		{"POST /api/admin/text", s.requireSession(s.handleSendText)},
 		{"PUT /api/secrets/{name}", s.requireSession(s.handleSetSecret)},
 		// **Anything a page creates it must be able to remove.** A credential
 		// entered by mistake should not need the database opening to undo.

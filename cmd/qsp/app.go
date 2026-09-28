@@ -846,6 +846,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Audit:    a.audit,
 		Secrets:  a.secrets,
 		Dongle:   dongleControl(cfg),
+		Texts:    textSender(a.dmr),
 		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
 		// takes exactly the path systemctl restart already takes, so the audit
 		// record, the shutdown timeout and every subsystem's close run as they
@@ -1789,6 +1790,19 @@ func (c schedulerCheck) Check(context.Context) health.Result {
 	res := health.Healthy(fmt.Sprintf("%d scheduled window(s)", c.windows))
 	res.Detail = map[string]string{"windows": strconv.Itoa(c.windows)}
 	return res
+}
+
+// textSender is the console's way to send a composed text, when the DMR
+// listener is running, and nil otherwise.
+//
+// **A nil listener must become a nil interface.** Returned directly, a nil
+// *peers.Listener is an interface holding a nil pointer, which is not nil, so
+// the handler would offer the form and then panic on the first send.
+func textSender(l *peers.Listener) server.TextSender {
+	if l == nil {
+		return nil
+	}
+	return l
 }
 
 // dongleControl is the dongle panel's backend when a transcoder is enabled,

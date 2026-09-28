@@ -34,6 +34,15 @@ const Preambles = 16
 // bits wide and zero is not a count.
 const maxBlocks = 0x0f
 
+// MaxText is the most UTF-16 units a group text can carry: fifteen Rate 1/2
+// blocks hold 180 octets, less the packet CRC's four, the IPv4 and UDP
+// headers' twenty-eight, the TMS header's six and the leading CRLF's four,
+// leaves 138 octets, which is 69 units. An ASCII character is one unit.
+//
+// This is the encoder's limit, not a radio's. ADR-0067 phase 4 measures what
+// a radio displays, and a radio's own limit may well be lower.
+const MaxText = 69
+
 // ErrPrivateNotYet refuses a private text. A private text is a confirmed
 // packet, and the radio receiving it answers with a response packet that QSP
 // has no path for yet; ADR-0067 phase 3 is where that is built. A group text

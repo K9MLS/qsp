@@ -192,6 +192,53 @@
       </div>
     </section>
 
+    <!-- Sending a text (ADR-0067 phase 2). An administrator composes a group
+         text and QSP sends it to one hotspot. Shown only when the DMR listener
+         is running, because that is the only way a text can leave. -->
+    <section class="panel" id="block-text" hidden>
+      <div class="panel__head">
+        <h2 class="panel__title">Send a text</h2>
+      </div>
+      <div class="panel__body">
+        <p class="field__note">
+          A group text, composed by this server and sent to one hotspot. Nothing
+          acknowledges a group text, so the only proof it worked is the radio's
+          display: send to a talkgroup the radio listens to, and watch it.
+        </p>
+
+        <label class="picker__label" for="text-peer">Hotspot ID</label>
+        <input class="picker__input" id="text-peer" type="text" inputmode="numeric"
+               spellcheck="false" placeholder="313291001">
+        <p class="field__note">The ID the hotspot logged in with, as the Network page lists it.</p>
+
+        <label class="picker__label" for="text-talkgroup">Talkgroup</label>
+        <input class="picker__input" id="text-talkgroup" type="text" inputmode="numeric"
+               spellcheck="false" value="2">
+
+        <label class="picker__label" for="text-timeslot">Timeslot</label>
+        <select class="picker__input" id="text-timeslot">
+          <option value="1">1</option>
+          <option value="2" selected>2</option>
+        </select>
+
+        <label class="picker__label" for="text-from">From DMR ID</label>
+        <input class="picker__input" id="text-from" type="text" inputmode="numeric"
+               spellcheck="false" placeholder="9990">
+        <p class="field__note">
+          Not the ID of the radio you are watching: a radio commonly ignores a
+          message that claims to come from itself.
+        </p>
+
+        <label class="picker__label" for="text-body">Message</label>
+        <input class="picker__input" id="text-body" type="text" spellcheck="false">
+        <p class="field__note" id="text-limit"></p>
+
+        <button class="button" id="text-send" type="button">Send</button>
+        <p class="link__advice" id="text-error" hidden></p>
+        <p class="field__note" id="text-done" hidden></p>
+      </div>
+    </section>
+
     <!-- Block 5: backup and restore (ADR-0054). -->
     <section class="panel" id="block-backup" hidden>
       <div class="panel__head">

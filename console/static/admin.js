@@ -88,6 +88,16 @@
     renderServices(body.services || {});
     renderCallsigns((body.services || {}).callsigns || {});
     renderSessions(body.sessions || {});
+    renderTexts(body.texts || {});
+  }
+
+  /* The text block appears only where a text can leave: the server says
+   * whether its DMR listener is running, and how long a message may be. */
+  function renderTexts(x) {
+    if (!x.available) { return; }
+    el("text-limit").textContent = "Up to " + x.max_characters +
+      " characters. That is what one message carries; a radio may show fewer.";
+    show(el("block-text"));
   }
 
   /* The sessions block: what a login lasts, and what that means now.
@@ -537,6 +547,46 @@
       }).then(function () {
         saveSessions.disabled = false;
         saveSessions.textContent = "Save";
+      });
+    });
+  }
+
+  function whole(id) {
+    var raw = (el(id).value || "").trim();
+    return /^[0-9]+$/.test(raw) ? parseInt(raw, 10) : 0;
+  }
+
+  var sendText = el("text-send");
+  if (sendText) {
+    sendText.addEventListener("click", function () {
+      hide(el("text-error"));
+      hide(el("text-done"));
+      sendText.disabled = true;
+      sendText.textContent = "Sending";
+      fetch("/api/admin/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          peer: whole("text-peer"),
+          talkgroup: whole("text-talkgroup"),
+          timeslot: parseInt(el("text-timeslot").value, 10),
+          from: whole("text-from"),
+          text: el("text-body").value
+        })
+      }).then(function (r) {
+        return r.json().then(function (b) {
+          if (!r.ok) { throw new Error(b.error || "could not send"); }
+          return b;
+        });
+      }).then(function (b) {
+        say(el("text-done"), b.note);
+        if (b.warning) { say(el("text-error"), b.warning); }
+      }).catch(function (e) {
+        say(el("text-error"), e.message);
+      }).then(function () {
+        sendText.disabled = false;
+        sendText.textContent = "Send";
       });
     });
   }

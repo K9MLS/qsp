@@ -258,6 +258,10 @@ that ADR-0068 decides, and would be a radio-reachable feature before phase 3.
 An authenticated action adds no surface a radio can reach, and it is the path
 ADR-0068's administrator bulletins need anyway.
 
+**The trigger is on the Administration page**, `POST /api/admin/text`,
+audited as `text.sent` (0441). It refuses a text over `tms.MaxText`, 69 UTF-16
+units, which is the encoder's limit and not yet a measured radio's.
+
 **What remains is the instrument**: a composed message on a radio's display,
 through a hotspot linked to a server running it. Send from an ID that is not
 the receiving radio's, to a talkgroup in its receive group list — TG2 on

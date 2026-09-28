@@ -207,3 +207,18 @@ func TestEveryComposedStreamIsFresh(t *testing.T) {
 		t.Error("the same message composed twice gave different first preambles")
 	}
 }
+
+// TestMaxTextIsTheEncodersLimitExactly: MaxText units compose, one more does
+// not. The constant is arithmetic in a comment; this is the arithmetic
+// checked.
+func TestMaxTextIsTheEncodersLimitExactly(t *testing.T) {
+	m := k9mls
+	m.Text = strings.Repeat("A", tms.MaxText)
+	if _, err := tms.Frames(m, hbp.Timeslot2, 11, counter()); err != nil {
+		t.Fatalf("%d characters were refused: %v", tms.MaxText, err)
+	}
+	m.Text = strings.Repeat("A", tms.MaxText+1)
+	if _, err := tms.Frames(m, hbp.Timeslot2, 11, counter()); !errors.Is(err, tms.ErrTooLong) {
+		t.Fatalf("%d characters: error %v, want %v", tms.MaxText+1, err, tms.ErrTooLong)
+	}
+}

@@ -6,6 +6,30 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **An administrator can send a text from the console.** The Administration
+  page gains a **Send a text** panel — hotspot ID, talkgroup, timeslot,
+  sender ID and message, up to 69 characters — shown only when the DMR
+  listener is running. It posts to `POST /api/admin/text`, which needs a
+  session, validates before anything is composed, maps each refusal to a
+  status that says why (404 for an unknown hotspot, 409 for a busy one or a
+  busy timeslot), warns when the sender ID was recently heard transmitting
+  because a radio may ignore a message from itself, and audits every attempt
+  as `text.sent` with the text. This is ADR-0067 phase 2's trigger; its
+  instrument is a radio's display. SECURITY.md records why it is an
+  administrator's action and what it trusts.
+- **`tms.MaxText`**, 69 UTF-16 units: fifteen Rate 1/2 blocks less every
+  header, with a test that 69 compose and 70 do not. It is the encoder's
+  limit; phase 4 measures what a radio displays.
+
+### Documentation
+
+- **The handover opens on what to deploy**: 0.1.283, for the Golay fix and the
+  send form, and on a data race in the call tracker that can end the process,
+  recorded as the first open item with a request to design before fixing.
+
+
+### Added
+
 - **QSP can compose a group text and send it to one hotspot.**
   `tms.Frames` builds the whole transmission a hotspot sends — sixteen
   preamble CSBKs each in a stream of its own, counting down the bursts to
