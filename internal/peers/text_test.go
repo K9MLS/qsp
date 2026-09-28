@@ -3,6 +3,7 @@ package peers_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -91,7 +92,7 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // and burst.
 func TestAComposedTextReachesThePeer(t *testing.T) {
 	l, c := startTextListener(t)
-	if err := l.SendText(testID, hbp.Timeslot2, aText); err != nil {
+	if err := l.SendText(hbp.Timeslot2, aText, testID); err != nil {
 		t.Fatalf("SendText: %v", err)
 	}
 
@@ -142,6 +143,11 @@ func TestASendIsRefusedWhereItCouldNotArrive(t *testing.T) {
 			is: peers.ErrTextUnknownPeer,
 		},
 		{
+			name: "the whole network, on an instance that does not forward",
+			peer: 0, slot: hbp.Timeslot2, m: aText,
+			is: peers.ErrTextNoRouting,
+		},
+		{
 			name: "a private text",
 			peer: testID, slot: hbp.Timeslot2, m: private,
 			is: tms.ErrPrivateNotYet,
@@ -149,7 +155,7 @@ func TestASendIsRefusedWhereItCouldNotArrive(t *testing.T) {
 		{
 			name: "a second text while the first is still going out",
 			setup: func(t *testing.T, l *peers.Listener, _ *client) {
-				if err := l.SendText(testID, hbp.Timeslot2, aText); err != nil {
+				if err := l.SendText(hbp.Timeslot2, aText, testID); err != nil {
 					t.Fatalf("the first send: %v", err)
 				}
 			},
@@ -179,7 +185,7 @@ func TestASendIsRefusedWhereItCouldNotArrive(t *testing.T) {
 			if tc.setup != nil {
 				tc.setup(t, l, c)
 			}
-			err := l.SendText(tc.peer, tc.slot, tc.m)
+			err := l.SendText(tc.slot, tc.m, tc.peer)
 			if tc.is == nil {
 				if err != nil {
 					t.Fatalf("refused: %v", err)
@@ -230,7 +236,96 @@ func TestATextBeforeTheListenerStartsIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	if err := l.SendText(testID, hbp.Timeslot2, aText); !errors.Is(err, peers.ErrTextNotListening) {
+	if err := l.SendText(hbp.Timeslot2, aText, testID); !errors.Is(err, peers.ErrTextNotListening) {
 		t.Fatalf("error %v, want %v", err, peers.ErrTextNotListening)
+	}
+}
+
+// TestATextToTheTalkgroupReachesEveryHotspotOnIt is the ordinary case: sent
+// to the network, a text is routed like any transmission on its talkgroup,
+// so both registered hotspots receive every frame, each addressed to itself,
+// and neither is left out as the "origin".
+//
+// To see it fail: route with Route(testID, …) instead of RouteFromServer in
+// networkSink.Deliver — as if the text came from a hotspot — and repeat
+// leaves that hotspot out; or remove the network busy check, and the second
+// send is accepted over the first.
+func TestATextToTheTalkgroupReachesEveryHotspotOnIt(t *testing.T) {
+	l := startForwarding(t)
+	a := register(t, l.Address(), testID, "K9MLS")
+	b := register(t, l.Address(), peerTwo, "W5ABC")
+	waitFor(t, "both peers to be registered", func() bool {
+		n := 0
+		for _, p := range l.Snapshot() {
+			if p.State.CanPassTraffic() {
+				n++
+			}
+		}
+		return n == 2
+	})
+
+	if err := l.SendText(hbp.Timeslot2, aText, 0); err != nil {
+		t.Fatalf("SendText: %v", err)
+	}
+	if err := l.SendText(hbp.Timeslot2, aText, 0); !errors.Is(err, peers.ErrTextBusy) {
+		t.Errorf("a second network text while the first is going out: %v, want %v", err, peers.ErrTextBusy)
+	}
+
+	want, err := tms.Frames(aText, hbp.Timeslot2, 1, func() hbp.StreamID { return 1 })
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	for _, tc := range []struct {
+		c  *client
+		id hbp.RepeaterID
+	}{{a, testID}, {b, peerTwo}} {
+		for i := range want {
+			d, ok := tc.c.recv().(hbp.Data)
+			if !ok {
+				t.Fatalf("peer %d, frame %d is not DMRD", tc.id, i)
+			}
+			if d.RepeaterID != tc.id {
+				t.Errorf("peer %d, frame %d names repeater %d", tc.id, i, d.RepeaterID)
+			}
+			if d.TargetID != 2 || d.SourceID != aText.From || d.DataType != want[i].DataType || d.Payload != want[i].Payload {
+				t.Errorf("peer %d, frame %d: %d→%d type %#x, burst equal %v",
+					tc.id, i, d.SourceID, d.TargetID, d.DataType, d.Payload == want[i].Payload)
+			}
+		}
+	}
+}
+
+// TestATextToTheTalkgroupIsOfferedToTheMotorolaSide: every frame goes on to
+// the IPSC listener, from origin 0, so no repeater is excluded as the sender.
+// That is the path a hotspot's own texts already take to the repeaters.
+//
+// To see it fail: remove the sendToIPSC call from networkSink.Deliver, or
+// pass routing.ServerOrigin as its origin.
+func TestATextToTheTalkgroupIsOfferedToTheMotorolaSide(t *testing.T) {
+	l := startForwarding(t)
+	var (
+		mu      sync.Mutex
+		offered []uint32
+	)
+	l.SetIPSCSink(func(origin uint32, _ hbp.Data) {
+		mu.Lock()
+		offered = append(offered, origin)
+		mu.Unlock()
+	})
+	if err := l.SendText(hbp.Timeslot2, aText, 0); err != nil {
+		t.Fatalf("SendText: %v", err)
+	}
+	want := tms.Preambles + 1 + 1 // preambles, header, one block for "QSP"
+	waitFor(t, "every frame to be offered", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(offered) >= want
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	for i, o := range offered {
+		if o != 0 {
+			t.Errorf("frame %d offered from origin %d, want 0", i, o)
+		}
 	}
 }

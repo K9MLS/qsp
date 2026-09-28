@@ -592,6 +592,19 @@ func (c *Core) RouteFromTranscoder(name string, frame hbp.Data, now time.Time) R
 	return c.route(Endpoint{Transcoder: name, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
 }
 
+// RouteFromServer routes a transmission QSP composed itself.
+//
+// **A fourth entry point, for the reason there are three.** A text an
+// administrator sends to a talkgroup is not from a peer, a link or a vocoder,
+// and borrowing any of their entry points would borrow its rule: a peer's
+// origin is excluded from repeat, a link's is never sent back to a link, and a
+// transcoder's needs a repeater owner's opt-in. A server-composed text should
+// reach everybody on the talkgroup, subject to the same access lists and
+// bridges as anything else, and nothing more.
+func (c *Core) RouteFromServer(frame hbp.Data, now time.Time) Result {
+	return c.route(Endpoint{Peer: ServerOrigin, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
+}
+
 func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -37,6 +37,15 @@ import (
 // owns without listing them.
 const AnyPeer = hbp.RepeaterID(0)
 
+// ServerOrigin is the origin of a transmission QSP composes itself, such as a
+// text an administrator sends from the console.
+//
+// It routes like a peer that no peer can be: the repeat step, which never
+// sends a transmission back to its origin, excludes nobody, and a reservation
+// taken for it cannot collide with a real station's. The master refuses a
+// login from this ID for the same reason it refuses zero.
+const ServerOrigin = hbp.RepeaterID(0xFFFFFFFF)
+
 // Endpoint is one place traffic arrives at or is sent to.
 type Endpoint struct {
 	// Peer is the peer this endpoint lives at, or AnyPeer for all of them.

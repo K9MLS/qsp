@@ -17,10 +17,12 @@ the cable, two separate adapters, the 9600 clock and the codeplug each have an
 instrument behind them. The router is parked with `shutdown` saved to startup
 and is one `no shutdown` from live. See `docs/P25-PLANNING.md`.
 
-**2. The text service can send, and waits on a radio's display.** ADR-0067
-phase 2 is built (0438–0441). An administrator composes a group text on the
-**Administration** page — hotspot ID, talkgroup, timeslot, sender ID, message —
-and QSP sends it to that one hotspot. The composed frames reproduce the
+**2. The text service can send, and waits on a radio's display.** An
+administrator composes a group text on the **Administration** page —
+talkgroup, timeslot, sender ID, message — and QSP sends it to **everybody on
+the talkgroup** (0442): every hotspot on it, every Motorola repeater, and
+wherever the bridges carry it. An optional hotspot ID sends to that one
+hotspot only, for testing. The composed frames reproduce the
 operator's captured "K9MLS" burst for burst, all twenty-two, before any radio
 is involved. **The instrument is the display**: send to a talkgroup the radio
 listens to (TG2 on timeslot 2 is what it sent on), from an ID that is not the
@@ -38,9 +40,18 @@ was wrong** (0439), so every data header and Rate 1/2 block QSP has ever relayed
 to a hotspot carried two wrong slot-type bits; MMDVMHost corrected them, which is
 why nobody saw it.
 
-**What to deploy, and why.** Production runs 0.1.269. **0.1.283 is worth
-installing**: it carries the Golay fix, which corrects what the text relay puts
-on the wire today, and the send form phase 2 needs. Everything else since
+**The first test on air, 2026-09-28, sent to one hotspot, showed nothing on
+the radio's screen.** The radio's LEDs showed it received something, and Pi-Star's
+MMDVMHost log decoded every composed frame exactly as meant: sixteen
+preambles counting 21 down to 6, a header announcing five blocks, a clean
+end. So QSP to hotspot is proven and the loss is between the hotspot's RF
+and the display — the radio's text settings, or something in the message a
+radio checks that a hotspot does not. **The control test was not run**: a
+group text from a second radio to TG2, captured with `tcpdump` on the QSP
+server, would say which. Run it if a network-wide send also shows nothing.
+
+**What to deploy, and why.** Production ran 0.1.283 from 2026-09-28, which
+carries the Golay fix. **0.1.284 is the network-wide send.** Everything else since
 0.1.269 is documents, and code nothing calls unless an administrator presses
 Send. Deploy when it suits, by the usual path below; nothing here restarts
 anything on its own.
@@ -115,9 +126,9 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.283 | `cat VERSION` |
+| **Fedora working tree** | 0.1.284 | `cat VERSION` |
 | **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.269**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.283** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 
 **The compose files pin the working tree's version, enforced by

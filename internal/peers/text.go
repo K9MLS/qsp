@@ -7,21 +7,35 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/tms"
 )
 
-// Sending a text QSP composed to one hotspot.
+// Sending a text QSP composed: to everybody on a talkgroup, or to one hotspot.
 //
-// This is ADR-0067 phase 2: the sending path, whose instrument is a radio's
-// display. It uses the same pacing as parrot and the same narrow exception to
-// ADR-0002 — a goroutine writing to the peer socket that is not the listener —
-// and for the same reason: frames must leave sixty milliseconds apart and the
-// sweep runs once a second. It touches no routing state. Everything it reads
-// about the network comes from the snapshots the serve loop publishes for
-// other goroutines, never from Master or the call tracker directly.
+// **To the talkgroup is the ordinary case.** Each frame goes through routing
+// exactly as any transmission on that talkgroup would — every hotspot
+// attached to it, every talkgroup it is bridged to, every linked network the
+// bridges allow — and on to every Motorola repeater through the same
+// Homebrew-to-IPSC conversion that already carries a hotspot's texts. It
+// enters through routing.RouteFromServer, the way Zello audio enters through
+// RouteFromTranscoder.
+//
+// **To one hotspot is for testing**, so a test does not have to reach every
+// radio on the network: the frames go straight to that peer's socket and
+// nowhere else.
+//
+// Either way the frames are paced by a parrot.Player, sixty milliseconds
+// apart, on a goroutine of their own — the same narrow exception to ADR-0002
+// that parrot makes, for the same reason. The routing core and the master are
+// locked; the socket is safe for concurrent writes. **The call tracker is
+// not**, which is why a composed text is logged rather than put in Last
+// heard: recording it here would be one more writer in the race the handover
+// lists as open item 0.
 //
 // **It refuses rather than queues.** A text dropped into the middle of a call
 // on the same timeslot is discarded by MMDVMHost, and the failure would look
@@ -43,38 +57,61 @@ var (
 	// ErrTextColourCode: the peer's announced colour code cannot be read, and
 	// a burst with the wrong one is ignored by the hotspot.
 	ErrTextColourCode = errors.New("peers: the peer's colour code cannot be read")
+	// ErrTextNoRouting: this instance does not forward, so there is no path
+	// from QSP to anybody on a talkgroup.
+	ErrTextNoRouting = errors.New("peers: forwarding is off on this instance, so a text can only go to one hotspot")
 )
 
-// SendText composes a group text and plays it out to one peer on a timeslot.
+// networkColourCode is written into the bursts of a text sent to a talkgroup.
 //
-// It returns once the playback has started; the frames take a little over a
-// second to leave. Safe to call from any goroutine.
-func (l *Listener) SendText(peer hbp.RepeaterID, slot hbp.Timeslot, m tms.Message) error {
+// **It reaches no radio, which is why it can be a constant.** A hotspot
+// regenerates the slot type with its own colour code before it transmits —
+// that is how two wrong Golay bits went unnoticed until 0439 — and the IPSC
+// encoder decodes the block and writes the repeater link's colour code. A
+// text sent to one hotspot still uses that hotspot's own, because it is what
+// the differential test compares against.
+const networkColourCode = 1
+
+// SendText composes a group text and sends it on a timeslot: to everybody on
+// the message's talkgroup when only is zero, or to that one peer when it is
+// not.
+//
+// It returns once the frames have started; they take a little over a second
+// to leave. Safe to call from any goroutine.
+func (l *Listener) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterID) error {
 	ctx := l.textCtx.Load()
 	if ctx == nil {
 		return ErrTextNotListening
 	}
 
 	var target *Peer
-	for _, p := range l.Snapshot() {
-		if p.ID == peer && p.State.CanPassTraffic() && p.Config != nil {
-			target = &p
-			break
+	cc := uint8(networkColourCode)
+	if only != 0 {
+		for _, p := range l.Snapshot() {
+			if p.ID == only && p.State.CanPassTraffic() && p.Config != nil {
+				target = &p
+				break
+			}
 		}
-	}
-	if target == nil {
-		return fmt.Errorf("%w: %d", ErrTextUnknownPeer, peer)
-	}
-	cc, err := colourCodeOf(target.Config)
-	if err != nil {
-		return err
+		if target == nil {
+			return fmt.Errorf("%w: %d", ErrTextUnknownPeer, only)
+		}
+		var err error
+		if cc, err = colourCodeOf(target.Config); err != nil {
+			return err
+		}
+	} else if l.cfg.Routing == nil {
+		return ErrTextNoRouting
 	}
 
 	l.textMu.Lock()
 	defer l.textMu.Unlock()
 
-	if l.texts.Busy(peer) || (l.playback != nil && l.playback.Busy(peer)) {
-		return fmt.Errorf("%w: %d", ErrTextBusy, peer)
+	if only != 0 && (l.texts.Busy(only) || (l.playback != nil && l.playback.Busy(only))) {
+		return fmt.Errorf("%w: %d", ErrTextBusy, only)
+	}
+	if only == 0 && l.network.Busy(routing.ServerOrigin) {
+		return fmt.Errorf("%w: the network", ErrTextBusy)
 	}
 	// **Any call on the timeslot, anywhere on the network.** A call on
 	// another peer can be routed to this one at any moment, and the snapshot
@@ -89,17 +126,58 @@ func (l *Listener) SendText(peer hbp.RepeaterID, slot hbp.Timeslot, m tms.Messag
 
 	frames, err := tms.Frames(m, slot, cc, nextTextStream)
 	if err != nil {
-		return fmt.Errorf("peers: composing a text for %d: %w", peer, err)
+		return fmt.Errorf("peers: composing a text: %w", err)
 	}
-	l.texts.Start(*ctx, parrot.Recording{Peer: peer, Frames: frames}, target.Addr)
+	where := "network"
+	if only != 0 {
+		l.texts.Start(*ctx, parrot.Recording{Peer: only, Frames: frames}, target.Addr)
+		where = strconv.FormatUint(uint64(only), 10)
+	} else {
+		l.network.Start(*ctx, parrot.Recording{Peer: routing.ServerOrigin, Frames: frames})
+	}
 
 	l.log.Info("text composed",
-		slog.Uint64("peer", uint64(peer)),
+		slog.String("to_peers", where),
 		slog.Uint64("from", uint64(m.From)),
 		slog.Uint64("to", uint64(m.To)),
 		slog.String("timeslot", slot.String()),
 		slog.Int("frames", len(frames)),
 		slog.Int("characters", len([]rune(m.Text))))
+	return nil
+}
+
+// networkSink routes each frame of a composed text as a transmission on its
+// talkgroup: to the Homebrew side through routing, and to the Motorola side
+// through the same path a hotspot's frames take.
+type networkSink struct{ l *Listener }
+
+// Deliver implements parrot.Sink.
+func (s networkSink) Deliver(_ hbp.RepeaterID, frame hbp.Data) error {
+	l := s.l
+	res := l.cfg.Routing.RouteFromServer(frame, time.Now())
+	l.deliver(routing.ServerOrigin, res)
+	// Origin 0: no Motorola repeater sent this, so none is excluded.
+	l.sendToIPSC(0, frame, res)
+
+	// **One line per text, on its first frame**, saying where routing sent
+	// it. A text that reached nobody must say why, or an administrator
+	// watching a silent radio has nothing to go on.
+	if frame.Sequence == 0 {
+		attrs := []any{
+			slog.Uint64("to", uint64(frame.TargetID)),
+			slog.String("timeslot", frame.Timeslot.String()),
+			slog.Int("hotspots", len(res.Deliveries)),
+			slog.Int("links", len(res.Upstreams)),
+			slog.Bool("repeaters", l.cfg.IPSC != nil && (res.Reason == "" || res.NoHomebrewDestination)),
+		}
+		if res.Reason != "" {
+			attrs = append(attrs, slog.String("reason", res.Reason))
+		}
+		l.log.Info("text routed", attrs...)
+	}
+	if res.Reason != "" && !res.NoHomebrewDestination {
+		return fmt.Errorf("peers: routing refused a text frame: %s", res.Reason)
+	}
 	return nil
 }
 

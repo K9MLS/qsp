@@ -19,16 +19,18 @@ import (
 
 // Sending a text from the console.
 //
-// ADR-0067 phase 2's trigger: an administrator composes a group text and QSP
-// sends it to one hotspot, and the instrument is a radio's display. It is an
-// authenticated action rather than something a radio can reach, so it adds no
-// surface to the network, and it is the path ADR-0068's administrator
-// bulletins will need anyway.
+// An administrator composes a group text and QSP sends it on a talkgroup:
+// to everybody on it by default — every hotspot attached to it, every Motorola
+// repeater, and whatever the bridges carry it to — or to one hotspot, for
+// testing. It is an authenticated action rather than something a radio can
+// reach, so it adds no surface to the network, and it is the path ADR-0068's
+// administrator bulletins need.
 
-// TextSender composes a text and sends it to one peer. *peers.Listener
-// satisfies it.
+// TextSender composes a text and sends it on a timeslot, to everybody on the
+// message's talkgroup when only is zero or to that one peer when it is not.
+// *peers.Listener satisfies it.
 type TextSender interface {
-	SendText(peer hbp.RepeaterID, slot hbp.Timeslot, m tms.Message) error
+	SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterID) error
 }
 
 // adminTexts tells the administration page whether it can offer the form.
@@ -39,9 +41,14 @@ type adminTexts struct {
 	// MaxCharacters is the encoder's limit, so the page can say it before
 	// the server refuses.
 	MaxCharacters int `json:"max_characters"`
+	// Network is false when this instance does not forward, so a text can
+	// only go to one hotspot; the page says so rather than letting the send
+	// fail.
+	Network bool `json:"network"`
 }
 
-// sendTextRequest is what the form posts.
+// sendTextRequest is what the form posts. Peer is optional: zero sends to
+// everybody on the talkgroup.
 type sendTextRequest struct {
 	Peer      uint32 `json:"peer"`
 	Timeslot  int    `json:"timeslot"`
@@ -54,8 +61,6 @@ type sendTextRequest struct {
 // the page shows.
 func (q sendTextRequest) validate() error {
 	switch {
-	case q.Peer == 0:
-		return errors.New("which hotspot? Its ID is on the Network page")
 	case q.Timeslot != 1 && q.Timeslot != 2:
 		return errors.New("the timeslot is 1 or 2")
 	case q.Talkgroup == 0 || q.Talkgroup > 0xffffff:
@@ -76,7 +81,8 @@ func (q sendTextRequest) validate() error {
 	return nil
 }
 
-// handleSendText composes a group text and sends it to one hotspot.
+// handleSendText composes a group text and sends it to the talkgroup, or to
+// one hotspot.
 //
 // **Audited whatever the outcome**, like the dongle: a message that appears
 // on radios is exactly the kind of thing somebody asks about afterwards,
@@ -108,14 +114,15 @@ func (s *Server) handleSendText(w http.ResponseWriter, r *http.Request) {
 		Reference: 0x80 | byte(s.textReference.Add(1)&0x7f),
 		Text:      req.Text,
 	}
-	err := s.opts.Texts.SendText(hbp.RepeaterID(req.Peer), hbp.Timeslot(req.Timeslot), m)
+	err := s.opts.Texts.SendText(hbp.Timeslot(req.Timeslot), m, hbp.RepeaterID(req.Peer))
 
 	outcome, status := audit.OutcomeSuccess, http.StatusAccepted
 	switch {
 	case err == nil:
 	case errors.Is(err, peers.ErrTextUnknownPeer):
 		outcome, status = audit.OutcomeFailure, http.StatusNotFound
-	case errors.Is(err, peers.ErrTextBusy), errors.Is(err, peers.ErrTextChannelBusy):
+	case errors.Is(err, peers.ErrTextBusy), errors.Is(err, peers.ErrTextChannelBusy),
+		errors.Is(err, peers.ErrTextNoRouting):
 		outcome, status = audit.OutcomeFailure, http.StatusConflict
 	case errors.Is(err, tms.ErrTooLong), errors.Is(err, tms.ErrPrivateNotYet):
 		outcome, status = audit.OutcomeFailure, http.StatusBadRequest
@@ -130,9 +137,13 @@ func (s *Server) handleSendText(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	where := fmt.Sprintf("everybody on talkgroup %d", req.Talkgroup)
+	if req.Peer != 0 {
+		where = fmt.Sprintf("hotspot %d only", req.Peer)
+	}
 	resp := map[string]string{
-		"note": "Sending. It takes a little over a second to leave; the proof is the radio's display, " +
-			"since nothing acknowledges a group text.",
+		"note": "Sending to " + where + ". It takes a little over a second to leave; the proof is a " +
+			"radio's display, since nothing acknowledges a group text.",
 	}
 	if w := s.ownIDWarning(req.From); w != "" {
 		resp["warning"] = w
@@ -171,7 +182,7 @@ func (s *Server) recordText(r *http.Request, action audit.Action, req sendTextRe
 		OccurredAt: time.Now().UTC(),
 		Actor:      actor,
 		Action:     action,
-		Subject:    strconv.FormatUint(uint64(req.Peer), 10),
+		Subject:    textSubject(req.Peer),
 		Outcome:    outcome,
 		SourceIP:   clientIP(r, s.opts.BehindProxy),
 		Detail: map[string]string{
@@ -183,4 +194,12 @@ func (s *Server) recordText(r *http.Request, action audit.Action, req sendTextRe
 	}); err != nil {
 		s.log.Warn("cannot record a text in the audit trail", "error", err)
 	}
+}
+
+// textSubject names where a text went, for the audit trail.
+func textSubject(peer uint32) string {
+	if peer == 0 {
+		return "network"
+	}
+	return strconv.FormatUint(uint64(peer), 10)
 }

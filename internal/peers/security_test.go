@@ -7,6 +7,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
 )
 
 // TestDigestCannotBeReplayedFromAnotherAddress is the central spoofing
@@ -222,6 +223,22 @@ func TestRepeaterIDZeroIsRefused(t *testing.T) {
 		t.Error("repeater ID 0 was issued a challenge")
 	}
 	if !strings.Contains(out.Dropped, "not a valid station") {
+		t.Errorf("drop reason = %q", out.Dropped)
+	}
+}
+
+// TestTheServersOwnOriginIsRefused: routing.ServerOrigin marks a
+// transmission QSP composed, and a hotspot holding that ID would be excluded
+// from receiving them and could impersonate the server's own traffic.
+func TestTheServersOwnOriginIsRefused(t *testing.T) {
+	h := newHarness(t, func(c *peers.MasterConfig) {
+		c.Password = func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true }
+	})
+	out := h.send(hbp.Login{RepeaterID: routing.ServerOrigin}, addrA)
+	if len(out.Responses) != 0 {
+		t.Error("the reserved origin was issued a challenge")
+	}
+	if !strings.Contains(out.Dropped, "reserves for its own transmissions") {
 		t.Errorf("drop reason = %q", out.Dropped)
 	}
 }

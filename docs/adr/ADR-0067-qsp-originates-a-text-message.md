@@ -266,3 +266,25 @@ units, which is the encoder's limit and not yet a measured radio's.
 through a hotspot linked to a server running it. Send from an ID that is not
 the receiving radio's, to a talkgroup in its receive group list — TG2 on
 timeslot 2 is what the operator's radio sent on.
+
+## Sent to the talkgroup, not to one hotspot, 2026-09-28
+
+**Phase 2 as first built sent to one hotspot, and that was the wrong
+reading.** The phases above describe instruments, and "one hotspot, read the
+screen" was taken as the feature's shape rather than as the first test of it.
+What the operator asked for is a text to Group Call 2 that every radio on the
+network receives. From 0442 a composed text enters routing through
+`routing.RouteFromServer` and is carried like any transmission on its
+talkgroup, to hotspots, bridged talkgroups, linked networks and Motorola
+repeaters alike; one hotspot remains an option for tests.
+
+This folds phase 3's path into phase 2's send, so a failure on a repeater now
+has two candidate causes. The one-hotspot option is what keeps them
+separable.
+
+**The first test on air showed nothing on the display**, sent to one hotspot:
+the radio received RF, and MMDVMHost decoded every composed frame correctly —
+preambles counting down, a five-block header, a clean end. The fault, if it
+is QSP's, is in something a radio checks and a hotspot does not. The control
+that would say — a real radio's group text, captured, received by the same
+radio — has not been run yet.

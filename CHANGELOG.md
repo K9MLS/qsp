@@ -4,6 +4,25 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **A text from the console goes to everybody on the talkgroup.** It was
+  limited to one hotspot, which followed ADR-0067's phasing and not what an
+  administrator sending to Group Call 2 means. Each frame now enters routing
+  through a new `routing.RouteFromServer` — a fourth origin beside peer, link
+  and transcoder, the way Zello audio enters through `RouteFromTranscoder` —
+  and so reaches every hotspot attached to the talkgroup, every talkgroup and
+  linked network the bridges carry it to, and every Motorola repeater through
+  the Homebrew-to-IPSC conversion a hotspot's texts already take. The same
+  access lists and bridges govern it as govern a member keying up. **One
+  hotspot remains an option**, labelled for testing, and is the only choice
+  on an instance that does not forward. `routing.ServerOrigin`, the ID a
+  composed text routes from, is refused at login like zero is. Journal line
+  `text routed` says, once per text, how many hotspots and links routing sent
+  it to and why if none. It is not put in Last heard yet: the call tracker is
+  not safe to write from here, which is open item 0.
+
+
 ### Added
 
 - **An administrator can send a text from the console.** The Administration

@@ -191,7 +191,7 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body.Sessions = s.sessionState(r)
-	body.Texts = adminTexts{Available: s.opts.Texts != nil, MaxCharacters: tms.MaxText}
+	body.Texts = adminTexts{Available: s.opts.Texts != nil, MaxCharacters: tms.MaxText, Network: s.Forwarding()}
 
 	writeJSON(w, s.log, http.StatusOK, body)
 }

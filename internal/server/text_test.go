@@ -25,9 +25,9 @@ type fakeTexts struct {
 	m     tms.Message
 }
 
-func (f *fakeTexts) SendText(peer hbp.RepeaterID, slot hbp.Timeslot, m tms.Message) error {
+func (f *fakeTexts) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterID) error {
 	f.calls++
-	f.peer, f.slot, f.m = peer, slot, m
+	f.peer, f.slot, f.m = only, slot, m
 	return f.err
 }
 
@@ -94,7 +94,6 @@ func TestAFormThatCannotBeAMessageIsRefusedBeforeSending(t *testing.T) {
 		name string
 		body string
 	}{
-		{"no hotspot", `{"timeslot":2,"talkgroup":2,"from":9990,"text":"x"}`},
 		{"timeslot three", `{"peer":1,"timeslot":3,"talkgroup":2,"from":9990,"text":"x"}`},
 		{"no talkgroup", `{"peer":1,"timeslot":2,"from":9990,"text":"x"}`},
 		{"a 25-bit sender", `{"peer":1,"timeslot":2,"talkgroup":2,"from":16777216,"text":"x"}`},
@@ -136,6 +135,7 @@ func TestARefusedSendIsAuditedAndExplained(t *testing.T) {
 	}{
 		{fmt.Errorf("%w: 1", peers.ErrTextUnknownPeer), http.StatusNotFound},
 		{fmt.Errorf("%w: 1", peers.ErrTextBusy), http.StatusConflict},
+		{peers.ErrTextNoRouting, http.StatusConflict},
 		{fmt.Errorf("%w: 3155373 is transmitting", peers.ErrTextChannelBusy), http.StatusConflict},
 		{fmt.Errorf("x: %w", tms.ErrTooLong), http.StatusBadRequest},
 		{peers.ErrTextNotListening, http.StatusServiceUnavailable},
@@ -198,5 +198,29 @@ func TestSendingATextNeedsASessionAndAListener(t *testing.T) {
 	resp := authed(t, srv, a, http.MethodGet, "/api/admin", "")
 	if !strings.Contains(resp.Body.String(), `"texts":{"available":false`) {
 		t.Errorf("the admin page is not told the form is unavailable: %s", resp.Body)
+	}
+}
+
+// TestNoHotspotMeansTheWholeTalkgroup: the hotspot is the optional field, and
+// leaving it empty sends to everybody, which the audit trail says.
+//
+// To see it fail: restore the check that refused a request with no peer.
+func TestNoHotspotMeansTheWholeTalkgroup(t *testing.T) {
+	f := &fakeTexts{}
+	rec := &recordingAudit{}
+	srv, a := newTextServer(t, f, nil, rec)
+	resp := authed(t, srv, a, http.MethodPost, "/api/admin/text",
+		`{"timeslot":2,"talkgroup":2,"from":9990,"text":"to everybody"}`)
+	if resp.Code != http.StatusAccepted {
+		t.Fatalf("status %d: %s", resp.Code, resp.Body)
+	}
+	if f.calls != 1 || f.peer != 0 {
+		t.Fatalf("sender got %d calls for peer %d, want one for the network", f.calls, f.peer)
+	}
+	if !strings.Contains(resp.Body.String(), "everybody on talkgroup 2") {
+		t.Errorf("the note does not say where it went: %s", resp.Body)
+	}
+	if ev := rec.events[len(rec.events)-1]; ev.Subject != "network" {
+		t.Errorf("audited subject %q, want network", ev.Subject)
 	}
 }

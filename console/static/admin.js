@@ -97,6 +97,10 @@
     if (!x.available) { return; }
     el("text-limit").textContent = "Up to " + x.max_characters +
       " characters. That is what one message carries; a radio may show fewer.";
+    if (!x.network) {
+      el("text-scope").textContent = "This server does not forward, so a text " +
+        "can only go to one hotspot: enter its ID, as the Network page lists it.";
+    }
     show(el("block-text"));
   }
 

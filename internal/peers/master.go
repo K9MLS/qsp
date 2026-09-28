@@ -13,6 +13,7 @@ import (
 	"github.com/k9mls/qsp/internal/access"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/routing"
 )
 
 // Defaults for MasterConfig.
@@ -349,6 +350,10 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 	}
 	if msg.RepeaterID == 0 {
 		return dropped("login from %s carries repeater ID 0, which is not a valid station", displayAddr(from))
+	}
+	if msg.RepeaterID == routing.ServerOrigin {
+		return dropped("login from %s carries repeater ID %d, which QSP reserves for its own transmissions",
+			displayAddr(from), msg.RepeaterID)
 	}
 	// The registration list is consulted before the password, so that a
 	// refused ID never reaches the credential path at all. It also means the

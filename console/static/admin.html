@@ -201,15 +201,11 @@
       </div>
       <div class="panel__body">
         <p class="field__note">
-          A group text, composed by this server and sent to one hotspot. Nothing
-          acknowledges a group text, so the only proof it worked is the radio's
-          display: send to a talkgroup the radio listens to, and watch it.
+          A group text, composed by this server and sent to everybody on the
+          talkgroup: every hotspot on it, every Motorola repeater, and wherever
+          the bridges carry it. Nothing acknowledges a group text, so the only
+          proof it arrived is a radio's display.
         </p>
-
-        <label class="picker__label" for="text-peer">Hotspot ID</label>
-        <input class="picker__input" id="text-peer" type="text" inputmode="numeric"
-               spellcheck="false" placeholder="313291001">
-        <p class="field__note">The ID the hotspot logged in with, as the Network page lists it.</p>
 
         <label class="picker__label" for="text-talkgroup">Talkgroup</label>
         <input class="picker__input" id="text-talkgroup" type="text" inputmode="numeric"
@@ -232,6 +228,14 @@
         <label class="picker__label" for="text-body">Message</label>
         <input class="picker__input" id="text-body" type="text" spellcheck="false">
         <p class="field__note" id="text-limit"></p>
+
+        <label class="picker__label" for="text-peer">Only to hotspot (optional)</label>
+        <input class="picker__input" id="text-peer" type="text" inputmode="numeric"
+               spellcheck="false" placeholder="313291001">
+        <p class="field__note" id="text-scope">
+          For testing: send to this one hotspot and nowhere else. Leave it empty
+          to send to the whole talkgroup.
+        </p>
 
         <button class="button" id="text-send" type="button">Send</button>
         <p class="link__advice" id="text-error" hidden></p>

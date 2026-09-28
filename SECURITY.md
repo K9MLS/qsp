@@ -188,14 +188,17 @@ with its outcome, including one systemd refused.
 
 ### Sending a text
 
-`/api/admin/text`, on POST, composes a group text and sends it to one hotspot
-(ADR-0067 phase 2). It requires a session and refuses a cross-origin write
+`/api/admin/text`, on POST, composes a group text and sends it to everybody on
+a talkgroup, or to one named hotspot for testing (ADR-0067). It requires a session and refuses a cross-origin write
 like every other write. **It is the one console action that puts something on
 the air**, which is why it is an administrator's action rather than anything a
 radio can trigger: it adds no surface reachable from the network, where a
 command a radio could send would be forgeable by anybody who can set a radio's
-ID. It can address only a registered peer, only as a group text, and only
-while no call is active on the timeslot. The sender's DMR ID is whatever the
+ID. It goes out as a group text only, only while no call is active on the
+timeslot, and through routing exactly as any transmission on that talkgroup
+would: the access lists and bridges that govern a hotspot's traffic govern
+this too, so it reaches no talkgroup, repeater or linked network that a
+member keying up on the same talkgroup would not. The sender's DMR ID is whatever the
 administrator types, so an administrator can send a text that appears to come
 from any radio; that is the same trust the console already places in whoever
 can log in to it, and every attempt, refused or not, is audited as
