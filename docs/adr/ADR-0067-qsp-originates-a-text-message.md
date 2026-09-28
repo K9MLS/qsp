@@ -1,6 +1,6 @@
 # ADR-0067: QSP originates a text message, and that is a capability it does not have
 
-**Status:** Accepted — phase 1 complete for both block formats, packet CRC included, 2026-09-27; phase 2 is next
+**Status:** Accepted — phase 1 complete for both block formats, packet CRC included, 2026-09-27; phase 2 built and awaiting its instrument, 2026-09-28
 **Date:** 2026-09-27
 **Relates to:** [ADR-0029](ADR-0029-ipsc-from-capture.md),
 [ADR-0045](ADR-0045-ipsc-text-messages.md),
@@ -218,3 +218,47 @@ origination.
 entirely. Refused: it burns the vocoder, keys every repeater on the talkgroup,
 and spends the audio path on automation rather than on people talking. Automated
 content on an amateur network stays textual.
+
+## Phase 2, as built, 2026-09-28
+
+**The differential came first, and it found two things before a radio was
+involved.** A composed group text is held to
+`testdata/hbp/hbp-text-preambles.pcap` — the operator's "K9MLS" as a hotspot
+forwarded it — burst for burst.
+
+**The preamble CRC was solved.** Every text opens with sixteen preamble CSBKs,
+and their CRC-16 had been left unsolved after 128 combinations. It is
+CRC-CCITT with an output mask of `0x5A5A`, which is ETSI's `0xA5A5` with the
+standard's inversion folded in — the same fold that makes the data header's
+"measured, not ETSI" `0x3333` into ETSI's `0xCCCC` after all.
+
+**A Golay generator row was wrong, and every relayed text carried it.** The
+composed preambles matched; the header and all five blocks missed by the same
+two bits. The slot type's Golay (20,8) table had one row two bits off, used
+only by data types with bit `0x04` set — data headers and Rate 1/2 blocks.
+MMDVMHost corrects three errors and regenerates the field, which is why texts
+QSP relayed still arrived. Fixed in 0439, with the code's minimum distance as
+a test.
+
+**The sending path refuses rather than queues.** A text sent into a call on
+the same timeslot is dropped by MMDVMHost, and that failure would read exactly
+as a wrong encoder — the one conclusion this phase exists to test. So a send
+is refused while any call is active on the timeslot anywhere on the network,
+while the peer is receiving a parrot replay or another text, and for a peer
+not registered. Refusing more than strictly needed costs a retry.
+
+**Group only, for the reason phase 3 exists.** A private text is a confirmed
+packet and the receiving radio answers it; QSP has no path for an answer
+addressed to itself. On a Motorola repeater, where phase 3 happens, that
+acknowledgement is what gets measured.
+
+**The trigger is an administrator's action on the console**, not a text
+echo. An echo would have to decide the reply address and the sending identity
+that ADR-0068 decides, and would be a radio-reachable feature before phase 3.
+An authenticated action adds no surface a radio can reach, and it is the path
+ADR-0068's administrator bulletins need anyway.
+
+**What remains is the instrument**: a composed message on a radio's display,
+through a hotspot linked to a server running it. Send from an ID that is not
+the receiving radio's, to a talkgroup in its receive group list — TG2 on
+timeslot 2 is what the operator's radio sent on.

@@ -4,6 +4,30 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **QSP can compose a group text and send it to one hotspot.**
+  `tms.Frames` builds the whole transmission a hotspot sends — sixteen
+  preamble CSBKs each in a stream of its own, counting down the bursts to
+  come, then a data header and Rate 1/2 blocks sharing one stream, with the
+  sequence running across all of it — and reproduces all twenty-two frames of
+  the operator's captured "K9MLS" burst for burst, colour code and slot type
+  included. `peers.Listener.SendText` plays it out at the radio's rate through
+  a playback of its own, written with the hotspot's announced colour code,
+  and **refuses rather than queues**: while any call is active on the
+  timeslot, while the peer is hearing a parrot or another text, before the
+  listener has started, or for a peer that is not registered. A private text
+  is refused too: it is a confirmed packet whose acknowledgement needs
+  ADR-0067 phase 3. Nothing calls `SendText` yet; 0441 adds the trigger.
+
+### Changed
+
+- **`parrot.Player` takes a log label and can say whether a peer is busy.**
+  A composed text is paced by the same player, and logging it as "parrot
+  replayed" would send whoever reads the journal to the wrong feature. Parrot
+  still logs as it did.
+
+
 ### Fixed
 
 - **Every data header and Rate 1/2 block QSP relayed to a hotspot carried two

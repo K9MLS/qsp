@@ -207,6 +207,16 @@ type Listener struct {
 
 	// playback replays parrot recordings. Nil when parrot is off.
 	playback *playback
+	// texts plays composed text messages out to one peer. Never nil. See
+	// text.go.
+	texts *playback
+	// textCtx bounds text playbacks. It is published by Start, after the
+	// socket is attached, and read by SendText on an HTTP goroutine, so it is
+	// atomic rather than sharing ctx, which the serve goroutine owns.
+	textCtx atomic.Pointer[context.Context]
+	// textMu makes SendText's check for a busy peer and its start one step,
+	// so two administrators pressing send at once cannot both pass the check.
+	textMu sync.Mutex
 	// ctx bounds every playback goroutine, so shutdown stops them.
 	ctx context.Context
 
@@ -244,6 +254,7 @@ func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
 		// would only sometimes schedule.
 		l.playback = newPlayback(l.log, nil)
 	}
+	l.texts = newPlaybackAs(l.log, nil, "text sent")
 
 	// **Published once at construction**, so a tracker seeded from the record
 	// is visible before the first frame arrives. The snapshot is otherwise
@@ -281,6 +292,10 @@ func (l *Listener) Start(ctx context.Context) error {
 	if l.playback != nil {
 		l.playback.conn = conn
 	}
+	l.texts.conn = conn
+	// Published after the socket is attached: a SendText that loads this
+	// context is then guaranteed to see the socket too.
+	l.textCtx.Store(&ctx)
 	l.running.Store(true)
 	l.refresh()
 	if l.cfg.ScheduleState != nil {

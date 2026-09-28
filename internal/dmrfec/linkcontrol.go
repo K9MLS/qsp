@@ -88,6 +88,13 @@ const (
 	// content of a text message travels in. It is the one data type whose
 	// burst this package codes with a trellis rather than BPTC.
 	DataTypeRate34 uint8 = 0x8
+	// DataTypeCSBK carries a control signalling block; a preamble is one.
+	DataTypeCSBK uint8 = 0x3
+	// DataTypeDataHeader opens a data packet.
+	DataTypeDataHeader uint8 = 0x6
+	// DataTypeRate12 is a Rate 1/2 data block, BPTC coded like a header.
+	// Every captured group text travels in them.
+	DataTypeRate12 uint8 = 0x7
 )
 
 // rsMaskFor returns the mask applied to the parity for a data type.

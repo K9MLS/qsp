@@ -40,6 +40,10 @@ type Player struct {
 	log   *slog.Logger
 	sink  Sink
 	stats *PlayerStats
+	// finished is the log message for a completed playback. A composed text
+	// is played out through a Player too, and logging it as "parrot replayed"
+	// would send whoever reads the journal to the wrong feature.
+	finished string
 
 	// mu guards running, which is the set of peers being replayed to.
 	mu      sync.Mutex
@@ -65,12 +69,27 @@ func (s *PlayerStats) Snapshot() (played, frames, stopped, errs uint64) {
 
 // NewPlayer returns a player that delivers through sink.
 func NewPlayer(log *slog.Logger, sink Sink) *Player {
+	return NewPlayerAs(log, sink, "parrot replayed")
+}
+
+// NewPlayerAs returns a player whose completed playbacks are logged as
+// finished. It is the same pacing for frames that are not a parrot's.
+func NewPlayerAs(log *slog.Logger, sink Sink, finished string) *Player {
 	return &Player{
-		log:     log,
-		sink:    sink,
-		stats:   &PlayerStats{},
-		running: make(map[hbp.RepeaterID]context.CancelFunc),
+		log:      log,
+		sink:     sink,
+		stats:    &PlayerStats{},
+		finished: finished,
+		running:  make(map[hbp.RepeaterID]context.CancelFunc),
 	}
+}
+
+// Busy reports whether a playback to peer is running.
+func (p *Player) Busy(peer hbp.RepeaterID) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	_, ok := p.running[peer]
+	return ok
 }
 
 // Stats returns the counters this player is accumulating.
@@ -168,7 +187,7 @@ func (p *Player) play(ctx context.Context, rec Recording) {
 	p.stats.frames += sent
 	p.stats.mu.Unlock()
 
-	p.log.Info("parrot replayed",
+	p.log.Info(p.finished,
 		slog.Uint64("peer", uint64(rec.Peer)),
 		slog.Uint64("frames", sent),
 		slog.String("duration", rec.Duration.Truncate(time.Millisecond).String()),

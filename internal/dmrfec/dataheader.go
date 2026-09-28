@@ -71,9 +71,9 @@ const (
 type DataHeader struct {
 	// To and From are radio IDs, or a talkgroup in To when Group is set.
 	To, From uint32
-	// Group says the destination is a talkgroup. **Unverified**: every
-	// capture in hand is a private text, so the group bit's position is
-	// taken from ETSI and has never been seen set on this wire.
+	// Group says the destination is a talkgroup. Measured since the
+	// 2026-09-27 calibration capture, and since 2026-09-28 a composed group
+	// header codes to the hotspot's own burst bit for bit.
 	Group bool
 	// Response asks the far end to acknowledge. Set in all three captures.
 	Response bool

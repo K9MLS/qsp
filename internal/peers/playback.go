@@ -45,13 +45,23 @@ type playback struct {
 }
 
 func newPlayback(log *slog.Logger, conn playbackWriter) *playback {
+	return newPlaybackAs(log, conn, "parrot replayed")
+}
+
+// newPlaybackAs is a playback whose completions are logged as finished. The
+// text sender uses one of its own, so that a composed message is never
+// mistaken in the journal for a parrot and never cuts one off.
+func newPlaybackAs(log *slog.Logger, conn playbackWriter, finished string) *playback {
 	p := &playback{
 		addrs: make(map[hbp.RepeaterID]netip.AddrPort),
 		conn:  conn,
 	}
-	p.player = parrot.NewPlayer(log, p)
+	p.player = parrot.NewPlayerAs(log, p, finished)
 	return p
 }
+
+// Busy reports whether a playback to peer is running.
+func (p *playback) Busy(peer hbp.RepeaterID) bool { return p.player.Busy(peer) }
 
 // Deliver marshals one frame and writes it to the peer's address.
 func (p *playback) Deliver(peer hbp.RepeaterID, frame hbp.Data) error {
