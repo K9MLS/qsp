@@ -24,10 +24,16 @@ import (
 // have refused every group message on this network, which nothing noticed
 // because no fixture held one.
 //
-// One incidental finding worth keeping: the radio sent "Aaaa" where the
-// operator typed AAAA, and one message picked up a leading space. **Text
-// entry on a radio is not literal**, which matters for any command grammar
-// built on top of this.
+// The texts below are exactly what the operator typed. An earlier version of
+// this comment claimed the radio had autocapitalised "AAAA" into "Aaaa" and
+// that text entry was therefore not literal — **that was wrong**, corrected on
+// the operator's word: he typed "Aaaa", the first letter capitalised because
+// that is how he typed it, and did not bother shifting the rest. The radio
+// transmitted what it was given.
+//
+// The leading space on " Aaaa" is recorded as observed and unexplained. It may
+// have been typed. Nothing here attributes it to the radio, because nothing
+// here knows.
 const captureGroup = "../../testdata/ipsc/ipsc-text-group-cal.pcap"
 
 const (
@@ -183,10 +189,10 @@ func TestEveryCapturedGroupTextRoundTrips(t *testing.T) {
 		}
 	}
 
-	// The six texts the operator sent, as the radio actually transmitted
-	// them. Autocapitalisation turned AAAA into Aaaa and one gained a leading
-	// space, and both are recorded rather than tidied away, because the
-	// fixture has to say what is on the wire.
+	// The six texts the operator sent, exactly as typed and exactly as
+	// transmitted. They are recorded unaltered — mixed case, leading space
+	// and all — because a fixture has to say what was on the wire rather than
+	// what would have been tidier.
 	sort.Strings(texts)
 	want := []string{" Aaaa", "A", "Aa", "Aaa ", "Aaab", "Baaa"}
 	if len(texts) != len(want) {

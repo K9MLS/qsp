@@ -1,9 +1,57 @@
-# Handover, 2026-09-21
+# Handover, 2026-09-27
 
-Read `NEW-SESSION.md`, then **§8a** and **§8s** of `PROJECT_MEMORY.md`, then
-**ADR-0052**, the frame everything about linking sits inside. For the Zello and
-transcoder work read **ADR-0062**, **0063**, **0064**, **0065** and **0066** in
-order — they build on each other — and `docs/ZELLO.md`.
+Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md` — how this project
+finds its defects, and the thing the last two days proved again. Then **§8s**,
+then **ADR-0052**, the frame everything about linking sits inside. For the text
+service read **ADR-0067** and **ADR-0068** in order; for Zello and the
+transcoder, **ADR-0062** through **0066** and `docs/ZELLO.md`.
+
+## The two live threads
+
+**1. The Quantar link waits on one part.** A replacement V.24 card is inbound
+from KD9EJA. The station's **AUX LED has never lit**, which is the board's own
+report that its V.24 section is not running, and it is the first thing to check
+on this path — ahead of anything the router can tell you. Everything else is
+proven: the router configuration matches the published build line for line, and
+the cable, two separate adapters, the 9600 clock and the codeplug each have an
+instrument behind them. The router is parked with `shutdown` saved to startup
+and is one `no shutdown` from live. See `docs/P25-PLANNING.md`.
+
+**2. The text service has its foundation and is blocked four octets short.**
+ADR-0067 phase 1 is complete for both block formats: `internal/tms` and the
+Rate 3/4 and Rate 1/2 segmentation in `internal/dmrfec` round-trip their
+captures octet for octet. **Phase 2 cannot start until the packet CRC is
+solved** — it is proven GF(2)-linear, so it is a CRC, and its parameters are
+unknown after a search that eliminated the initial value and the output mask
+rather than guessing them. **CRC RevEng on the six samples in
+`testdata/ipsc/ipsc-text-group-cal.pcap` is the next move.** If it finds
+nothing, the region is wrong rather than the parameters. After that the build
+order is `TIME`, then `WX`, then the alert poller, per ADR-0068.
+
+**Nothing needs deploying.** Production runs 0.1.269 and is correct. Everything
+since is documents, decision records and two new packages that nothing calls
+yet, so there is no patch waiting to go on air and no reason to touch a running
+network to make progress.
+
+## Three readings that wasted a day between them
+
+All three are now in the documents, and all three will mislead again if they are
+not believed:
+
+- **`up/up` on a STUN interface means nothing.** STUN runs no keepalives, so the
+  interface reads up with a dead far end, an unplugged cable or no radio at all.
+  It read `up/up` through an entire afternoon of a completely silent link. Under
+  HDLC with a keepalive it only comes up if frames genuinely return, which is
+  why the loopback test in `docs/P25-PLANNING.md` works and is the best
+  instrument this project has for a synchronous serial link.
+- **`show stun` reading `closed` carries no information.** Cisco's own guide
+  prints a `closed` circuit alongside 5,729 received packets. The counters carry
+  everything; the word carries nothing.
+- **A station says what is wrong with it, on a screen nobody had opened.**
+  `Station is Currently ACCESS DISABLED` prints at the foot of every RSS
+  Alignment screen, and six rounds of counter tests were run at the router
+  before anyone looked. The Service screens — Status Report, Status Panel,
+  Version — are the first place to go when a radio appears silent.
 
 **History has been rewritten twice**, and every hash from before a rewrite no
 longer resolves. On 2026-09-09, to remove a product name. On **2026-09-19**, to
@@ -48,14 +96,22 @@ paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
 fills a stall Zello makes with silence rather than leaving the repeater to
 repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as confirmed at the end of 2026-09-21** (check with `-version`
-before trusting these; they go stale with the next deploy):
+**Versions, as of 2026-09-27** (check with `-version` before trusting these;
+they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
+| **Fedora working tree** | 0.1.277 | `cat VERSION` |
 | **GitHub** `main` | 0.1.269, tagged `v0.1.269`; images published for it | pushed, Actions |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.269**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
+
+**The compose files pin the working tree's version, enforced by
+`TestThePublishedImageIsPinnedToThisVersion`**, so between tags `main` names an
+image that is not published. The documented install builds from source rather
+than pulling, so this only bites somebody who pulls — but it is the reason to
+tag when you push, and the coupling is deliberate: a routine `docker compose
+pull` must not become an unannounced upgrade of a live repeater network.
 
 **Proven on hardware:**
 - Zello both ways on Homebrew and Motorola repeaters (2026-09-16).
@@ -181,6 +237,20 @@ learned to run it as a service.
   **session lifetime** on Administration (0423); the **replug recovery** (0416)
   proven on hardware; the **0x81 byte** closed as unreproducible, none since
   2026-09-10.
+
+**Three more, from 2026-09-26 and 27:**
+- **Never background a `sudo` command.** `sudo tcpdump ... &` prints a job
+  number and then sits suspended on `SIGTTIN` at the password prompt, forever.
+  An empty capture directory then reads as "the capture caught nothing" rather
+  than "the capture never existed", and `jobs` showing `Stopped` was the only
+  evidence, three hours later.
+- **A quoted configuration excerpt is not a command block.** One was handed over
+  as evidence in a fenced block shaped exactly like a paste block, and it was
+  pasted. Nothing was harmed only because the router was not in configuration
+  mode.
+- **A revert is a destructive edit.** `git checkout -- <file>` was used to undo
+  a deliberate test breakage on a file holding uncommitted work, and silently
+  destroyed it. Copy the file aside instead.
 
 **Two operating rules learned the hard way on 2026-09-16:**
 - **Never test by restarting a service in a loop.** AMBEserver's unit allows

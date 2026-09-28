@@ -4,6 +4,34 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **`HANDOVER.md` rewritten for a fresh session**, opening on the two live
+  threads rather than on history: the Quantar link waiting on one inbound card
+  with the AUX LED as its first check, and the text service with phase 1
+  complete and phase 2 blocked four octets short on the packet CRC. It states
+  plainly that **nothing needs deploying** — production runs 0.1.269 and is
+  correct, and everything since is documents, decision records and two packages
+  nothing calls yet. It also collects the three readings that cost a day between
+  them: `up/up` under STUN meaning nothing, `show stun` saying `closed` while
+  thousands of packets flow, and a station announcing `ACCESS DISABLED` on a
+  screen nobody had opened. Three more working conventions go in beside them —
+  never background `sudo`, a quoted excerpt is not a command block, and a revert
+  is a destructive edit.
+
+### Fixed
+
+- **A claim about the radio was wrong and is withdrawn.** 0434 recorded that the
+  operator typed AAAA, the radio sent "Aaaa", and therefore "text entry on a
+  radio is not literal" — which would have had the command grammar of ADR-0068
+  designed around a behaviour that does not exist. He typed "Aaaa": the first
+  letter capitalised because that is how he typed it, the rest left lowercase
+  for speed. **The radio transmitted exactly what it was given.** The leading
+  space on " Aaaa" is now recorded as observed and unexplained rather than
+  attributed to the radio. Corrected in ADR-0067, the changelog entry and the
+  fixture's own comment, because a wrong fact about hardware is worse in a test
+  comment than in prose — that is where the next person will trust it.
+
 ### Added
 
 - **A group text is a different format, and QSP would have refused every one.**
@@ -23,10 +51,8 @@ All notable changes to QSP. Dates are UTC.
   padding 8, 10, 4 and 2.
 - **`testdata/ipsc/ipsc-text-group-cal.pcap`**: six group messages of three
   distinct lengths, sent one character apart on purpose. They decode to
-  " Aaaa", "A", "Aa", "Aaa ", "Aaab" and "Baaa" — note that the operator typed
-  AAAA and the radio sent "Aaaa", and that one message gained a leading space.
-  **Text entry on a radio is not literal**, which matters for any command
-  grammar built on this.
+  " Aaaa", "A", "Aa", "Aaa ", "Aaab" and "Baaa", exactly as typed and exactly
+  as transmitted.
 - **The packet CRC is provably a CRC.** The same-length pairs exist because for
   equal lengths a CRC's initial value and output mask cancel:
   `crc(A) ⊕ crc(B) = R(A ⊕ B)`. The third pair's target equalled the first two

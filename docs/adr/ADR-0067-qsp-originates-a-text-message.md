@@ -106,6 +106,14 @@ which is the cheap way round.
 Both formats now round-trip octet for octet against their captures, which is
 what closes phase 1.
 
+**A correction, recorded rather than edited away.** The first write-up of this
+capture said the radio had autocapitalised "AAAA" into "Aaaa" and concluded that
+text entry on a radio is not literal. The operator typed "Aaaa". The radio
+transmitted what it was given, the inference was invented to explain a
+difference that was not there, and the conclusion would have shaped ADR-0068's
+command grammar around imaginary behaviour. The leading space on one message
+stays recorded as observed and unexplained.
+
 **And the packet CRC is provably a CRC.** The calibration messages were sent
 one character apart so that same-length pairs would exist, because for equal
 lengths a CRC's initial value and output mask cancel:
