@@ -6,6 +6,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **The withdrawn TTN4010 claim survived in one paragraph of `HANDOVER.md`.**
+  The rewrite in the entry below retracted "not fitted" in the open item, then
+  restated it as current fact eight lines later, beneath the table of what is
+  proven, together with the TTL-against-RS-232 mechanism that went with it.
+  That paragraph now says what the AUX LED says: the card is fitted and its V.24
+  section has never run. The older changelog entry keeps its wording, because a
+  dated entry corrected by a newer one is the record working as intended; a
+  handover is read as the present.
 - **`HANDOVER.md` rewritten for a fresh session**, opening on the two live
   threads rather than on history: the Quantar link waiting on one inbound card
   with the AUX LED as its first check, and the text service with phase 1

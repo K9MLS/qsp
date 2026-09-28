@@ -197,10 +197,9 @@ learned to run it as a service.
 
    Against that, nothing ever reached the router and **with zero framing
    errors** — two ends that cannot hear each other, not one that is mis-set. The
-   wireline board is a `TRN7477D11` with **no TTN4010 fitted**, and the TTN4010
-   is a level converter from the TTL present on the wireline board: without it
-   the RJ-45 is TTL against the Cisco's RS-232. `RT/RT Configuration` was also
-   found disabled and corrected on the way.
+   dark AUX LED is what explains it: the TTN4010 is fitted, and its V.24 section
+   has never run. `RT/RT Configuration` was also found disabled and corrected on
+   the way.
 
    Also found on 2026-09-27: **`Station is Currently ACCESS DISABLED`**, printed
    at the foot of every RSS Alignment screen and unnoticed through six rounds of
