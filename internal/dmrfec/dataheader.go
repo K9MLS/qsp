@@ -39,8 +39,11 @@ const (
 	dataHeaderBytes = 12
 	// dataHeaderCRCMask is measured. See the note above.
 	dataHeaderCRCMask = 0x3333
-	// dpfConfirmedData is the Data Packet Format of a confirmed packet.
-	dpfConfirmedData = 0x3
+	// dpfConfirmedData and dpfUnconfirmedData are the Data Packet Formats
+	// this project has seen. Every private text capture is confirmed; every
+	// group text in the 2026-09-27 calibration capture is unconfirmed.
+	dpfConfirmedData   = 0x3
+	dpfUnconfirmedData = 0x2
 	// headerBitA marks a header that requests a response.
 	headerBitA = 0x40
 	// headerBitGroup marks a destination that is a talkgroup.
@@ -72,9 +75,14 @@ type DataHeader struct {
 	// Pad is the pad-octet count, which [PadOctets] derives.
 	Pad uint8
 	// SendSeq is the three-bit send sequence number. It varied across the
-	// captures — 5, 6 and 3 — and nothing here depends on its value, so QSP
-	// owns it as a rolling counter.
+	// private captures — 5, 6 and 3 — and read zero in every group one, and
+	// nothing here depends on its value, so QSP owns it as a rolling counter.
 	SendSeq uint8
+	// Confirmed says each block carries a serial number and a CRC-9, which
+	// is what a Rate 3/4 confirmed packet does. An unconfirmed packet is
+	// Rate 1/2 blocks of plain user data, which is how every captured group
+	// text travelled.
+	Confirmed bool
 }
 
 // DataHeaderCRC is the check value over the first ten octets of a header.
@@ -112,7 +120,10 @@ func BuildDataHeader(h DataHeader) ([]byte, error) {
 	}
 
 	out := make([]byte, dataHeaderBytes)
-	out[0] = dpfConfirmedData
+	out[0] = dpfUnconfirmedData
+	if h.Confirmed {
+		out[0] = dpfConfirmedData
+	}
 	if h.Response {
 		out[0] |= headerBitA
 	}
@@ -123,7 +134,15 @@ func BuildDataHeader(h DataHeader) ([]byte, error) {
 	out[2], out[3], out[4] = byte(h.To>>16), byte(h.To>>8), byte(h.To)
 	out[5], out[6], out[7] = byte(h.From>>16), byte(h.From>>8), byte(h.From)
 	out[8] = headerBitFull | h.Blocks
-	out[9] = h.SendSeq<<4 | fragmentLast
+	// **Octet 9 belongs to a confirmed packet only.** Every confirmed
+	// private header carries a send sequence and the fragment-last bit —
+	// 0x58, 0x68, 0x38 — and every unconfirmed group header reads 0x00. An
+	// unconfirmed packet has no acknowledgement to sequence, so there is
+	// nothing for the field to say, and writing 0x08 there produced a header
+	// that differed from the wire in exactly one octet.
+	if h.Confirmed {
+		out[9] = h.SendSeq<<4 | fragmentLast
+	}
 
 	crc, err := DataHeaderCRC(out)
 	if err != nil {
@@ -145,17 +164,21 @@ func ParseDataHeader(block []byte) (DataHeader, error) {
 	if stored := binary.BigEndian.Uint16(block[dataHeaderBytes-2:]); stored != crc {
 		return DataHeader{}, fmt.Errorf("data header: CRC is %#04x, computed %#04x", stored, crc)
 	}
-	if dpf := block[0] & 0x0f; dpf != dpfConfirmedData {
-		return DataHeader{}, fmt.Errorf("data header: data packet format %#x is not a confirmed packet", dpf)
+	dpf := block[0] & 0x0f
+	if dpf != dpfConfirmedData && dpf != dpfUnconfirmedData {
+		return DataHeader{}, fmt.Errorf(
+			"data header: data packet format %#x is neither a confirmed (%#x) nor an unconfirmed (%#x) packet",
+			dpf, dpfConfirmedData, dpfUnconfirmedData)
 	}
 	return DataHeader{
-		To:       uint32(block[2])<<16 | uint32(block[3])<<8 | uint32(block[4]),
-		From:     uint32(block[5])<<16 | uint32(block[6])<<8 | uint32(block[7]),
-		Group:    block[0]&headerBitGroup != 0,
-		Response: block[0]&headerBitA != 0,
-		SAP:      block[1] >> 4,
-		Blocks:   block[8] & 0x0f,
-		Pad:      block[1] & 0x0f,
-		SendSeq:  block[9] >> 4 & 0x7,
+		To:        uint32(block[2])<<16 | uint32(block[3])<<8 | uint32(block[4]),
+		From:      uint32(block[5])<<16 | uint32(block[6])<<8 | uint32(block[7]),
+		Group:     block[0]&headerBitGroup != 0,
+		Response:  block[0]&headerBitA != 0,
+		SAP:       block[1] >> 4,
+		Blocks:    block[8] & 0x0f,
+		Pad:       block[1] & 0x0f,
+		SendSeq:   block[9] >> 4 & 0x7,
+		Confirmed: dpf == dpfConfirmedData,
 	}, nil
 }

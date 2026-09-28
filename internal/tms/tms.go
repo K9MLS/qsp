@@ -58,13 +58,20 @@ const (
 	Port = 4007
 	// radioIPPrefix is the first octet of Motorola's radio-IP addresses.
 	radioIPPrefix = 0x0c
+	// groupIPPrefix is the first octet of a group address. A text to
+	// talkgroup 2 is addressed to 225.0.0.2 — measured 2026-09-27, and
+	// nothing in this project knew of it before that capture.
+	groupIPPrefix = 0xe1
 
 	ipHeaderBytes  = 20
 	udpHeaderBytes = 8
 	// tmsHeaderBytes is the header between the UDP payload and the text.
 	tmsHeaderBytes = 6
-	// defaultTTL is what the captures carry.
-	defaultTTL = 64
+	// privateTTL and groupTTL are what the captures carry. A group message
+	// travels with a time to live of one, as a multicast-style address
+	// suggests it should.
+	privateTTL = 64
+	groupTTL   = 1
 	// protocolUDP is IANA 17.
 	protocolUDP = 17
 
@@ -72,16 +79,26 @@ const (
 	bodyPrefix = "\r\n"
 )
 
-// tmsConstants are octets 2, 3 and 5 of the TMS header, which did not vary.
-var tmsConstants = [3]byte{0xe0, 0x00, 0x04}
+// The TMS header's third octet carries the call type: every private message
+// in the captures reads 0xe0 and every group message reads 0xa0. Octets 3 and
+// 5 read 0x00 and 0x04 in both.
+const (
+	tmsPrivate = 0xe0
+	tmsGroup   = 0xa0
+	tmsOctet3  = 0x00
+	tmsOctet5  = 0x04
+)
 
 // Message is a text message and the two identities it travels between.
 type Message struct {
-	// From and To are 24-bit radio identifiers. **To is a radio ID even for
-	// a group message**: the call type lives in the IP Site Connect
-	// envelope, not in here, so whether To names a talkgroup is the
-	// envelope's business and this package does not guess.
-	From, To uint32
+	// From is the sender's 24-bit radio identifier.
+	From uint32
+	// To is a radio identifier, or a talkgroup when Group is set.
+	To uint32
+	// Group says the destination is a talkgroup. It is carried in the
+	// datagram twice — in the address prefix and in the TMS header's third
+	// octet — and [Parse] refuses a message where the two disagree.
+	Group bool
 	// IPID is the IPv4 identification field. It is arbitrary on the wire and
 	// is carried so that a captured message rebuilds byte for byte; a
 	// message QSP originates may set it to anything.
@@ -115,11 +132,14 @@ func Parse(datagram []byte) (Message, error) {
 		return Message{}, fmt.Errorf("tms: IP header checksum is %#04x, computed %#04x", got, want)
 	}
 
-	src, err := radioOf(datagram[12:16])
+	src, srcGroup, err := addressOf(datagram[12:16])
 	if err != nil {
 		return Message{}, fmt.Errorf("tms: source: %w", err)
 	}
-	dst, err := radioOf(datagram[16:20])
+	if srcGroup {
+		return Message{}, fmt.Errorf("tms: source is a group address, which no capture has")
+	}
+	dst, group, err := addressOf(datagram[16:20])
 	if err != nil {
 		return Message{}, fmt.Errorf("tms: destination: %w", err)
 	}
@@ -146,9 +166,17 @@ func Parse(datagram []byte) (Message, error) {
 	if stated, want := int(binary.BigEndian.Uint16(payload[0:2])), len(payload)-2; stated != want {
 		return Message{}, fmt.Errorf("tms: header states %d octets follow, and %d do", stated, want)
 	}
-	if payload[2] != tmsConstants[0] || payload[3] != tmsConstants[1] || payload[5] != tmsConstants[2] {
-		return Message{}, fmt.Errorf("tms: header reads %02x %02x .. %02x where every captured one reads %02x %02x .. %02x",
-			payload[2], payload[3], payload[5], tmsConstants[0], tmsConstants[1], tmsConstants[2])
+	wantType := byte(tmsPrivate)
+	if group {
+		wantType = tmsGroup
+	}
+	if payload[2] != wantType {
+		return Message{}, fmt.Errorf("tms: header call type %#02x against a %s address, want %#02x",
+			payload[2], map[bool]string{true: "group", false: "private"}[group], wantType)
+	}
+	if payload[3] != tmsOctet3 || payload[5] != tmsOctet5 {
+		return Message{}, fmt.Errorf("tms: header octets 3 and 5 read %02x and %02x where every capture reads %02x and %02x",
+			payload[3], payload[5], tmsOctet3, tmsOctet5)
 	}
 
 	body := payload[tmsHeaderBytes:]
@@ -167,6 +195,7 @@ func Parse(datagram []byte) (Message, error) {
 	return Message{
 		From:      src,
 		To:        dst,
+		Group:     group,
 		IPID:      binary.BigEndian.Uint16(datagram[4:6]),
 		Reference: payload[4],
 		Text:      strings.TrimPrefix(text, bodyPrefix),
@@ -190,9 +219,13 @@ func Build(m Message) ([]byte, error) {
 
 	payload := make([]byte, tmsHeaderBytes, tmsHeaderBytes+len(body))
 	binary.BigEndian.PutUint16(payload[0:2], uint16(tmsHeaderBytes-2+len(body)))
-	payload[2], payload[3] = tmsConstants[0], tmsConstants[1]
+	payload[2] = tmsPrivate
+	if m.Group {
+		payload[2] = tmsGroup
+	}
+	payload[3] = tmsOctet3
 	payload[4] = m.Reference
-	payload[5] = tmsConstants[2]
+	payload[5] = tmsOctet5
 	payload = append(payload, body...)
 
 	total := ipHeaderBytes + udpHeaderBytes + len(payload)
@@ -204,10 +237,13 @@ func Build(m Message) ([]byte, error) {
 	out[0] = 0x45
 	binary.BigEndian.PutUint16(out[2:4], uint16(total))
 	binary.BigEndian.PutUint16(out[4:6], m.IPID)
-	out[8] = defaultTTL
+	out[8] = privateTTL
+	if m.Group {
+		out[8] = groupTTL
+	}
 	out[9] = protocolUDP
-	putRadioIP(out[12:16], m.From)
-	putRadioIP(out[16:20], m.To)
+	putAddress(out[12:16], m.From, false)
+	putAddress(out[16:20], m.To, m.Group)
 	binary.BigEndian.PutUint16(out[10:12], ipChecksum(out[:ipHeaderBytes], 10))
 
 	udp := out[ipHeaderBytes:]
@@ -220,18 +256,26 @@ func Build(m Message) ([]byte, error) {
 	return out, nil
 }
 
-// radioOf reads a radio identifier out of a Motorola radio-IP address.
-func radioOf(addr []byte) (uint32, error) {
-	if addr[0] != radioIPPrefix {
-		return 0, fmt.Errorf("address %d.%d.%d.%d does not begin %d, Motorola's radio-IP prefix",
-			addr[0], addr[1], addr[2], addr[3], radioIPPrefix)
+// addressOf reads an identifier out of a Motorola address, and says whether
+// it names a talkgroup.
+func addressOf(addr []byte) (id uint32, group bool, err error) {
+	switch addr[0] {
+	case radioIPPrefix:
+	case groupIPPrefix:
+		group = true
+	default:
+		return 0, false, fmt.Errorf("address %d.%d.%d.%d begins neither %d nor %d, Motorola's radio and group prefixes",
+			addr[0], addr[1], addr[2], addr[3], radioIPPrefix, groupIPPrefix)
 	}
-	return uint32(addr[1])<<16 | uint32(addr[2])<<8 | uint32(addr[3]), nil
+	return uint32(addr[1])<<16 | uint32(addr[2])<<8 | uint32(addr[3]), group, nil
 }
 
-func putRadioIP(dst []byte, radio uint32) {
+func putAddress(dst []byte, id uint32, group bool) {
 	dst[0] = radioIPPrefix
-	dst[1], dst[2], dst[3] = byte(radio>>16), byte(radio>>8), byte(radio)
+	if group {
+		dst[0] = groupIPPrefix
+	}
+	dst[1], dst[2], dst[3] = byte(id>>16), byte(id>>8), byte(id)
 }
 
 // ipChecksum is the ones-complement sum an IPv4 header carries, computed with

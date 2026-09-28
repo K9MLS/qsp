@@ -122,6 +122,59 @@ func Rate34UserData(blocks [][]byte, order Rate34Order) ([]byte, error) {
 	return out, nil
 }
 
+// Rate12DataBytes is the user data a Rate 1/2 block carries: the ninety-six
+// bits of a BPTC(196,96) information block, and all of it payload.
+//
+// **A short text never reaches Rate 3/4.** The six calibration messages of
+// 2026-09-27 — one to four characters, group-addressed — went out as Rate 1/2
+// unconfirmed blocks, data type 7, with no serial number and no CRC-9. The
+// packet, its pad and the four-octet packet CRC are laid out exactly as they
+// are for Rate 3/4, so everything below this point is shared.
+const Rate12DataBytes = 12
+
+// Rate12Blocks cuts a block stream into Rate 1/2 blocks.
+//
+// There is no control pair, so this is chunking with the length check that
+// stops a short final block being invented. It exists as a named function
+// rather than a slice expression so the Rate 1/2 and Rate 3/4 paths read the
+// same way at the call site.
+func Rate12Blocks(userData []byte) ([][]byte, error) {
+	switch {
+	case len(userData) == 0:
+		return nil, fmt.Errorf("rate 1/2 blocks: no user data")
+	case len(userData)%Rate12DataBytes != 0:
+		return nil, fmt.Errorf("rate 1/2 blocks: %d octets of user data is not a multiple of %d",
+			len(userData), Rate12DataBytes)
+	}
+	blocks := make([][]byte, 0, len(userData)/Rate12DataBytes)
+	for i := 0; i < len(userData); i += Rate12DataBytes {
+		blocks = append(blocks, userData[i:i+Rate12DataBytes:i+Rate12DataBytes])
+	}
+	return blocks, nil
+}
+
+// Rate12UserData concatenates Rate 1/2 blocks.
+//
+// **Nothing here can detect a missing or reordered block.** A Rate 1/2
+// unconfirmed block carries no serial number and no CRC, so the packet CRC at
+// the end is the only thing that would notice — and that CRC is not solved.
+// Until it is, a group text reassembled from a lossy capture is trusted, and
+// that is a real limitation rather than an oversight.
+func Rate12UserData(blocks [][]byte) ([]byte, error) {
+	if len(blocks) == 0 {
+		return nil, fmt.Errorf("rate 1/2 user data: no blocks")
+	}
+	out := make([]byte, 0, len(blocks)*Rate12DataBytes)
+	for i, b := range blocks {
+		if len(b) != Rate12DataBytes {
+			return nil, fmt.Errorf("rate 1/2 user data: block %d is %d octets, want %d",
+				i, len(b), Rate12DataBytes)
+		}
+		out = append(out, b...)
+	}
+	return out, nil
+}
+
 // PacketCRCBytes is the width of the packet CRC that ends the last block.
 const PacketCRCBytes = 4
 
@@ -136,6 +189,26 @@ const PacketCRCBytes = 4
 // data header prepended at twelve and at ten octets, the UDP datagram, the UDP
 // payload, and the whole user-data stream less the CRC itself. Three thousand
 // and seventy-two combinations, no match on any of the three.
+//
+// **What 2026-09-27's calibration capture added.** Six group messages of three
+// distinct lengths, sent one character apart on purpose, gave three
+// same-length pairs. For equal-length messages a CRC's initial value and its
+// output mask cancel — crc(A) ⊕ crc(B) = R(A ⊕ B) for the raw zero-init CRC —
+// so those two unknowns were eliminated rather than guessed at.
+//
+// Two things came out of it. The third pair's target equalled the first two
+// XORed exactly, which **proves the trailer is GF(2)-linear in the message**
+// and so is a CRC rather than a keyed hash, an additive checksum, or anything
+// carrying. And with init and mask gone, twelve polynomials against both input
+// reflections, both output reflections, both stored byte orders and fourteen
+// regions — including byte-reversed, 32-bit-word-swapped, and regions starting
+// at the UDP header, the UDP payload and the message body — matched none of
+// the three pairs.
+//
+// So the parameters are unknown and the shape is not. The next step is CRC
+// RevEng, which searches the space properly, with the six samples the capture
+// holds; if that finds nothing then the region is wrong rather than the
+// parameters.
 //
 // So it is carried rather than computed, and [ADR-0067] phase 2 cannot put an
 // originated message on the air until it is solved. That is the honest state
@@ -154,21 +227,22 @@ func PacketCRC([]byte) (uint32, error) {
 }
 
 // PadOctets is how many pad octets a packet of payloadLen needs to fill
-// blocks, leaving room for the packet CRC.
+// blocks of blockBytes, leaving room for the packet CRC.
 //
-// **Derived, and it agrees with the data header three times out of three.**
-// The pad count a header carries equalled blocks×16 − payload − 4 for a
-// six-block message padding four, a four-block message padding fourteen and a
-// four-block message padding four. See [DataHeader].
-func PadOctets(payloadLen, blocks int) int {
-	return blocks*Rate34DataBytes - payloadLen - PacketCRCBytes
+// **Derived, and it agrees with the data header seven times out of seven.**
+// The pad count a header carries equalled blocks×blockBytes − payload − 4 for
+// the three Rate 3/4 transmissions, padding 4, 14 and 4 across sixteen-octet
+// blocks, and for the four distinct Rate 1/2 calibration headers, padding 8,
+// 10, 4 and 2 across twelve-octet blocks. See [DataHeader].
+func PadOctets(payloadLen, blocks, blockBytes int) int {
+	return blocks*blockBytes - payloadLen - PacketCRCBytes
 }
 
-// BlocksFor is how many Rate 3/4 blocks a packet of payloadLen occupies once
-// the packet CRC is allowed for.
-func BlocksFor(payloadLen int) int {
+// BlocksFor is how many blocks of blockBytes a packet of payloadLen occupies
+// once the packet CRC is allowed for.
+func BlocksFor(payloadLen, blockBytes int) int {
 	total := payloadLen + PacketCRCBytes
-	return (total + Rate34DataBytes - 1) / Rate34DataBytes
+	return (total + blockBytes - 1) / blockBytes
 }
 
 // SplitPacket separates a reassembled user-data stream into the packet, its
@@ -192,13 +266,13 @@ func SplitPacket(userData []byte, payloadLen int) (payload, pad []byte, crc uint
 
 // JoinPacket is the inverse, and it takes the packet CRC as an argument for
 // the reason [PacketCRC] gives: nothing here can compute it.
-func JoinPacket(payload []byte, blocks int, crc uint32) ([]byte, error) {
-	pad := PadOctets(len(payload), blocks)
+func JoinPacket(payload []byte, blocks, blockBytes int, crc uint32) ([]byte, error) {
+	pad := PadOctets(len(payload), blocks, blockBytes)
 	if pad < 0 {
-		return nil, fmt.Errorf("join packet: %d octets of payload and a %d-octet CRC do not fit in %d blocks",
-			len(payload), PacketCRCBytes, blocks)
+		return nil, fmt.Errorf("join packet: %d octets of payload and a %d-octet CRC do not fit in %d blocks of %d",
+			len(payload), PacketCRCBytes, blocks, blockBytes)
 	}
-	out := make([]byte, 0, blocks*Rate34DataBytes)
+	out := make([]byte, 0, blocks*blockBytes)
 	out = append(out, payload...)
 	out = append(out, make([]byte, pad)...)
 	return binary.BigEndian.AppendUint32(out, crc), nil

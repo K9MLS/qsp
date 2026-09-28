@@ -6,6 +6,39 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A group text is a different format, and QSP would have refused every one.**
+  A capture taken to feed the packet-CRC search found it: a group message goes
+  out as **Rate 1/2 unconfirmed blocks** — twelve octets of plain user data, no
+  serial number, no CRC-9 — addressed to **225.0.0.\<talkgroup\>** rather than
+  Motorola's radio-IP prefix, with the TMS header's third octet reading `0xa0`
+  where a private message reads `0xe0`, a time to live of 1 rather than 64, and
+  a data header whose ninth octet is zero because an unconfirmed packet has no
+  acknowledgement to sequence. `internal/tms` as shipped in 0433 failed on the
+  address prefix and again on the call-type octet, and nothing noticed because
+  no fixture held a group message. Both formats now round-trip octet for octet.
+- **`internal/dmrfec` gains Rate 1/2 segmentation**, and `PadOctets`,
+  `BlocksFor` and `JoinPacket` take a block size rather than assuming sixteen.
+  The pad derivation now agrees with the data header **seven times out of
+  seven** — three Rate 3/4 headers padding 4, 14 and 4, and four Rate 1/2 ones
+  padding 8, 10, 4 and 2.
+- **`testdata/ipsc/ipsc-text-group-cal.pcap`**: six group messages of three
+  distinct lengths, sent one character apart on purpose. They decode to
+  " Aaaa", "A", "Aa", "Aaa ", "Aaab" and "Baaa" — note that the operator typed
+  AAAA and the radio sent "Aaaa", and that one message gained a leading space.
+  **Text entry on a radio is not literal**, which matters for any command
+  grammar built on this.
+- **The packet CRC is provably a CRC.** The same-length pairs exist because for
+  equal lengths a CRC's initial value and output mask cancel:
+  `crc(A) ⊕ crc(B) = R(A ⊕ B)`. The third pair's target equalled the first two
+  XORed exactly, so the trailer is GF(2)-linear in the message — not a keyed
+  hash, not an additive checksum, nothing that carries. With two of the five
+  unknowns eliminated rather than guessed, twelve polynomials against both
+  reflections, both stored byte orders and fourteen regions match none of the
+  pairs. Still unsolved, and now unsolved with its shape known; CRC RevEng on
+  the six samples is the next step.
+
+### Added
+
 - **QSP can compose a text message.** ADR-0067 phase 1: `internal/tms` builds
   and reads the IPv4/UDP datagram a Motorola text message is, and
   `internal/dmrfec` gained the Rate 3/4 block segmentation and the confirmed

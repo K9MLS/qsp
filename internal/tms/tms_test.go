@@ -74,7 +74,7 @@ func TestEveryCapturedTextRoundTripsToTheSameOctets(t *testing.T) {
 				continue
 			}
 
-			joined, err := dmrfec.JoinPacket(rebuilt, len(blocks), packetCRC)
+			joined, err := dmrfec.JoinPacket(rebuilt, len(blocks), dmrfec.Rate34DataBytes, packetCRC)
 			if err != nil {
 				t.Fatalf("%s/%s: joining: %v", path, tr.label, err)
 			}

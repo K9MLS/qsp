@@ -91,11 +91,11 @@ func TestTheBlockStreamSplitsWhereTheHeaderSaysItDoes(t *testing.T) {
 	if crc != 0x92629ec2 {
 		t.Errorf("packet CRC %#08x, want 0x92629ec2", crc)
 	}
-	if got := dmrfec.BlocksFor(total); got != len(blocks) {
+	if got := dmrfec.BlocksFor(total, dmrfec.Rate34DataBytes); got != len(blocks) {
 		t.Errorf("BlocksFor(%d) is %d, and the transmission used %d", total, got, len(blocks))
 	}
 
-	joined, err := dmrfec.JoinPacket(payload, len(blocks), crc)
+	joined, err := dmrfec.JoinPacket(payload, len(blocks), dmrfec.Rate34DataBytes, crc)
 	if err != nil {
 		t.Fatalf("joining: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestABadBlockStreamIsRefused(t *testing.T) {
 // TestAPacketThatDoesNotFitIsRefused: JoinPacket must not silently truncate a
 // payload that needs more blocks than it was given.
 func TestAPacketThatDoesNotFitIsRefused(t *testing.T) {
-	if _, err := dmrfec.JoinPacket(make([]byte, 90), 4, 0); err == nil {
+	if _, err := dmrfec.JoinPacket(make([]byte, 90), 4, dmrfec.Rate34DataBytes, 0); err == nil {
 		t.Error("joined 90 octets plus a CRC into four 16-octet blocks")
 	}
 	if _, _, _, err := dmrfec.SplitPacket(make([]byte, 16), 14); err == nil {

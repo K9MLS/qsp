@@ -11,26 +11,60 @@ import (
 // The three data headers measured on 2026-09-27, with the transmission each
 // belongs to. Every field below is read off the wire; nothing is assumed.
 var capturedHeaders = []struct {
-	name    string
-	block   string
-	blocks  uint8
-	pad     uint8
-	sendSeq uint8
-	to      uint32
-	from    uint32
-	payload int // the IPv4 total length of the packet these blocks carry
+	name       string
+	block      string
+	blocks     uint8
+	pad        uint8
+	sendSeq    uint8
+	to         uint32
+	from       uint32
+	payload    int // the IPv4 total length of the packet these blocks carry
+	blockBytes int // sixteen for Rate 3/4, twelve for Rate 1/2
+	group      bool
+	response   bool
 }{
 	{
 		name: "six blocks, four pad", block: "434430 25ad2f cdee86 58fbaa",
 		blocks: 6, pad: 4, sendSeq: 5, to: 3155373, from: 3132910, payload: 88,
+		blockBytes: dmrfec.Rate34DataBytes, response: true,
 	},
 	{
 		name: "four blocks, fourteen pad", block: "434e30 25ad2f cdee84 684403",
 		blocks: 4, pad: 14, sendSeq: 6, to: 3155373, from: 3132910, payload: 46,
+		blockBytes: dmrfec.Rate34DataBytes, response: true,
 	},
 	{
 		name: "four blocks, four pad", block: "434430 25ad2f cdee84 38f16e",
 		blocks: 4, pad: 4, sendSeq: 3, to: 3155373, from: 3132910, payload: 56,
+		blockBytes: dmrfec.Rate34DataBytes, response: true,
+	},
+	// The four distinct group headers from the 2026-09-27 calibration
+	// capture, read off the wire rather than transcribed by hand — the first
+	// attempt at this table pasted one header's CRC onto another row, and the
+	// test caught it. The group bit is set, no response is requested, the
+	// send-sequence octet is zero, and the packet format is **unconfirmed**.
+	// These are the first group text headers this project has seen, and they
+	// are why the group bit's position is no longer "taken from ETSI and
+	// never observed".
+	{
+		name: "group, five blocks, eight pad", block: "82480000022fcdee85004cd9",
+		blocks: 5, pad: 8, sendSeq: 0, to: 2, from: 3132910, payload: 48,
+		blockBytes: dmrfec.Rate12DataBytes, group: true,
+	},
+	{
+		name: "group, five blocks, ten pad", block: "824a0000022fcdee85008abe",
+		blocks: 5, pad: 10, sendSeq: 0, to: 2, from: 3132910, payload: 46,
+		blockBytes: dmrfec.Rate12DataBytes, group: true,
+	},
+	{
+		name: "group, four blocks, four pad", block: "82440000022fcdee8400caf8",
+		blocks: 4, pad: 4, sendSeq: 0, to: 2, from: 3132910, payload: 40,
+		blockBytes: dmrfec.Rate12DataBytes, group: true,
+	},
+	{
+		name: "group, four blocks, two pad", block: "82420000022fcdee84009070",
+		blocks: 4, pad: 2, sendSeq: 0, to: 2, from: 3132910, payload: 42,
+		blockBytes: dmrfec.Rate12DataBytes, group: true,
 	},
 }
 
@@ -76,9 +110,9 @@ func TestEveryCapturedDataHeaderParsesToItsMeasuredFields(t *testing.T) {
 			if h.Pad != tc.pad {
 				t.Errorf("pad %d, want %d", h.Pad, tc.pad)
 			}
-			if derived := dmrfec.PadOctets(tc.payload, int(tc.blocks)); derived != int(tc.pad) {
-				t.Errorf("PadOctets(%d, %d) is %d and the header says %d",
-					tc.payload, tc.blocks, derived, tc.pad)
+			if derived := dmrfec.PadOctets(tc.payload, int(tc.blocks), tc.blockBytes); derived != int(tc.pad) {
+				t.Errorf("PadOctets(%d, %d, %d) is %d and the header says %d",
+					tc.payload, tc.blocks, tc.blockBytes, derived, tc.pad)
 			}
 			if h.To != tc.to || h.From != tc.from {
 				t.Errorf("addressed %d → %d, want %d → %d", h.From, h.To, tc.from, tc.to)
@@ -86,14 +120,17 @@ func TestEveryCapturedDataHeaderParsesToItsMeasuredFields(t *testing.T) {
 			if h.SendSeq != tc.sendSeq {
 				t.Errorf("send sequence %d, want %d", h.SendSeq, tc.sendSeq)
 			}
+			if h.Confirmed != (tc.blockBytes == dmrfec.Rate34DataBytes) {
+				t.Errorf("confirmed is %v; every Rate 3/4 capture is confirmed and every Rate 1/2 one is not", h.Confirmed)
+			}
 			if h.SAP != dmrfec.SAPIPPacketData {
 				t.Errorf("service access point %d, want %d (IP based packet data)", h.SAP, dmrfec.SAPIPPacketData)
 			}
-			if h.Group {
-				t.Error("group bit set; every captured text is a private message")
+			if h.Group != tc.group {
+				t.Errorf("group bit is %v, want %v", h.Group, tc.group)
 			}
-			if !h.Response {
-				t.Error("response bit clear; it is set in all three captures")
+			if h.Response != tc.response {
+				t.Errorf("response bit is %v, want %v", h.Response, tc.response)
 			}
 		})
 	}

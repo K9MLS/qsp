@@ -1,6 +1,6 @@
 # ADR-0067: QSP originates a text message, and that is a capability it does not have
 
-**Status:** Accepted — phase 1 built and measured 2026-09-27; gates ADR-0068
+**Status:** Accepted — phase 1 complete for both block formats, 2026-09-27; phase 2 blocked on the packet CRC
 **Date:** 2026-09-27
 **Relates to:** [ADR-0029](ADR-0029-ipsc-from-capture.md),
 [ADR-0045](ADR-0045-ipsc-text-messages.md),
@@ -79,6 +79,43 @@ plainly: test with what the far side renders, not with what QSP encodes. The
 Opus decoder sized for QSP's own 60 ms packets failed on every real Zello
 packet; a formatter sized for what the specification implies will fail the same
 way.
+
+## What phase 1 found, 2026-09-27
+
+**Phase 1 is done for both block formats, and the second one was a surprise.**
+
+The private captures are Rate 3/4 **confirmed** blocks: sixteen octets of user
+data, a seven-bit serial and a CRC-9 each. A calibration capture taken to feed
+a CRC search turned up the other half of the story — **a group text goes out as
+Rate 1/2 unconfirmed blocks**, twelve octets of plain user data with no serial
+and no CRC-9, and three further differences nothing here knew about:
+
+| | private | group |
+|---|---|---|
+| blocks | Rate 3/4, confirmed | Rate 1/2, unconfirmed |
+| destination address | `0x0c` + 24-bit radio ID | **`0xe1` + 24-bit talkgroup** — 225.0.0.2 |
+| TMS header octet 2 | `0xe0` | **`0xa0`** |
+| IP time to live | 64 | 1 |
+| data header octet 9 | send sequence, fragment-last | `0x00` |
+
+`internal/tms` as first written would have **refused every group message on
+this network**, and nothing noticed because no fixture held one. That is the
+"build the complete thing" failure caught by a capture rather than by a user,
+which is the cheap way round.
+
+Both formats now round-trip octet for octet against their captures, which is
+what closes phase 1.
+
+**And the packet CRC is provably a CRC.** The calibration messages were sent
+one character apart so that same-length pairs would exist, because for equal
+lengths a CRC's initial value and output mask cancel:
+`crc(A) ⊕ crc(B) = R(A ⊕ B)`. Three pairs came out of it, and the third's
+target equalled the first two XORed **exactly** — so the trailer is
+GF(2)-linear in the message and cannot be a keyed hash, an additive checksum
+or anything that carries. With two of the five unknowns eliminated rather than
+guessed, twelve polynomials against both input reflections, both output
+reflections, both stored byte orders and fourteen regions still match none of
+the pairs. The parameters are unknown; the shape is not.
 
 ## Consequences
 
