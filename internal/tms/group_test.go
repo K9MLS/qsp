@@ -238,3 +238,51 @@ func TestAGroupMessageIsNotAPrivateOne(t *testing.T) {
 		t.Error("parsed a group address carrying a private call type")
 	}
 }
+
+// TestTheRepeatersPreamblesVerify reads the preambles a Motorola repeater
+// relayed ahead of the six calibration messages and requires every one to
+// parse, CRC included, as a group preamble to talkgroup 2. These are the
+// same twelve octets a hotspot sends, arriving by the other protocol, and the
+// CRC was solved from neither.
+func TestTheRepeatersPreamblesVerify(t *testing.T) {
+	raw, err := os.ReadFile(captureGroup)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	distinct := map[string]bool{}
+	for off := 24; off+16 <= len(raw); {
+		caplen := int(binary.LittleEndian.Uint32(raw[off+8 : off+12]))
+		off += 16
+		if off+caplen > len(raw) {
+			break
+		}
+		packet := raw[off : off+caplen]
+		off += caplen
+		if len(packet) < sll2HeaderBytes+28 {
+			continue
+		}
+		ip := packet[sll2HeaderBytes:]
+		udp := ip[int(ip[0]&0x0f)*4:]
+		ulen := int(binary.BigEndian.Uint16(udp[4:6]))
+		if ulen < 8 || ulen > len(udp) {
+			continue
+		}
+		dg := udp[8:ulen]
+		if len(dg) != bptcDatagramBytes || dg[dataTypeAt]&0x0f != 0x3 {
+			continue
+		}
+		block := dg[blockAt : blockAt+headerBlockBytes]
+		p, err := dmrfec.ParsePreamble(block)
+		if err != nil {
+			t.Errorf("%x: %v", block, err)
+			continue
+		}
+		if !p.Group || p.To != 2 {
+			t.Errorf("%x: group %v to %d, want a group preamble to 2", block, p.Group, p.To)
+		}
+		distinct[string(block)] = true
+	}
+	if len(distinct) != 17 {
+		t.Errorf("found %d distinct preambles, want the 17 the capture holds", len(distinct))
+	}
+}

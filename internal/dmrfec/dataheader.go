@@ -34,6 +34,15 @@ import (
 // byte orders — and exactly one matches all three. This is the same shape as
 // the CRC-9 note in [rate34.go]: the standard's arrangement matched nothing and
 // the wire settled it. Recorded rather than argued about.
+//
+// **Later, 2026-09-28: the wire and ETSI agree after all.** The standard's
+// CRC-CCITT is inverted before its mask is applied, and 0xFFFF ⊕ 0xCCCC is
+// 0x3333. So 0xCCCC applied to the uninverted value matched nothing, and the
+// 0x3333 the search found is that same mask with the inversion folded in. The
+// preamble CSBK's CRC, left open after its own search, is ETSI's 0xA5A5
+// folded the same way — see [CSBKCRC].
+// The measured constant stays, because it is what the wire carries; what
+// changes is that it is no longer a disagreement with the standard.
 const (
 	// dataHeaderBytes is the length of the header block.
 	dataHeaderBytes = 12
@@ -90,18 +99,7 @@ func DataHeaderCRC(head []byte) (uint16, error) {
 	if len(head) < dataHeaderBytes-2 {
 		return 0, fmt.Errorf("data header CRC: %d octets, want at least %d", len(head), dataHeaderBytes-2)
 	}
-	var reg uint16
-	for _, o := range head[:dataHeaderBytes-2] {
-		reg ^= uint16(o) << 8
-		for range 8 {
-			if reg&0x8000 != 0 {
-				reg = reg<<1 ^ 0x1021
-			} else {
-				reg <<= 1
-			}
-		}
-	}
-	return reg ^ dataHeaderCRCMask, nil
+	return ccitt16(head[:dataHeaderBytes-2]) ^ dataHeaderCRCMask, nil
 }
 
 // BuildDataHeader lays a header out as the twelve octets a burst carries.

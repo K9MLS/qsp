@@ -97,13 +97,13 @@ paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
 fills a stall Zello makes with silence rather than leaving the repeater to
 repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as of 2026-09-27** (check with `-version` before trusting these;
+**Versions, as of 2026-09-28** (check with `-version` before trusting these;
 they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.277 | `cat VERSION` |
-| **GitHub** `main` | 0.1.269, tagged `v0.1.269`; images published for it | pushed, Actions |
+| **Fedora working tree** | 0.1.280 | `cat VERSION` |
+| **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.269**, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 

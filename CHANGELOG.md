@@ -6,6 +6,30 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Preambles can be built, and their CRC is solved.** `dmrfec.BuildPreamble`
+  and `dmrfec.ParsePreamble` lay out and read the twelve octets every captured
+  preamble carries — opcode 61, feature 0, `0x80` for data to follow with
+  `0x40` for a talkgroup, a count of the bursts still to come, destination,
+  source — and `dmrfec.CSBKCRC` is **CRC-CCITT, init zero, mask `0x5A5A`**.
+  It reproduces all sixteen preambles of the hotspot's group text, all 224 of
+  its private ones, and all seventeen distinct preambles a Motorola repeater
+  relayed; each rebuilt group preamble codes back to the captured burst bit
+  for bit. The CSBK CRC had been listed as unsolved after 128 combinations.
+  This is the first of three patches for ADR-0067 phase 2: a composed text has
+  to open the way a radio's does.
+
+### Documentation
+
+- **ETSI was right about both CRC-16 masks.** The standard's CRC-CCITT is
+  inverted before masking, so its data-header mask `0xCCCC` is `0x3333` on the
+  wire and its CSBK mask `0xA5A5` is `0x5A5A`. `dataheader.go` recorded
+  `0x3333` as the wire disagreeing with the standard; the note now says why it
+  does not, and keeps the original reasoning beside it.
+- **The handover's version table** names 0.1.279 on GitHub, tagged and
+  published, confirmed by an anonymous pull on 2026-09-28.
+
+### Added
+
 - **The packet CRC is solved, and ADR-0067 phase 1 is complete to the last
   octet.** CRC-32, polynomial `0x04C11DB7`, not reflected, init and mask zero,
   over the datagram and its pad **with the octets taken in swapped pairs**, and

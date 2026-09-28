@@ -1,6 +1,7 @@
 package dmrfec_test
 
 import (
+	"bytes"
 	"encoding/binary"
 	"os"
 	"testing"
@@ -12,10 +13,21 @@ import (
 // a data header, and five Rate 1/2 content blocks.
 const preambleFixture = "../../testdata/hbp/hbp-text-preambles.pcap"
 
-// hotspotBursts returns the bursts of one data type from that capture.
+// privateFixture holds three private texts from the same hotspot, each
+// opening with its own preambles.
+const privateFixture = "../../testdata/hbp/hbp-text-rate34.pcap"
+
+// hotspotBursts returns the bursts of one data type from the preamble capture.
 func hotspotBursts(tb testing.TB, dataType uint8) [][]byte {
 	tb.Helper()
-	raw, err := os.ReadFile(preambleFixture)
+	return hotspotBurstsIn(tb, preambleFixture, dataType)
+}
+
+// hotspotBurstsIn returns the bursts of one data type that the hotspot sent,
+// from any capture of it.
+func hotspotBurstsIn(tb testing.TB, path string, dataType uint8) [][]byte {
+	tb.Helper()
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		tb.Fatalf("%v", err)
 	}
@@ -156,5 +168,111 @@ func TestTheMessageBlocksAreNotCSBKs(t *testing.T) {
 	}
 	if n := len(hotspotBursts(t, 0x6)); n != 1 {
 		t.Errorf("the fixture holds %d data headers, want 1", n)
+	}
+}
+
+// TestEveryCapturedPreambleRebuilds is the evidence for [dmrfec.CSBKCRC] and
+// [dmrfec.BuildPreamble]: parse each captured preamble, build one from what
+// was parsed, and require the same twelve octets and the same coded burst.
+//
+// The group capture must also count down: 21 bursts to come on the first
+// preamble and 6 on the last, which is the data header and five blocks.
+//
+// To see it fail: change csbkCRCMask to 0xa5a5 (ETSI's mask without the
+// inversion) and every row fails; drop csbkPreambleGroup and only the group
+// row fails; swap To and From in BuildPreamble and both fail.
+func TestEveryCapturedPreambleRebuilds(t *testing.T) {
+	tests := []struct {
+		name  string
+		path  string
+		want  int
+		group bool
+	}{
+		{"a group text", preambleFixture, 16, true},
+		{"three private texts", privateFixture, 224, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			bursts := hotspotBurstsIn(t, tc.path, 0x3)
+			if len(bursts) != tc.want {
+				t.Fatalf("read %d preamble bursts, want %d", len(bursts), tc.want)
+			}
+			for i, burst := range bursts {
+				payload, _, ok := dmrfec.DecodeBPTC(burst)
+				if !ok {
+					t.Fatalf("burst %d does not decode", i)
+				}
+				block := dmrfec.BurstBytesFrom(payload)[:dmrfec.CSBKBytes]
+				p, err := dmrfec.ParsePreamble(block)
+				if err != nil {
+					t.Fatalf("burst %d: %v", i, err)
+				}
+				if p.Group != tc.group {
+					t.Errorf("burst %d: group %v, want %v", i, p.Group, tc.group)
+				}
+				rebuilt, err := dmrfec.BuildPreamble(p)
+				if err != nil {
+					t.Fatalf("burst %d: %v", i, err)
+				}
+				if !bytes.Equal(rebuilt, block) {
+					t.Errorf("burst %d rebuilt differs\n have %x\n want %x", i, rebuilt, block)
+				}
+				cc, _, _ := dmrfec.SlotTypeOf(burst)
+				coded, err := dmrfec.BuildDataBurstFromBlock(cc, 0x3, rebuilt)
+				if err != nil {
+					t.Fatalf("burst %d: coding: %v", i, err)
+				}
+				if !bytes.Equal(coded, burst) {
+					t.Errorf("burst %d coded differs\n have %x\n want %x", i, coded, burst)
+				}
+				if tc.group {
+					if want := uint8(21 - i); p.BlocksToFollow != want {
+						t.Errorf("preamble %d counts %d bursts to come, want %d", i, p.BlocksToFollow, want)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestAPreambleThatDoesNotVerifyIsRefused covers what ParsePreamble must
+// turn away. A CRC-16 catches every single-bit error, so each flip is a row
+// it cannot miss.
+func TestAPreambleThatDoesNotVerifyIsRefused(t *testing.T) {
+	good, err := dmrfec.BuildPreamble(dmrfec.Preamble{BlocksToFollow: 6, To: 2, From: 3132910, Group: true})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if _, err := dmrfec.ParsePreamble(good); err != nil {
+		t.Fatalf("a freshly built preamble does not parse: %v", err)
+	}
+	for bit := range dmrfec.CSBKBytes * 8 {
+		bad := bytes.Clone(good)
+		bad[bit/8] ^= 0x80 >> (bit % 8)
+		if _, err := dmrfec.ParsePreamble(bad); err == nil {
+			t.Errorf("a flip of bit %d went unnoticed", bit)
+		}
+	}
+
+	notPreamble := bytes.Clone(good)
+	notPreamble[0] = 0x80 | 4 // last block, opcode 4; the CRC is repaired below
+	crc, _ := dmrfec.CSBKCRC(notPreamble)
+	notPreamble[10], notPreamble[11] = byte(crc>>8), byte(crc)
+
+	for _, tc := range []struct {
+		name  string
+		block []byte
+	}{
+		{"a verified CSBK that is not a preamble", notPreamble},
+		{"eleven octets", good[:11]},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := dmrfec.ParsePreamble(tc.block); err == nil {
+				t.Error("parsed without complaint")
+			}
+		})
+	}
+	if _, err := dmrfec.BuildPreamble(dmrfec.Preamble{To: 1 << 24}); err == nil {
+		t.Error("built a preamble to a 25-bit destination")
 	}
 }
