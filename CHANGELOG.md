@@ -4,8 +4,43 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **The packet CRC is solved, and ADR-0067 phase 1 is complete to the last
+  octet.** CRC-32, polynomial `0x04C11DB7`, not reflected, init and mask zero,
+  over the datagram and its pad **with the octets taken in swapped pairs**, and
+  carried least-significant first. `dmrfec.PacketCRC` computes it,
+  `dmrfec.JoinPacket` now writes it rather than carrying the captured value
+  across, and `dmrfec.VerifyPacket` checks it — for Rate 1/2 it is the only
+  integrity check the format has. `ErrPacketCRCUnverified` is gone.
+  Found by solving for the polynomial as the GCD of D(x)·x³² + R(x) over
+  same-length pairs from the group calibration capture, rather than testing a
+  list of candidates; the polynomial and region were in the first search's
+  list all along, and the octet order was in neither search. Checked against
+  ten private Rate 3/4 transmissions it was not found from, which reproduce to
+  the octet, and against the one corrupt burst in the outbound capture, which
+  it refuses. `scripts/crc-solve.py` repeats the search from the fixture.
+  Nothing outside tests calls any of it; nothing to deploy.
+
+### Changed
+
+- **`dmrfec.JoinPacket` no longer takes a CRC, and `dmrfec.SplitPacket` reads
+  the carried CRC little-endian**, so the value it returns is the value
+  `PacketCRC` computes. Only tests called either.
+
 ### Documentation
 
+- **ADR-0067's proof that the trailer is linear is withdrawn.** Its three
+  same-length pairs came from three messages — "Aaa ", "Aaab", "Baaa" — so the
+  third pair's target equals the first two XORed for any function whatever.
+  The conclusion was right; the evidence for it is now the solve. The
+  withdrawal is written into the ADR beside the claim rather than replacing it.
+- **The relayed message in `ipsc-text-rate34-out.pcap` had never been
+  asserted.** Its repeated last block arrives under different stream keys from
+  its header, and the one copy sharing the header's stream is the corrupt one,
+  so the stream reader saw it as incomplete and skipped it. The round-trip
+  test's floor of six was met by the inbound capture alone. The new CRC tests
+  assemble it by serial instead, and it verifies.
 - **The withdrawn TTN4010 claim survived in one paragraph of `HANDOVER.md`.**
   The rewrite in the entry below retracted "not fitted" in the open item, then
   restated it as current fact eight lines later, beneath the table of what is

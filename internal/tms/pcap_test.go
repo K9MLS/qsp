@@ -176,11 +176,32 @@ func readTransmissions(tb testing.TB, path string) []transmission {
 // droppedBursts is how many bursts in a capture failed their own CRC-9.
 func droppedBursts(tb testing.TB, path string) int {
 	tb.Helper()
+	n := 0
+	for _, b := range rate34Bursts(tb, path) {
+		if !b.ok {
+			n++
+		}
+	}
+	return n
+}
+
+// burst is one Rate 3/4 block as captured, eighteen octets with the control
+// pair last, and whether its own CRC-9 verified.
+type burst struct {
+	block  []byte
+	serial int
+	ok     bool
+}
+
+// rate34Bursts returns every Rate 3/4 block in a capture, in capture order,
+// without grouping them into streams.
+func rate34Bursts(tb testing.TB, path string) []burst {
+	tb.Helper()
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		tb.Fatalf("reading %s: %v", path, err)
 	}
-	dropped := 0
+	var out []burst
 	for off := 24; off+16 <= len(raw); {
 		caplen := int(binary.LittleEndian.Uint32(raw[off+8 : off+12]))
 		off += 16
@@ -202,11 +223,45 @@ func droppedBursts(tb testing.TB, path string) int {
 		if len(dg) != rate34DatagramBytes || dg[dataTypeAt]&0x0f != dataTypeRate34 {
 			continue
 		}
-		block := dg[blockAt : blockAt+rate34BlockBytes]
+		block := append([]byte(nil), dg[blockAt:blockAt+rate34BlockBytes]...)
 		pair := binary.BigEndian.Uint16(block[16:18])
-		if pair&0x1ff != dmrfec.CRC9(block[:16], uint8(pair>>9)) {
-			dropped++
+		serial := uint8(pair >> 9)
+		out = append(out, burst{
+			block:  block,
+			serial: int(serial),
+			ok:     pair&0x1ff == dmrfec.CRC9(block[:16], serial),
+		})
+	}
+	return out
+}
+
+// relayedMessage assembles the one message in the outbound capture.
+//
+// **It cannot be read stream by stream.** The sender repeats its last block
+// until it gives up, and the repeats arrive under different stream keys from
+// the header, so the one copy of the last block that shares the header's
+// stream is the copy whose CRC-9 fails, and [readTransmissions] rightly sees
+// that stream as incomplete. The capture holds serials 0, 1 and 2 once and 3
+// nine times, all one message, so this takes the first verified copy of each
+// serial instead.
+func relayedMessage(tb testing.TB) (blocks [][]byte, corrupt []burst) {
+	tb.Helper()
+	bySerial := map[int][]byte{}
+	for _, b := range rate34Bursts(tb, captureOut) {
+		if !b.ok {
+			corrupt = append(corrupt, b)
+			continue
+		}
+		if _, seen := bySerial[b.serial]; !seen {
+			bySerial[b.serial] = b.block
 		}
 	}
-	return dropped
+	for i := range len(bySerial) {
+		b, ok := bySerial[i]
+		if !ok {
+			tb.Fatalf("%s: no verified copy of serial %d", captureOut, i)
+		}
+		blocks = append(blocks, b)
+	}
+	return blocks, corrupt
 }

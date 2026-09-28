@@ -17,16 +17,17 @@ the cable, two separate adapters, the 9600 clock and the codeplug each have an
 instrument behind them. The router is parked with `shutdown` saved to startup
 and is one `no shutdown` from live. See `docs/P25-PLANNING.md`.
 
-**2. The text service has its foundation and is blocked four octets short.**
-ADR-0067 phase 1 is complete for both block formats: `internal/tms` and the
-Rate 3/4 and Rate 1/2 segmentation in `internal/dmrfec` round-trip their
-captures octet for octet. **Phase 2 cannot start until the packet CRC is
-solved** — it is proven GF(2)-linear, so it is a CRC, and its parameters are
-unknown after a search that eliminated the initial value and the output mask
-rather than guessing them. **CRC RevEng on the six samples in
-`testdata/ipsc/ipsc-text-group-cal.pcap` is the next move.** If it finds
-nothing, the region is wrong rather than the parameters. After that the build
-order is `TIME`, then `WX`, then the alert poller, per ADR-0068.
+**2. The text service's encoder is complete to the last octet.** ADR-0067
+phase 1 is done for both block formats, **packet CRC included** (0437):
+`internal/tms` and `internal/dmrfec` round-trip every captured text octet for
+octet, CRC and all. The CRC is CRC-32, polynomial `0x04C11DB7`, init and mask
+zero, **over the octets in swapped pairs** and carried least-significant first;
+it holds for all sixteen captured transmissions, in both block formats. ADR-0067
+says how it was found and `scripts/crc-solve.py` repeats it. **Phase 2 is
+next**: a composed message through a hotspot and read off a radio's screen,
+which needs a sending path nothing has yet — `internal/tms` is still called
+only by tests. After that the build order is `TIME`, then `WX`, then the alert
+poller, per ADR-0068.
 
 **Nothing needs deploying.** Production runs 0.1.269 and is correct. Everything
 since is documents, decision records and two new packages that nothing calls

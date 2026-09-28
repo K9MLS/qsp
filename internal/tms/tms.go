@@ -204,9 +204,9 @@ func Parse(datagram []byte) (Message, error) {
 
 // Build composes the IPv4 datagram that carries a text message.
 //
-// The result is the packet alone. Turning it into blocks is
-// [dmrfec.Rate34Blocks]'s job, and putting those on the air needs the packet
-// CRC that [dmrfec.PacketCRC] cannot yet compute.
+// The result is the packet alone. [dmrfec.JoinPacket] pads it and appends the
+// packet CRC, and [dmrfec.Rate34Blocks] or [dmrfec.Rate12Blocks] cuts that
+// into blocks.
 func Build(m Message) ([]byte, error) {
 	if m.From > 0xffffff || m.To > 0xffffff {
 		return nil, fmt.Errorf("tms: %d and %d are not both 24-bit radio identifiers", m.From, m.To)

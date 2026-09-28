@@ -122,7 +122,7 @@ func readGroupTransmissions(tb testing.TB, path string) []groupTransmission {
 
 // TestEveryCapturedGroupTextRoundTrips is the same assertion as the private
 // case and over a different block format: reassemble, split, parse, rebuild,
-// rejoin, re-cut, and compare every octet but the four of the packet CRC.
+// rejoin, re-cut, and compare every octet, the packet CRC included.
 func TestEveryCapturedGroupTextRoundTrips(t *testing.T) {
 	texts := []string{}
 	for _, tr := range readGroupTransmissions(t, captureGroup) {
@@ -136,7 +136,7 @@ func TestEveryCapturedGroupTextRoundTrips(t *testing.T) {
 			t.Fatalf("%s: reassembling: %v", tr.sid, err)
 		}
 		total := int(binary.BigEndian.Uint16(userData[2:4]))
-		payload, pad, crc, err := dmrfec.SplitPacket(userData, total)
+		payload, pad, _, err := dmrfec.SplitPacket(userData, total)
 		if err != nil {
 			t.Fatalf("%s: splitting: %v", tr.sid, err)
 		}
@@ -167,7 +167,7 @@ func TestEveryCapturedGroupTextRoundTrips(t *testing.T) {
 			t.Errorf("%s: rebuilt datagram differs\n have %x\n want %x", tr.sid, rebuilt, payload)
 			continue
 		}
-		joined, err := dmrfec.JoinPacket(rebuilt, len(tr.blocks), dmrfec.Rate12DataBytes, crc)
+		joined, err := dmrfec.JoinPacket(rebuilt, len(tr.blocks), dmrfec.Rate12DataBytes)
 		if err != nil {
 			t.Fatalf("%s: joining: %v", tr.sid, err)
 		}

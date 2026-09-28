@@ -23,10 +23,8 @@ const (
 // compare. Then cut the rebuilt datagram back into blocks and compare those,
 // control pair and CRC-9 included.
 //
-// **The packet CRC is carried, not computed**, because nothing solves it —
-// see [dmrfec.ErrPacketCRCUnverified]. Everything else has to match to the
-// octet, and if this test ever passes while that CRC is invented it is
-// asserting the wrong thing.
+// Every octet has to match, the packet CRC included: [dmrfec.JoinPacket]
+// computes it rather than carrying the captured one across.
 //
 // To see it fail: change `bodyPrefix` in tms.go, or flip a constant in
 // `tmsConstants`, or swap `binary.LittleEndian` for big in either direction.
@@ -46,7 +44,7 @@ func TestEveryCapturedTextRoundTripsToTheSameOctets(t *testing.T) {
 				t.Fatalf("%s/%s: reassembling: %v", path, tr.label, err)
 			}
 			total := int(binary.BigEndian.Uint16(userData[2:4]))
-			payload, pad, packetCRC, err := dmrfec.SplitPacket(userData, total)
+			payload, pad, _, err := dmrfec.SplitPacket(userData, total)
 			if err != nil {
 				t.Fatalf("%s/%s: splitting: %v", path, tr.label, err)
 			}
@@ -74,7 +72,7 @@ func TestEveryCapturedTextRoundTripsToTheSameOctets(t *testing.T) {
 				continue
 			}
 
-			joined, err := dmrfec.JoinPacket(rebuilt, len(blocks), dmrfec.Rate34DataBytes, packetCRC)
+			joined, err := dmrfec.JoinPacket(rebuilt, len(blocks), dmrfec.Rate34DataBytes)
 			if err != nil {
 				t.Fatalf("%s/%s: joining: %v", path, tr.label, err)
 			}
@@ -265,13 +263,95 @@ func TestAMangledDatagramIsRefused(t *testing.T) {
 	}
 }
 
-// TestThePacketCRCIsHonestlyUnsolved keeps the gap from being quietly closed.
+// TestThePacketCRCHoldsForEveryCapturedTransmission is the evidence for
+// [dmrfec.PacketCRC], kept where the captures can be read.
 //
-// If somebody implements the packet CRC, this test fails, and the right
-// response is to delete it and to write the one that checks the real value
-// against the three captured transmissions.
-func TestThePacketCRCIsHonestlyUnsolved(t *testing.T) {
-	if _, err := dmrfec.PacketCRC([]byte{1, 2, 3}); err == nil {
-		t.Fatal("PacketCRC returned a value; if it is solved, replace this test with one that checks it against the captures")
+// Six group messages in Rate 1/2 found it; ten private messages in Rate 3/4,
+// in three other captures, were never part of that search. Each row names how
+// many transmissions it must find, so a reader that quietly finds none cannot
+// pass.
+//
+// To see it fail, break PacketCRC in any of the three ways
+// TestThePacketCRC in internal/dmrfec lists: every row fails at once.
+func TestThePacketCRCHoldsForEveryCapturedTransmission(t *testing.T) {
+	tests := []struct {
+		path string
+		want int
+	}{
+		{"../../testdata/ipsc/ipsc-text.pcap", 3},
+		{captureIn, 6},
+		{captureOut, 1}, // assembled by serial; see relayedMessage
+		{captureGroup, 6},
+	}
+	for _, tc := range tests {
+		t.Run(tc.path[len("../../testdata/ipsc/"):], func(t *testing.T) {
+			streams := [][]byte{}
+			if tc.path == captureGroup {
+				for _, tr := range readGroupTransmissions(t, tc.path) {
+					ud, err := dmrfec.Rate12UserData(tr.blocks)
+					if err != nil {
+						t.Fatalf("%s: %v", tr.sid, err)
+					}
+					streams = append(streams, ud)
+				}
+			} else if tc.path == captureOut {
+				blocks, _ := relayedMessage(t)
+				ud, err := dmrfec.Rate34UserData(blocks, dmrfec.Rate34ControlLast)
+				if err != nil {
+					t.Fatalf("relayed message: %v", err)
+				}
+				streams = append(streams, ud)
+			} else {
+				for _, tr := range readTransmissions(t, tc.path) {
+					blocks, _ := tr.ordered()
+					ud, err := dmrfec.Rate34UserData(blocks, dmrfec.Rate34ControlLast)
+					if err != nil {
+						t.Fatalf("%s: %v", tr.label, err)
+					}
+					streams = append(streams, ud)
+				}
+			}
+			if len(streams) != tc.want {
+				t.Fatalf("found %d transmissions, want %d", len(streams), tc.want)
+			}
+			for i, ud := range streams {
+				if err := dmrfec.VerifyPacket(ud); err != nil {
+					t.Errorf("transmission %d: %v", i, err)
+				}
+			}
+		})
+	}
+}
+
+// TestThePacketCRCRefusesTheCorruptBurst puts the one block in the outbound
+// capture that fails its CRC-9 back where it came from, the last block of
+// the relayed message, and requires the packet CRC to refuse it too. QSP
+// relayed that copy under ADR-0047; a receiver checking the packet CRC would
+// have discarded it, and a later copy of the same block would have completed
+// the message.
+func TestThePacketCRCRefusesTheCorruptBurst(t *testing.T) {
+	blocks, bad := relayedMessage(t)
+	if len(bad) != 1 {
+		t.Fatalf("found %d corrupt bursts, want the 1 the fixture records", len(bad))
+	}
+	serial := bad[0].serial
+	if serial != len(blocks)-1 {
+		t.Fatalf("the corrupt burst carries serial %d, and the message ends at %d", serial, len(blocks)-1)
+	}
+
+	good, err := dmrfec.Rate34UserData(blocks, dmrfec.Rate34ControlLast)
+	if err != nil {
+		t.Fatalf("reassembling: %v", err)
+	}
+	if err := dmrfec.VerifyPacket(good); err != nil {
+		t.Fatalf("the message with a verified last block: %v", err)
+	}
+	corrupt := bytes.Clone(good)
+	copy(corrupt[serial*dmrfec.Rate34DataBytes:], bad[0].block[:dmrfec.Rate34DataBytes])
+	if bytes.Equal(corrupt, good) {
+		t.Fatal("the corrupt burst carries the same sixteen octets as the good one")
+	}
+	if err := dmrfec.VerifyPacket(corrupt); err == nil {
+		t.Error("the packet CRC accepted the block its own CRC-9 refused")
 	}
 }

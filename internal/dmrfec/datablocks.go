@@ -23,9 +23,9 @@ import (
 // The pad count is derived below and agrees with the data header in three
 // transmissions out of three.
 //
-// **The four-octet packet CRC at the end of the last block is not solved.** It
-// is carried, never computed. [ErrPacketCRCUnverified] and the note on
-// [SplitPacket] say what was searched.
+// The four-octet packet CRC at the end of the last block is solved as well —
+// see [PacketCRC] for what it is, how it was found, and what it was checked
+// against. It was the last thing between a composed message and the air.
 
 // Rate34Blocks cuts a block stream into Rate 3/4 confirmed data blocks.
 //
@@ -157,9 +157,8 @@ func Rate12Blocks(userData []byte) ([][]byte, error) {
 //
 // **Nothing here can detect a missing or reordered block.** A Rate 1/2
 // unconfirmed block carries no serial number and no CRC, so the packet CRC at
-// the end is the only thing that would notice — and that CRC is not solved.
-// Until it is, a group text reassembled from a lossy capture is trusted, and
-// that is a real limitation rather than an oversight.
+// the end is the only thing that notices. Check the result with
+// [VerifyPacket] before trusting it.
 func Rate12UserData(blocks [][]byte) ([]byte, error) {
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("rate 1/2 user data: no blocks")
@@ -178,52 +177,76 @@ func Rate12UserData(blocks [][]byte) ([]byte, error) {
 // PacketCRCBytes is the width of the packet CRC that ends the last block.
 const PacketCRCBytes = 4
 
-// ErrPacketCRCUnverified is returned by [PacketCRC] because the four octets
-// that end a confirmed data packet have not been reproduced.
+// PacketCRC computes the packet CRC over everything that precedes it in the
+// user-data stream: the IP datagram and its pad octets, both block formats
+// alike.
 //
-// **What was searched, so nobody repeats it.** Three complete transmissions
-// hold the value. Six polynomials — the IEEE CRC-32 of ETSI clause B.3.12 and
-// five others — against both initial values, both bit reflections, both
-// output masks and both stored byte orders, over eight candidate regions: the
-// IP datagram alone, the datagram with its pad octets, the datagram with the
-// data header prepended at twelve and at ten octets, the UDP datagram, the UDP
-// payload, and the whole user-data stream less the CRC itself. Three thousand
-// and seventy-two combinations, no match on any of the three.
+// It is CRC-32 with the polynomial 0x04C11DB7, not reflected, an initial value
+// of zero and no output mask — **taken over the octets in swapped pairs**, 1,
+// 0, 3, 2 and so on — and it is carried in the last four octets
+// least-significant first. [JoinPacket] writes it and [VerifyPacket] checks it.
 //
-// **What 2026-09-27's calibration capture added.** Six group messages of three
-// distinct lengths, sent one character apart on purpose, gave three
-// same-length pairs. For equal-length messages a CRC's initial value and its
-// output mask cancel — crc(A) ⊕ crc(B) = R(A ⊕ B) for the raw zero-init CRC —
-// so those two unknowns were eliminated rather than guessed at.
+// **How it was found, 2026-09-27.** The first search tried this polynomial
+// over this region and matched nothing, and neither it nor the second tried
+// the octet order. The third stopped listing candidates and solved for the
+// polynomial: for two same-length messages the initial value and the mask
+// cancel, so the polynomial must divide D(x)·x³² + R(x), where D is the two
+// messages XORed and R their CRCs XORed, and the greatest common divisor over
+// several pairs *is* the polynomial if one exists. Over every region start,
+// four octet orders, both reflections and four CRC byte orders, one
+// arrangement gave a degree-32 result, from the seven same-length pairs in the
+// group calibration capture — four of them independent, since four messages of
+// one length and two of another give three and one. It appeared at region
+// starts 0 and 2, because every sample opens 45 00 and those octets XOR away;
+// of the usual four pairs of initial value and mask, only zero and zero
+// reproduced all six samples, and only from start 0. `scripts/crc-solve.py`
+// repeats the search from the fixture.
 //
-// Two things came out of it. The third pair's target equalled the first two
-// XORed exactly, which **proves the trailer is GF(2)-linear in the message**
-// and so is a CRC rather than a keyed hash, an additive checksum, or anything
-// carrying. And with init and mask gone, twelve polynomials against both input
-// reflections, both output reflections, both stored byte orders and fourteen
-// regions — including byte-reversed, 32-bit-word-swapped, and regions starting
-// at the UDP header, the UDP payload and the message body — matched none of
-// the three pairs.
+// **What it was checked against.** Ten Rate 3/4 private transmissions in three
+// other captures, none used to find it, reproduce to the octet. And the one
+// Rate 3/4 block in `ipsc-text-rate34-out.pcap` that fails its own CRC-9 fails
+// this as well: the bits that differ are in the packet CRC itself.
 //
-// So the parameters are unknown and the shape is not. The next step is CRC
-// RevEng, which searches the space properly, with the six samples the capture
-// holds; if that finds nothing then the region is wrong rather than the
-// parameters.
-//
-// So it is carried rather than computed, and [ADR-0067] phase 2 cannot put an
-// originated message on the air until it is solved. That is the honest state
-// of it: the encoder is complete except for four octets, and a value guessed
-// there would be a message a radio silently refuses.
-var ErrPacketCRCUnverified = fmt.Errorf(
-	"the four-octet packet CRC of a confirmed data packet is not solved; see ErrPacketCRCUnverified")
+// The input must be an even number of octets, which it always is when it came
+// from whole blocks: both block sizes are even and so is the CRC. An odd
+// length has no defined pairing and is refused rather than padded.
+func PacketCRC(covered []byte) (uint32, error) {
+	if len(covered)%2 != 0 {
+		return 0, fmt.Errorf("packet crc: %d octets cannot be taken in pairs", len(covered))
+	}
+	var reg uint32
+	for i := range len(covered) {
+		reg ^= uint32(covered[i^1]) << 24
+		for range 8 {
+			if reg&0x80000000 != 0 {
+				reg = reg<<1 ^ packetCRCPoly
+			} else {
+				reg <<= 1
+			}
+		}
+	}
+	return reg, nil
+}
 
-// PacketCRC would compute the packet CRC and does not.
+// packetCRCPoly is the generator of [PacketCRC], without its x³² term.
+const packetCRCPoly = 0x04c11db7
+
+// VerifyPacket checks the packet CRC that ends a reassembled user-data stream.
 //
-// It exists so the gap is a compile-time fact rather than a comment somebody
-// has to notice. §7 forbids a stub that claims success, and a function
-// returning a plausible wrong number is exactly that.
-func PacketCRC([]byte) (uint32, error) {
-	return 0, ErrPacketCRCUnverified
+// For a Rate 1/2 transmission this is the only integrity check there is.
+func VerifyPacket(userData []byte) error {
+	if len(userData) < PacketCRCBytes {
+		return fmt.Errorf("verify packet: %d octets cannot hold a %d-octet CRC", len(userData), PacketCRCBytes)
+	}
+	cut := len(userData) - PacketCRCBytes
+	want, err := PacketCRC(userData[:cut])
+	if err != nil {
+		return fmt.Errorf("verify packet: %w", err)
+	}
+	if got := binary.LittleEndian.Uint32(userData[cut:]); got != want {
+		return fmt.Errorf("verify packet: carried CRC %#08x, computed %#08x", got, want)
+	}
+	return nil
 }
 
 // PadOctets is how many pad octets a packet of payloadLen needs to fill
@@ -246,7 +269,9 @@ func BlocksFor(payloadLen, blockBytes int) int {
 }
 
 // SplitPacket separates a reassembled user-data stream into the packet, its
-// pad octets and the packet CRC.
+// pad octets and the packet CRC. The CRC comes back as the value [PacketCRC]
+// computes, read from its least-significant-first octets, and is not checked
+// here; [VerifyPacket] does that.
 //
 // payloadLen is how long the packet is, which the caller knows from the packet
 // itself — for the text service that is the IPv4 total length field. It is a
@@ -260,13 +285,13 @@ func SplitPacket(userData []byte, payloadLen int) (payload, pad []byte, crc uint
 	}
 	payload = userData[:payloadLen]
 	pad = userData[payloadLen : len(userData)-PacketCRCBytes]
-	crc = binary.BigEndian.Uint32(userData[len(userData)-PacketCRCBytes:])
+	crc = binary.LittleEndian.Uint32(userData[len(userData)-PacketCRCBytes:])
 	return payload, pad, crc, nil
 }
 
-// JoinPacket is the inverse, and it takes the packet CRC as an argument for
-// the reason [PacketCRC] gives: nothing here can compute it.
-func JoinPacket(payload []byte, blocks, blockBytes int, crc uint32) ([]byte, error) {
+// JoinPacket is the inverse: the payload, zero pad to fill the blocks, and the
+// packet CRC computed over both.
+func JoinPacket(payload []byte, blocks, blockBytes int) ([]byte, error) {
 	pad := PadOctets(len(payload), blocks, blockBytes)
 	if pad < 0 {
 		return nil, fmt.Errorf("join packet: %d octets of payload and a %d-octet CRC do not fit in %d blocks of %d",
@@ -275,5 +300,9 @@ func JoinPacket(payload []byte, blocks, blockBytes int, crc uint32) ([]byte, err
 	out := make([]byte, 0, blocks*blockBytes)
 	out = append(out, payload...)
 	out = append(out, make([]byte, pad)...)
-	return binary.BigEndian.AppendUint32(out, crc), nil
+	crc, err := PacketCRC(out)
+	if err != nil {
+		return nil, fmt.Errorf("join packet: %w", err)
+	}
+	return binary.LittleEndian.AppendUint32(out, crc), nil
 }

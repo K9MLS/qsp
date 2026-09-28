@@ -88,14 +88,15 @@ func TestTheBlockStreamSplitsWhereTheHeaderSaysItDoes(t *testing.T) {
 	if len(pad) != 4 {
 		t.Errorf("pad %d octets, want the 4 the header states", len(pad))
 	}
-	if crc != 0x92629ec2 {
-		t.Errorf("packet CRC %#08x, want 0x92629ec2", crc)
+	// Carried as 92 62 9e c2, least significant first.
+	if crc != 0xc29e6292 {
+		t.Errorf("packet CRC %#08x, want 0xc29e6292", crc)
 	}
 	if got := dmrfec.BlocksFor(total, dmrfec.Rate34DataBytes); got != len(blocks) {
 		t.Errorf("BlocksFor(%d) is %d, and the transmission used %d", total, got, len(blocks))
 	}
 
-	joined, err := dmrfec.JoinPacket(payload, len(blocks), dmrfec.Rate34DataBytes, crc)
+	joined, err := dmrfec.JoinPacket(payload, len(blocks), dmrfec.Rate34DataBytes)
 	if err != nil {
 		t.Fatalf("joining: %v", err)
 	}
@@ -186,10 +187,69 @@ func TestABadBlockStreamIsRefused(t *testing.T) {
 // TestAPacketThatDoesNotFitIsRefused: JoinPacket must not silently truncate a
 // payload that needs more blocks than it was given.
 func TestAPacketThatDoesNotFitIsRefused(t *testing.T) {
-	if _, err := dmrfec.JoinPacket(make([]byte, 90), 4, dmrfec.Rate34DataBytes, 0); err == nil {
+	if _, err := dmrfec.JoinPacket(make([]byte, 90), 4, dmrfec.Rate34DataBytes); err == nil {
 		t.Error("joined 90 octets plus a CRC into four 16-octet blocks")
 	}
 	if _, _, _, err := dmrfec.SplitPacket(make([]byte, 16), 14); err == nil {
 		t.Error("split a 14-octet payload and a 4-octet CRC out of 16 octets")
+	}
+}
+
+// TestThePacketCRC checks [dmrfec.PacketCRC] and [dmrfec.VerifyPacket] on
+// the captured "I can't talk right now..." stream and on the edges around it.
+// The capture-wide check — sixteen transmissions in both block formats — is
+// in internal/tms, which owns the capture readers.
+//
+// To see it fail, each of these breaks every row that expects success:
+//   - index covered[i] instead of covered[i^1] in PacketCRC (no pair swap);
+//   - store and read the CRC with binary.BigEndian;
+//   - start the register at 0xffffffff instead of zero.
+func TestThePacketCRC(t *testing.T) {
+	stream, err := dmrfec.Rate34UserData(blocksFixture(t), dmrfec.Rate34ControlLast)
+	if err != nil {
+		t.Fatalf("reassembling: %v", err)
+	}
+	flipped := func(bit int) []byte {
+		out := bytes.Clone(stream)
+		out[bit/8] ^= 0x80 >> (bit % 8)
+		return out
+	}
+	tests := []struct {
+		name    string
+		data    []byte
+		wantErr bool
+	}{
+		{"the captured stream", stream, false},
+		{"a bit flipped in the IP header", flipped(0), true},
+		{"a bit flipped in the text", flipped(60 * 8), true},
+		{"a bit flipped in the pad", flipped(89 * 8), true},
+		{"a bit flipped in the carried CRC", flipped(len(stream)*8 - 1), true},
+		{"the two halves of one pair exchanged", func() []byte {
+			out := bytes.Clone(stream)
+			out[40], out[41] = out[41], out[40]
+			return out
+		}(), true},
+		{"too short to hold a CRC", stream[:3], true},
+		{"an odd number of octets before the CRC", stream[:len(stream)-1], true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := dmrfec.VerifyPacket(tc.data)
+			if gotErr := err != nil; gotErr != tc.wantErr {
+				t.Errorf("VerifyPacket error = %v, want error %v", err, tc.wantErr)
+			}
+		})
+	}
+
+	// A single bit anywhere must be caught, not just at the positions above;
+	// a CRC-32 guarantees it, so an implementation that misses one is wrong.
+	for bit := range len(stream) * 8 {
+		if dmrfec.VerifyPacket(flipped(bit)) == nil {
+			t.Fatalf("a flip of bit %d went unnoticed", bit)
+		}
+	}
+
+	if _, err := dmrfec.PacketCRC(make([]byte, 7)); err == nil {
+		t.Error("computed a CRC over seven octets, which have no pairing")
 	}
 }
