@@ -76,3 +76,5 @@ conclusion.
 | [0064](ADR-0064-a-zello-user-borrows-the-gateway-identity.md) | A Zello user borrows the gateway's identity, and identifies by voice | Accepted |
 | [0065](ADR-0065-a-full-backup-encrypted.md) | A full backup, encrypted, alongside the shareable export | Accepted |
 | [0066](ADR-0066-a-connector-is-handed-a-logon-never-a-key.md) | A connector is handed a logon, never a key | Accepted |
+| [0067](ADR-0067-qsp-originates-a-text-message.md) | QSP originates a text message, and that is a capability it does not have | Proposed |
+| [0068](ADR-0068-qsp-answers-a-text-and-weather-is-the-first-answer.md) | QSP answers a text, and weather is the first answer | Proposed |

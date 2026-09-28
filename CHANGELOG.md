@@ -6,6 +6,36 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **ADR-0067 and ADR-0068: the text messaging service, and the capability it
+  turns out to need first.** The operator asked for a talkgroup that answers with
+  the time and local temperature, weather alerts to subscribers, and bulletins
+  from net controllers — one dispatcher, not three features. Looking for where to
+  put it found that **nothing in the tree composes a text message from a
+  string**: `ipscbridge.ConvertText` translates a message somebody else wrote,
+  and parrot's text test is about not *swallowing* one. Text has worked on air
+  since ADR-0045 and all of it is relay. So origination is a new capability and
+  it gates the rest, which is ADR-0067 — built in phases against the forty-two
+  real blocks already in `testdata/`, then a hotspot display, then a Motorola
+  repeater group and private, then the usable length measured rather than
+  assumed. There is no acknowledgement to trust: a sender's radio reports success
+  from one RF hop away and a master is not part of that, so **a radio's display
+  is the only instrument.**
+- **ADR-0068 settles the service and the weather feed against measured data.**
+  NWS `api.weather.gov`, keyless, with the base URL as a field so an operator
+  outside the United States can substitute their own. Measured from KDTO and
+  TXZ103 on 2026-09-27: **every numeric field carries its own WMO unit** — wind
+  in `km_h-1`, direction in `degree_(angle)` — so conversion is keyed on
+  `unitCode` and never on field name. **There is no observation cadence**: two
+  consecutive reads were twelve minutes apart, so freshness comes from
+  `timestamp` and nothing assumes a schedule. The alert filter chain is ordered
+  with **`status == "Actual"` first**, because CAP defines `Test` and NWS emits
+  it, and without that check a required monthly test becomes a tornado warning on
+  somebody's radio. Also recorded: the restart must seed active alert ids as
+  already-sent without transmitting, `Update` and `Cancel` are not new alerts,
+  an outbreak is a rate-limit problem with a visible configurable cap, and
+  replies go privately to the asker rather than to the talkgroup. **The
+  development container cannot reach `api.weather.gov`** — 403 at the egress
+  proxy, measured — so fixtures are the only way to test this here.
 - **The station's V.24 interface has never been alive, and the AUX LED said so
   all along.** Identified 2026-09-27 by KD9EJA off one indicator, after two days
   of measuring silence from the far end. A replacement card is inbound.

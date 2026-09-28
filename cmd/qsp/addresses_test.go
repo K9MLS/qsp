@@ -24,6 +24,13 @@ var notAnAddress = map[string]string{
 	"7.1.1.4": "ETSI TS 102 361-2, a PDU layout",
 	"7.1.1.5": "ETSI TS 102 361-2, the other PDU layout",
 	"8.2.2.2": "ETSI TS 102 361-1, the control-pair block",
+	// Not a clause number but the same shape of problem: every NWS alert
+	// identifier begins urn:oid:2.49.0.1.840.0..., the OASIS Common Alerting
+	// Protocol arc. ADR-0068 quotes one, and any alert fixture this feature
+	// holds will carry it. 2.49.0.1 is a routable address as well as an OID
+	// arc, so this entry is a real hole in the guard, accepted knowingly and
+	// only because the string is always preceded by urn:oid:.
+	"2.49.0.1": "the OASIS CAP alert OID arc, in every NWS alert identifier",
 }
 
 var dotted = regexp.MustCompile(`\b(?:\d{1,3}\.){3}\d{1,3}\b`)
