@@ -71,3 +71,15 @@ dropped, which is ADR-0047's decision meeting real traffic on its first day.
 `dmrfec.DecodeRate34Burst` returns a block for all 54 and reports
 `control-first` for 49 and `unknown` for 5. `dmrfec.BuildRate34Burst` rebuilds
 the original burst byte-for-byte from any of the 49.
+
+## A defect it holds, found 2026-09-28
+
+**The 26 frames QSP sent back to the hotspot carry a wrong slot type.** Every
+data header and Rate 1/2 block among them has two parity bits that the
+corrected Golay (20,8) table does not produce and the old one did: the sixth
+generator row was wrong, and data types 6 and 7 are the ones that use it.
+MMDVMHost corrects the two errors and regenerates the field before it
+transmits, so the text still reached the air, which is why nobody saw it.
+The capture is kept as it is — it is a record of what QSP 0.1.91 sent — and
+`TestEveryHotspotDataBurstsSlotTypeIsRebuilt` reads only the hotspot's own
+frames from it.

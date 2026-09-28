@@ -220,13 +220,24 @@ func CheckLinkControl(payload []byte, dataType uint8) (lc []byte, ok bool) {
 
 // golay208Rows is the parity part of the Golay (20,8) generator matrix,
 // Table B.11: twelve parity bits for each of the eight information bits.
+//
+// **The sixth row was wrong until 2026-09-28**: it read 0b101010100111, two
+// bits off. That row belongs to data-type bit 0x04, which no voice header,
+// terminator or CSBK sets — the only bursts the slot-type test rebuilt — and
+// which every data header (6) and Rate 1/2 block (7) does. So every one of
+// those QSP relayed to a hotspot carried two wrong parity bits, and nothing
+// noticed because MMDVMHost corrects three and regenerates the field before
+// transmitting. A composed text compared burst for burst against a hotspot's
+// own found it. The table as it stood had a minimum distance of six, which a
+// Golay (20,8) code cannot have; corrected, it has eight, and it reproduces
+// all 318 data bursts in the two hotspot captures.
 var golay208Rows = [8]uint16{
 	0b001111011010,
 	0b110110011001,
 	0b011011001101,
 	0b001101100111,
 	0b110111000110,
-	0b101010100111,
+	0b101010010111,
 	0b100100111110,
 	0b100011101011,
 }

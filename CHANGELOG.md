@@ -4,6 +4,24 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every data header and Rate 1/2 block QSP relayed to a hotspot carried two
+  wrong slot-type bits.** The sixth row of the Golay (20,8) generator table
+  was two bits off. That row belongs to data-type bit `0x04`, which data
+  headers (6) and Rate 1/2 blocks (7) set and voice headers, terminators and
+  CSBKs do not — and those three were all the slot-type test rebuilt.
+  MMDVMHost corrects up to three errors and regenerates the field before it
+  transmits, so relayed texts still reached the air and the fault stayed
+  invisible. The table had a minimum distance of six, which a Golay (20,8)
+  code cannot have; corrected it has eight, and it reproduces all 318 data
+  bursts a hotspot sent in two captures, where before it failed every header
+  and every Rate 1/2 block. The 26 frames QSP itself sent in
+  `hbp-text-rate34.pcap` carry the old parity, which the fixture now records.
+  Found by the phase 2 differential: a composed text matched the hotspot's
+  sixteen preambles bit for bit and missed its header and blocks by the same
+  two bits each. **This one changes what production puts on the wire.**
+
 ### Added
 
 - **Preambles can be built, and their CRC is solved.** `dmrfec.BuildPreamble`
