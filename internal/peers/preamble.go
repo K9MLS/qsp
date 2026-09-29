@@ -30,7 +30,16 @@ import (
 //
 // # What
 //
-// For each hotspot and timeslot, the latest preamble is held rather than
+// **Only a preamble that announces data is held**, which is exactly the set
+// MMDVMHost multiplies: `(csbko == PRECCSBK) && csbk.getDataContent()`, the
+// data-content bit being octet 2 bit 7. A preamble with that bit clear wakes
+// radios for control signalling — a private call's request and answer, a
+// radio check, a call alert — is followed by a CSBK rather than a data header,
+// and MMDVMHost passes it through as it is. **0443 held those too**, released
+// nothing because no data header followed, and so stripped the wake-up from
+// every private call to a hotspot radio; 0445 put them back.
+//
+// For each hotspot and timeslot, the latest data preamble is held rather than
 // sent. When a data header follows, the held preamble goes first and the
 // header after it, so the hotspot receives exactly one — the last, whose
 // count is the header and blocks still to come, which is the count
@@ -79,7 +88,7 @@ func (g *preambleGate) pass(peer hbp.RepeaterID, frame hbp.Data, now time.Time) 
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	switch {
-	case isPreamble(frame):
+	case isDataPreamble(frame):
 		g.held[key] = heldPreamble{frame: frame, at: now}
 		return nil
 	case frame.DataType == dmrfec.DataTypeDataHeader && frame.FrameType == hbp.FrameTypeSync:
@@ -92,4 +101,14 @@ func (g *preambleGate) pass(peer hbp.RepeaterID, frame hbp.Data, now time.Time) 
 	default:
 		return []hbp.Data{frame}
 	}
+}
+
+// isDataPreamble reports whether a frame is a preamble announcing data: the
+// one kind MMDVMHost multiplies, and so the one kind this gate holds.
+func isDataPreamble(frame hbp.Data) bool {
+	if frame.DataType != dataTypeCSBK {
+		return false
+	}
+	c, ok := dmrfec.CSBKOf(frame.Payload[:])
+	return ok && c.IsPreamble() && c.DataFollows
 }

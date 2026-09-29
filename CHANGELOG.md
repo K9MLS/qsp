@@ -6,6 +6,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Private calls to hotspot radios stopped working, and 0443 was why.** The
+  preamble gate held every preamble for a hotspot until a data header came,
+  and released one. But a preamble also wakes radios for control
+  signalling: each request of a private call, a radio check or a call alert
+  is a preamble with its data-content bit clear, followed by the CSBK itself,
+  and no data header ever follows. 0443 held those preambles and dropped them,
+  so the called radio was never woken. Reported the day after 0443 deployed,
+  with a new radio on its own ID.
+
+  The gate now holds **only a preamble that announces data** — octet 2 bit 7,
+  exactly the condition MMDVMHost multiplies on
+  (`(csbko == PRECCSBK) && csbk.getDataContent()`, `DMRCSBK.cpp`) — and every
+  other frame reaches the hotspot at once, as before 0443. Texts keep the
+  one-preamble behaviour that made them display. `dmrfec.CSBK` gains
+  `DataFollows` to read the bit.
+
+  `TestThePreambleGateChangesOnlyWhatMMDVMHostMultiplies` replays every data
+  burst of both IPSC text captures — group texts, private texts, and a private
+  exchange of call alerts, radio checks and answers — through the gate. Under
+  0443's rule the hotspot received 25 of the 90 frames it should and 30 of
+  68; now it receives all of them, with one preamble before each header.
+
+
+### Fixed
+
 - **A Motorola repeater and a hotspot transmitting together could end the
   process.** `calls.Tracker` was documented as owned by the goroutine that
   reads the socket, and stopped being so when Motorola repeaters arrived: the

@@ -276,3 +276,30 @@ func TestAPreambleThatDoesNotVerifyIsRefused(t *testing.T) {
 		t.Error("built a preamble to a 25-bit destination")
 	}
 }
+
+// TestAPreambleSaysWhetherDataFollows: CSBKOf reads the data-content bit,
+// set on every preamble ahead of a text and clear ahead of a private call's
+// signalling. MMDVMHost multiplies only the first kind.
+func TestAPreambleSaysWhetherDataFollows(t *testing.T) {
+	for _, b := range hotspotBurstsIn(t, preambleFixture, 0x3) {
+		c, ok := dmrfec.CSBKOf(b)
+		if !ok || !c.DataFollows {
+			t.Fatalf("a text's preamble reads DataFollows=%v (ok %v)", c.DataFollows, ok)
+		}
+	}
+	block, err := dmrfec.BuildPreamble(dmrfec.Preamble{BlocksToFollow: 1, To: 3155373, From: 3132910})
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	block[2] = 0x00 // data bit clear, as ahead of a private call's CSBK
+	crc, _ := dmrfec.CSBKCRC(block)
+	block[10], block[11] = byte(crc>>8), byte(crc)
+	burst, err := dmrfec.BuildDataBurstFromBlock(11, 0x3, block)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	c, ok := dmrfec.CSBKOf(burst)
+	if !ok || !c.IsPreamble() || c.DataFollows {
+		t.Errorf("a no-data preamble reads preamble=%v DataFollows=%v", c.IsPreamble(), c.DataFollows)
+	}
+}

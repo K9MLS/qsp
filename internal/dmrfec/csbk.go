@@ -59,6 +59,12 @@ type CSBK struct {
 	FeatureID uint8
 	// LastBlock is the LB bit: whether this block ends a multi-block CSBK.
 	LastBlock bool
+	// DataFollows is a preamble's data-content bit, octet 2 bit 7: set when
+	// the preamble wakes radios for a data transmission, clear when it wakes
+	// them for control signalling such as a private call's setup. It is the
+	// bit MMDVMHost reads to decide whether to multiply a preamble
+	// (DMRCSBK.cpp, m_dataContent). Meaningless for any other opcode.
+	DataFollows bool
 }
 
 // IsPreamble reports whether this block is a preamble rather than a command.
@@ -82,13 +88,14 @@ func CSBKOf(burst []byte) (CSBK, bool) {
 		return CSBK{}, false
 	}
 	block := BurstBytesFrom(payload)
-	if len(block) < 2 {
+	if len(block) < 3 {
 		return CSBK{}, false
 	}
 	return CSBK{
-		Opcode:    block[0] & csbkOpcodeMask,
-		FeatureID: block[1],
-		LastBlock: block[0]&0x80 != 0,
+		Opcode:      block[0] & csbkOpcodeMask,
+		FeatureID:   block[1],
+		LastBlock:   block[0]&0x80 != 0,
+		DataFollows: block[2]&csbkPreambleData != 0,
 	}, true
 }
 

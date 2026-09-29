@@ -54,9 +54,15 @@ as 3132910**, so a text between those two can never display on either —
 a radio discards a text from its own ID. A second radio with its own ID is
 being programmed for that test.
 
-**What to deploy, and why.** Production runs 0.1.285 from 2026-09-28: the
-Golay fix, the network-wide send and the preamble fix. **0.1.286 closes a
-crash risk** that has been live since Motorola repeaters were first observed:
+**Private calls to hotspot radios were broken by 0443, and 0.1.287 fixes
+it** (0445). The preamble gate dropped the preambles that wake a radio for a
+private call's signalling, because only a data header released one; it now
+holds only preambles that announce data, which is what MMDVMHost multiplies.
+Confirm with one private call from the new radio (its own ID) to the R7.
+
+**What to deploy, and why.** Production runs 0.1.286. **0.1.287 is the
+private-call fix and every hotspot radio needs it.** Before that, 0.1.286
+closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
 that as fatal. The journal showed no `concurrent map writes` since
 2026-09-16, so it had not fired, but it could at any moment a repeater and a
@@ -130,9 +136,9 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.286 | `cat VERSION` |
-| **GitHub** `main` | 0.1.279, tagged `v0.1.279`; images published for it | Actions green, then an anonymous `podman pull` on Fedora reporting `0.1.279 (v0.1.279)`, 2026-09-28 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.285** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Fedora working tree** | 0.1.287 | `cat VERSION` |
+| **GitHub** `main` | 0.1.286, tagged `v0.1.286`, pushed 2026-09-28 | the push output; Actions and an anonymous pull not yet checked for this tag |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.286** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
 
 **The compose files pin the working tree's version, enforced by

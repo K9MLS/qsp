@@ -311,3 +311,11 @@ reading it settled in minutes what a morning of radio tests had not.
 TG2 displayed on the R7 through the Pi-Star, and MMDVMHost's log showed one
 preamble ("7 to follow"), a six-block header and a clean end. Phase 2's
 instrument is met on both paths.
+
+**And a correction the next day.** The gate 0443 added held every preamble,
+and a preamble with its data bit clear is how a private call's signalling
+wakes a radio — so private calls to hotspot radios stopped. 0445 holds only
+preambles announcing data, the exact set MMDVMHost multiplies. The rule for
+anything that alters what a hotspot is sent: match MMDVMHost's own condition,
+and test against every kind of burst in the captures, not only the kind being
+fixed.
