@@ -1,6 +1,6 @@
 # ADR-0069: A private call to a radio not heard here is offered to every linked server
 
-**Status:** Accepted
+**Status:** Accepted — confirmed on air 2026-09-29
 **Date:** 2026-09-29
 **Relates to:** [ADR-0021](ADR-0021-private-calls-and-data.md),
 [ADR-0051](ADR-0051-a-qsp-link-is-a-peer.md),
@@ -112,4 +112,8 @@ this the two directions of one link differed.
   nothing.
 - `internal/peers/linked_servers_test.go` drives the master's handshake. Only
   peers that registered with a QSP package ID are linked servers.
-- On air: pending. Needs 0.1.288 on production *and* on the test server.
+- **On air, 2026-09-29, with 0.1.290 on both servers:** private calls both
+  ways between the R7 (3132910, Pi-Star on production) and 3132911 (Motorola
+  repeater behind the test server), and a private text to each radio,
+  displayed. The first attempt on 0.1.288 worked one way only; the other way
+  was the test server's allow-only subscriber list (0447, 0448), not routing.

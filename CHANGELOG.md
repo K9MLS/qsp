@@ -4,6 +4,14 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **Private calls and texts across linked servers are confirmed on air**
+  (2026-09-29, 0.1.290 on production and the test server): private voice both
+  ways between the R7 on a Pi-Star and 3132911 on the Motorola repeater behind
+  the test server, and a private text to each radio. ADR-0069 is marked
+  confirmed, and the handover's version table and rollback notes are current.
+
 ### Changed
 
 - **The subscriber list is a ban list only. QSP never restricts which radios

@@ -81,10 +81,16 @@ restricts which radios may transmit (K9MLS's decision), and an existing
 allow-only list — the test server's — is opened when QSP loads it, with a
 startup advisory. The test server needs nothing by hand once it is on 0.1.290.
 
-**What to deploy, and why.** Production runs 0.1.286 or 0.1.287. **0.1.288
-goes on production and on the test server**, which is still on 0.1.257; the
-test server takes the bundle and rebuilds its image, as below. 0.1.287 is the
-private-call fix and every hotspot radio needs it. Before that, 0.1.286
+**Confirmed on air 2026-09-29, 0.1.290 on both servers:** private calls work
+both ways between the R7 and 3132911, and a private text to each radio
+displayed. So the network carries group voice, group texts, private voice and
+private texts between a hotspot on one server and a Motorola repeater on
+another. What remains on this thread is composing a *private* text on the
+Administration page (phase 3, the confirmed-data acknowledgement).
+
+**What to deploy, and why.** Both servers run 0.1.290, the version that was
+confirmed on air; 0.1.291 changes only documents and need not be installed.
+For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
 that as fatal. The journal showed no `concurrent map writes` since
@@ -154,15 +160,15 @@ paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
 fills a stall Zello makes with silence rather than leaving the repeater to
 repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as of 2026-09-28** (check with `-version` before trusting these;
+**Versions, as of 2026-09-29** (check with `-version` before trusting these;
 they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.290 | `cat VERSION` |
+| **Fedora working tree** | 0.1.291 | `cat VERSION` |
 | **GitHub** `main` | 0.1.286, tagged `v0.1.286`, pushed 2026-09-28 | the push output; Actions and an anonymous pull not yet checked for this tag |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.286** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
-| **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
+| **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |
 
 **The compose files pin the working tree's version, enforced by
 `TestThePublishedImageIsPinnedToThisVersion`**, so between tags `main` names an
@@ -194,8 +200,9 @@ pull` must not become an unannounced upgrade of a live repeater network.
 `/etc/polkit-1/rules.d/`.
 
 **The rollback binary** is `~/qsp-rollback-<version>` in the operator's home on
-production, the version it replaced — `~/qsp-rollback-0.1.284` as of 2026-09-28,
-with `~/qsp-rollback-0.1.269` still there from the morning's first install.
+production, the version it replaced — `~/qsp-rollback-0.1.288` as of 2026-09-29,
+with `~/qsp-rollback-0.1.287`, `~/qsp-rollback-0.1.284` and `~/qsp-rollback-0.1.269`
+still there from earlier installs.
 
 **The credential key is `/var/lib/qsp/secrets.key`** — 32 bytes, mode 0600,
 owned by `qsp`. **Losing it loses every stored credential**, including the
