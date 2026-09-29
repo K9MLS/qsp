@@ -55,9 +55,14 @@ access list advisory  dmr.access.registration names 3132910, a seven-digit ID
 
 **That is a prompt to check, not an error.** Some hotspots append a two-digit
 suffix to the operator's ID and some do not; a plain seven-digit ID is
-ordinary and registers perfectly well. Note also that the subscriber field
-holds a *radio's* ID, which is 24 bits — a nine-digit value will be refused
-there.
+ordinary and registers perfectly well, and so does a nine-digit ID with the
+suffix.
+
+**These IDs decide who may log in, not which radios may talk.** Every radio
+behind a station you admit may transmit, whatever its ID. Before 0.1.289 the
+same IDs were also written as the only radios allowed to transmit, so a second
+radio with its own ID was refused with `subscriber not permitted` — see
+"Upgrading" if your install is older.
 
 **QSP will not start an open master for you.** A listener reachable from the
 internet that accepts anybody is a problem for the people it relays to as much
@@ -238,6 +243,21 @@ Nothing in the volume is changed except who owns it. A **new** install needs
 none of this: the image carries its data directory already owned by that user,
 and Docker gives a fresh volume the same ownership.
 
+### Installed before 0.1.289: check who may transmit
+
+**An install first started before 0.1.289 lets only the IDs in
+`QSP_ALLOWED_PEERS` transmit**, because the first run wrote them as the
+subscriber list too. A radio whose ID is not one of them is refused on every
+key-up and every text, and the log says:
+
+```
+transmission refused: subscriber not permitted  subscriber=3132911
+```
+
+Upgrading does not change this, because the configuration is yours after the
+first run. Fix it once in the console: **Access → Subscribers**, and either
+add the radios or set the list to allow everyone. It takes effect when saved.
+
 ## Your data
 
 Everything is in the `qsp-data` volume: the configuration, the peer password,
@@ -273,6 +293,9 @@ hotspot sends, and that the hotspot's DMR ID is in `dmr.access.registration`.
 **The console shows peers but no voice frames.** The peers are keepaliving and
 nobody has transmitted, or the sending side is not routing a talkgroup here.
 The traffic panel says which.
+
+**One radio is heard and another is not.** Look for `subscriber not
+permitted` in `docker compose logs qsp`. See "Installed before 0.1.289".
 
 **It refuses to start.** Read the message; it names the file and the setting.
 `docker compose exec qsp /qsp -config /var/lib/qsp/qsp.json -check` validates

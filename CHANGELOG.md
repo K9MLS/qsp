@@ -6,6 +6,34 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A container install let only its login IDs transmit.** The first run
+  wrote `QSP_ALLOWED_PEERS` — the hotspots and repeaters that may log in —
+  into the subscriber list as well, so the only radios allowed to transmit
+  were those same IDs. It passed every test while the operator's radio and
+  hotspot were both 3132910. The first radio with an ID of its own, 3132911 on
+  the test server's Motorola repeater, was refused on every key-up and every
+  text (`subscriber not permitted`), so private calls to the R7 could only
+  ever work one way. The starter configuration now writes subscribers as an
+  empty deny list, carrying every radio, as it already did for talkgroups;
+  registration is unchanged.
+
+  The same coupling is why a nine-digit hotspot ID (seven digits and a
+  suffix, like production's 312704501) made a container's first run refuse to
+  start: a 32-bit registration ID was also being checked against the 24-bit
+  subscriber field. ADR-0048 recorded that as the ID being wrong; it is
+  amended. A nine-digit hotspot ID now registers.
+
+  **An existing install is not changed**, because after the first run the
+  configuration is the operator's. The Docker README gains "Installed before
+  0.1.289: check who may transmit" — one change under Access → Subscribers —
+  and a troubleshooting line for `subscriber not permitted`. Tests:
+  `TestTheStartingPolicyAdmitsStationsAndCarriesRadios` (through the lists QSP
+  evaluates) and `TestANineDigitHotspotIDIsAdmitted`; both fail with the old
+  policy restored. `TestARefusedFirstRunLeavesNothingBehind` now uses an ID
+  past 32 bits, because 313291001 is valid.
+
+### Fixed
+
 - **A private call or private text between radios on two linked servers went
   nowhere.** The R7 (3132910) on a Pi-Star on production called 3132911, on
   the Motorola repeater behind the linked test server. Production's capture

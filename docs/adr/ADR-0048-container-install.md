@@ -236,6 +236,12 @@ migrated, both sockets bound and `/healthz` reported healthy.
    `313291001`, which **overflows the 24-bit subscriber field and made the
    first run refuse to start at all.**
 
+   *Amended 2026-09-29 (0447):* the refusal was a defect, not the ID. The
+   bootstrap wrote `QSP_ALLOWED_PEERS` into the subscriber list as well as
+   the registration list, so the login IDs were also the only radios allowed
+   to transmit, and a 32-bit hotspot ID met a 24-bit field. Subscribers now
+   start as an empty deny list, and a nine-digit hotspot ID registers.
+
    The running network was the evidence the whole time: 3132910, 3155413 and
    3127045 are registered and passing traffic on the author's instance. An
    advisory is a prompt to check something, and the thing to check it against

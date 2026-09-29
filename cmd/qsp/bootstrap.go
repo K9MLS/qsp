@@ -59,7 +59,8 @@ const (
 	// peerPasswordEnv is the shared secret hotspots authenticate with.
 	peerPasswordEnv = "QSP_PEER_PASSWORD"
 	// allowedPeersEnv is the comma-separated list of repeater IDs permitted to
-	// register.
+	// register. It says nothing about which radios may transmit: every radio
+	// behind an admitted station may (0447).
 	//
 	// **The ID a hotspot registers with is the one on its dashboard**, and on
 	// this network that is the operator's plain seven-digit ID: 3132910,
@@ -70,9 +71,14 @@ const (
 	// registry issues those to operators and some hotspots append a two-digit
 	// suffix. **It is a warning and not an error**, and a version of this file
 	// treated it as ground truth — changing the example to 313291001, which
-	// overflows the 24-bit subscriber field and made the first run refuse to
+	// overflowed the 24-bit subscriber field and made the first run refuse to
 	// start at all. The running network is the evidence; an advisory is a
 	// prompt to check it.
+	//
+	// **That refusal was the 0447 defect, not a property of the ID.** A
+	// registration ID is 32 bits and a nine-digit hotspot ID fits; it was
+	// refused only because this list was also written into the 24-bit
+	// subscriber list. With subscribers decoupled, 313291001 registers.
 	//
 	// **Required, and that was not the plan.** The intention was to write an
 	// empty permit list so a fresh instance carried nothing until its operator
@@ -279,9 +285,19 @@ network it will ask for a setup token, which QSP prints once at startup.
 // signed in, so a public view names stations without naming their home
 // connections.
 //
-// **The access policy permits only what it is told to.** A permit list refuses
-// anything it does not name, so an empty one carries nothing until its operator
-// says what it may carry.
+// **The access policy permits only what it is told to, at the door.** A permit
+// list refuses anything it does not name, so only the hotspots and repeaters
+// the operator named may log in.
+//
+// **A radio is not a hotspot** (0447). QSP_ALLOWED_PEERS names what may
+// register, and this used to write the same IDs into the subscriber list too —
+// so the radios allowed to *transmit* were exactly the login IDs. Nobody
+// noticed while the operator's radio and hotspot shared 3132910. The first
+// radio with an ID of its own, 3132911 on the test server's Motorola repeater
+// on 2026-09-29, was refused on every key-up and every text with "subscriber
+// not permitted", and private calls to it could only ever work one way.
+// Subscribers now start as an empty deny list, carrying every radio, exactly
+// as talkgroups do; banning one is a line in the console.
 func starterConfig(passwordPath string, allowed []string) config.Config {
 	cfg := config.Default()
 	// **The default DSN is relative and the container has no working
@@ -299,7 +315,9 @@ func starterConfig(passwordPath string, allowed []string) config.Config {
 	cfg.DMR.PasswordFile = passwordPath
 	cfg.DMR.Access = &config.Access{
 		Registration: config.ACL{Mode: "permit", IDs: allowed},
-		Subscribers:  config.ACL{Mode: "permit", IDs: allowed},
+		// Every radio behind an admitted station may transmit. A deny list
+		// with no entries is the documented way to say "all".
+		Subscribers: config.ACL{Mode: "deny", IDs: []string{}},
 		// **Talkgroups carry everything; registration is the boundary.**
 		// Which talkgroups an instance carries is a policy refinement an
 		// operator makes once they know what their members use. Who may

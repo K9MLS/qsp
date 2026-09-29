@@ -126,6 +126,87 @@ func TestTheStartingPolicyPermitsOnlyWhatItWasTold(t *testing.T) {
 	}
 }
 
+// TestTheStartingPolicyAdmitsStationsAndCarriesRadios is 0447.
+//
+// QSP_ALLOWED_PEERS names what may log in. It was also written into the
+// subscriber list, so a radio could transmit only if its ID happened to be a
+// login ID. The operator's radio and hotspot were both 3132910, and every test
+// passed by coincidence until a second radio, 3132911, was refused on every
+// key-up on 2026-09-29.
+//
+// Checked through the lists QSP actually evaluates, not the fields written, so
+// a policy that reads right and behaves wrong still fails.
+//
+// To see it fail: put Subscribers back to config.ACL{Mode: "permit", IDs:
+// allowed} in starterConfig, and the radio cases fail.
+func TestTheStartingPolicyAdmitsStationsAndCarriesRadios(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "qsp.json")
+	if _, err := bootstrapConfig(path, envFrom(map[string]string{
+		peerPasswordEnv: "a-shared-secret",
+		allowedPeersEnv: "3132910, 3127045",
+	})); err != nil {
+		t.Fatalf("%v", err)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	defer func() { _ = f.Close() }()
+	cfg, err := config.Load(f)
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	lists, err := cfg.AccessLists()
+	if err != nil {
+		t.Fatalf("the starter access lists do not parse: %v", err)
+	}
+
+	cases := []struct {
+		name string
+		list string
+		id   uint32
+		want bool
+	}{
+		{"a named hotspot logs in", "registration", 3132910, true},
+		{"a second named hotspot logs in", "registration", 3127045, true},
+		{"an unnamed station is refused at the door", "registration", 3139999, false},
+		{"the operator's own radio transmits", "subscriber", 3132910, true},
+		{"a radio with an ID of its own transmits", "subscriber", 3132911, true},
+		{"a visitor's radio transmits", "subscriber", 3155413, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l := lists.Registration
+			if tc.list == "subscriber" {
+				l = lists.Subscriber
+			}
+			if got := l.Allows(tc.id); got != tc.want {
+				t.Errorf("%s list allows %d = %v, want %v", tc.list, tc.id, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestANineDigitHotspotIDIsAdmitted is the other face of 0447.
+//
+// A hotspot registers with its owner's seven-digit ID and a two-digit suffix,
+// and production has one (312704501). Written into the 24-bit subscriber list
+// as well, such an ID made a container's first run refuse to start at all,
+// which was recorded at the time as the ID being wrong.
+//
+// To see it fail: put Subscribers back to the permit list of allowed IDs.
+func TestANineDigitHotspotIDIsAdmitted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "qsp.json")
+	written, err := bootstrapConfig(path, envFrom(map[string]string{
+		peerPasswordEnv: "a-shared-secret",
+		allowedPeersEnv: "313291001",
+	}))
+	if err != nil || !written {
+		t.Fatalf("a nine-digit hotspot ID was refused: written=%v err=%v", written, err)
+	}
+}
+
 // TestASecondRunChangesNothing keeps the promise the comment makes.
 //
 // After the first run the configuration is the operator's, including any
@@ -286,12 +367,14 @@ func TestARefusedFirstRunLeavesNothingBehind(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "qsp.json")
 
-	// A subscriber ID is 24 bits. 313291001 is what an operator types when
-	// told a hotspot appends a two-digit suffix, and it overflows the field —
-	// which is exactly how this was found.
+	// A registration ID is 32 bits, so this is one past the largest. This
+	// used to be 313291001, which is a perfectly good hotspot ID and was
+	// refused only because the same list was also written into the 24-bit
+	// subscriber list — the 0447 defect. See
+	// TestANineDigitHotspotIDIsAdmitted.
 	written, err := bootstrapConfig(path, envFrom(map[string]string{
 		peerPasswordEnv: "a-shared-secret",
-		allowedPeersEnv: "313291001",
+		allowedPeersEnv: "4294967296",
 	}))
 	if written {
 		t.Error("a configuration was written from settings that do not validate")
