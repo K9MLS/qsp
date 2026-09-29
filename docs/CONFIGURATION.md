@@ -61,8 +61,11 @@ ID or an inclusive range.
 
 `registration` names repeater IDs permitted to log in — six digits for a
 repeater, nine for a hotspot using an operator's ID and a two-digit suffix.
-`subscribers` names radio IDs permitted to transmit, and refusing one does not
-disconnect the hotspot carrying it. `talkgroups` names what is carried on each
+`subscribers` is a **ban list only**: `mode` must be `"deny"`, and it names
+the radios refused. Every other radio may transmit. Refusing one does not
+disconnect the hotspot carrying it. An allow-only (`"permit"`) subscriber list
+is refused on save, and one already in a configuration file is opened when QSP
+loads it, with a startup advisory saying how many radios it had named (0448). `talkgroups` names what is carried on each
 timeslot, checked both when a frame arrives and again for each peer it would
 reach, so that traffic from a bridge or a link is subject to the same list.
 

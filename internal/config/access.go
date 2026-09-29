@@ -56,7 +56,15 @@ func (c Config) AccessAdvisories() []string {
 		// a subset of it here as advice would be noise.
 		return nil
 	}
-	return lists.Registration.Advisories("dmr.access.registration", access.Registration)
+	out := lists.Registration.Advisories("dmr.access.registration", access.Registration)
+	if a := c.DMR.Access; a != nil && a.openedAllowOnly {
+		out = append(out, fmt.Sprintf(
+			"dmr.access.subscribers was an allow-only list naming %d radio(s), so every other radio "+
+				"was refused; it is now open and every radio may transmit. Subscribers is a ban list "+
+				"only: list a radio under Access → Subscribers to ban it. Saving any change in the "+
+				"console writes the open list to the configuration file.", a.allowOnlyNamed))
+	}
+	return out
 }
 
 // validateAccess adds every problem with the access block, and the one problem
@@ -84,6 +92,15 @@ func (c Config) validateAccess(v *validator) {
 	}
 
 	a := c.DMR.Access
+	// A ban list only. Saved from the console, or written by hand and checked
+	// with -check, an allow-only list is refused with the reason rather than
+	// quietly opened: Load opens one only so a running server survives it.
+	if strings.EqualFold(strings.TrimSpace(a.Subscribers.Mode), string(access.ModePermit)) {
+		v.add("dmr.access.subscribers",
+			"subscribers is a ban list: QSP never limits which radios may transmit, "+
+				"it only refuses the radios listed",
+			`set "mode" to "deny" and list only the radios to ban; an empty list allows every radio`)
+	}
 	for _, spec := range []struct {
 		field string
 		kind  access.Kind
@@ -103,6 +120,22 @@ func (c Config) validateAccess(v *validator) {
 					`mode is "permit" or "deny"`)
 		}
 	}
+}
+
+// openSubscribers turns an allow-only subscriber list into an empty ban list.
+//
+// **The radios an allow-only list named are not banned by this**, and must not
+// be: they were the ones allowed. Every radio may transmit afterwards, which is
+// what the operator of a network that was refusing its own members wants
+// (0448, decided by K9MLS). A ban list is left exactly as it was.
+func (c *Config) openSubscribers() {
+	a := c.DMR.Access
+	if a == nil || !strings.EqualFold(strings.TrimSpace(a.Subscribers.Mode), string(access.ModePermit)) {
+		return
+	}
+	a.openedAllowOnly = true
+	a.allowOnlyNamed = len(a.Subscribers.IDs)
+	a.Subscribers = ACL{Mode: string(access.ModeDeny), IDs: []string{}}
 }
 
 // reachableBeyondHost reports whether a listen address accepts traffic from

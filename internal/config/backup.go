@@ -192,6 +192,9 @@ func ReadBackup(r io.Reader) (Backup, error) {
 		return Backup{}, fmt.Errorf("%w: the file is format %d and this QSP reads %d; "+
 			"upgrade QSP before importing it", ErrBackupNewer, b.Format, BackupVersion)
 	}
+	// A backup made before 0448 may hold an allow-only subscriber list; it is
+	// opened exactly as a configuration file is, so restoring it works.
+	b.Config.openSubscribers()
 	if err := b.Config.Validate(); err != nil {
 		return Backup{}, err
 	}

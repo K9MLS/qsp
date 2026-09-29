@@ -49,11 +49,14 @@
     },
     {
       id: "acl-subscribers",
-      label: "Subscribers",
+      label: "Banned radios",
       path: ["dmr", "access", "subscribers"],
       noun: "radio ID",
-      hint: "Checked on every transmission. A refused radio does not disconnect " +
-        "the hotspot carrying it.",
+      /* A ban list and nothing else (0448): there is no "allow only" for
+       * radios, so the page offers none. */
+      banOnly: true,
+      hint: "Every radio may transmit except the ones listed here. A banned " +
+        "radio does not disconnect the hotspot carrying it.",
       detail: "Checked on every transmission, which is the important difference. <strong>A refused radio is silenced without disconnecting the hotspot carrying it</strong>, so one member cannot knock another off the network by keying up. A hotspot may carry several radios and they are judged separately."
     }
   ];
@@ -121,8 +124,15 @@
    * **This is the reason the page exists.** "mode: deny, ids: []" is correct
    * and tells an operator nothing; working out that it permits everything took
    * a conversation. */
-  function describe(list, noun) {
+  function describe(list, noun, banOnly) {
     var count = list.ids.length;
+    if (banOnly) {
+      if (count === 0) {
+        return "Every radio may transmit. No radio is banned.";
+      }
+      return "Every radio may transmit except the " + count + " banned " +
+        escapeText(noun) + (count === 1 ? "" : "s") + " listed below.";
+    }
     if (list.mode === "permit") {
       if (count === 0) {
         return "Nothing is allowed. A permit list with no entries refuses every " +
@@ -143,7 +153,7 @@
     if (!el) {
       return;
     }
-    var permit = list.mode === "permit";
+    var permit = !spec.banOnly && list.mode === "permit";
 
     el.innerHTML =
       '<h3 class="acl__title">' + escapeText(spec.label) +
@@ -158,12 +168,14 @@
           spec.detail + "</p>"
         : "") +
       '<p class="acl__state" id="' + spec.id + '-state">' +
-        describe(list, spec.noun) + "</p>" +
-      '<div class="acl__modes" role="radiogroup" aria-label="' +
-        escapeText(spec.label) + ' mode">' +
-        modeButton(spec.id, "deny", "Allow everything except", !permit) +
-        modeButton(spec.id, "permit", "Allow only", permit) +
-      "</div>" +
+        describe(list, spec.noun, spec.banOnly) + "</p>" +
+      (spec.banOnly
+        ? ""
+        : '<div class="acl__modes" role="radiogroup" aria-label="' +
+          escapeText(spec.label) + ' mode">' +
+          modeButton(spec.id, "deny", "Allow everything except", !permit) +
+          modeButton(spec.id, "permit", "Allow only", permit) +
+          "</div>") +
       '<label class="field__label" for="' + spec.id + '-ids">' +
         "One " + escapeText(spec.noun) + " or range per line</label>" +
       '<textarea class="field__input acl__ids" id="' + spec.id + '-ids" rows="4" ' +
@@ -195,6 +207,9 @@
         ids.push(trimmed);
       }
     });
+    if (spec.banOnly) {
+      return { mode: "deny", ids: ids };
+    }
     return { mode: checked ? checked.value : "deny", ids: ids };
   }
 
@@ -207,7 +222,7 @@
       var list = readList(spec);
       var state = document.getElementById(spec.id + "-state");
       if (state) {
-        state.textContent = describe(list, spec.noun);
+        state.textContent = describe(list, spec.noun, spec.banOnly);
       }
       if (spec.noun === "talkgroup" && list.mode === "deny" && list.ids.length === 0) {
         open++;

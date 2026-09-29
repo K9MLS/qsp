@@ -215,3 +215,15 @@ it.
 - The existing routing tests are the regression check for the egress hook, as
   they were for repeat. A default-permissive ACL must leave every one of them
   passing unchanged.
+
+## Amendment, 2026-09-29 (0448): subscribers is a ban list only
+
+The subscriber list took `permit` as well as `deny`, and a Docker first run
+wrote a `permit` list naming only the login IDs. On a network that means every
+visitor, every new radio and every member's second radio is refused, silently
+to them, on every key-up — which is how 3132911 was refused on the test server.
+K9MLS decided: **QSP never restricts which radios may transmit; it only bans
+the radios listed.** `dmr.access.subscribers` must be `"deny"`. A configuration
+file holding a `permit` list is opened when loaded, so an existing server keeps
+starting, and the startup log says so. Registration and talkgroup lists keep
+both modes.

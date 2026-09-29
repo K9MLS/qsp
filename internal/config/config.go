@@ -471,13 +471,29 @@ type Callsigns struct {
 type Access struct {
 	// Registration names the repeater IDs permitted to register.
 	Registration ACL `json:"registration"`
-	// Subscribers names the subscriber IDs permitted to transmit.
+	// Subscribers names the radios that are banned. **It is a ban list and
+	// nothing else** (0448): mode must be "deny", and every radio not named
+	// may transmit.
+	//
+	// An allow-only list of radios is refused, because a network that admits
+	// only the radios somebody wrote down in advance is one nobody new can
+	// talk on. Every visitor, every new radio and every second radio of a
+	// member was silently refused, which is what happened to 3132911 on
+	// 2026-09-29. A configuration written with one is opened when it is
+	// loaded; see Load.
 	//
 	// A refused subscriber does not disconnect the peer carrying it. On DMR a
 	// hotspot is shared infrastructure and the offending party is a radio.
 	Subscribers ACL `json:"subscribers"`
 	// Talkgroups names the talkgroups carried, per timeslot.
 	Talkgroups Talkgroups `json:"talkgroups"`
+
+	// openedAllowOnly records that Load found an allow-only subscriber list
+	// and opened it, and how many radios it had named, so the startup log can
+	// say so. Not serialised: once opened, the list on disk is rewritten the
+	// next time the configuration is saved.
+	openedAllowOnly bool
+	allowOnlyNamed  int
 }
 
 // Talkgroups holds one list per DMR timeslot.
@@ -2165,6 +2181,11 @@ func Load(r io.Reader) (Config, error) {
 	if err := dec.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("cannot read configuration: %w", err)
 	}
+	// **Before Validate, so an existing install keeps starting** (0448). A
+	// server whose first run wrote an allow-only subscriber list must not stop
+	// at its next restart because that shape is no longer accepted; it opens
+	// instead, and says so in the startup log.
+	cfg.openSubscribers()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}

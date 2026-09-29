@@ -4,6 +4,32 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Changed
+
+- **The subscriber list is a ban list only. QSP never restricts which radios
+  may transmit** (decided by K9MLS, 0448). An allow-only subscriber list means
+  every visitor, every new radio and every member's second radio is refused,
+  silently to them — which is how 3132911 was refused on the test server.
+  `dmr.access.subscribers` must now be `"deny"`: every radio may transmit
+  except the ones listed.
+
+  - **An existing allow-only list is opened when QSP loads it**, so a server
+    keeps starting after the upgrade and every radio may transmit. The startup
+    log says so (`access list advisory ... dmr.access.subscribers was an
+    allow-only list naming N radio(s)`), and the next console save writes the
+    open list to the file. Backups taken before this restore the same way. A
+    ban list is untouched.
+  - **Saving one is refused**, from the console or with `-check`, naming the
+    field and saying to use `"deny"`.
+  - **The console shows "Banned radios"**: one list, no "Allow only" choice.
+  - Registration and talkgroup lists keep both modes. Who may log in is still
+    the operator's to restrict.
+
+  ADR-0020 is amended. Tests in `internal/config/subscribers_ban_test.go`
+  cover loading the test server's exact list, a ban list surviving, the
+  advisory, refusal on save and a backup restore; each fails under the
+  deliberate breaks listed in the file.
+
 ### Fixed
 
 - **A container install let only its login IDs transmit.** The first run

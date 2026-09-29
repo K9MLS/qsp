@@ -75,9 +75,11 @@ text *composed on the Administration page* is still group-only (phase 3).
 **Tested 2026-09-29 on 0.1.288:** the R7 to 3132911 crossed and was heard.
 3132911 to the R7 did not, because the **test server refused the radio**:
 its Docker first run had written `QSP_ALLOWED_PEERS` (3132910) as the
-subscriber list too. 0.1.289 (0447) stops new installs doing that; **the test
-server's own list still needs 3132911 added, or set to allow all, under
-Access → Subscribers**, because an existing configuration is never rewritten.
+subscriber list too. 0.1.289 (0447) stops new installs doing that, and
+**0.1.290 (0448) makes the subscriber list a ban list only**: QSP never
+restricts which radios may transmit (K9MLS's decision), and an existing
+allow-only list — the test server's — is opened when QSP loads it, with a
+startup advisory. The test server needs nothing by hand once it is on 0.1.290.
 
 **What to deploy, and why.** Production runs 0.1.286 or 0.1.287. **0.1.288
 goes on production and on the test server**, which is still on 0.1.257; the
@@ -157,7 +159,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.289 | `cat VERSION` |
+| **Fedora working tree** | 0.1.290 | `cat VERSION` |
 | **GitHub** `main` | 0.1.286, tagged `v0.1.286`, pushed 2026-09-28 | the push output; Actions and an anonymous pull not yet checked for this tag |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.286** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
