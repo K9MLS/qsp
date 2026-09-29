@@ -319,6 +319,9 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 				// Links to other QSP servers, which repeat reaches the way it
 				// reaches a hotspot; see ADR-0051.
 				QSPLinks: qspLinkNames(cfg),
+				// Servers that dialled this one, which a private call to a
+				// radio not heard here is offered to; see ADR-0069.
+				LinkedServers: master,
 			})
 			if err != nil {
 				return nil, err

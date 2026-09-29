@@ -241,3 +241,13 @@ beyond identity — version, carried talkgroups, agreed stream-ID ranges — now
 that both ends are known to be QSP. Whether a hop count or a network-ID trail
 should eventually bound relaying beyond what deduplication gives. Each is worth
 a record of its own once this one is built and running.
+
+## Amendment, 2026-09-29: private calls cross too
+
+This record made repeat offer every **group** call to every QSP link, and
+said nothing about private calls. So a private call between a radio on one
+server and a radio on another stopped at the first server, in both directions,
+while group calls crossed. A server that dialled in was also, to routing,
+indistinguishable from a hotspot. [ADR-0069](ADR-0069-a-private-call-is-offered-to-linked-servers.md)
+offers a private call to a radio not heard here to every linked server, of
+both shapes.

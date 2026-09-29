@@ -1,6 +1,7 @@
 package peers
 
 import (
+	"slices"
 	"sort"
 	"time"
 
@@ -158,4 +159,40 @@ func (m *Master) LocateFor(subscriber uint32) (hbp.RepeaterID, hbp.Timeslot, boo
 		return 0, 0, false
 	}
 	return loc.Peer, loc.Timeslot, true
+}
+
+// LinkedServerPeers implements routing.LinkedServers: every ready peer that
+// registered as another QSP server, ordered by ID.
+//
+// **The same test the identity reply uses** (MasterConfig.IsQSPLink), so a
+// peer this master told who it is and a peer routing offers private calls to
+// are exactly the same peers. A hotspot is never one: a private call for a
+// radio it has not carried would key it for nothing. See ADR-0069.
+//
+// Nil IsQSPLink means no peer is a linked server, the safe direction for the
+// same reason it is for the identity reply.
+func (m *Master) LinkedServerPeers() []hbp.RepeaterID {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if m.cfg.IsQSPLink == nil {
+		return nil
+	}
+	var out []hbp.RepeaterID
+	for id, p := range m.peers {
+		if p.State.CanPassTraffic() && m.isLinkedServer(*p) {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// isLinkedServer reports whether a peer registered as another QSP server.
+//
+// It reads only the peer given and the master's configuration, which never
+// changes after NewMaster, so it takes no lock and may be called with or
+// without one.
+func (m *Master) isLinkedServer(p Peer) bool {
+	return m.cfg.IsQSPLink != nil && p.Config != nil && m.cfg.IsQSPLink(*p.Config)
 }

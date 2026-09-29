@@ -946,7 +946,18 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 			continue
 		}
 		// A hotspot gets one preamble per text, not sixteen. See preamble.go.
-		for _, f := range l.preambleGate.pass(d.Peer, d.Frame, now) {
+		//
+		// **A linked server gets all sixteen** (ADR-0069). The gate is for
+		// MMDVMHost, which multiplies each preamble by fifteen; another QSP
+		// server applies its own gate to its own hotspots, and passes the
+		// rest to its Motorola repeaters, which expect the set a Motorola
+		// radio sends. The link it dialled already carries all of them, so
+		// without this the two directions of one link differed.
+		gate := l.preambleGate
+		if l.cfg.Master.isLinkedServer(peer) {
+			gate = nil
+		}
+		for _, f := range gate.pass(d.Peer, d.Frame, now) {
 			if _, err := l.conn.WriteToUDPAddrPort(f.Marshal(), peer.Addr); err != nil {
 				l.writeErr.Add(1)
 				l.log.Warn("cannot forward a frame",

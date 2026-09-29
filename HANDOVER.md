@@ -60,8 +60,22 @@ private call's signalling, because only a data header released one; it now
 holds only preambles that announce data, which is what MMDVMHost multiplies.
 Confirm with one private call from the new radio (its own ID) to the R7.
 
-**What to deploy, and why.** Production runs 0.1.286. **0.1.287 is the
-private-call fix and every hotspot radio needs it.** Before that, 0.1.286
+**Private calls and texts across the link, 0.1.288** (0446, ADR-0069). The new
+radio, 3132911, is on the Motorola repeater behind the **test server**. The R7
+is on production. Private calls and texts between them went nowhere, in both
+directions: routing offered a private call only to the peer the radio was
+heard through, and a radio on the other server is behind none of them. A
+private call to a radio not heard here is now offered to every linked QSP
+server, both the links a server dialled and the servers that dialled it.
+**Both servers need 0.1.288**: production to send the R7's calls out to the
+test server, and the test server to send 3132911's calls up to production.
+Confirm with a private call each way, then a private text each way. A private
+text *composed on the Administration page* is still group-only (phase 3).
+
+**What to deploy, and why.** Production runs 0.1.286 or 0.1.287. **0.1.288
+goes on production and on the test server**, which is still on 0.1.257; the
+test server takes the bundle and rebuilds its image, as below. 0.1.287 is the
+private-call fix and every hotspot radio needs it. Before that, 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
 that as fatal. The journal showed no `concurrent map writes` since
@@ -136,7 +150,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.287 | `cat VERSION` |
+| **Fedora working tree** | 0.1.288 | `cat VERSION` |
 | **GitHub** `main` | 0.1.286, tagged `v0.1.286`, pushed 2026-09-28 | the push output; Actions and an anonymous pull not yet checked for this tag |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.286** from 2026-09-28, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.257 built from source | the container |
@@ -371,7 +385,10 @@ will not start on Ubuntu 24.04. `docs/ZELLO.md` has the `podman` command; check
 ### Deploy, as it is actually done
 
 **FEDORA** builds and bundles; production takes a binary, the test server takes
-the bundle and builds its own image.
+the bundle and builds its own image. On the **TEST SERVER**, in its checkout:
+`git pull /tmp/qsp-NNNN.bundle main`, then from `deploy/docker` rebuild with
+the same compose files it was started with, adding `--build` to `up -d`
+(`docker-compose.build.yml`, plus the Zello pair if the connector runs there).
 
 ```sh
 cd ~/Documents/QSP/qsp

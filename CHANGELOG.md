@@ -6,6 +6,39 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A private call or private text between radios on two linked servers went
+  nowhere.** The R7 (3132910) on a Pi-Star on production called 3132911, on
+  the Motorola repeater behind the linked test server. Production's capture
+  showed the call arrive from the Pi-Star and never leave. Private calls were
+  routed by asking which of this server's own peers the radio was behind, and
+  for a radio on another server the answer is none. A group call crossed the
+  same link only because repeat offers every group call to every QSP link;
+  nothing made that offer for a private call. And a server that dialled *in*
+  was, to routing, just another hotspot.
+
+  A private call to a radio this server has not heard is now offered to every
+  linked QSP server: each dialled QSP link, and each ready peer that registered
+  with a QSP link package ID (the test the identity reply already uses, now
+  `Master.LinkedServerPeers`). Voice and every data burst of a text take the
+  same path, with timeslot and target unchanged. The call is never sent back
+  to the server or link it came from, OpenBridge is not offered it, and a radio
+  heard here is still delivered only here. If no linked server carries it, the
+  local Motorola repeaters are still offered it, as before. See **ADR-0069**.
+
+  Two related corrections. **A private call is no longer subject to talkgroup
+  attachment**: nothing attaches to a radio ID, so with subscription enabled
+  every private call to a located radio was refused, and kept off the Motorola
+  side too. **A linked-server peer is sent every preamble**: the hotspot gate
+  exists for MMDVMHost, and another QSP server gates for its own hotspots.
+
+  Both servers need it. Tests: `internal/routing/private_link_test.go`
+  (dialled and inbound servers, echo, a busy link, attachment, voice and data),
+  `internal/peers/private_link_test.go` (a private text and call over a real
+  socket; the server gets all sixteen preambles and a hotspot gets nothing),
+  and `internal/peers/linked_servers_test.go`.
+
+### Fixed
+
 - **Private calls to hotspot radios stopped working, and 0443 was why.** The
   preamble gate held every preamble for a hotspot until a data header came,
   and released one. But a preamble also wakes radios for control

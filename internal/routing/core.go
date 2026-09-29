@@ -190,6 +190,24 @@ type Subscriptions interface {
 	Attached(peer hbp.RepeaterID, talkgroup uint32, slot hbp.Timeslot) bool
 }
 
+// LinkedServers reports which peers are other QSP servers that dialled this
+// one (ADR-0051).
+//
+// **A linked server is one of two shapes, and routing knows only one of them
+// by name.** A link this server dialled is an upstream and is listed in
+// CoreOptions.QSPLinks. A server that dialled *this* one logged in as a peer,
+// and nothing in routing distinguished it from a hotspot — which is harmless
+// for a group call, because repeat reaches every peer, and fatal for a
+// private call, which goes to one peer or none. See ADR-0069.
+//
+// Optional: nil means no peer is treated as a linked server, which is how
+// routing behaved before.
+type LinkedServers interface {
+	// LinkedServerPeers returns every ready peer that is a QSP server,
+	// ordered by ID.
+	LinkedServerPeers() []hbp.RepeaterID
+}
+
 // reservation records a destination currently receiving a transmission.
 type reservation struct {
 	// source identifies the transmission holding this destination.
@@ -336,6 +354,8 @@ type Core struct {
 	// subscribers locates a radio for a private call. Nil means private calls
 	// are not routed, which is a working configuration rather than a fault.
 	subscribers SubscriberLookup
+	// linkedServers finds the peers that are other QSP servers. May be nil.
+	linkedServers LinkedServers
 	// attached reports which talkgroups a peer wants. Nil means all of them.
 	attached Subscriptions
 	timeout  time.Duration
@@ -412,6 +432,10 @@ type CoreOptions struct {
 	// bridge, so an OpenBridge link to a foreign network is unaffected and
 	// an empty list routes exactly as this package did before.
 	QSPLinks []string
+	// LinkedServers finds the peers that are other QSP servers, so a private
+	// call to a radio not heard here can be offered to them. Optional: nil
+	// offers it only to QSPLinks. See ADR-0069.
+	LinkedServers LinkedServers
 }
 
 // NewCore constructs a Core.
@@ -423,16 +447,17 @@ func NewCore(opts CoreOptions) (*Core, error) {
 		opts.Timeout = StreamTimeout
 	}
 	return &Core{
-		repeat:      !opts.NoRepeat,
-		access:      opts.Access,
-		table:       opts.Table,
-		peers:       opts.Peers,
-		subscribers: opts.Subscribers,
-		attached:    opts.Attached,
-		timeout:     opts.Timeout,
-		qspLinks:    linkSet(opts.QSPLinks),
-		carrying:    make(map[streamKey]*carrier),
-		busy:        make(map[Endpoint]*reservation),
+		repeat:        !opts.NoRepeat,
+		access:        opts.Access,
+		table:         opts.Table,
+		peers:         opts.Peers,
+		subscribers:   opts.Subscribers,
+		linkedServers: opts.LinkedServers,
+		attached:      opts.Attached,
+		timeout:       opts.Timeout,
+		qspLinks:      linkSet(opts.QSPLinks),
+		carrying:      make(map[streamKey]*carrier),
+		busy:          make(map[Endpoint]*reservation),
 	}, nil
 }
 
@@ -682,29 +707,64 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 	// is what makes the receiving radio open its squelch. Only the timeslot is
 	// taken from where the radio was last heard, since a peer's two slots are
 	// independent paths and the call has to pick the one the radio is using.
+	unlocated := false
 	if c.repeat && frame.CallType == hbp.CallPrivate {
 		if c.subscribers == nil {
 			return Result{Reason: "private calls are not routed by this instance"}
 		}
 		peer, slot, found := c.subscribers.LocateFor(frame.TargetID)
-		if !found {
-			// Naming the radio matters: "not heard recently" is something an
-			// operator can act on, and silence is not.
+		if found {
+			targets = append(targets, routeTarget{
+				Endpoint: Endpoint{Peer: peer, Talkgroup: frame.TargetID, Timeslot: slot},
+				repeat:   true,
+			})
+		} else {
+			// **A radio not heard here may be heard by a neighbour**
+			// (ADR-0069). Before this, a private call to a radio behind a
+			// linked server stopped at the first server, because the only
+			// question asked was "which of my peers is it behind?" and the
+			// honest answer was none. A group call crossed the same link
+			// because repeat offers it to every link; a private call was
+			// offered to no link at all, so an R7 on a hotspot and a radio on
+			// a Motorola repeater one server away could talk on a talkgroup
+			// and never to each other.
 			//
-			// Not refused. Nothing here judged the transmission; there is
-			// only nowhere on this side to deliver it, and a Motorola
-			// repeater does its own filtering.
-			return Result{
-				Reason: fmt.Sprintf(
-					"radio %d has not been heard recently, so there is nowhere to send a private call to it",
-					frame.TargetID),
-				NoHomebrewDestination: true,
+			// So it is offered to every linked QSP server, which is what the
+			// far end's own private-call routing is for: it looks the radio
+			// up among its own peers and its own repeaters, and a server where
+			// the radio is not simply has nobody to give it to. The timeslot
+			// crosses unchanged, as it does for a group call.
+			//
+			// Deduplication is what makes offering it everywhere safe: a
+			// transmission that comes back around a ring of servers is dropped
+			// at its second arrival, exactly as a group call is.
+			unlocated = true
+			for _, name := range c.sortedQSPLinks() {
+				targets = append(targets, routeTarget{Endpoint: Endpoint{
+					Upstream:  name,
+					Talkgroup: frame.TargetID,
+					Timeslot:  frame.Timeslot,
+				}})
+			}
+			if c.linkedServers != nil {
+				for _, p := range c.linkedServers.LinkedServerPeers() {
+					if p == from {
+						// Never back to the server it came from: that
+						// server has already looked, and sending it back is
+						// an echo.
+						continue
+					}
+					targets = append(targets, routeTarget{Endpoint: Endpoint{
+						Peer:      p,
+						Talkgroup: frame.TargetID,
+						Timeslot:  frame.Timeslot,
+					}})
+				}
+			}
+			if len(targets) == 0 {
+				return unlocatedResult(frame)
 			}
 		}
-		targets = append(targets, routeTarget{
-			Endpoint: Endpoint{Peer: peer, Talkgroup: frame.TargetID, Timeslot: slot},
-			repeat:   true,
-		})
 	}
 
 	if len(targets) == 0 {
@@ -895,7 +955,15 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			// A bridge is a separate route to the same peer and is not subject
 			// to it: an operator who bridged a talkgroup to somebody has
 			// already said it should arrive. Only repeat consults attachment.
-			if target.repeat && c.attached != nil &&
+			//
+			// **Nor is a private call** (ADR-0069). Its target is a radio ID,
+			// and nothing attaches to a radio: a hotspot attaches to the
+			// talkgroups its user keys, so with subscription on, every private
+			// call to a located radio was refused as "not attached" — and,
+			// being a judgement, kept off the Motorola side as well. That
+			// includes a radio learned behind a linked server, which is where
+			// a private call goes once the radio has spoken across the link.
+			if target.repeat && frame.CallType != hbp.CallPrivate && c.attached != nil &&
 				!c.attached.Attached(peer, dest.Talkgroup, dest.Timeslot) {
 				res.Drops = append(res.Drops, Drop{
 					To: dest,
@@ -1015,13 +1083,43 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 				break
 			}
 		}
-		if judged {
+		switch {
+		case unlocated:
+			// **Offering it to a neighbour must not take it away from the
+			// repeaters here.** Before ADR-0069 a private call to a radio not
+			// heard here went to the Motorola side and nowhere else; a link
+			// that was busy or refused it now must not change that, because
+			// the radio may be on one of those repeaters and nothing here
+			// judged the call. See NoHomebrewDestination.
+			return unlocatedResult(frame, res)
+		case judged:
 			res.Reason = "every destination refused the frame"
-		} else {
+		default:
 			res.Reason = "nothing on the Homebrew side to deliver to"
 			res.NoHomebrewDestination = true
 		}
 	}
+	return res
+}
+
+// unlocatedResult is the outcome of a private call to a radio not heard here
+// that no linked server carried.
+//
+// Not refused. Nothing here judged the transmission; there is only nowhere on
+// this side to deliver it, and a Motorola repeater does its own filtering. The
+// drops of any linked servers that were offered it are kept, so an operator
+// can see why they did not take it.
+func unlocatedResult(frame hbp.Data, partial ...Result) Result {
+	var res Result
+	if len(partial) > 0 {
+		res = partial[0]
+	}
+	// Naming the radio matters: "not heard recently" is something an operator
+	// can act on, and silence is not.
+	res.Reason = fmt.Sprintf(
+		"radio %d has not been heard recently, so there is nowhere to send a private call to it",
+		frame.TargetID)
+	res.NoHomebrewDestination = true
 	return res
 }
 
