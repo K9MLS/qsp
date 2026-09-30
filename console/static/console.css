@@ -1841,6 +1841,19 @@ label.picker__label {
   line-height: var(--leading-normal);
 }
 
+/* **A link in running text has to be readable as a link.** Unstyled, the
+   browser's default blue sat on this navy at a contrast nobody could read —
+   first seen on the Weather page, whose note links to where an operator finds
+   their NWS codes. Primary rather than accent, because it is the colour this
+   console already uses for "do this". */
+.field__note a,
+.hint__text a,
+.notice__body a {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* A button directly after a paragraph or a field row needs air. It had none. */
 .panel__body > .button {
   margin-top: var(--space-2);

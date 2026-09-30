@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<div class="shell">
+
+  <div class="brand">
+    <svg class="brand__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false">
+      <path d="M16 21.5v6.5M11 28h10"/>
+      <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none"/>
+      <path d="M10.6 21.4a7.6 7.6 0 0 1 0-10.8M21.4 10.6a7.6 7.6 0 0 1 0 10.8"/>
+      <path d="M6.6 25.4a13.3 13.3 0 0 1 0-18.8M25.4 6.6a13.3 13.3 0 0 1 0 18.8"/>
+    </svg>
+    <div>
+      <p class="brand__name">QSP</p>
+      <p class="brand__tagline">I will relay</p>
+    </div>
+  </div>
+
+  <header class="topbar">
+    <div class="topbar__meta">
+      <span class="topbar__auth" id="auth-state"></span>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="Console sections">
+    <p class="nav__heading" id="nav-operations">Operations</p>
+    <ul class="nav__group" aria-labelledby="nav-operations">
+      <li><a class="nav__link" href="/"><span>Overview</span></a></li>
+    </ul>
+    <p class="nav__heading" id="nav-admin" hidden>Administration</p>
+    <ul class="nav__group" id="nav-admin-group" aria-labelledby="nav-admin" hidden>
+      <li><a class="nav__link" href="/server"><span>This server</span></a></li>
+      <li><a class="nav__link" href="/access"><span>Access control</span></a></li>
+      <li><a class="nav__link" href="/network"><span>Network settings</span></a></li>
+      <li><a class="nav__link" href="/bridges"><span>Bridges</span></a></li>
+      <li><a class="nav__link" href="/links"><span>Links</span></a></li>
+      <li><a class="nav__link" href="/zello"><span>Zello</span></a></li>
+      <li><a class="nav__link" href="/weather" aria-current="page"><span>Weather</span></a></li>
+      <li><a class="nav__link" href="/record"><span>Call record</span></a></li>
+      <li><a class="nav__link" href="/history"><span>History</span></a></li>
+      <li><a class="nav__link" href="/join"><span>Join instructions</span></a></li>
+    </ul>
+
+    <p class="nav__version" id="nav-version"></p>
+  </nav>
+
+  <main class="main" id="main">
+    <h1 class="page__title">Weather</h1>
+
+    <p class="page__lede">
+      Put National Weather Service alerts for your area on the air as a text
+      message on a talkgroup, so every radio listening to it sees a tornado
+      warning the moment NWS issues one. Work down this page in order.
+    </p>
+
+    <div class="empty" id="loading">
+      <h2 class="empty__title">Loading</h2>
+      <p class="empty__body">Reading this instance's configuration.</p>
+    </div>
+
+    <div class="notice notice--warn" id="signed-out" hidden>
+      <p class="notice__title">Sign in to set up weather alerts</p>
+      <p class="notice__body">
+        <a href="/signin">Sign in</a> as an administrator.
+      </p>
+    </div>
+
+    <div class="notice notice--warn" id="read-only" hidden>
+      <p class="notice__title">This instance cannot be changed from here</p>
+      <p class="notice__body" id="read-only-reason"></p>
+    </div>
+
+    <div class="notice notice--warn" id="unavailable" hidden>
+      <p class="notice__title">This server has no weather service</p>
+      <p class="notice__body">It is running a build without one. Update QSP to use this page.</p>
+    </div>
+
+    <div class="notice notice--warn" id="error" hidden>
+      <p class="notice__title">That did not save</p>
+      <p class="notice__body" id="error-text"></p>
+      <ul class="notice__list" id="error-fields"></ul>
+    </div>
+
+    <div class="notice" id="saved" hidden>
+      <p class="notice__title">Saved</p>
+      <p class="notice__body" id="saved-text"></p>
+    </div>
+
+    <div class="stack" id="form" hidden>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">Switch weather alerts on</h2>
+            <button class="hint" type="button" aria-controls="hint-switch" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="switch-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-switch">
+          <p class="hint__text"><strong>Off keeps everything you entered</strong>, so pausing alerts never means typing it all again. On, QSP asks the National Weather Service for active alerts in your area once a minute. It takes effect when you save; no restart is needed.</p>
+        </div>
+        <div class="panel__body">
+          <div class="notice">
+            <p class="notice__title">Preview: nothing goes on the air yet</p>
+            <p class="notice__body">This version shows every alert exactly as it would appear on a radio, and records it in QSP's log, but does not transmit. Watch it for a few days against real alerts; transmitting arrives in the next update.</p>
+          </div>
+          <label class="toggle">
+            <input class="toggle__input" id="weather-enabled" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="weather-enabled-state">Off</span>
+            <span>Watch for weather alerts</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">1. Your area</h2>
+            <button class="hint" type="button" aria-controls="hint-area" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="area-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-area">
+          <p class="hint__text"><strong>These are the same codes SkywarnPlus and other alert tools use.</strong> A county code has a C in the middle, such as TXC121 for Denton County, Texas; a forecast zone code has a Z, such as TXZ103. NWS issues most warnings by county and most watches and advisories by zone, so give both for your area. To find yours, open <a href="https://alerts.weather.gov/" target="_blank" rel="noopener">alerts.weather.gov</a>, choose your state, and look under By County/Zone; or see the NWS <a href="https://www.weather.gov/gis/PublicZones" target="_blank" rel="noopener">public zone list</a>. A county code also catches alerts NWS issues by zone for that county, so if you give only one, give the county. Check codes asks NWS about each one and shows the name it has for it, so a mistyped code shows up here rather than as quiet weather.</p>
+        </div>
+        <div class="panel__body">
+          <label class="picker__field">
+            <span class="picker__label">County and zone codes</span>
+            <input class="picker__input picker__input--wide" id="weather-zones" type="text" spellcheck="false" autocapitalize="characters" placeholder="TXC121, TXZ103">
+            <p class="field__note">Separated by commas. Find yours at <a href="https://alerts.weather.gov/" target="_blank" rel="noopener">alerts.weather.gov</a>: choose your state, then By County/Zone.</p>
+          </label>
+          <p class="acl__state" id="weather-area-advice" hidden>
+            <strong>Add your county code too.</strong> Tornado, severe
+            thunderstorm and flash flood warnings are issued by county, so with
+            only forecast-zone codes they would be missed. A county code has a
+            C in the middle, such as TXC121.
+          </p>
+          <div class="page__actions">
+            <button class="button button--quiet" id="weather-check" type="button">Check codes</button>
+          </div>
+          <ul class="notice__list" id="weather-zone-checks"></ul>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">2. Which alerts</h2>
+            <button class="hint" type="button" aria-controls="hint-events" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="events-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-events">
+          <p class="hint__text"><strong>Only the kinds ticked here go on the air.</strong> Tests and exercises NWS sends are never used, whatever is ticked. Each alert is sent once: when NWS updates a warning as a storm moves, the update is not sent again. When alerts are first switched on, or QSP restarts, the ones already in effect are shown here but not sent, so a restart never puts yesterday's watch on the air.</p>
+        </div>
+        <div class="panel__body">
+          <div class="acl__modes" id="weather-events"></div>
+          <label class="picker__field">
+            <span class="picker__label">Other alert types</span>
+            <input class="picker__input picker__input--wide" id="weather-events-other" type="text" spellcheck="false" placeholder="Wind Advisory, Freeze Warning">
+            <p class="field__note">Optional. Any other NWS alert names, exactly as NWS writes them, separated by commas.</p>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">3. Where alerts go</h2>
+            <button class="hint" type="button" aria-controls="hint-where" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-where">
+          <p class="hint__text"><strong>An alert goes out as a group text</strong>, the same kind the This server page sends: to every hotspot and repeater on the talkgroup, and wherever your bridges and links carry it. A radio shows it from the ID below, so choose one that no radio of yours uses; a radio does not show a text from its own ID.</p>
+        </div>
+        <div class="panel__body">
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Talkgroup</span>
+              <input class="picker__input" id="weather-talkgroup" type="text" inputmode="numeric" placeholder="2">
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Timeslot</span>
+              <select class="picker__input" id="weather-timeslot">
+                <option value="1">1</option>
+                <option value="2">2</option>
+              </select>
+            </label>
+            <label class="picker__field">
+              <span class="picker__label">Sent from ID</span>
+              <input class="picker__input" id="weather-sender" type="text" inputmode="numeric" placeholder="9990">
+              <p class="field__note">The ID radios show the alert from.</p>
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">4. Your contact email</h2>
+            <button class="hint" type="button" aria-controls="hint-contact" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+        </div>
+        <div class="panel__disclosure" id="hint-contact">
+          <p class="hint__text"><strong>The National Weather Service asks every program that reads its alerts to say who runs it</strong>, and refuses ones that do not. QSP sends this address with each request and nowhere else.</p>
+        </div>
+        <div class="panel__body">
+          <label class="picker__field">
+            <span class="picker__label">Email</span>
+            <input class="picker__input picker__input--wide" id="weather-contact" type="email" spellcheck="false" autocomplete="email">
+            <p class="field__note" id="weather-contact-note">Required by the National Weather Service.</p>
+          </label>
+        </div>
+      </section>
+
+      <div class="page__actions">
+        <button class="button" id="save" type="button">Save changes</button>
+        <button class="button button--quiet" id="revert" type="button">Discard changes</button>
+      </div>
+
+      <section class="panel">
+        <div class="panel__head">
+          <div class="panel__heading">
+            <h2 class="panel__title">What QSP sees</h2>
+            <button class="hint" type="button" aria-controls="hint-sees" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <span class="panel__count" id="sees-state">&mdash;</span>
+        </div>
+        <div class="panel__disclosure" id="hint-sees">
+          <p class="hint__text"><strong>Every alert NWS has for your area right now, and what QSP decided about it.</strong> The text beside each is exactly what a radio would show. Held alerts say why. Nothing here has been transmitted: this version previews only.</p>
+        </div>
+        <div class="panel__body">
+          <p class="acl__state" id="weather-poll"></p>
+          <p class="acl__state" id="weather-destination"></p>
+          <h3 class="acl__title">Active now</h3>
+          <ul class="notice__list" id="weather-active"></ul>
+          <h3 class="acl__title">Recent decisions</h3>
+          <ul class="notice__list" id="weather-recent"></ul>
+          <div class="page__actions">
+            <button class="button button--quiet" id="weather-refresh" type="button">Check again</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+</div>
+
+<script src="/nav.js"></script>
+<script src="/hints.js"></script>
+<script src="/weather.js"></script>
+</body>
+
+</html>

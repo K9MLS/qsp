@@ -85,11 +85,30 @@ startup advisory. The test server needs nothing by hand once it is on 0.1.290.
 both ways between the R7 and 3132911, and a private text to each radio
 displayed. So the network carries group voice, group texts, private voice and
 private texts between a hotspot on one server and a Motorola repeater on
-another. What remains on this thread is composing a *private* text on the
-Administration page (phase 3, the confirmed-data acknowledgement).
+another. Composing a *private* text on the Administration page (phase 3) is
+**not wanted** — K9MLS, 2026-09-29: the server's texts are announcements to
+everybody, which group texts already do.
+
+**Weather alerts, preview built (0.1.292, ADR-0068 as amended).** A Weather
+page in the console, off by default: NWS county and zone codes (checked against
+NWS, with the name shown), alert types ticked by name, a talkgroup, timeslot
+and sender, and a contact email for NWS. On, QSP reads NWS once a minute and
+shows every alert for the area with what it decided and exactly how it would
+read on a radio. **It transmits nothing yet.** Next: turn it on for Denton
+(TXC121, TXZ103) on production, watch real alerts for a few days, then build
+patch 2 — transmit as a group text, a Send test button, and a cap per interval.
+The development container cannot reach api.weather.gov, so the tests use
+constructed NWS responses; production's preview is the first check against the
+real feed.
+
+**P25 from a hotspot on the LAN** broke on 2026-09-29 when 10297 appeared in
+the downloaded P25Hosts.txt as `qsp.hopto.me` and overrode the local entry.
+Fixed on the Pi-Star with one `/etc/hosts` line; `docs/P25-GATEWAY.md` has it.
 
 **What to deploy, and why.** Both servers run 0.1.290, the version that was
-confirmed on air; 0.1.291 changes only documents and need not be installed.
+confirmed on air; 0.1.291 changed only documents. **0.1.292 adds the Weather
+page** and changes nothing else a station would notice; production needs it to
+try the preview, the test server does not.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -165,8 +184,8 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.291 | `cat VERSION` |
-| **GitHub** `main` | 0.1.286, tagged `v0.1.286`, pushed 2026-09-28 | the push output; Actions and an anonymous pull not yet checked for this tag |
+| **Fedora working tree** | 0.1.292 | `cat VERSION` |
+| **GitHub** `main` | 0.1.291, tagged `v0.1.291`, pushed 2026-09-29 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.291` anonymously reported `0.1.291 (v0.1.291)` |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |
 

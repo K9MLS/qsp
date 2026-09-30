@@ -142,3 +142,27 @@ network opening it inward.
 A bridge may be scheduled, triggered, both, or neither. Either mechanism opening
 it is enough, and the frame that opens it is itself relayed — no clipped first
 syllable.
+
+## Weather alerts
+
+Set from the console's **Weather** page; this is the block it writes. **Off by
+default.** This version previews: alerts that pass every check are shown on the
+page and logged, and nothing is transmitted.
+
+```json
+"weather": {
+  "enabled":   true,
+  "zones":     ["TXC121", "TXZ103"],
+  "events":    ["Tornado Warning", "Severe Thunderstorm Warning", "Flash Flood Warning"],
+  "talkgroup": 2,
+  "timeslot":  2,
+  "sender_id": 9990,
+  "contact":   "you@example.org"
+}
+```
+
+`zones` are NWS county codes (a C, such as `TXC121`) and forecast-zone codes (a
+Z, such as `TXZ103`) — the same codes SkywarnPlus uses; alerts.weather.gov lists
+them under your state. `events` are NWS alert names exactly as NWS writes them.
+`contact` is sent to the National Weather Service, which requires one; empty
+uses `dmr.callsigns.contact`. Changes take effect on save, with no restart.

@@ -4,6 +4,57 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **Weather alerts, in preview: a Weather page** (ADR-0068, amended). Off by
+  default and set up entirely in the browser. An operator gives their NWS
+  county and zone codes — the same ones SkywarnPlus uses, with a link to
+  alerts.weather.gov to find them — and **Check codes** asks the National
+  Weather Service about each, showing its name, so a typo is visible rather
+  than quiet weather. Alert types are ticked by name, with the severe warnings
+  and watches ticked to start; a talkgroup, timeslot and sender ID say where
+  alerts go; NWS's required contact email defaults to the radio ID lookup one.
+  Changes take effect on save.
+
+  On, QSP reads active alerts for the area once a minute and runs each through
+  ADR-0068's filter chain: real alerts only, never NWS tests or exercises;
+  cancellations ignored; the chosen area and types only — a county code also
+  catches alerts NWS issues by zone for that county, through the SAME codes
+  every alert lists, and the page warns when only zone codes are given, since
+  those miss county-issued warnings; not expired; each
+  alert decided once, and an update to one already sent not sent again. **The
+  first read after switching on, after a restart, or after changing the area
+  sends nothing**, so yesterday's watch never goes on the air. Each alert is
+  written the way a radio shows it — `TORNADO WARNING Denton until 7:45PM CDT`,
+  in the area's own time zone, always within one text.
+
+  **This version transmits nothing.** "What QSP sees" on the page lists every
+  alert with what was decided and why, and each alert that would go out is
+  logged. Transmitting, a test button and a rate cap are the next step, after
+  real alerts have been watched on production.
+
+  New endpoints `/api/weather` and `/api/weather/zones` (session only; the
+  second a POST so the contact email stays out of URLs), in SECURITY.md with
+  the new outbound request to api.weather.gov. Tests in `internal/weather`,
+  `internal/config/weather_test.go`, `internal/server/weather_test.go` and
+  `cmd/qsp/weather_test.go`, each with the deliberate breaks that make it fail;
+  the page was also driven in a headless browser against a stubbed API. An
+  independent review before delivery found a save landing mid-poll could skip
+  the new area's baseline, and a malformed code could silence every good one;
+  both are fixed and have tests.
+
+### Fixed
+
+- **Links in running text were unreadable** — the browser's default blue on
+  the console's navy. Links in notes, hints and notices now use the console's
+  primary colour, underlined.
+
+### Documentation
+
+- `docs/P25-GATEWAY.md`: the one-line `/etc/hosts` fix for a Pi-Star on the
+  same LAN once a talkgroup's published host entry points at the public
+  address, as happened to 10297 on 2026-09-29.
+
 ### Documentation
 
 - **Private calls and texts across linked servers are confirmed on air**

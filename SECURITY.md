@@ -174,6 +174,19 @@ The audit trail records that a full backup was taken and by whom, and **never
 the passphrase or the names of the credentials**: a trail listing which
 credentials exist is a map for whoever later gets the file.
 
+### Weather endpoints
+
+`/api/weather` reports what the weather service is doing — its settings, when
+it last read NWS, and every alert for the configured area with what was decided
+about it. `/api/weather/zones`, on POST, asks NWS about county and zone codes
+an operator typed, so a typo shows on the Weather page rather than as quiet
+weather. Both require a session. The second is a POST although it changes
+nothing, because it carries the contact email NWS is sent and an address in a
+URL ends up in logs; it refuses more than twenty codes at a time, because each
+is a request to NWS. The settings themselves are saved through `/api/config`
+like every other page's, versioned and audited. **This version sends nothing
+on the air**: an alert that passes every check is shown and logged only.
+
 ### Dongle endpoints
 
 `/api/dongle` reports the vocoder dongle's AMBEserver service and USB adapter,
@@ -289,7 +302,7 @@ once per attempt, and the console shows what is currently being refused.
 
 ### Outbound requests
 
-**QSP makes one kind of request off the instance, and only when configured.**
+**QSP makes two kinds of request off the instance, each only when configured.**
 With `dmr.callsigns.enabled`, it asks the amateur DMR registry at
 `radioid.net` about radio IDs heard on this instance — one at a time, cached,
 never in bulk. See [ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md).
@@ -297,6 +310,14 @@ never in bulk. See [ADR-0030](docs/adr/ADR-0030-radio-id-lookup.md).
 `dmr.callsigns.contact` is required and is sent in the User-Agent along with
 QSP's version. The registry asks automated clients to identify themselves, and
 the address is the operator's because it is the operator making the requests.
+
+With `weather.enabled`, it reads active alerts for the configured county and
+zone codes from the National Weather Service at `api.weather.gov` once a
+minute, and looks each code up there once to learn its name and time zone. The
+contact (`weather.contact`, or `dmr.callsigns.contact` when that is empty) is
+sent in the User-Agent the same way, because NWS refuses anonymous clients.
+Nothing about the instance, its stations or its traffic is sent: the request
+names only the codes. See [ADR-0068](docs/adr/ADR-0068-qsp-answers-a-text-and-weather-is-the-first-answer.md).
 
 Nothing else reaches the internet. Map tiles are fetched by the browser rather
 than by QSP, and no telemetry of any kind is sent anywhere.

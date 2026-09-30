@@ -27,6 +27,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -53,6 +54,9 @@ type Config struct {
 	P25      P25      `json:"p25"`
 	// Zello configures the logon QSP hands the Zello connector (ADR-0066).
 	Zello Zello `json:"zello,omitzero"`
+	// Weather configures weather alerts from the National Weather Service
+	// (ADR-0068). Set from the console's Weather page; off by default.
+	Weather Weather `json:"weather,omitzero"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -858,6 +862,98 @@ type Zello struct {
 	// connector's file.
 	ConnectorHealth string `json:"connector_health,omitempty"`
 }
+
+// Weather configures weather alerts (ADR-0068, as amended 2026-09-29).
+//
+// **Off by default, and set only from the console's Weather page.** Alerts go
+// on the air, so an operator turns them on and says where they go; nothing
+// about them is typed on a command line. Everything here is kept while the
+// service is off, so pausing it does not mean entering it all again.
+//
+// This version previews: an alert that passes every check is shown on the
+// page and logged, and nothing is transmitted. The talkgroup, timeslot and
+// sender are what the preview says it would use.
+type Weather struct {
+	// Enabled watches NWS for alerts in Zones.
+	Enabled bool `json:"enabled"`
+	// Zones are NWS county codes (TXC121) and forecast-zone codes (TXZ103),
+	// the same codes SkywarnPlus uses and alerts.weather.gov lists.
+	Zones []string `json:"zones,omitempty"`
+	// Events are the NWS alert types wanted, such as "Tornado Warning".
+	Events []string `json:"events,omitempty"`
+	// Talkgroup and Timeslot are where alerts go.
+	Talkgroup uint32 `json:"talkgroup,omitempty"`
+	Timeslot  int    `json:"timeslot,omitempty"`
+	// SenderID is the DMR ID an alert comes from.
+	SenderID uint32 `json:"sender_id,omitempty"`
+	// Contact is the email NWS is given with each request, which it requires.
+	// Empty uses dmr.callsigns.contact, so an operator who set up radio ID
+	// lookups is not asked twice.
+	Contact string `json:"contact,omitempty"`
+}
+
+// WeatherContact is the contact NWS is given: the Weather page's own, or the
+// one radio ID lookups already use.
+func (c Config) WeatherContact() string {
+	if s := strings.TrimSpace(c.Weather.Contact); s != "" {
+		return s
+	}
+	return strings.TrimSpace(c.DMR.Callsigns.Contact)
+}
+
+// weatherZone is the shape of an NWS county (C) or forecast-zone (Z) code. The
+// same pattern as weather.ValidZoneCode, repeated rather than imported so
+// configuration does not depend on the service it configures; a test holds
+// the two together.
+var weatherZone = regexp.MustCompile(`^[A-Z]{2}[CZ][0-9]{3}$`)
+
+// validateWeather checks the Weather block when it is on. Off, it keeps
+// whatever it holds, as Zello does.
+func (c Config) validateWeather(v *validator) {
+	w := c.Weather
+	if !w.Enabled {
+		return
+	}
+	if len(w.Zones) == 0 {
+		v.add("weather.zones", "no county or zone codes are given, so there is nowhere to watch",
+			"give your NWS county code (such as TXC121) or forecast zone code (such as TXZ103); "+
+				"alerts.weather.gov lists them under your state")
+	}
+	for i, z := range w.Zones {
+		if !weatherZone.MatchString(z) {
+			v.add(fmt.Sprintf("weather.zones[%d]", i),
+				fmt.Sprintf("%q is not a county code (TXC121) or a zone code (TXZ103)", z),
+				"two letters for the state, C for a county or Z for a zone, and three digits")
+		}
+	}
+	if len(w.Events) == 0 {
+		v.add("weather.events", "no kinds of alert are chosen, so nothing would ever be sent",
+			"tick at least one, such as Tornado Warning")
+	}
+	for i, e := range w.Events {
+		if strings.TrimSpace(e) == "" {
+			v.add(fmt.Sprintf("weather.events[%d]", i), "is empty", "remove it, or name an NWS alert type")
+		}
+	}
+	if w.Talkgroup == 0 || w.Talkgroup > maxDMRID {
+		v.add("weather.talkgroup", fmt.Sprintf("is %d", w.Talkgroup),
+			fmt.Sprintf("choose the talkgroup alerts go to, between 1 and %d", maxDMRID))
+	}
+	if w.Timeslot != 1 && w.Timeslot != 2 {
+		v.add("weather.timeslot", fmt.Sprintf("is %d; DMR has two timeslots", w.Timeslot), "use 1 or 2")
+	}
+	if w.SenderID == 0 || w.SenderID > maxDMRID {
+		v.add("weather.sender_id", fmt.Sprintf("is %d", w.SenderID),
+			fmt.Sprintf("choose the ID alerts come from, between 1 and %d; 9990 is common", maxDMRID))
+	}
+	if c.WeatherContact() == "" {
+		v.add("weather.contact", "the National Weather Service requires a contact email and none is set",
+			"give an email address NWS can reach you at")
+	}
+}
+
+// maxDMRID is the largest radio ID or talkgroup a DMR frame can carry.
+const maxDMRID = 1<<24 - 1
 
 // DefaultZelloConnectorHealth is where qsp-zello serves /healthz unless told
 // otherwise, matching the connector file the Zello page generates.
@@ -2143,6 +2239,7 @@ func (c Config) Validate() error {
 	}
 
 	c.validateAccess(v)
+	c.validateWeather(v)
 	// Last, because it reads addresses the rules above have already reported
 	// as malformed, and one mistake should produce one error.
 	c.validateListeners(v)

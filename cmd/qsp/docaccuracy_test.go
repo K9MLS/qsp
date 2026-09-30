@@ -694,8 +694,10 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 	// Zello has a page of its own because switching it on is the last of a
 	// sequence — credentials, a vocoder, the repeaters that agreed — and a
 	// toggle on the network page would invite switching on something that
-	// cannot yet work. The rule is unchanged: some page must read and write it.
-	pageFor := map[string]string{"zello": "zello"}
+	// cannot yet work. Weather has its own page for the same reason: its switch
+	// means nothing without an area and a talkgroup beside it. The rule is
+	// unchanged: some page must read and write it.
+	pageFor := map[string]string{"zello": "zello", "weather": "weather"}
 	read := func(name string) string {
 		b, err := fs.ReadFile(assets, name)
 		if err != nil {

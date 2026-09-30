@@ -217,3 +217,61 @@ to configure instead of an account to create.
 **Replies to the talkgroup rather than to the asker.** Rejected: it turns every
 query into traffic for everybody, and the first busy net would be the last time
 anybody used the service.
+
+## Amendment, 2026-09-29: alerts are group texts, set up on a Weather page
+
+Decided with K9MLS before any code was written for this record.
+
+**Alerts go out as a group text on a talkgroup the operator chooses**, not as
+private texts to subscribers. Group texts are proven on the air to hotspots,
+Motorola repeaters and linked servers; a private text needs the acknowledgement
+path of ADR-0067 phase 3, which the server does not otherwise need. Listening to
+the talkgroup is the subscription: open, as radio is, with nobody to approve.
+So **alerts no longer wait on phase 3**, and `SUB`/`UNSUB` are not built. The
+command replies (`TIME`, `WX`, `LH`, `LINKS`) still need private replies and
+stay parked.
+
+**Everything is set on a Weather page in the browser; nothing on a command
+line.** Off by default, because it puts traffic on the air. The operator gives
+the NWS county and zone codes they already know from SkywarnPlus or
+alerts.weather.gov — the page links there and asks NWS about each code,
+showing its name, so a typo is visible rather than quiet weather. Alert types
+are ticked by name, with the severe warnings and watches ticked to start.
+
+**The severity floor is dropped.** Ticking alert types by name says the same
+thing in words an operator already uses, and a field that duplicates another is
+the kind this project keeps finding read by nothing.
+
+**The base URL is not a setting.** `api.weather.gov` is the National Weather
+Service; an operator elsewhere needs a different feed, not a different address
+for this one, and that is a separate piece of work when somebody asks for it.
+
+**Built in two steps, the first unable to transmit.** 0.1.292 reads, filters,
+formats and shows: every alert that would go on the air is on the page and in
+the log, exactly as a radio would show it. The next step adds transmitting, a
+Send test button and a cap per interval. Watching real alerts first is this
+project's rule — run it before trusting it — made part of the product, since
+every operator gets the same preview.
+
+The filter chain, the restart rule and the update rule above are built as
+written, with these refinements, each found before anything reached the air:
+
+- **Area matching uses both UGC and SAME, and the difference matters.** NWS
+  issues warnings by county and most watches and advisories by forecast zone,
+  and an alert's UGC lists only the kind it was issued by. Every alert lists
+  its counties as SAME codes, so a configured county code (TXC121) matches
+  SAME 048121 as well as UGC TXC121. A forecast-zone code has no SAME form, so
+  an operator who gives only zone codes misses county-issued warnings; the
+  page says so as they type.
+- **Expiry is `ends` when NWS gives it, else `expires`.** `ends` is when the
+  hazard ends; it was observed null on some alerts, which is why `expires`
+  remains the fallback.
+- **Turning alerts on, changing the area or changing the chosen types starts a
+  new baseline**, so a warning already running in a newly added county is
+  shown and not sent — including when the save lands while a poll is out at
+  NWS, whose result is then discarded.
+- **A code NWS refuses as malformed (400) is an unknown code**, left out of
+  the alert request rather than kept in it, where it would make NWS refuse the
+  request for every good code with it.
+- **An alert whose area NWS has not named yet is written in the server's own
+  time zone, never UTC.**

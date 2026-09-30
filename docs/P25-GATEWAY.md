@@ -79,6 +79,23 @@ local DNS resolving it to the server's LAN address, or a router that hairpins.
 Then a LAN gateway and a stranger's gateway both work from the same published
 entry, and no host file needs editing.
 
+**On one Pi-Star, one line does it.** Found 2026-09-29, when 10297 appeared in
+the downloaded `P25Hosts.txt` as `qsp.hopto.me`, overrode the local entry, and
+the hotspot on the same LAN stopped reaching QSP — nothing at all arrived on
+port 41000. Pointing the name at the server's LAN address on the Pi-Star itself
+fixed it, and survives the hourly host-list refresh because it is not in the
+host lists:
+
+```sh
+echo "192.168.1.247   qsp.hopto.me" | sudo tee -a /etc/hosts
+getent hosts qsp.hopto.me          # must print the LAN address
+sudo systemctl restart p25gateway.service
+```
+
+Then relink from the radio. Older Pi-Star images mount the root filesystem
+read-only and need `rpi-rw` first; current ones do not have that command and do
+not need it.
+
 ### A file with no trailing newline
 
 `echo ... >> P25HostsLocal.txt` on a file that does not end in a newline

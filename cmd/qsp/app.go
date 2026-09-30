@@ -32,6 +32,7 @@ import (
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/ipsclink"
+	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/p25link"
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
@@ -43,6 +44,7 @@ import (
 	"github.com/k9mls/qsp/internal/server"
 	"github.com/k9mls/qsp/internal/upstream"
 	"github.com/k9mls/qsp/internal/vocoderlink"
+	"github.com/k9mls/qsp/internal/weather"
 	"github.com/k9mls/qsp/internal/zellologon"
 )
 
@@ -93,6 +95,9 @@ type app struct {
 	// master authenticates peers. Kept so the console can report what it is
 	// refusing.
 	master *peers.Master
+	// weather watches NWS for alerts (ADR-0068). Always built and off until
+	// the Weather page turns it on, so turning it on needs no restart.
+	weather *weather.Service
 	// closers are run in reverse order during shutdown.
 	closers []func(context.Context) error
 }
@@ -821,6 +826,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	}
 	cfg = manager.Current()
 
+	a.weather = weather.New(weather.Options{
+		Log:     logging.Subsystem(log, "weather"),
+		Version: buildVersion(),
+	})
+	a.weather.Apply(weatherSettings(cfg))
+
 	srv, err := server.New(log, registry, a.bus, server.Options{
 		ListenAddress:       cfg.Server.ListenAddress,
 		ReadHeaderTimeout:   cfg.Server.ReadHeaderTimeout.AsDuration(),
@@ -850,6 +861,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Secrets:  a.secrets,
 		Dongle:   dongleControl(cfg),
 		Texts:    textSender(a.dmr),
+		Weather:  a.weather,
 		// **The ordinary exit, not a bespoke one.** SIGTERM to this process
 		// takes exactly the path systemctl restart already takes, so the audit
 		// record, the shutdown timeout and every subsystem's close run as they
@@ -877,6 +889,10 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// restart was needed.
 	manager.applyServer = func(c config.Config) {
 		srv.ApplyConfig(joinSettings(c), mapSettings(c), c.DMR.Enabled && c.DMR.Forwarding)
+		// Weather is live too: turning it on or changing its area from the
+		// Weather page takes effect on save, and config.NeedsRestart rightly
+		// does not name it.
+		a.weather.Apply(weatherSettings(c))
 	}
 	// **Before the listener starts**, so a server with no administrator has
 	// already printed its setup token by the time the console can be reached
@@ -1049,6 +1065,9 @@ func (a *app) run(ctx context.Context) error {
 	// in days, so nothing observes the boundary, and pruning on every write
 	// would make each transmission pay for the policy.
 	go a.pruneCalls(ctx)
+
+	// Idle until the Weather page turns it on; see weather.Service.Run.
+	go a.weather.Run(ctx)
 
 	// The listener exists by now, so a save can reach the goroutine that owns
 	// the routing core. Wired here rather than in build because the listener
@@ -2382,4 +2401,17 @@ func accountsOrNil(s *auth.Service) server.AccountAdmin {
 		return nil
 	}
 	return s
+}
+
+// weatherSettings converts the Weather block into what the service reads.
+func weatherSettings(c config.Config) weather.Settings {
+	return weather.Settings{
+		Enabled:   c.Weather.Enabled,
+		Zones:     c.Weather.Zones,
+		Events:    c.Weather.Events,
+		Talkgroup: c.Weather.Talkgroup,
+		Timeslot:  c.Weather.Timeslot,
+		SenderID:  c.Weather.SenderID,
+		Contact:   c.WeatherContact(),
+	}
 }

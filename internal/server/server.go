@@ -109,6 +109,9 @@ type Options struct {
 	// Texts sends a text an administrator composes to one hotspot. Nil when
 	// the DMR listener is not running; the page then does not offer the form.
 	Texts TextSender
+	// Weather reports on weather alerts and checks NWS codes for the Weather
+	// page. Nil on an instance built without it; the page then says so.
+	Weather WeatherSource
 
 	// Dongle reports on and controls the vocoder dongle's AMBEserver service.
 	// Nil when no transcoder is configured; the page then shows no panel.
@@ -278,6 +281,10 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"GET /api/dongle", s.requireSession(s.handleDongle)},
 		{"POST /api/dongle/{verb}", s.requireSession(s.handleDongleControl)},
 		{"POST /api/admin/text", s.requireSession(s.handleSendText)},
+		{"GET /api/weather", s.requireSession(s.handleWeather)},
+		// A POST although it changes nothing: it carries the contact email
+		// NWS is sent, which does not belong in a URL.
+		{"POST /api/weather/zones", s.requireSession(s.handleCheckZones)},
 		{"PUT /api/secrets/{name}", s.requireSession(s.handleSetSecret)},
 		// **Anything a page creates it must be able to remove.** A credential
 		// entered by mistake should not need the database opening to undo.
@@ -350,6 +357,9 @@ func (s *Server) handler() http.Handler {
 		})
 		mux.HandleFunc("GET /zello", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/zello.html", http.StatusFound)
+		})
+		mux.HandleFunc("GET /weather", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/weather.html", http.StatusFound)
 		})
 		mux.HandleFunc("GET /bridges", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/bridges.html", http.StatusFound)

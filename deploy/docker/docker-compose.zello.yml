@@ -19,7 +19,7 @@ services:
       - qsp-run:/run/qsp
 
   qsp-zello:
-    image: ghcr.io/k9mls/qsp-zello:0.1.291
+    image: ghcr.io/k9mls/qsp-zello:0.1.292
     container_name: qsp-zello
     restart: unless-stopped
     depends_on:
