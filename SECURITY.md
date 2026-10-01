@@ -180,12 +180,21 @@ credentials exist is a map for whoever later gets the file.
 it last read NWS, and every alert for the configured area with what was decided
 about it. `/api/weather/zones`, on POST, asks NWS about county and zone codes
 an operator typed, so a typo shows on the Weather page rather than as quiet
-weather. Both require a session. The second is a POST although it changes
+weather. All three require a session. The second is a POST although it changes
 nothing, because it carries the contact email NWS is sent and an address in a
 URL ends up in logs; it refuses more than twenty codes at a time, because each
-is a request to NWS. The settings themselves are saved through `/api/config`
-like every other page's, versioned and audited. **This version sends nothing
-on the air**: an alert that passes every check is shown and logged only.
+is a request to NWS. `/api/weather/test`, on POST, puts one text reading
+`QSP WEATHER TEST: this is only a test` on the air, from the configured ID on
+the configured talkgroup; every attempt is audited as `weather.test`. The
+settings themselves are saved through `/api/config` like every other page's,
+versioned and audited.
+
+**Weather alerts and the test stay on this server.** They go to its own
+hotspots and Motorola repeaters through a routing path with every way off the
+server removed — no link of any kind, no linked QSP server that logged in as a
+peer, no transcoder — so nothing a weather feed says can reach another
+network. Alerts go on the air only with `weather.transmit` on; off, they are
+shown and logged.
 
 ### Dongle endpoints
 

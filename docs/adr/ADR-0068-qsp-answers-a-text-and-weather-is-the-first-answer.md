@@ -275,3 +275,31 @@ written, with these refinements, each found before anything reached the air:
   request for every good code with it.
 - **An alert whose area NWS has not named yet is written in the server's own
   time zone, never UTC.**
+
+## Amendment, 2026-10-01: alerts stay on the server that issued them
+
+Decided by K9MLS before transmitting was built: **weather is local.** A Denton
+tornado warning is for the stations on the Denton server; a linked server in
+Iowa has its own Weather page for its own counties, and BrandMeister has no
+use for either. An announcement typed on the console is the opposite case and
+still reaches everybody.
+
+So an alert is not sent the way an announcement is. It enters routing through
+`RouteLocalFromServer`, which is `RouteFromServer` with every way off the
+server removed before anything is reserved: no QSP link, no OpenBridge link,
+no linked QSP server that logged in as a peer, no transcoder. The server's own
+hotspots (by repeat, and by its own bridges between local talkgroups) and its
+own Motorola repeaters receive it. `Listener.SendLocalText` is the only way
+in, and the weather service holds nothing else.
+
+**Transmit is a second switch**, "Put alerts on the air", off until the
+operator turns it on; without it the page keeps previewing. **Send test**
+puts one plainly-marked text on the air on demand, audited as `weather.test`.
+
+**Pacing**, because an outbreak issues warnings faster than a talkgroup
+should carry them: at least fifteen seconds between alerts, at most six in ten
+minutes, warnings before watches before the rest. An alert that cannot go yet
+— a call on the timeslot, another text going out, the limit reached — waits
+and is tried every few seconds, with the reason on the page. It is dropped
+only if it expires first. Never dropping a warning to keep within a limit is
+the point of queueing rather than coalescing.

@@ -60,8 +60,9 @@
 
     <p class="page__lede">
       Put National Weather Service alerts for your area on the air as a text
-      message on a talkgroup, so every radio listening to it sees a tornado
-      warning the moment NWS issues one. Work down this page in order.
+      message on a talkgroup, so every radio listening to it on this server
+      sees a tornado warning the moment NWS issues one. Work down this page in
+      order.
     </p>
 
     <div class="empty" id="loading">
@@ -108,19 +109,27 @@
           <span class="panel__count" id="switch-state">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-switch">
-          <p class="hint__text"><strong>Off keeps everything you entered</strong>, so pausing alerts never means typing it all again. On, QSP asks the National Weather Service for active alerts in your area once a minute. It takes effect when you save; no restart is needed.</p>
+          <p class="hint__text"><strong>Off keeps everything you entered</strong>, so pausing alerts never means typing it all again. Watching, QSP asks the National Weather Service for active alerts in your area once a minute and shows them below. <strong>Only with Put alerts on the air switched on are they transmitted</strong>; without it the page previews, showing exactly what would be sent. Changes take effect when you save; no restart is needed.</p>
         </div>
         <div class="panel__body">
-          <div class="notice">
-            <p class="notice__title">Preview: nothing goes on the air yet</p>
-            <p class="notice__body">This version shows every alert exactly as it would appear on a radio, and records it in QSP's log, but does not transmit. Watch it for a few days against real alerts; transmitting arrives in the next update.</p>
-          </div>
           <label class="toggle">
             <input class="toggle__input" id="weather-enabled" type="checkbox">
             <span class="toggle__track"></span>
             <span class="toggle__state" id="weather-enabled-state">Off</span>
             <span>Watch for weather alerts</span>
           </label>
+          <label class="toggle">
+            <input class="toggle__input" id="weather-transmit" type="checkbox">
+            <span class="toggle__track"></span>
+            <span class="toggle__state" id="weather-transmit-state">Off</span>
+            <span>Put alerts on the air</span>
+          </label>
+          <p class="acl__state" id="weather-mode-note"></p>
+          <div class="notice notice--warn" id="weather-no-dmr" hidden>
+            <p class="notice__title">This server cannot send alerts</p>
+            <p class="notice__body">Its DMR listener is off, so there is nothing to put a text on the air with. Alerts are shown here but cannot go out.</p>
+          </div>
+          <p class="acl__state"><strong>Alerts stay on this server.</strong> They go to this server's own hotspots and Motorola repeaters, and are never sent to linked QSP servers or bridged networks: a linked server elsewhere has its own Weather page for its own area.</p>
         </div>
       </section>
 
@@ -183,7 +192,7 @@
           </div>
         </div>
         <div class="panel__disclosure" id="hint-where">
-          <p class="hint__text"><strong>An alert goes out as a group text</strong>, the same kind the This server page sends: to every hotspot and repeater on the talkgroup, and wherever your bridges and links carry it. A radio shows it from the ID below, so choose one that no radio of yours uses; a radio does not show a text from its own ID.</p>
+          <p class="hint__text"><strong>An alert goes out as a group text</strong>, the same kind the This server page sends, to this server's own hotspots and Motorola repeaters on the talkgroup &mdash; but never to linked servers or bridged networks, because weather is local. A radio shows it from the ID below, so choose one that no radio of yours uses; a radio does not show a text from its own ID. Alerts go out at least fifteen seconds apart and at most six in ten minutes, warnings first; in a busy storm the rest wait their turn rather than being dropped, unless they expire first.</p>
         </div>
         <div class="panel__body">
           <div class="settings">
@@ -204,6 +213,10 @@
               <p class="field__note">The ID radios show the alert from.</p>
             </label>
           </div>
+          <div class="page__actions">
+            <button class="button button--quiet" id="weather-test" type="button">Send test</button>
+          </div>
+          <p class="acl__hint" id="weather-test-result">Sends one text reading &ldquo;QSP WEATHER TEST: this is only a test&rdquo; on the saved talkgroup, from the saved ID, to this server's stations. Save first if you have changed them.</p>
         </div>
       </section>
 
@@ -240,7 +253,7 @@
           <span class="panel__count" id="sees-state">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-sees">
-          <p class="hint__text"><strong>Every alert NWS has for your area right now, and what QSP decided about it.</strong> The text beside each is exactly what a radio would show. Held alerts say why. Nothing here has been transmitted: this version previews only.</p>
+          <p class="hint__text"><strong>Every alert NWS has for your area right now, and what QSP decided about it.</strong> The text beside each is exactly what a radio shows. Sent alerts say when; held and waiting ones say why. In Preview, nothing here has been transmitted.</p>
         </div>
         <div class="panel__body">
           <p class="acl__state" id="weather-poll"></p>

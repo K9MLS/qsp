@@ -6,6 +6,40 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Weather alerts go on the air, and stay on this server.** The Weather page
+  gains **Put alerts on the air**: with it on, each new alert that passes
+  every check goes out as a group text on the chosen talkgroup and timeslot,
+  from the chosen ID. Without it the page previews, as before.
+
+  **Weather is local** (K9MLS). An alert reaches this server's own hotspots
+  and Motorola repeaters and nothing else: never a linked QSP server, whichever
+  side dialled, never a bridged network such as BrandMeister, never a
+  transcoder. A server in Iowa linked to one in Texas gets Iowa's alerts from
+  its own Weather page. It goes through a new routing entry point,
+  `RouteLocalFromServer`, that removes every way off the server before
+  anything is reserved; announcements from the console still go everywhere.
+
+  **Send test** puts `QSP WEATHER TEST: this is only a test` on the air the
+  way an alert goes, and is audited as `weather.test`.
+
+  **Pacing for a busy storm**: at least fifteen seconds between alerts, at
+  most six in ten minutes, warnings first. An alert that cannot go yet — a
+  call on the timeslot, another text going out, the limit reached — waits and
+  is retried every few seconds, with the reason on the page, and is dropped
+  only if it expires. The page shows each alert as Sent (with the time),
+  Waiting (with why), Would send, or Held.
+
+  Tests: `internal/routing/local_test.go` (an announcement reaches the linked
+  server, the link and the bridge; an alert reaches only the two local
+  hotspots), `internal/peers/local_text_test.go` (over a real socket: the
+  hotspot and the Motorola side get it, the linked server does not),
+  `internal/weather/transmit_test.go` (sent once, never in Preview or from the
+  baseline, delayed by a busy slot, paced in an outbreak, not sent once
+  expired, the reason shown with no DMR listener, and Send test), and the
+  endpoint's audit. Each fails under the deliberate breaks noted in it.
+
+### Added
+
 - **Weather alerts, in preview: a Weather page** (ADR-0068, amended). Off by
   default and set up entirely in the browser. An operator gives their NWS
   county and zone codes — the same ones SkywarnPlus uses, with a link to

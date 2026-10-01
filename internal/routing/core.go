@@ -630,7 +630,29 @@ func (c *Core) RouteFromServer(frame hbp.Data, now time.Time) Result {
 	return c.route(Endpoint{Peer: ServerOrigin, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now)
 }
 
+// RouteLocalFromServer routes a transmission QSP composed that belongs to
+// this server alone: a weather alert (ADR-0068, as amended).
+//
+// **Weather is local.** A tornado warning for Denton is for the stations on
+// the Denton server, not for one in Iowa that happens to be linked to it, and
+// not for BrandMeister. So this is RouteFromServer with everything that leaves
+// the server taken out: no link of any kind, no linked QSP server that logged
+// in as a peer, and no transcoder. The server's own hotspots, by repeat and by
+// its own bridges between local talkgroups, are kept, and the caller offers
+// the frame to the server's own Motorola repeaters as usual.
+//
+// Removed before any destination is reserved, rather than filtered from the
+// result, so a weather alert never holds a link's timeslot it is not using.
+func (c *Core) RouteLocalFromServer(frame hbp.Data, now time.Time) Result {
+	return c.routeScoped(Endpoint{Peer: ServerOrigin, Talkgroup: frame.TargetID, Timeslot: frame.Timeslot}, frame, now, true)
+}
+
 func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
+	return c.routeScoped(origin, frame, now, false)
+}
+
+// routeScoped is route, kept to this server's own stations when local is set.
+func (c *Core) routeScoped(origin Endpoint, frame hbp.Data, now time.Time, local bool) Result {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -763,6 +785,26 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			}
 			if len(targets) == 0 {
 				return unlocatedResult(frame)
+			}
+		}
+	}
+
+	// **Nothing that leaves this server, for a local transmission.** Links
+	// and transcoders are dropped here; linked servers that logged in as
+	// peers are skipped where peers are resolved, below.
+	var linkedPeers map[hbp.RepeaterID]bool
+	if local {
+		kept := targets[:0]
+		for _, t := range targets {
+			if t.Upstream == "" && t.Transcoder == "" {
+				kept = append(kept, t)
+			}
+		}
+		targets = kept
+		if c.linkedServers != nil {
+			linkedPeers = make(map[hbp.RepeaterID]bool)
+			for _, p := range c.linkedServers.LinkedServerPeers() {
+				linkedPeers[p] = true
 			}
 		}
 	}
@@ -925,6 +967,11 @@ func (c *Core) route(origin Endpoint, frame hbp.Data, now time.Time) Result {
 			// working, and the table already excludes an endpoint identical to
 			// the origin.
 			if target.repeat && peer == from {
+				continue
+			}
+			if linkedPeers[peer] {
+				// Another QSP server, reached as a peer. A local
+				// transmission stays here.
 				continue
 			}
 

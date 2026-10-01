@@ -146,12 +146,15 @@ syllable.
 ## Weather alerts
 
 Set from the console's **Weather** page; this is the block it writes. **Off by
-default.** This version previews: alerts that pass every check are shown on the
-page and logged, and nothing is transmitted.
+default.** Without `transmit` it previews: alerts that pass every check are
+shown on the page and logged. With it they go out as a group text, **to this
+server's own hotspots and Motorola repeaters only** — never to linked servers
+or bridged networks, because weather is local.
 
 ```json
 "weather": {
   "enabled":   true,
+  "transmit":  true,
   "zones":     ["TXC121", "TXZ103"],
   "events":    ["Tornado Warning", "Severe Thunderstorm Warning", "Flash Flood Warning"],
   "talkgroup": 2,

@@ -12,7 +12,7 @@ import (
 func weatherOn() Config {
 	c := Default()
 	c.Weather = Weather{
-		Enabled: true, Zones: []string{"TXC121", "TXZ103"},
+		Enabled: true, Transmit: true, Zones: []string{"TXC121", "TXZ103"},
 		Events:    []string{"Tornado Warning"},
 		Talkgroup: 2, Timeslot: 2, SenderID: 9990, Contact: "k9mls@example.org",
 	}

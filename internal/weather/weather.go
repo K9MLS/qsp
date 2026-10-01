@@ -7,10 +7,12 @@
 // forecast-zone codes they already know from SkywarnPlus or alerts.weather.gov,
 // ticks the kinds of alert they want, and chooses a talkgroup.
 //
-// **This version previews and never transmits.** Every alert that would go on
-// the air is shown on the Weather page and logged, exactly as it would read on
-// a radio, so an operator can watch real alerts for their area before anything
-// reaches a radio. Transmitting is the next step and a separate change.
+// **It starts in Preview**: every alert that would go on the air is shown on
+// the Weather page and logged, exactly as it would read on a radio, so an
+// operator can watch real alerts for their area before anything reaches a
+// radio. Switched to Transmit, an alert goes out as a group text on this
+// server's own stations only — never to a linked server or a bridged network,
+// because weather is local.
 //
 // The package has no dependency on the rest of QSP beyond the text length a
 // radio can display: the binary converts the configuration into Settings, and
@@ -76,8 +78,10 @@ type Settings struct {
 	// Events are the NWS event names to put on the air, such as
 	// "Tornado Warning". Compared without regard to case.
 	Events []string
-	// Talkgroup, Timeslot and SenderID are where an alert would go and whom
-	// it would come from. Previewed today, transmitted in the next change.
+	// Transmit puts alerts on the air. Off is Preview: shown and logged only.
+	Transmit bool
+	// Talkgroup, Timeslot and SenderID are where an alert goes and whom it
+	// comes from.
 	Talkgroup uint32
 	Timeslot  int
 	SenderID  uint32

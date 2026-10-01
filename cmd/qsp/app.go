@@ -829,6 +829,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	a.weather = weather.New(weather.Options{
 		Log:     logging.Subsystem(log, "weather"),
 		Version: buildVersion(),
+		Sender:  weatherSender(a.dmr),
 	})
 	a.weather.Apply(weatherSettings(cfg))
 
@@ -2407,6 +2408,7 @@ func accountsOrNil(s *auth.Service) server.AccountAdmin {
 func weatherSettings(c config.Config) weather.Settings {
 	return weather.Settings{
 		Enabled:   c.Weather.Enabled,
+		Transmit:  c.Weather.Transmit,
 		Zones:     c.Weather.Zones,
 		Events:    c.Weather.Events,
 		Talkgroup: c.Weather.Talkgroup,
@@ -2414,4 +2416,14 @@ func weatherSettings(c config.Config) weather.Settings {
 		SenderID:  c.Weather.SenderID,
 		Contact:   c.WeatherContact(),
 	}
+}
+
+// weatherSender is the listener as a weather.Sender, or nil when the DMR
+// listener is not running. **Nil, not a nil *peers.Listener inside an
+// interface**, which would compare unequal to nil and be called.
+func weatherSender(l *peers.Listener) weather.Sender {
+	if l == nil {
+		return nil
+	}
+	return l
 }

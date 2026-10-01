@@ -77,5 +77,5 @@ conclusion.
 | [0065](ADR-0065-a-full-backup-encrypted.md) | A full backup, encrypted, alongside the shareable export | Accepted |
 | [0066](ADR-0066-a-connector-is-handed-a-logon-never-a-key.md) | A connector is handed a logon, never a key | Accepted |
 | [0067](ADR-0067-qsp-originates-a-text-message.md) | QSP originates a text message, and that is a capability it does not have | Accepted — phase 1 complete |
-| [0068](ADR-0068-qsp-answers-a-text-and-weather-is-the-first-answer.md) | QSP answers a text, and weather is the first answer | Accepted — amended: alerts as group texts, preview built |
+| [0068](ADR-0068-qsp-answers-a-text-and-weather-is-the-first-answer.md) | QSP answers a text, and weather is the first answer | Accepted — amended: local group-text alerts, built |
 | [0069](ADR-0069-a-private-call-is-offered-to-linked-servers.md) | A private call to a radio not heard here is offered to every linked server | Accepted — confirmed on air |

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/weather"
@@ -18,6 +19,13 @@ type fakeWeather struct {
 	status  weather.Status
 	codes   []string
 	contact string
+	tests   int
+	testErr error
+}
+
+func (f *fakeWeather) SendTest(context.Context) error {
+	f.tests++
+	return f.testErr
 }
 
 func (f *fakeWeather) Status() weather.Status { return f.status }
@@ -132,5 +140,64 @@ func TestCheckingCodes(t *testing.T) {
 				t.Error("NWS was asked anyway")
 			}
 		})
+	}
+}
+
+// Send test is a session-only write, says what happened in words, and is
+// audited whether or not it went out: it puts something on the air.
+//
+// To see it fail: drop recordWeatherTest from handleWeatherTest.
+func TestSendTestIsAuditedAndAnswered(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		err     error
+		status  int
+		outcome audit.Outcome
+	}{
+		{"sent", nil, http.StatusAccepted, audit.OutcomeSuccess},
+		{"refused", weather.ErrCannotTransmit, http.StatusConflict, audit.OutcomeFailure},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeWeather{testErr: tc.err, status: weather.Status{Talkgroup: 2, Timeslot: 2, SenderID: 9990}}
+			rec := &recordingAudit{}
+			bus := events.NewBus(nil, events.Options{})
+			t.Cleanup(bus.Close)
+			a := newStubAuth()
+			srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus,
+				Options{ListenAddress: "127.0.0.1:0", Auth: a, Weather: f, Audit: rec})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
+			resp := authed(t, srv, a, http.MethodPost, "/api/weather/test", "")
+			if resp.Code != tc.status || f.tests != 1 {
+				t.Fatalf("status %d after %d tests: %s", resp.Code, f.tests, resp.Body)
+			}
+			var body map[string]string
+			_ = json.Unmarshal(resp.Body.Bytes(), &body)
+			if body["note"] == "" && body["error"] == "" {
+				t.Errorf("the page is told nothing: %s", resp.Body)
+			}
+			if strings.HasPrefix(body["error"], "weather:") {
+				t.Errorf("the page is shown the package name: %q", body["error"])
+			}
+			if len(rec.events) == 0 {
+				t.Fatal("not audited")
+			}
+			ev := rec.events[len(rec.events)-1]
+			if ev.Action != audit.ActionWeatherTest || ev.Outcome != tc.outcome || ev.Subject != "talkgroup 2" {
+				t.Errorf("audited as %+v", ev)
+			}
+			if err := ev.Validate(); err != nil {
+				t.Errorf("the audit trail would refuse it: %v", err)
+			}
+		})
+	}
+
+	srv, _ := newWeatherServer(t, &fakeWeather{})
+	req := httptest.NewRequest(http.MethodPost, "/api/weather/test", nil)
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("without a session: %d, want 401", rec.Code)
 	}
 }

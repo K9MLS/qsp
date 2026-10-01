@@ -112,6 +112,10 @@ const (
 	// ActionTextSent records a text an administrator composed and sent to a
 	// hotspot from the console; the subject is the peer.
 	ActionTextSent Action = "text.sent"
+	// ActionWeatherTest records the Weather page's Send test, which puts a
+	// text on the air on this server's stations; the subject is the
+	// talkgroup.
+	ActionWeatherTest Action = "weather.test"
 )
 
 var knownActions = map[Action]bool{
@@ -138,6 +142,7 @@ var knownActions = map[Action]bool{
 	ActionConfigFullRestored:    true,
 	ActionDongleControlled:      true,
 	ActionTextSent:              true,
+	ActionWeatherTest:           true,
 }
 
 // IsKnownAction reports whether a is a declared action.

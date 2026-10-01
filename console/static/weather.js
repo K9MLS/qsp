@@ -12,7 +12,9 @@
  *  - what the service is doing, read from /api/weather, and the code check,
  *    posted to /api/weather/zones.
  *
- * This version previews only: nothing on this page puts anything on the air.
+ * Two things on this page put something on the air: Put alerts on the air,
+ * once saved, and Send test. Both reach this server's own stations only —
+ * never a linked server or a bridged network — because weather is local.
  */
 (function () {
   "use strict";
@@ -55,6 +57,12 @@
 
   var enabled = document.getElementById("weather-enabled");
   var enabledState = document.getElementById("weather-enabled-state");
+  var transmit = document.getElementById("weather-transmit");
+  var transmitState = document.getElementById("weather-transmit-state");
+  var modeNote = document.getElementById("weather-mode-note");
+  var noDMR = document.getElementById("weather-no-dmr");
+  var testButton = document.getElementById("weather-test");
+  var testResult = document.getElementById("weather-test-result");
   var switchState = document.getElementById("switch-state");
   var zones = document.getElementById("weather-zones");
   var areaState = document.getElementById("area-state");
@@ -147,6 +155,7 @@
     var fresh = !w.zones && !w.events && !w.talkgroup;
 
     enabled.checked = !!w.enabled;
+    transmit.checked = !!w.transmit;
     zones.value = (w.zones || []).join(", ");
     renderEvents(fresh ? defaultEvents : (w.events || []));
     talkgroup.value = w.talkgroup ? String(w.talkgroup) : "2";
@@ -164,7 +173,14 @@
 
   function refreshStates() {
     enabledState.textContent = enabled.checked ? "On" : "Off";
-    switchState.textContent = enabled.checked ? "On, previewing" : "Off";
+    transmitState.textContent = transmit.checked ? "On" : "Off";
+    switchState.textContent = !enabled.checked ? "Off"
+      : transmit.checked ? "On the air" : "On, previewing";
+    modeNote.textContent = !enabled.checked
+      ? "Off: nothing is read from the National Weather Service and nothing is sent."
+      : transmit.checked
+        ? "On the air: new alerts for your area are sent as they arrive."
+        : "Preview: alerts are shown below exactly as they would be sent, and nothing goes on the air.";
     var codes = parseZones(zones.value);
     var n = codes.length;
     areaState.textContent = n === 0 ? "none yet" : n + (n === 1 ? " code" : " codes");
@@ -214,6 +230,7 @@
       contact: contact.value.trim()
     };
     next.weather.enabled = enabled.checked;
+    next.weather.transmit = transmit.checked;
     return next;
   }
 
@@ -392,17 +409,30 @@
     return new Date(iso).toLocaleString();
   }
 
+  /* What an alert's pill says: sent, waiting to go, would be sent (Preview),
+   * or held, each with the colour the rest of the console gives that state. */
+  function pillFor(a) {
+    if (a.verdict !== "send") { return { cls: "unavailable", word: "Held" }; }
+    if (a.sent_at) { return { cls: "healthy", word: "Sent" }; }
+    if (a.waiting) { return { cls: "degraded", word: "Waiting" }; }
+    return { cls: "healthy", word: "Would send" };
+  }
+
   function alertItem(a, showDecided) {
-    var sending = a.verdict === "send";
+    var p = pillFor(a);
     var li = document.createElement("li");
     var pill = document.createElement("span");
-    pill.className = "status status--" + (sending ? "healthy" : "unavailable");
-    pill.textContent = sending ? "Would send" : "Held";
+    pill.className = "status status--" + p.cls;
+    pill.textContent = p.word;
     li.appendChild(pill);
-    var line = " “" + a.text + "” — " + a.event +
+    var line = " \u201c" + a.text + "\u201d \u2014 " + a.event +
       (a.area ? ", " + a.area : "") +
       (a.until ? ", until " + when(a.until) : "") + ".";
-    if (!sending && a.reason) { line += " Held: " + a.reason + "."; }
+    if (a.verdict !== "send" && a.reason) { line += " Held: " + a.reason + "."; }
+    if (a.sent_at) { line += " Sent " + when(a.sent_at) + "."; }
+    if (!a.sent_at && a.waiting) {
+      line += " " + a.waiting.charAt(0).toUpperCase() + a.waiting.slice(1) + ".";
+    }
     if (showDecided) { line += " Decided " + when(a.decided_at) + "."; }
     li.appendChild(document.createTextNode(line));
     return li;
@@ -421,10 +451,17 @@
     } else {
       poll.textContent = "Waiting for the first read from the National Weather Service.";
     }
-    destination.textContent = st.talkgroup
-      ? "Would send on talkgroup " + st.talkgroup + ", timeslot " + st.timeslot +
-        ", from " + st.sender_id + ". Preview only: nothing is transmitted."
-      : "";
+    if (!st.talkgroup) {
+      destination.textContent = "";
+    } else if (st.mode === "transmit") {
+      destination.textContent = "Sending on talkgroup " + st.talkgroup + ", timeslot " + st.timeslot +
+        ", from " + st.sender_id + ", to this server's stations only." +
+        (st.queued ? " " + st.queued + (st.queued === 1 ? " alert is" : " alerts are") + " waiting to go out." : "");
+    } else {
+      destination.textContent = "Would send on talkgroup " + st.talkgroup + ", timeslot " + st.timeslot +
+        ", from " + st.sender_id + ". Preview: nothing is transmitted.";
+    }
+    if (st.can_transmit === false) { show(noDMR); } else { hide(noDMR); }
 
     activeList.innerHTML = "";
     (st.active || []).forEach(function (a) { activeList.appendChild(alertItem(a, false)); });
@@ -462,7 +499,32 @@
       .catch(function () { /* the next refresh tries again */ });
   }
 
+  function sendTest() {
+    testButton.disabled = true;
+    testResult.textContent = "Sending\u2026";
+    fetch("/api/weather/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin"
+    })
+      .then(function (r) {
+        return r.json().then(function (body) { return { status: r.status, body: body }; });
+      })
+      .then(function (res) {
+        testButton.disabled = false;
+        testResult.textContent = res.status === 202
+          ? (res.body.note || "Sent.")
+          : "Not sent: " + ((res.body && res.body.error) || "the server refused it") + ".";
+      })
+      .catch(function () {
+        testButton.disabled = false;
+        testResult.textContent = "Cannot reach this instance.";
+      });
+  }
+
   enabled.addEventListener("change", refreshStates);
+  transmit.addEventListener("change", refreshStates);
+  testButton.addEventListener("click", sendTest);
   zones.addEventListener("input", refreshStates);
   eventsOther.addEventListener("input", refreshStates);
   checkButton.addEventListener("click", checkCodes);

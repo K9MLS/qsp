@@ -12,10 +12,12 @@ import (
 	"time"
 )
 
-// ModePreview is the only mode today: an alert that passes every check is
-// shown and logged, and nothing is transmitted. The next change adds one that
-// transmits.
-const ModePreview = "preview"
+// The two modes. In Preview an alert that passes every check is shown and
+// logged and nothing is transmitted; in Transmit it goes on the air.
+const (
+	ModePreview  = "preview"
+	ModeTransmit = "transmit"
+)
 
 // recentLimit bounds the list of recent decisions the page shows.
 const recentLimit = 50
@@ -37,6 +39,11 @@ type Options struct {
 	Now func() time.Time
 	// Interval overrides PollInterval, for tests.
 	Interval time.Duration
+	// Sender puts an alert on the air on this server's stations. Nil when
+	// the DMR listener is not running, which the page reports.
+	Sender Sender
+	// Pace overrides the transmit pacing, for tests.
+	Pace Pacing
 }
 
 // AlertView is one alert as the Weather page shows it.
@@ -51,6 +58,11 @@ type AlertView struct {
 	// Text is the alert exactly as it would read on a radio.
 	Text      string    `json:"text"`
 	DecidedAt time.Time `json:"decided_at"`
+	// SentAt is when it went on the air, in Transmit.
+	SentAt time.Time `json:"sent_at,omitzero"`
+	// Waiting says why an alert to be sent has not gone yet: the timeslot is
+	// busy, the limit per ten minutes is reached, or it could not be sent.
+	Waiting string `json:"waiting,omitempty"`
 }
 
 // Status is what the Weather page shows.
@@ -72,6 +84,14 @@ type Status struct {
 	Talkgroup uint32      `json:"talkgroup"`
 	Timeslot  int         `json:"timeslot"`
 	SenderID  uint32      `json:"sender_id"`
+	// CanTransmit is false when this server has no way to put a text on the
+	// air (the DMR listener is off), so the page can say so before the
+	// operator switches to Transmit and wonders why nothing arrives.
+	CanTransmit bool `json:"can_transmit"`
+	// Queued is how many alerts are waiting to go out.
+	Queued int `json:"queued"`
+	// Limit is the most alerts sent in any ten minutes.
+	Limit int `json:"limit"`
 }
 
 // Service polls NWS and decides.
@@ -102,6 +122,12 @@ type Service struct {
 	lastPoll, lastSuccess time.Time
 	lastError             string
 
+	// queue holds alerts waiting to go on the air, in the order they go;
+	// sentTimes are when recent ones went, for the limit per ten minutes.
+	queue     []queued
+	sentTimes []time.Time
+	reference uint32
+
 	// generation counts Applys. A poll reads it with the settings and its
 	// result is discarded if it changed while the poll was out at NWS:
 	// otherwise a poll under the old area finishes after a save, marks the
@@ -118,6 +144,7 @@ func New(opts Options) *Service {
 	if opts.Interval <= 0 {
 		opts.Interval = PollInterval
 	}
+	opts.Pace = opts.Pace.withDefaults()
 	return &Service{
 		opts:         opts,
 		log:          opts.Log,
@@ -146,6 +173,12 @@ func (s *Service) Apply(set Settings) {
 		s.baselined = false
 		s.decided = map[string]AlertView{}
 		s.active = nil
+		// Decided under the old settings; the new baseline decides again.
+		s.queue = nil
+	}
+	if !set.Enabled || !set.Transmit {
+		// Nothing waits to go out once alerts are off or back in Preview.
+		s.queue = nil
 	}
 	if !slices.Equal(prev.Zones, set.Zones) {
 		// A code NWS did not know is asked about again once the operator
@@ -193,13 +226,32 @@ func (s *Service) Run(ctx context.Context) {
 	case <-s.wake:
 	default:
 	}
+	// Alerts waiting to go out are tried far more often than NWS is read:
+	// a warning should not wait a minute behind a call that ends now.
+	flush := time.NewTicker(s.opts.Pace.Retry)
+	defer flush.Stop()
 	for {
 		s.Poll(ctx)
+		s.Flush(ctx)
+		if !s.waitForPoll(ctx, ticker.C, flush.C) {
+			return
+		}
+	}
+}
+
+// waitForPoll sends what is queued as the flush ticker fires, until it is
+// time to read NWS again. It reports false when ctx ends.
+func (s *Service) waitForPoll(ctx context.Context, poll, flush <-chan time.Time) bool {
+	for {
 		select {
 		case <-ctx.Done():
-			return
-		case <-ticker.C:
+			return false
+		case <-poll:
+			return true
 		case <-s.wake:
+			return true
+		case <-flush:
+			s.Flush(ctx)
 		}
 	}
 }
@@ -357,13 +409,17 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			Text:      Format(a, zones, now),
 			DecidedAt: now,
 		}
+		if verdict == Send && set.Transmit {
+			v.Waiting = waitingQueued
+			s.queue = append(s.queue, queued{id: a.ID, text: v.Text, event: a.Event, until: a.until(), issued: a.Sent})
+		}
 		s.decided[a.ID] = v
 		active = append(active, v)
 		s.recent = append([]AlertView{v}, s.recent...)
 		if len(s.recent) > recentLimit {
 			s.recent = s.recent[:recentLimit]
 		}
-		if verdict == Send {
+		if verdict == Send && !set.Transmit {
 			s.log.Info("weather alert would be sent (preview only; nothing transmitted)",
 				slog.String("text", v.Text),
 				slog.Uint64("talkgroup", uint64(set.Talkgroup)),
@@ -406,9 +462,16 @@ func (s *Service) Status() Status {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	mode := ModePreview
+	if s.settings.Transmit {
+		mode = ModeTransmit
+	}
 	st := Status{
 		Enabled:     s.settings.Enabled,
-		Mode:        ModePreview,
+		Mode:        mode,
+		CanTransmit: s.opts.Sender != nil,
+		Queued:      len(s.queue),
+		Limit:       s.opts.Pace.Limit,
 		LastPoll:    s.lastPoll,
 		LastSuccess: s.lastSuccess,
 		LastError:   s.lastError,

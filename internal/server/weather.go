@@ -4,21 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/weather"
 )
 
 // Weather alerts (ADR-0068). The settings are saved through /api/config like
 // every other page's, so they are versioned and audited the same way; these
-// two endpoints are what the Weather page needs besides: what the service is
-// doing, and whether the codes an operator typed are ones NWS knows.
+// endpoints are what the Weather page needs besides: what the service is
+// doing, whether the codes an operator typed are ones NWS knows, and a test
+// that puts one plainly-marked text on the air.
 
 // WeatherSource reports on the weather service and checks codes.
 // *weather.Service satisfies it.
 type WeatherSource interface {
 	Status() weather.Status
 	CheckZones(ctx context.Context, codes []string, contact string) []weather.ZoneCheck
+	SendTest(ctx context.Context) error
 }
 
 // weatherResponse is GET /api/weather.
@@ -90,4 +95,60 @@ func (s *Server) handleCheckZones(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
 		"checks": s.opts.Weather.CheckZones(ctx, codes, req.Contact),
 	})
+}
+
+// handleWeatherTest is the Weather page's Send test: one text, plainly a test,
+// on the talkgroup alerts use and from the ID they come from, on this server's
+// stations only. It is the one thing on the page that puts something on the
+// air whatever the mode, because the operator pressed a button for it, and
+// every attempt is audited.
+func (s *Server) handleWeatherTest(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Weather == nil {
+		writeJSON(w, s.log, http.StatusNotFound, map[string]string{
+			"error": "this instance has no weather service",
+		})
+		return
+	}
+	st := s.opts.Weather.Status()
+	err := s.opts.Weather.SendTest(r.Context())
+	outcome := audit.OutcomeSuccess
+	if err != nil {
+		outcome = audit.OutcomeFailure
+	}
+	s.recordWeatherTest(r, st, outcome)
+	if err != nil {
+		writeJSON(w, s.log, http.StatusConflict, map[string]string{
+			"error": strings.TrimPrefix(err.Error(), "weather: "),
+		})
+		return
+	}
+	writeJSON(w, s.log, http.StatusAccepted, map[string]string{
+		"note": "Sent to this server's stations on talkgroup " + strconv.FormatUint(uint64(st.Talkgroup), 10) +
+			", timeslot " + strconv.Itoa(st.Timeslot) + ". A radio on that talkgroup should show it within a few seconds.",
+	})
+}
+
+func (s *Server) recordWeatherTest(r *http.Request, st weather.Status, outcome audit.Outcome) {
+	if s.opts.Audit == nil {
+		return
+	}
+	actor := "unknown"
+	if sess, ok := SessionFrom(r.Context()); ok {
+		actor = sess.Username
+	}
+	if err := s.opts.Audit.Record(r.Context(), audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      actor,
+		Action:     audit.ActionWeatherTest,
+		Subject:    "talkgroup " + strconv.FormatUint(uint64(st.Talkgroup), 10),
+		Outcome:    outcome,
+		SourceIP:   clientIP(r, s.opts.BehindProxy),
+		Detail: map[string]string{
+			"timeslot": strconv.Itoa(st.Timeslot),
+			"from":     strconv.FormatUint(uint64(st.SenderID), 10),
+			"text":     weather.TestText,
+		},
+	}); err != nil {
+		s.log.Warn("cannot record a weather test in the audit trail", "error", err)
+	}
 }

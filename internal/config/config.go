@@ -870,12 +870,15 @@ type Zello struct {
 // about them is typed on a command line. Everything here is kept while the
 // service is off, so pausing it does not mean entering it all again.
 //
-// This version previews: an alert that passes every check is shown on the
-// page and logged, and nothing is transmitted. The talkgroup, timeslot and
-// sender are what the preview says it would use.
+// It starts in Preview, where an alert that passes every check is shown and
+// logged; Transmit sends it as a group text on this server's own stations,
+// never to a linked server or a bridged network, because weather is local.
 type Weather struct {
 	// Enabled watches NWS for alerts in Zones.
 	Enabled bool `json:"enabled"`
+	// Transmit puts alerts on the air, on this server's own stations only.
+	// Off is Preview: alerts are shown on the page and logged.
+	Transmit bool `json:"transmit,omitempty"`
 	// Zones are NWS county codes (TXC121) and forecast-zone codes (TXZ103),
 	// the same codes SkywarnPlus uses and alerts.weather.gov lists.
 	Zones []string `json:"zones,omitempty"`

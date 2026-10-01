@@ -15,13 +15,13 @@ import (
 func TestWeatherSettingsReachTheService(t *testing.T) {
 	c := config.Default()
 	c.Weather = config.Weather{
-		Enabled: true, Zones: []string{"TXC121"}, Events: []string{"Tornado Warning"},
+		Enabled: true, Transmit: true, Zones: []string{"TXC121"}, Events: []string{"Tornado Warning"},
 		Talkgroup: 2, Timeslot: 2, SenderID: 9990,
 	}
 	c.DMR.Callsigns.Contact = "k9mls@example.org"
 
 	s := weatherSettings(c)
-	if !s.Enabled || !slices.Equal(s.Zones, []string{"TXC121"}) || !slices.Equal(s.Events, []string{"Tornado Warning"}) ||
+	if !s.Enabled || !s.Transmit || !slices.Equal(s.Zones, []string{"TXC121"}) || !slices.Equal(s.Events, []string{"Tornado Warning"}) ||
 		s.Talkgroup != 2 || s.Timeslot != 2 || s.SenderID != 9990 {
 		t.Errorf("settings %+v", s)
 	}

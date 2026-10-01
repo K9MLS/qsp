@@ -78,6 +78,20 @@ const networkColourCode = 1
 // It returns once the frames have started; they take a little over a second
 // to leave. Safe to call from any goroutine.
 func (l *Listener) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterID) error {
+	return l.sendText(slot, m, only, false)
+}
+
+// SendLocalText sends a group text to the message's talkgroup on this
+// server's own stations only — its hotspots and its Motorola repeaters — and
+// never over a link, to a linked QSP server, or to a transcoder. It is how a
+// weather alert goes out: weather is local, and a Denton warning has no place
+// on a server in Iowa (ADR-0068, as amended). Otherwise exactly SendText to
+// the talkgroup, including its refusals.
+func (l *Listener) SendLocalText(slot hbp.Timeslot, m tms.Message) error {
+	return l.sendText(slot, m, 0, true)
+}
+
+func (l *Listener) sendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterID, local bool) error {
 	ctx := l.textCtx.Load()
 	if ctx == nil {
 		return ErrTextNotListening
@@ -109,7 +123,9 @@ func (l *Listener) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterI
 	if only != 0 && (l.texts.Busy(only) || (l.playback != nil && l.playback.Busy(only))) {
 		return fmt.Errorf("%w: %d", ErrTextBusy, only)
 	}
-	if only == 0 && l.network.Busy(routing.ServerOrigin) {
+	// One composed text on the air at a time, whichever path it takes: two
+	// interleaved on a timeslot are both lost.
+	if only == 0 && (l.network.Busy(routing.ServerOrigin) || l.local.Busy(routing.ServerOrigin)) {
 		return fmt.Errorf("%w: the network", ErrTextBusy)
 	}
 	// **Any call on the timeslot, anywhere on the network.** A call on
@@ -128,10 +144,14 @@ func (l *Listener) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterI
 		return fmt.Errorf("peers: composing a text: %w", err)
 	}
 	where := "network"
-	if only != 0 {
+	switch {
+	case only != 0:
 		l.texts.Start(*ctx, parrot.Recording{Peer: only, Frames: frames}, target.Addr)
 		where = strconv.FormatUint(uint64(only), 10)
-	} else {
+	case local:
+		l.local.Start(*ctx, parrot.Recording{Peer: routing.ServerOrigin, Frames: frames})
+		where = "this server only"
+	default:
 		l.network.Start(*ctx, parrot.Recording{Peer: routing.ServerOrigin, Frames: frames})
 	}
 
@@ -147,8 +167,12 @@ func (l *Listener) SendText(slot hbp.Timeslot, m tms.Message, only hbp.RepeaterI
 
 // networkSink routes each frame of a composed text as a transmission on its
 // talkgroup: to the Homebrew side through routing, and to the Motorola side
-// through the same path a hotspot's frames take.
-type networkSink struct{ l *Listener }
+// through the same path a hotspot's frames take. Local keeps it to this
+// server's own stations (routing.RouteLocalFromServer).
+type networkSink struct {
+	l     *Listener
+	local bool
+}
 
 // Deliver implements parrot.Sink.
 func (s networkSink) Deliver(_ hbp.RepeaterID, frame hbp.Data) error {
@@ -156,7 +180,12 @@ func (s networkSink) Deliver(_ hbp.RepeaterID, frame hbp.Data) error {
 	// Last heard: a transmission on the talkgroup is a transmission, whoever
 	// composed it, as DeliverFromTranscoder records a Zello call.
 	l.observe(0, frame)
-	res := l.cfg.Routing.RouteFromServer(frame, time.Now())
+	var res routing.Result
+	if s.local {
+		res = l.cfg.Routing.RouteLocalFromServer(frame, time.Now())
+	} else {
+		res = l.cfg.Routing.RouteFromServer(frame, time.Now())
+	}
 	l.deliver(routing.ServerOrigin, res)
 	// Origin 0: no Motorola repeater sent this, so none is excluded.
 	l.sendToIPSC(0, frame, res)
@@ -171,6 +200,7 @@ func (s networkSink) Deliver(_ hbp.RepeaterID, frame hbp.Data) error {
 			slog.Int("hotspots", len(res.Deliveries)),
 			slog.Int("links", len(res.Upstreams)),
 			slog.Bool("repeaters", l.cfg.IPSC != nil && (res.Reason == "" || res.NoHomebrewDestination)),
+			slog.Bool("this_server_only", s.local),
 		}
 		if res.Reason != "" {
 			attrs = append(attrs, slog.String("reason", res.Reason))

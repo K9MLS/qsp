@@ -217,6 +217,9 @@ type Listener struct {
 	// network plays composed text messages out to a talkgroup through
 	// routing. Never nil.
 	network *parrot.Player
+	// local plays weather alerts out to this server's own stations only.
+	// Never nil. See SendLocalText.
+	local *parrot.Player
 	// textCtx bounds text playbacks. It is published by Start, after the
 	// socket is attached, and read by SendText on an HTTP goroutine, so it is
 	// atomic rather than sharing ctx, which the serve goroutine owns.
@@ -268,6 +271,7 @@ func NewListener(log *slog.Logger, cfg ListenerConfig) (*Listener, error) {
 	l.texts = newPlaybackAs(l.log, nil, "text sent")
 	l.texts.gate = l.preambleGate
 	l.network = parrot.NewPlayerAs(l.log, networkSink{l: l}, "text sent to the network")
+	l.local = parrot.NewPlayerAs(l.log, networkSink{l: l, local: true}, "weather alert sent to this server's stations")
 
 	// **Published once at construction**, so a tracker seeded from the record
 	// is visible before the first frame arrives. The snapshot is otherwise

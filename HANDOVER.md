@@ -89,26 +89,27 @@ another. Composing a *private* text on the Administration page (phase 3) is
 **not wanted** — K9MLS, 2026-09-29: the server's texts are announcements to
 everybody, which group texts already do.
 
-**Weather alerts, preview built (0.1.292, ADR-0068 as amended).** A Weather
-page in the console, off by default: NWS county and zone codes (checked against
-NWS, with the name shown), alert types ticked by name, a talkgroup, timeslot
-and sender, and a contact email for NWS. On, QSP reads NWS once a minute and
-shows every alert for the area with what it decided and exactly how it would
-read on a radio. **It transmits nothing yet.** Next: turn it on for Denton
-(TXC121, TXZ103) on production, watch real alerts for a few days, then build
-patch 2 — transmit as a group text, a Send test button, and a cap per interval.
-The development container cannot reach api.weather.gov, so the tests use
-constructed NWS responses; production's preview is the first check against the
-real feed.
+**Weather alerts (0.1.292 preview, 0.1.293 transmit; ADR-0068 as amended).**
+A Weather page in the console, off by default: NWS county and zone codes
+(checked against NWS, with the name shown), alert types ticked by name, a
+talkgroup, timeslot and sender, and a contact email for NWS. Watching, QSP
+reads NWS once a minute and shows every alert with what it decided and how it
+reads on a radio. **Put alerts on the air** sends them as group texts — **to
+this server's own hotspots and repeaters only, never to linked servers or
+bridged networks** (K9MLS: weather is local) — paced at most six in ten
+minutes, warnings first. **Send test** puts one marked test on the air. On
+0.1.292 production read the real feed correctly on its first poll (a Flood
+Watch for Denton, held as not chosen). Next: switch on Put alerts on the air,
+press Send test with the R7 on TG2, and confirm it displays.
 
 **P25 from a hotspot on the LAN** broke on 2026-09-29 when 10297 appeared in
 the downloaded P25Hosts.txt as `qsp.hopto.me` and overrode the local entry.
 Fixed on the Pi-Star with one `/etc/hosts` line; `docs/P25-GATEWAY.md` has it.
 
-**What to deploy, and why.** Both servers run 0.1.290, the version that was
-confirmed on air; 0.1.291 changed only documents. **0.1.292 adds the Weather
-page** and changes nothing else a station would notice; production needs it to
-try the preview, the test server does not.
+**What to deploy, and why.** Production runs 0.1.292 and the test server
+0.1.290. **0.1.293 puts weather alerts on the air**, and production needs it;
+nothing else a station would notice changes, and the test server does not
+need it.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -184,8 +185,8 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.292 | `cat VERSION` |
-| **GitHub** `main` | 0.1.291, tagged `v0.1.291`, pushed 2026-09-29 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.291` anonymously reported `0.1.291 (v0.1.291)` |
+| **Fedora working tree** | 0.1.293 | `cat VERSION` |
+| **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |
 
