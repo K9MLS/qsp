@@ -99,17 +99,21 @@ this server's own hotspots and repeaters only, never to linked servers or
 bridged networks** (K9MLS: weather is local) — paced at most six in ten
 minutes, warnings first. **Send test** puts one marked test on the air. On
 0.1.292 production read the real feed correctly on its first poll (a Flood
-Watch for Denton, held as not chosen). Next: switch on Put alerts on the air,
-press Send test with the R7 on TG2, and confirm it displays.
+Watch for Denton, held as not chosen). On 0.1.293 Send test reached the R7,
+and then two days of flooding sent nothing: exact alert names, a silent
+baseline on switching on, and every update held. **0.1.294 opens it up**
+(K9MLS: it has to work): every warning and every watch by default, what is
+switched on at the page goes out within a minute, an extended warning is sent
+again, and only a restart is silent. **Not yet seen on air: a real alert.**
 
 **P25 from a hotspot on the LAN** broke on 2026-09-29 when 10297 appeared in
 the downloaded P25Hosts.txt as `qsp.hopto.me` and overrode the local entry.
 Fixed on the Pi-Star with one `/etc/hosts` line; `docs/P25-GATEWAY.md` has it.
 
-**What to deploy, and why.** Production runs 0.1.292 and the test server
-0.1.290. **0.1.293 puts weather alerts on the air**, and production needs it;
-nothing else a station would notice changes, and the test server does not
-need it.
+**What to deploy, and why.** Production runs 0.1.293 and the test server
+0.1.290. **0.1.294 makes weather alerts actually go out**, and production
+needs it; nothing else a station would notice changes, and the test server
+does not need it.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -185,7 +189,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.293 | `cat VERSION` |
+| **Fedora working tree** | 0.1.294 | `cat VERSION` |
 | **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |

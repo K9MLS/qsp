@@ -156,7 +156,7 @@ or bridged networks, because weather is local.
   "enabled":   true,
   "transmit":  true,
   "zones":     ["TXC121", "TXZ103"],
-  "events":    ["Tornado Warning", "Severe Thunderstorm Warning", "Flash Flood Warning"],
+  "events":    ["* Warning", "* Watch"],
   "talkgroup": 2,
   "timeslot":  2,
   "sender_id": 9990,
@@ -166,6 +166,7 @@ or bridged networks, because weather is local.
 
 `zones` are NWS county codes (a C, such as `TXC121`) and forecast-zone codes (a
 Z, such as `TXZ103`) — the same codes SkywarnPlus uses; alerts.weather.gov lists
-them under your state. `events` are NWS alert names exactly as NWS writes them.
+them under your state. `events` are classes — `"* Warning"` is every warning, `"* Watch"` every
+watch, `"*"` everything — or NWS alert names exactly as NWS writes them.
 `contact` is sent to the National Weather Service, which requires one; empty
 uses `dmr.callsigns.contact`. Changes take effect on save, with no restart.

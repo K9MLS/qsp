@@ -21,8 +21,21 @@
 
   /* The alert types offered as boxes to tick, by the names NWS gives them.
    * Anything else an operator wants goes in "Other alert types", so this is a
-   * convenience rather than a limit. */
+   * convenience rather than a limit.
+   *
+   * The first three are classes, and the first two are what a new page starts
+   * with: every warning and every watch, whatever NWS calls it. A list of
+   * exact names is a list of the ones nobody thought of, and the first week
+   * on the air a Flood Watch went unsent because the list said Flash Flood. */
+  var CLASS_LABELS = {
+    "* Warning": "Every warning",
+    "* Watch": "Every watch",
+    "*": "Everything else as well: advisories and statements"
+  };
   var COMMON_EVENTS = [
+    "* Warning",
+    "* Watch",
+    "*",
     "Tornado Warning",
     "Severe Thunderstorm Warning",
     "Flash Flood Warning",
@@ -84,7 +97,7 @@
   var seesState = document.getElementById("sees-state");
 
   var loaded = null;
-  var defaultEvents = COMMON_EVENTS.slice(0, 5);
+  var defaultEvents = COMMON_EVENTS.slice(0, 2);
 
   function show(node) { if (node) { node.hidden = false; } }
   function hide(node) { if (node) { node.hidden = true; } }
@@ -130,7 +143,7 @@
       box.checked = want.indexOf(name.toLowerCase()) >= 0;
       box.addEventListener("change", refreshStates);
       label.appendChild(box);
-      label.appendChild(document.createTextNode(" " + name));
+      label.appendChild(document.createTextNode(" " + (CLASS_LABELS[name] || name)));
       eventsBox.appendChild(label);
     });
     var common = lower(COMMON_EVENTS);

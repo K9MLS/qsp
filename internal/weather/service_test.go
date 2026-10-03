@@ -238,11 +238,13 @@ func countRecent(st Status, id string) int {
 	return n
 }
 
-// Adding a county starts a new baseline, so a warning already running there
-// is not sent the moment an operator saves.
+// Adding a county sends the warning already running there: the operator just
+// asked for that county, and silence until the next new alert is what they
+// would least expect.
 //
-// To see it fail: remove the zones comparison from Apply.
-func TestChangingTheAreaStartsANewBaseline(t *testing.T) {
+// To see it fail: remove the zones comparison from Apply, and the warning
+// stays held as not for the areas chosen.
+func TestAddingACountySendsWhatIsRunningThere(t *testing.T) {
 	f, srv := newFakeNWS(t)
 	f.zones["TXC085"] = Zone{Code: "TXC085", Name: "Collin", State: "TX", Kind: "county", TimeZone: "America/Chicago"}
 	c := &clock{now: time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)}
@@ -264,8 +266,8 @@ func TestChangingTheAreaStartsANewBaseline(t *testing.T) {
 	s.Apply(more)
 	c.Advance(time.Minute)
 	s.Poll(ctx)
-	if got := verdicts(s.Status())["urn:collin"]; got != "hold:"+ReasonBaseline {
-		t.Errorf("after adding Collin its running warning was %q, want held as the new baseline", got)
+	if got := verdicts(s.Status())["urn:collin"]; got != "send:" {
+		t.Errorf("after adding Collin its running warning was %q, want sent", got)
 	}
 }
 
@@ -429,12 +431,13 @@ func TestRunPollsWhenTurnedOn(t *testing.T) {
 	}
 }
 
-// A save while a poll is out at NWS must not let that poll mark the new area
-// baselined. It did: the poll under the old area finished after the save, and
-// the next poll sent a warning that had been running in the county just added.
+// A save while a poll is out at NWS must not let that poll decide for the new
+// area. Its answer was worked out under the old one, where a warning in the
+// county just added is "not for the areas you chose", and kept, it would stay
+// held for as long as the warning ran.
 //
 // To see it fail: remove the generation check at the top of decide.
-func TestASaveDuringAPollStillStartsANewBaseline(t *testing.T) {
+func TestASaveDuringAPollIsDecidedUnderTheNewSettings(t *testing.T) {
 	f, srv := newFakeNWS(t)
 	f.zones["TXC085"] = Zone{Code: "TXC085", Name: "Collin", State: "TX", Kind: "county", TimeZone: "America/Chicago"}
 	c := &clock{now: time.Date(2026, 9, 30, 0, 0, 0, 0, time.UTC)}
@@ -455,8 +458,8 @@ func TestASaveDuringAPollStillStartsANewBaseline(t *testing.T) {
 
 	c.Advance(time.Minute)
 	s.Poll(ctx)
-	if got := verdicts(s.Status())["urn:collin"]; got != "hold:"+ReasonBaseline {
-		t.Errorf("a warning already running in the county just added was %q, want held as the baseline", got)
+	if got := verdicts(s.Status())["urn:collin"]; got != "send:" {
+		t.Errorf("a warning already running in the county just added was %q, want sent", got)
 	}
 }
 

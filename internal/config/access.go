@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"slices"
 	"strings"
 
 	"github.com/k9mls/qsp/internal/access"
@@ -136,6 +137,34 @@ func (c *Config) openSubscribers() {
 	a.openedAllowOnly = true
 	a.allowOnlyNamed = len(a.Subscribers.IDs)
 	a.Subscribers = ACL{Mode: string(access.ModeDeny), IDs: []string{}}
+}
+
+// widenWeather turns the alert types the Weather page first started with into
+// the classes it starts with now: every warning and every watch.
+//
+// **Only a list nobody chose is touched.** The first Weather page ticked five
+// exact names, and an operator who saved it as it came got silence through a
+// Flood Watch and would through a Winter Storm Warning. A list that differs
+// from those five in any way was somebody's decision and is left alone.
+func (c *Config) widenWeather() {
+	got := make([]string, 0, len(c.Weather.Events))
+	for _, e := range c.Weather.Events {
+		got = append(got, strings.ToLower(strings.TrimSpace(e)))
+	}
+	slices.Sort(got)
+	if slices.Equal(got, narrowWeatherEvents) {
+		c.Weather.Events = []string{"* Warning", "* Watch"}
+	}
+}
+
+// narrowWeatherEvents is weather.NarrowDefaultEvents, lower case and sorted.
+// A test holds the two together.
+var narrowWeatherEvents = []string{
+	"flash flood warning",
+	"severe thunderstorm warning",
+	"severe thunderstorm watch",
+	"tornado warning",
+	"tornado watch",
 }
 
 // reachableBeyondHost reports whether a listen address accepts traffic from

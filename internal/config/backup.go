@@ -195,6 +195,7 @@ func ReadBackup(r io.Reader) (Backup, error) {
 	// A backup made before 0448 may hold an allow-only subscriber list; it is
 	// opened exactly as a configuration file is, so restoring it works.
 	b.Config.openSubscribers()
+	b.Config.widenWeather()
 	if err := b.Config.Validate(); err != nil {
 		return Backup{}, err
 	}

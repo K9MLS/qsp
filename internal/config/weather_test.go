@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -110,5 +111,56 @@ func TestWeatherRoundTrips(t *testing.T) {
 	b, _ := json.Marshal(back.Weather)
 	if !bytes.Equal(a, b) {
 		t.Errorf("weather came back as %s, want %s", b, a)
+	}
+}
+
+// A saved list that is exactly what the first Weather page ticked is widened
+// to every warning and every watch when it is read; any other list was chosen
+// and is kept.
+//
+// To see it fail: remove the cfg.widenWeather() call from Load, and the five
+// names come back as they were saved.
+func TestTheFirstDefaultAlertTypesAreWidened(t *testing.T) {
+	shuffled := []string{"tornado watch", "Tornado Warning", " Flash Flood Warning", "Severe Thunderstorm Watch", "Severe Thunderstorm Warning"}
+	cases := []struct {
+		name  string
+		saved []string
+		want  []string
+	}{
+		{"the first defaults", weather.NarrowDefaultEvents, weather.DefaultEvents},
+		{"the first defaults in another order and case", shuffled, weather.DefaultEvents},
+		{"one removed", weather.NarrowDefaultEvents[:4], weather.NarrowDefaultEvents[:4]},
+		{"one added", append(slices.Clone(weather.NarrowDefaultEvents), "Flood Watch"), append(slices.Clone(weather.NarrowDefaultEvents), "Flood Watch")},
+		{"classes already", weather.DefaultEvents, weather.DefaultEvents},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := weatherOn()
+			c.Weather.Events = slices.Clone(tc.saved)
+			raw, err := json.Marshal(c)
+			if err != nil {
+				t.Fatalf("%v", err)
+			}
+			back, err := Load(bytes.NewReader(raw))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if !slices.Equal(back.Weather.Events, tc.want) {
+				t.Errorf("read back %q, want %q", back.Weather.Events, tc.want)
+			}
+		})
+	}
+}
+
+// Configuration keeps its own copy of the first defaults so it need not
+// import the service; this holds the two together.
+func TestTheFirstDefaultsAgreeWithTheService(t *testing.T) {
+	want := make([]string, 0, len(weather.NarrowDefaultEvents))
+	for _, e := range weather.NarrowDefaultEvents {
+		want = append(want, strings.ToLower(e))
+	}
+	slices.Sort(want)
+	if !slices.Equal(narrowWeatherEvents, want) {
+		t.Errorf("configuration widens %q, the service names %q", narrowWeatherEvents, want)
 	}
 }

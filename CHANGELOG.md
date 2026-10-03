@@ -4,6 +4,37 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Weather alerts went unsent through two days of flooding** (K9MLS, on
+  production). Nothing was broken and nothing was sent, which is the same
+  thing to a station. Three rules, each defensible alone, added up to silence:
+  the page started with five exact alert names, so a Flood Watch was "not a
+  type you chose"; switching alerts on started a silent baseline, so the
+  weather that made the operator switch them on was never sent; and every
+  update was held, so a warning extended by two hours was never mentioned
+  again. **Open first, then narrow**, as everywhere else in QSP:
+  - **Alert types are classes by default.** A new page starts with **Every
+    warning** and **Every watch** (`"* Warning"`, `"* Watch"`), and
+    **Everything else as well** (`"*"`) is one tick. Exact names still work and
+    can be mixed with classes. A saved list that is exactly the old five
+    defaults is widened when it is read; any other list was chosen and is
+    kept.
+  - **What an operator asks for goes out now.** Switching alerts on, putting
+    them on the air, adding a county or ticking another kind sends whatever of
+    that is in effect, within a minute, without repeating what already went
+    out. Only a restart of QSP is silent, so an upgrade never repeats what was
+    sent before it.
+  - **A warning made longer is sent again**, reading its new end. A reissue
+    with the same end (within ten minutes) is still held.
+  - An alert still waiting to go out is no longer lost when the settings are
+    saved.
+
+  Tests: `internal/weather/open_test.go` (classes; each kind of switching on
+  against a restart; the 2026-10-01 flash flood warning replayed, extension
+  sent and reissues held) and the widening in `internal/config`. Each fails
+  under the deliberate breaks noted in it.
+
 ### Added
 
 - **Weather alerts go on the air, and stay on this server.** The Weather page

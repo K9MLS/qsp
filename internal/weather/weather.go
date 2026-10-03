@@ -59,7 +59,19 @@ const MaxText = tms.MaxText
 // The warnings and watches for weather that hurts people quickly. An operator
 // adds winter storms, heat or anything else NWS issues by ticking it; these are
 // only where a new page starts.
-var DefaultEvents = []string{
+var DefaultEvents = []string{EveryWarning, EveryWatch}
+
+// Classes of alert an operator can choose in place of exact names.
+const (
+	EveryWarning = "* Warning"
+	EveryWatch   = "* Watch"
+	EveryAlert   = "*"
+)
+
+// NarrowDefaultEvents is what the Weather page started with before classes
+// existed. A saved list that is exactly this was never chosen by anybody, and
+// configuration widens it to DefaultEvents when it is read.
+var NarrowDefaultEvents = []string{
 	"Tornado Warning",
 	"Severe Thunderstorm Warning",
 	"Flash Flood Warning",

@@ -107,9 +107,12 @@ type Service struct {
 	// could not be looked up.
 	zones        map[string]Zone
 	zoneProblems map[string]string
-	// baselined is false until the first successful poll after the service
-	// was turned on or its areas changed. That poll sends nothing.
+	// baselined is false until the first successful poll after QSP starts.
+	// That poll sends nothing: what is in effect then went out before the
+	// restart. applied records that the starting settings have arrived, so
+	// every later Apply is known to be the operator's.
 	baselined bool
+	applied   bool
 	// sent maps the ID of every alert that went on the air (or would have,
 	// before the baseline) to when it stops applying.
 	sent map[string]time.Time
@@ -158,26 +161,54 @@ func New(opts Options) *Service {
 
 // Apply adopts new settings, from the Weather page's save or at startup.
 //
-// **Turning the service on, or changing its areas or the alert types chosen,
-// starts a new baseline**: the next poll records what is already in effect
-// without sending it. A restart during a flood watch must not put a day-old
-// watch on the air, and neither must adding a county.
+// **What an operator asks for at the page, they get now.** Switching alerts
+// on, putting them on the air, adding a county or ticking another kind of
+// alert sends whatever of that is in effect at the next poll, a minute at
+// most. It used to start a silent baseline instead, and an operator who
+// switched alerts on because of the weather outside heard nothing about it.
+//
+// **Only a restart is silent.** The first settings QSP starts with begin a
+// baseline: what is in effect then was sent before the restart, and an
+// upgrade must not put a day-old watch on the air a second time.
 func (s *Service) Apply(set Settings) {
 	set.Zones = NormalizeZones(set.Zones)
 
 	s.mu.Lock()
 	prev := s.settings
+	first := !s.applied
+	s.applied = true
 	s.settings = set
 	s.generation++
-	if !set.Enabled || !prev.Enabled || !slices.Equal(prev.Zones, set.Zones) || !sameEvents(prev.Events, set.Events) {
-		s.baselined = false
+	forget := func() {
+		// An alert still waiting was recorded as sent when it was decided;
+		// it is decided again, so it must not be remembered as gone out.
+		for _, q := range s.queue {
+			delete(s.sent, q.id)
+		}
 		s.decided = map[string]AlertView{}
 		s.active = nil
-		// Decided under the old settings; the new baseline decides again.
 		s.queue = nil
 	}
-	if !set.Enabled || !set.Transmit {
-		// Nothing waits to go out once alerts are off or back in Preview.
+	switch {
+	case !set.Enabled:
+		forget()
+	case first:
+		s.baselined = false
+		forget()
+	case !prev.Enabled, set.Transmit && !prev.Transmit:
+		// Switched on, or put on the air: nothing in effect has been heard,
+		// whatever the preview recorded.
+		s.baselined = true
+		forget()
+		s.sent = map[string]time.Time{}
+	case !slices.Equal(prev.Zones, set.Zones), !sameEvents(prev.Events, set.Events):
+		// Decided again under the new choice. What already went out is
+		// remembered, so only what the change added is sent.
+		s.baselined = true
+		forget()
+	}
+	if !set.Transmit {
+		// Nothing waits to go out in Preview.
 		s.queue = nil
 	}
 	if !slices.Equal(prev.Zones, set.Zones) {
@@ -201,6 +232,31 @@ func (s *Service) Apply(set Settings) {
 	default:
 	}
 }
+
+// extends reports whether an update moves an alert's end later than every
+// earlier version of it that was sent. Called with the lock held.
+//
+// **A longer warning is news; a redrawn one is not.** NWS reissues a warning
+// every few minutes as the storm moves, and those stay off the air. But when
+// a flash flood warning that ran until 10:30 is extended to 12:30, a station
+// that read the first text believes it is over two hours early.
+func (s *Service) extends(a Alert) bool {
+	until := a.until()
+	if until.IsZero() {
+		return false
+	}
+	var latest time.Time
+	for _, ref := range a.References {
+		if t, ok := s.sent[ref]; ok && t.After(latest) {
+			latest = t
+		}
+	}
+	return !latest.IsZero() && until.Sub(latest) > extensionSlack
+}
+
+// extensionSlack is how much later an update must end to count as an
+// extension. NWS moves an end time by a minute or two in a plain reissue.
+const extensionSlack = 10 * time.Minute
 
 // sameEvents compares two event lists as sets, without regard to case.
 func sameEvents(a, b []string) bool {
@@ -384,6 +440,9 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			continue
 		}
 		verdict, reason := Decide(a, set, sentNow, now)
+		if reason == ReasonUpdate && s.extends(a) {
+			verdict, reason = Send, ""
+		}
 		if verdict == Send && !s.baselined {
 			verdict, reason = Hold, ReasonBaseline
 		}

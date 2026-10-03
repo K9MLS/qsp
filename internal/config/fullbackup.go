@@ -283,6 +283,7 @@ func ReadFullBackup(r io.Reader, passphrase string) (FullBackup, error) {
 	// Made before 0448, it may hold an allow-only subscriber list; opened as
 	// a configuration file is, so the restore is not refused for it.
 	f.Backup.Config.openSubscribers()
+	f.Backup.Config.widenWeather()
 	return f, nil
 }
 

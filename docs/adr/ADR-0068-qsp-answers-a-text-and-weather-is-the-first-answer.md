@@ -303,3 +303,25 @@ minutes, warnings before watches before the rest. An alert that cannot go yet
 and is tried every few seconds, with the reason on the page. It is dropped
 only if it expires first. Never dropping a warning to keep within a limit is
 the point of queueing rather than coalescing.
+
+## Amendment, 2026-10-03: open first, then narrow
+
+The first week on the air, production sat under a Flood Watch for two days and
+a Flash Flood Warning that was extended by two hours, and sent nothing. Every
+rule did what this ADR said. Together they were silence, and K9MLS's standing
+principle — open by default, then lock down — had not been applied to weather.
+Three things in this ADR are **superseded**:
+
+- **Alert types are chosen by class first.** `"* Warning"` is every alert
+  whose name ends in Warning, `"* Watch"` every watch, `"*"` everything. A new
+  page starts with every warning and every watch. Exact names remain, for an
+  operator who wants fewer. A saved list equal to the first five defaults is
+  widened on read, because nobody chose it.
+- **The baseline is for a restart only.** What an operator switches on, adds
+  or ticks at the page is sent at the next poll if it is in effect, without
+  repeating what already went out. A restart stays silent: what is in effect
+  then went out before it. The cost is accepted: an alert first issued while
+  QSP was stopped is not sent when it starts.
+- **An update that makes an alert last longer is sent.** More than ten minutes
+  later than every earlier version that was sent counts; anything less is the
+  reissue this ADR always held.

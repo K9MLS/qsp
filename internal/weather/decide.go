@@ -28,7 +28,7 @@ const (
 	ReasonExpired     = "already expired"
 	ReasonAlreadySent = "already sent"
 	ReasonUpdate      = "an update to an alert already sent"
-	ReasonBaseline    = "already in effect when weather alerts were turned on or QSP started"
+	ReasonBaseline    = "already in effect when QSP started, so it went out before the restart"
 )
 
 // Decide runs one alert through the filter chain of ADR-0068, in its order.
@@ -115,9 +115,27 @@ var stateFIPS = map[string]string{
 	"WI": "55", "WY": "56", "AS": "60", "GU": "66", "MP": "69", "PR": "72", "VI": "78",
 }
 
+// chosen reports whether an alert's type is one the operator asked for.
+//
+// **A choice may be a whole class.** "* Warning" is every alert whose name
+// ends in Warning, "* Watch" every watch, and "*" everything NWS issues for
+// the area. NWS has well over a hundred alert types, and a list of exact
+// names is a list of the ones nobody thought of: the first week on the air a
+// Flood Watch sat over the county for two days and nothing was sent, because
+// the list said Flash Flood. Classes are what a new Weather page starts with.
 func chosen(event string, events []string) bool {
+	event = strings.TrimSpace(event)
 	for _, e := range events {
-		if strings.EqualFold(strings.TrimSpace(e), strings.TrimSpace(event)) {
+		e = strings.TrimSpace(e)
+		switch class, isClass := strings.CutPrefix(e, "* "); {
+		case e == EveryAlert:
+			return true
+		case isClass:
+			words := strings.Fields(event)
+			if len(words) > 0 && strings.EqualFold(words[len(words)-1], strings.TrimSpace(class)) {
+				return true
+			}
+		case strings.EqualFold(e, event):
 			return true
 		}
 	}

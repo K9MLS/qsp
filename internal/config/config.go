@@ -931,7 +931,7 @@ func (c Config) validateWeather(v *validator) {
 	}
 	if len(w.Events) == 0 {
 		v.add("weather.events", "no kinds of alert are chosen, so nothing would ever be sent",
-			"tick at least one, such as Tornado Warning")
+			"tick at least one; Every warning and Every watch are what most servers want")
 	}
 	for i, e := range w.Events {
 		if strings.TrimSpace(e) == "" {
@@ -2286,6 +2286,7 @@ func Load(r io.Reader) (Config, error) {
 	// at its next restart because that shape is no longer accepted; it opens
 	// instead, and says so in the startup log.
 	cfg.openSubscribers()
+	cfg.widenWeather()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}
