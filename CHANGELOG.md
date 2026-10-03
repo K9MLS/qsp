@@ -4,6 +4,39 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Security
+
+- **Bug hunt, 2026-10-03, first patch: what anybody on the internet could do
+  with one packet.** Five independent reviews of the code; each finding here
+  was reproduced before it was fixed.
+  - **One malformed IPSC voice frame stopped the server.** `Payload` checked
+    for 42 body bytes and sliced to 47. IPSC has no login, so the frame could
+    come from anyone who could reach the port. Fixed, with a test over every
+    accessor at every length; and the IPSC listener now contains a panic to
+    the datagram that caused it, logs it as a bug, and goes on serving.
+  - **One login request took a working hotspot off the air.** `handleLogin`
+    replaced a registered peer with a half-open one before any password was
+    checked, though its own comment said otherwise; a stranger repeating it
+    every 25 seconds kept that hotspot off for good. The challenge is now kept
+    beside the registration, which goes on passing traffic until a login from
+    somebody with the password completes. A hotspot that restarts or changes
+    address logs in again exactly as before.
+  - **Login requests could fill the peer limit.** A half-open login now gives
+    way to a new one; only stations that logged in count toward a full server.
+  - **Forged failures could lock a member's address out.** A digest nobody
+    asked for, or one from an address that was not challenged, needs no reply
+    from QSP to send, so its source can be forged; it is still shown but no
+    longer counts toward the lockout. The table of failing addresses is
+    bounded, and the IDs they claimed are forgotten with them.
+  - **The IPSC listener stopped for good on one read error**, and the P25
+    listener spun on a persistent one. Both carry on, with a pause.
+  - `tms.Parse` refused nothing about a total length shorter than its header
+    and would have panicked; nothing calls it on received bytes today.
+
+  Tests: `internal/peers/relogin_test.go`,
+  `internal/protocol/ipsc/short_test.go`, and one in `internal/tms`. Each
+  fails under the deliberate break noted in it.
+
 ### Fixed
 
 - **Weather alerts went unsent through two days of flooding** (K9MLS, on

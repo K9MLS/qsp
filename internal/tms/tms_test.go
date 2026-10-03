@@ -355,3 +355,28 @@ func TestThePacketCRCRefusesTheCorruptBurst(t *testing.T) {
 		t.Error("the packet CRC accepted the block its own CRC-9 refused")
 	}
 }
+
+// An IP total length shorter than the header it sits in is refused, not
+// sliced with. Nothing calls Parse on bytes from the air today; this keeps it
+// safe for when something does.
+//
+// To see it fail: remove the `total < ihl` check from Parse.
+func TestParseRefusesATotalLengthShorterThanTheHeader(t *testing.T) {
+	d := make([]byte, 34)
+	d[0] = 0x45
+	d[3] = 5
+	d[9] = 17
+	copy(d[12:16], []byte{12, 0, 0, 1})
+	copy(d[16:20], []byte{12, 0, 0, 2})
+	var sum uint32
+	for i := 0; i < 20; i += 2 {
+		sum += uint32(d[i])<<8 | uint32(d[i+1])
+	}
+	for sum>>16 != 0 {
+		sum = sum&0xffff + sum>>16
+	}
+	d[10], d[11] = byte(^sum>>8), byte(^sum)
+	if _, err := tms.Parse(d); err == nil {
+		t.Fatal("a datagram whose total length is 5 was parsed")
+	}
+}

@@ -67,6 +67,12 @@ func (l *Listener) serve(ctx context.Context) {
 				return
 			}
 			l.log.Warn("p25 read failed", "error", err.Error())
+			// A persistent error must not spin a core.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
 			continue
 		}
 		l.handle(buf[:n], from)

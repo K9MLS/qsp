@@ -296,6 +296,21 @@ including the challenge — which is where a guesser would otherwise collect a
 fresh salt on every attempt. A successful login clears the history, so a member
 who fixes their password is not held to the attempts before they did.
 
+Only a failure that answers a challenge QSP sent to that address counts: a
+wrong password, or an ID with no password. A digest nobody asked for, or one
+from an address the challenge did not go to, can be sent with a forged source
+and so cannot be allowed to lock that source out.
+
+**A login request does not disturb a registered peer.** The challenge is kept
+beside the working registration, which goes on passing traffic from its own
+address; the registration moves only when the new login proves it has the
+password. A login that never answers its challenge holds no place against the
+peer limit that a new login cannot take.
+
+**IPSC has no login**, so the Motorola listener parses whatever reaches its
+port. A panic while handling one datagram is contained to that datagram and
+logged as a bug.
+
 Throttling is per source address rather than per repeater ID, because an ID is
 whatever the caller claims and a determined guesser would vary it. The address
 is the one thing a remote party cannot choose freely.

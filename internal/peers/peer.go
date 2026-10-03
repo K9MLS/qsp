@@ -87,6 +87,10 @@ type Peer struct {
 	// ConfiguredAt is when it completed registration, in UTC. Zero until then.
 	ConfiguredAt time.Time
 
+	// relogins are challenges issued for this ID while it is registered and
+	// working. See Master.handleLogin.
+	relogins []relogin
+
 	// Received, Sent and Refused count frames each way for this peer.
 	//
 	// # Why these exist
@@ -181,9 +185,51 @@ func (p *Peer) String() string {
 // mutate registry state from outside.
 func (p *Peer) clone() Peer {
 	out := *p
+	out.relogins = nil
 	if p.Config != nil {
 		cfg := *p.Config
 		out.Config = &cfg
 	}
 	return out
+}
+
+// relogin is a challenge issued to an address asking to log in as a peer
+// that is already registered.
+type relogin struct {
+	addr netip.AddrPort
+	salt [4]byte
+	at   time.Time
+}
+
+// maxRelogins bounds the challenges kept for one registered peer. A hotspot
+// logging in again needs one; the rest are room for a stranger's noise not to
+// push the honest one out before it answers, which takes milliseconds.
+const maxRelogins = 4
+
+// offerRelogin records a challenge issued to from, replacing any earlier one
+// for the same address and dropping the oldest when full.
+func (p *Peer) offerRelogin(from netip.AddrPort, salt [4]byte, now time.Time, timeout time.Duration) {
+	kept := p.relogins[:0]
+	for _, r := range p.relogins {
+		if r.addr != from && now.Sub(r.at) <= timeout {
+			kept = append(kept, r)
+		}
+	}
+	if len(kept) >= maxRelogins {
+		kept = kept[1:]
+	}
+	p.relogins = append(kept, relogin{addr: from, salt: salt, at: now})
+}
+
+// takeRelogin returns and removes the challenge issued to from, if one is
+// still current. A challenge is answered once.
+func (p *Peer) takeRelogin(from netip.AddrPort, now time.Time, timeout time.Duration) (relogin, bool) {
+	for i, r := range p.relogins {
+		if r.addr != from {
+			continue
+		}
+		p.relogins = append(p.relogins[:i], p.relogins[i+1:]...)
+		return r, now.Sub(r.at) <= timeout
+	}
+	return relogin{}, false
 }

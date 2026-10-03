@@ -125,6 +125,9 @@ func Parse(datagram []byte) (Message, error) {
 	if total > len(datagram) {
 		return Message{}, fmt.Errorf("tms: IP total length %d exceeds the %d octets in hand", total, len(datagram))
 	}
+	if total < ihl {
+		return Message{}, fmt.Errorf("tms: IP total length %d is shorter than its own %d-octet header", total, ihl)
+	}
 	if p := datagram[9]; p != protocolUDP {
 		return Message{}, fmt.Errorf("tms: IP protocol %d, want %d", p, protocolUDP)
 	}

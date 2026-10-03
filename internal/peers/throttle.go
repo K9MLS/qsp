@@ -109,13 +109,28 @@ func (t *throttle) fail(from netip.AddrPort, reason FailureReason, now time.Time
 	// A run that has gone quiet starts again. A hotspot that fails once a day
 	// for a week is somebody who fixed it and broke it again.
 	if a == nil || now.Sub(a.last) > loginFailureWindow {
+		if a == nil && len(t.attempts) >= maxTrackedSources {
+			// Full of other sources' failures. Not tracking one more costs a
+			// guesser nothing they did not have; tracking without limit lets
+			// anybody who can forge a source address fill memory.
+			return false, ""
+		}
 		a = &loginAttempts{first: now, reasons: map[FailureReason]int{}}
 		t.attempts[addr] = a
 	}
 
-	a.failures++
 	a.last = now
 	a.reasons[reason]++
+	if !reason.provesAddress() {
+		// **Shown, not counted.** A digest nobody asked for, or one sent from
+		// an address the challenge did not go to, needs no reply from QSP to
+		// send, so its source address can be forged. Counting it let six
+		// forged datagrams lock a member's real address out for five minutes.
+		// Only a failure that answers a challenge QSP sent to that address
+		// came from that address.
+		return false, ""
+	}
+	a.failures++
 
 	if a.failures < t.max {
 		return false, ""
@@ -152,6 +167,9 @@ func (t *throttle) expire(now time.Time) {
 		}
 	}
 }
+
+// tracked reports whether a source has failures on record.
+func (t *throttle) tracked(addr netip.Addr) bool { return t.attempts[addr] != nil }
 
 // blocked reports how many sources are currently locked out, for health.
 func (t *throttle) blocked(now time.Time) int {
@@ -269,4 +287,13 @@ func (m *Master) BlockedSources(now time.Time) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.logins.blocked(now)
+}
+
+// maxTrackedSources bounds how many failing addresses are remembered at once.
+const maxTrackedSources = 4096
+
+// provesAddress reports whether a failure of this kind can only have come
+// from the address it appears to: it answered a challenge sent there.
+func (r FailureReason) provesAddress() bool {
+	return r != ReasonUnsolicited && r != ReasonWrongAddress
 }

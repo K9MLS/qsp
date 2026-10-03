@@ -205,7 +205,11 @@ const VocoderLen = 19
 // The three trailer lengths cycle with the DMR superframe. The 14-byte one
 // carries Link Control; see LinkControl.
 func (m Message) Payload() (payloadClass byte, vocoder, trailer []byte, ok bool) {
-	if !m.Kind.IsVoice() || len(m.Body) < 21+2+VocoderLen {
+	// 28+VocoderLen, the end of the vocoder field. This read 21+2+VocoderLen,
+	// five short, and a voice frame of 42 to 46 body bytes whose own length
+	// byte agreed with it sliced past its end: one datagram from anybody who
+	// could reach the port stopped the server (found 2026-10-03).
+	if !m.Kind.IsVoice() || len(m.Body) < 28+VocoderLen {
 		return 0, nil, nil, false
 	}
 	b := m.Body

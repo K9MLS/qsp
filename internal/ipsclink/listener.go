@@ -416,6 +416,8 @@ type Listener struct {
 	// unparsed counts datagrams this build does not recognise. It is expected
 	// to be non-zero: eight message types are known and IPSC has more.
 	unparsed atomic.Uint64
+	// panics counts datagrams whose handling panicked and was contained.
+	panics atomic.Uint64
 }
 
 // Validate reports whether a configuration can be served.
@@ -924,13 +926,44 @@ func (l *Listener) serve(ctx context.Context) {
 	for {
 		n, from, err := l.conn.ReadFromUDP(buf)
 		if err != nil {
-			if ctx.Err() == nil {
-				l.log.Error("read failed", "error", err)
+			if ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+				return
 			}
-			return
+			// **Carry on.** A read error on a UDP socket is usually one
+			// repeater going away: on Windows the ICMP port-unreachable for
+			// a frame relayed to it comes back as an error on the next read.
+			// Returning here stopped IPSC for every other repeater until a
+			// restart. The pause keeps a persistent error from spinning.
+			l.log.Warn("read failed; still listening", "error", err.Error())
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(readErrorPause):
+			}
+			continue
 		}
-		l.handle(responder, from, buf[:n], time.Now())
+		l.handleSafely(responder, from, buf[:n], time.Now())
 	}
+}
+
+// readErrorPause is how long serve waits after a failed read.
+const readErrorPause = 100 * time.Millisecond
+
+// handleSafely is handle, with one datagram's panic kept to that datagram.
+//
+// **IPSC has no login**, so everything this listener parses came from whoever
+// could reach the port. A parser that indexes past the end of one malformed
+// frame must cost that frame, not every repeater and hotspot on the server.
+// The panic is logged with the frame's size and sender so it can be fixed.
+func (l *Listener) handleSafely(r ipsc.Responder, from *net.UDPAddr, raw []byte, now time.Time) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			l.panics.Add(1)
+			l.log.Error("a datagram could not be handled and was dropped; this is a bug in QSP",
+				"panic", fmt.Sprint(rec), "from", from.String(), "bytes", len(raw))
+		}
+	}()
+	l.handle(r, from, raw, now)
 }
 
 func (l *Listener) handle(r ipsc.Responder, from *net.UDPAddr, raw []byte, now time.Time) {

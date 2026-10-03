@@ -336,12 +336,19 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 
 // handleLogin issues a challenge.
 //
-// A login for an already-registered ID restarts the handshake. That is
+// A login for an already-registered ID is answered with a challenge. That is
 // deliberate: a hotspot that reboots loses its session state and logs in again,
 // and refusing would leave it unable to reconnect until its old registration
-// timed out. The existing registration is not discarded until the new login
-// completes, so an unauthenticated stranger cannot displace a working peer by
-// sending a single packet.
+// timed out.
+//
+// **The working registration is not touched until the new login proves it has
+// the password.** This comment always said so and the code did not do it: it
+// replaced the registration with a challenged one, so one eight-byte RPTL from
+// anybody, naming an ID the public peer list shows, took that hotspot off the
+// air, and one every 25 seconds kept it off (found 2026-10-03). The challenge
+// is now kept beside the registration (Peer.relogins), which goes on passing
+// traffic from its own address; handleKey moves the registration only when
+// the digest is right.
 func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) Outcome {
 	if m.logins.locked(from, now) {
 		// The challenge is where a guesser gets a fresh salt, so a locked
@@ -378,7 +385,7 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 	}
 
 	existing, known := m.peers[msg.RepeaterID]
-	if !known && len(m.peers) >= m.cfg.MaxPeers {
+	if !known && len(m.peers) >= m.cfg.MaxPeers && !m.evictHalfOpen() {
 		return m.reject(msg.RepeaterID, from,
 			fmt.Sprintf("peer limit of %d reached", m.cfg.MaxPeers))
 	}
@@ -397,6 +404,14 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 			slog.String("known_address", existing.Addr.String()),
 			slog.String("new_address", from.String()),
 		)
+	}
+
+	if known && existing.State != StateChallenged {
+		existing.offerRelogin(from, salt, now, m.cfg.LoginTimeout)
+		return Outcome{Responses: []Response{{
+			To:      from,
+			Payload: hbp.Ack{Payload: salt}.Marshal(),
+		}}}
 	}
 
 	p := &Peer{
@@ -437,7 +452,7 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 		return dropped("authentication from repeater ID %d at %s, which has not logged in", msg.RepeaterID, displayAddr(from))
 	}
 	if p.State != StateChallenged {
-		return dropped("authentication from repeater ID %d while %s, not challenged", msg.RepeaterID, p.State)
+		return m.handleReloginKey(p, msg, from, now)
 	}
 	if p.Addr != from {
 		// The digest is bound to a salt issued to a specific address. Accepting
@@ -475,6 +490,66 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 	ack.Payload = id
 
 	return Outcome{Responses: []Response{{To: from, Payload: ack.Marshal()}}}
+}
+
+// handleReloginKey verifies a digest for an ID that is already registered,
+// against the challenge handleLogin kept beside the registration.
+//
+// Right, and the registration moves to the address that proved it: the old
+// session ends there, as it always did once a new login authenticated. Wrong,
+// or with no challenge outstanding for that address, and the working peer
+// never notices.
+func (m *Master) handleReloginKey(p *Peer, msg hbp.Key, from netip.AddrPort, now time.Time) Outcome {
+	r, ok := p.takeRelogin(from, now, m.cfg.LoginTimeout)
+	if !ok {
+		return dropped("authentication from repeater ID %d at %s while %s, with no login in progress from that address",
+			msg.RepeaterID, displayAddr(from), p.State)
+	}
+	password, ok := m.cfg.Password(msg.RepeaterID)
+	if !ok {
+		m.noteFailure(msg.RepeaterID, from, ReasonUnknownID, now)
+		return dropped("no password is configured for repeater ID %d", msg.RepeaterID)
+	}
+	if !hbp.VerifyDigest(r.salt, password, msg.Digest) {
+		m.noteFailure(msg.RepeaterID, from, ReasonWrongPassword, now)
+		return m.reject(msg.RepeaterID, from,
+			fmt.Sprintf("authentication failed for repeater ID %d (wrong password)", msg.RepeaterID))
+	}
+
+	p.Addr = from
+	p.State = StateAuthenticated
+	p.LastHeard = now
+	p.Salt = [4]byte{}
+	p.relogins = nil
+
+	var id [4]byte
+	putRepeaterID(&id, msg.RepeaterID)
+	return Outcome{Responses: []Response{{To: from, Payload: hbp.Ack{Payload: id}.Marshal()}}}
+}
+
+// evictHalfOpen makes room for a login by forgetting the oldest registration
+// that never answered its challenge, and reports whether there was one.
+//
+// **The limit is on stations, not on packets.** A challenged entry costs its
+// sender one unauthenticated datagram, and two hundred of them used to fill
+// the limit for thirty seconds at a time, so a real hotspot was told the
+// server was full. Only a server full of stations that logged in is full.
+func (m *Master) evictHalfOpen() bool {
+	var oldest *Peer
+	for _, p := range m.peers {
+		if p.State != StateChallenged {
+			continue
+		}
+		if oldest == nil || p.FirstSeen.Before(oldest.FirstSeen) ||
+			(p.FirstSeen.Equal(oldest.FirstSeen) && p.ID < oldest.ID) {
+			oldest = p
+		}
+	}
+	if oldest == nil {
+		return false
+	}
+	delete(m.peers, oldest.ID)
+	return true
 }
 
 // handleConfig completes registration.
@@ -795,6 +870,11 @@ func (m *Master) Expire() []Event {
 	// Forget sources whose lockouts and failure runs have both lapsed, so the
 	// map does not grow with every address that ever mistyped a password.
 	m.logins.expire(now)
+	for addr := range m.claimedIDs {
+		if !m.logins.tracked(addr) {
+			delete(m.claimedIDs, addr)
+		}
+	}
 
 	for _, a := range m.expireAttachments(now) {
 		m.log.Debug("talkgroup attachment lapsed",

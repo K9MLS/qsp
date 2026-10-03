@@ -50,7 +50,7 @@ func TestSpentSaltCannotBeReused(t *testing.T) {
 	if len(out.Responses) != 0 {
 		t.Fatal("a spent digest was accepted a second time")
 	}
-	if !strings.Contains(out.Dropped, "not challenged") {
+	if !strings.Contains(out.Dropped, "no login in progress") {
 		t.Errorf("drop reason = %q", out.Dropped)
 	}
 }
@@ -244,28 +244,24 @@ func TestTheServersOwnOriginIsRefused(t *testing.T) {
 }
 
 // TestPeerLimitIsEnforced bounds memory against a flood of distinct IDs.
+//
+// The registry never holds more than the limit. A login that never answered
+// its challenge gives way to a new one rather than refusing it, so a flood of
+// login requests cannot make the server look full to a real hotspot; a server
+// full of stations that did log in refuses, which
+// TestHalfOpenLoginsDoNotFillThePeerLimit covers.
 func TestPeerLimitIsEnforced(t *testing.T) {
 	h := newHarness(t, func(c *peers.MasterConfig) {
 		c.MaxPeers = 3
 		c.Password = func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true }
 	})
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 50; i++ {
 		if out := h.send(hbp.Login{RepeaterID: hbp.RepeaterID(i)}, addrA); out.Dropped != "" {
-			t.Fatalf("peer %d refused below the limit: %s", i, out.Dropped)
+			t.Fatalf("login %d refused while every slot was only half open: %s", i, out.Dropped)
 		}
-	}
-	out := h.send(hbp.Login{RepeaterID: 4}, addrA)
-	// Refused with MSTNAK rather than a challenge, so the peer stops retrying
-	// blindly.
-	if len(out.Responses) == 1 {
-		if msg, err := hbp.Parse(out.Responses[0].Payload); err == nil {
-			if _, isNak := msg.(hbp.Nak); !isNak {
-				t.Errorf("a peer beyond the limit got %s, want MSTNAK", msg.Kind())
-			}
+		if h.m.Count() > 3 {
+			t.Fatalf("registry holds %d peers after %d logins, want at most 3", h.m.Count(), i)
 		}
-	}
-	if !strings.Contains(out.Dropped, "peer limit") {
-		t.Errorf("drop reason = %q", out.Dropped)
 	}
 	if h.m.Count() != 3 {
 		t.Errorf("registry holds %d peers, want 3", h.m.Count())
