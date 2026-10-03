@@ -34,6 +34,11 @@ type VersionStore interface {
 // ErrNotWritable means the configuration file cannot be saved to.
 var ErrNotWritable = errors.New("config: the configuration file is not writable")
 
+// ErrSavedNotApplied marks a save that was recorded and written to the file
+// and could not then be applied to the running instance. It is a save: the
+// version exists and the next restart uses it.
+var ErrSavedNotApplied = errors.New("config: saved, but not applied to the running instance")
+
 // Writer saves a configuration to the file it was loaded from.
 //
 // **The file is the source of truth**, per ADR-0027. The version history says

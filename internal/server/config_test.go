@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -22,6 +24,8 @@ type stubConfig struct {
 	current  config.Config
 	readOnly error
 	saveErr  error
+	// applyErr makes Save record the configuration and then fail to apply it.
+	applyErr error
 	versions []config.Version
 	// saved records what Save was asked to write.
 	saved   []config.Config
@@ -55,7 +59,12 @@ func (c *stubConfig) Save(_ context.Context, cfg config.Config, author, summary 
 	c.saved = append(c.saved, cfg)
 	c.authors = append(c.authors, author)
 	c.current = cfg
-	return config.Version{Number: int64(len(c.saved)), Author: author, Summary: summary}, nil
+	v := config.Version{Number: int64(len(c.saved)), Author: author, Summary: summary}
+	if c.applyErr != nil {
+		// As the real manager: saved, and then not applied.
+		return v, fmt.Errorf("%w; it will take effect on restart: %w", config.ErrSavedNotApplied, c.applyErr)
+	}
+	return v, nil
 }
 
 func (c *stubConfig) Versions(_ context.Context, limit int) ([]config.Version, error) {
@@ -921,4 +930,45 @@ func configEvents(rec *recordingAudit) []audit.Event {
 		}
 	}
 	return out
+}
+
+// A save that was written and then could not be applied to the running
+// server is still a save. It was answered 500 "could not be saved" with no
+// version number and audited as a failure, while the file had changed and
+// the next restart would use it.
+//
+// To see it fail: remove the ErrSavedNotApplied case from handleSaveConfig.
+func TestASaveThatCouldNotBeAppliedIsReportedAsSaved(t *testing.T) {
+	cm := newStubConfig()
+	cm.applyErr = errors.New("the bridge table could not be rebuilt")
+	rec := &recordingAudit{}
+	srv, a := newConfigServer(t, cm, rec)
+
+	next := config.Default()
+	next.Events.HistorySize = 512
+	body, _ := json.Marshal(saveRequest{Config: next, Summary: "bigger history"})
+	res := authed(t, srv, a, http.MethodPost, "/api/config", string(body))
+	if res.Code != http.StatusOK {
+		t.Fatalf("returned %d, want 200 for a configuration that was saved: %s", res.Code, res.Body)
+	}
+	var out saveResponse
+	if err := json.Unmarshal(res.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if out.Version != 1 {
+		t.Errorf("version %d, want the one that was recorded", out.Version)
+	}
+	found := false
+	for _, n := range out.NeedsRestart {
+		if strings.Contains(n, "could not be applied") && strings.Contains(n, "bridge table") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("the operator is not told it is waiting for a restart, or why: %q", out.NeedsRestart)
+	}
+	last := rec.events[len(rec.events)-1]
+	if !strings.HasPrefix(string(last.Action), "config.") || last.Outcome != audit.OutcomeSuccess {
+		t.Errorf("audited as %s %s, want a successful configuration change", last.Action, last.Outcome)
+	}
 }

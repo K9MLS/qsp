@@ -29,6 +29,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1421,7 +1422,7 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.ListenAddress) == "" {
 		v.add("server.listen_address", "must not be empty",
 			"use \"127.0.0.1:8080\" for local access, or \"0.0.0.0:8080\" to listen on every interface")
-	} else if _, _, err := net.SplitHostPort(c.Server.ListenAddress); err != nil {
+	} else if !hostPort(c.Server.ListenAddress) {
 		v.add("server.listen_address", fmt.Sprintf("%q is not a host:port address", c.Server.ListenAddress),
 			"include a port, for example \"127.0.0.1:8080\"")
 	}
@@ -1531,7 +1532,7 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.P25.ListenAddress) == "" {
 			v.add("p25.listen_address", "must not be empty when the P25 listener is enabled",
 				"use \"0.0.0.0:41000\" to accept gateways on every interface")
-		} else if _, _, err := net.SplitHostPort(c.P25.ListenAddress); err != nil {
+		} else if !hostPort(c.P25.ListenAddress) {
 			v.add("p25.listen_address", fmt.Sprintf("%q is not a host:port address", c.P25.ListenAddress),
 				"include a port, for example \"0.0.0.0:41000\"")
 		}
@@ -1551,7 +1552,7 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.IPSC.ListenAddress) == "" {
 			v.add("ipsc.listen_address", "must not be empty when the IPSC listener is enabled",
 				"use \"0.0.0.0:50000\" to accept repeaters on every interface")
-		} else if _, _, err := net.SplitHostPort(c.IPSC.ListenAddress); err != nil {
+		} else if !hostPort(c.IPSC.ListenAddress) {
 			v.add("ipsc.listen_address", fmt.Sprintf("%q is not a host:port address", c.IPSC.ListenAddress),
 				"include a port, for example \"0.0.0.0:50000\"")
 		}
@@ -1618,7 +1619,7 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.DMR.ListenAddress) == "" {
 			v.add("dmr.listen_address", "must not be empty when the DMR listener is enabled",
 				"use \"0.0.0.0:62031\" to accept peers on every interface")
-		} else if _, _, err := net.SplitHostPort(c.DMR.ListenAddress); err != nil {
+		} else if !hostPort(c.DMR.ListenAddress) {
 			v.add("dmr.listen_address", fmt.Sprintf("%q is not a host:port address", c.DMR.ListenAddress),
 				"include a port, for example \"0.0.0.0:62031\"")
 		}
@@ -1706,7 +1707,7 @@ func (c Config) Validate() error {
 			if addr := strings.TrimSpace(t.Address); addr == "" {
 				v.add(tf+".address", "must not be empty",
 					"give the AMBEserver as host:port, for example \"192.168.1.247:2460\"")
-			} else if _, _, err := net.SplitHostPort(addr); err != nil {
+			} else if !hostPort(addr) {
 				v.add(tf+".address", fmt.Sprintf("%q is not a host:port address", t.Address),
 					"include a port; AMBEserver conventionally uses 2460")
 			}
@@ -1847,8 +1848,15 @@ func (c Config) Validate() error {
 				v.add(field+".endpoints", fmt.Sprintf("has %d endpoint(s)", len(b.Endpoints)),
 					"a bridge needs at least 2 endpoints to connect anything")
 			}
+			endpointSeen := map[Endpoint]bool{}
 			for j, e := range b.Endpoints {
 				ef := fmt.Sprintf("%s.endpoints[%d]", field, j)
+				// The router refuses a bridge that lists an endpoint twice,
+				// so a file that does must not be saved.
+				if endpointSeen[e] {
+					v.add(ef, "is the same as an earlier endpoint of this bridge", "remove the duplicate")
+				}
+				endpointSeen[e] = true
 				if e.Talkgroup == 0 {
 					v.add(ef+".talkgroup", "must not be 0",
 						"use the talkgroup number, for example 3148")
@@ -1978,6 +1986,10 @@ func (c Config) Validate() error {
 			if tr.HangTime < 0 {
 				v.add(field+".hang_time", "must not be negative", "use \"3m\", or omit it for the default")
 			}
+			if time.Duration(tr.HangTime) > maxHangTime {
+				v.add(field+".hang_time", fmt.Sprintf("is %s; the most is %s", time.Duration(tr.HangTime), maxHangTime),
+					"use \"3m\"; the limit stops a mistyped value holding a talkgroup open unattended")
+			}
 		}
 
 		// Upstreams. Each link puts a club's audio on somebody else's network,
@@ -2048,7 +2060,7 @@ func (c Config) Validate() error {
 			if strings.TrimSpace(u.Address) == "" {
 				v.add(field+".address", "must not be empty when the link is enabled",
 					"use the far end's host:port, such as \"3102.master.brandmeister.network:62035\"")
-			} else if _, _, err := net.SplitHostPort(u.Address); err != nil {
+			} else if !hostPort(u.Address) {
 				v.add(field+".address", fmt.Sprintf("%q is not host:port", u.Address),
 					"OpenBridge conventionally uses port 62035")
 			}
@@ -2065,7 +2077,7 @@ func (c Config) Validate() error {
 				v.add(field+".listen_address", "must not be empty when the link is enabled",
 					"OpenBridge has no connection setup, so the far end sends to an address "+
 						"agreed in advance; use \"0.0.0.0:62035\"")
-			} else if _, _, err := net.SplitHostPort(u.ListenAddress); err != nil {
+			} else if !hostPort(u.ListenAddress) {
 				v.add(field+".listen_address", fmt.Sprintf("%q is not host:port", u.ListenAddress),
 					"use \"0.0.0.0:62035\"")
 			}
@@ -2173,24 +2185,46 @@ func (c Config) Validate() error {
 				v.add(field+".days", "is empty, so the window would never run",
 					"list weekdays as numbers, 0 for Sunday through 6 for Saturday")
 			}
+			daysSeen := map[int]bool{}
 			for _, d := range w.Days {
 				if d < 0 || d > 6 {
 					v.add(field+".days", fmt.Sprintf("contains %d", d),
 						"use 0 for Sunday through 6 for Saturday")
 					break
 				}
+				if daysSeen[d] {
+					v.add(field+".days", fmt.Sprintf("lists %d twice", d), "list each weekday once")
+					break
+				}
+				daysSeen[d] = true
 			}
 			if _, _, err := parseClock(w.Start); err != nil {
 				v.add(field+".start", fmt.Sprintf("%q is not a time of day", w.Start),
 					"use 24-hour HH:MM, for example \"20:00\"")
 			}
-			if w.Duration <= 0 {
+			// **The same limits the scheduler applies when QSP starts.** These
+			// were looser here, so a window of thirteen hours or a timezone of
+			// "CST" was saved, and the server then refused to start with the
+			// file it had just accepted (found 2026-10-03).
+			switch d := time.Duration(w.Duration); {
+			case d <= 0:
 				v.add(field+".duration", "must be greater than zero",
 					"use \"1h\" for a one-hour net")
+			case d < minWindowDuration:
+				v.add(field+".duration", fmt.Sprintf("is %s; the least is %s", d, minWindowDuration),
+					"use \"1h\" for a one-hour net")
+			case d > maxWindowDuration:
+				v.add(field+".duration", fmt.Sprintf("is %s; the most is %s", d, maxWindowDuration),
+					"split a longer net into two windows; the limit stops a mistyped schedule "+
+						"holding a talkgroup open for days")
 			}
 			if strings.TrimSpace(w.Timezone) == "" {
 				v.add(field+".timezone", "must not be empty",
 					"use an IANA name such as \"America/Chicago\", not an abbreviation like \"CST\"")
+			} else if _, err := time.LoadLocation(w.Timezone); err != nil {
+				v.add(field+".timezone", fmt.Sprintf("%q is not a timezone this server knows", w.Timezone),
+					"use an IANA name such as \"America/Chicago\" or \"Europe/London\", "+
+						"not an abbreviation like \"CST\"")
 			}
 		}
 
@@ -2391,4 +2425,27 @@ func parseClock(s string) (hour, minute int, err error) {
 		return 0, 0, fmt.Errorf("%q is not a valid time of day", s)
 	}
 	return hour, minute, nil
+}
+
+// The scheduler's and the router's own limits, restated here so this package
+// need not import them. A test holds each pair together.
+const (
+	minWindowDuration = time.Minute
+	maxWindowDuration = 12 * time.Hour
+	maxHangTime       = 30 * time.Minute
+)
+
+// hostPort reports whether addr is host:port with a port a socket can use.
+//
+// **The port is checked, not only the colon.** "0.0.0.0:70000" and "0.0.0.0:"
+// both split, were both saved, and both stopped the next start at the bind.
+// Port 0 is allowed: it asks the system for any free port, which the tests
+// and an operator trying something both use.
+func hostPort(addr string) bool {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	n, err := strconv.Atoi(port)
+	return err == nil && n >= 0 && n <= 65535
 }

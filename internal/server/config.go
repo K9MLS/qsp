@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
@@ -157,7 +158,20 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	version, err := s.opts.Config.Save(r.Context(), req.Config, session.Username, req.Summary)
-	if err != nil {
+	needsRestart := config.NeedsRestart(before, req.Config)
+	switch {
+	case errors.Is(err, config.ErrSavedNotApplied):
+		// **Saved is saved.** The version is recorded and the file written;
+		// answering "could not be saved" here, with no version number and a
+		// failure in the audit trail, told the operator the opposite of what
+		// had happened, and the next restart then surprised them with it
+		// (found 2026-10-03). It is reported as the save it was, with the
+		// reason it is not live yet where the page shows what needs a restart.
+		s.log.Warn("configuration saved but not applied to the running instance",
+			"author", session.Username, "version", version.Number, "error", err)
+		needsRestart = append(needsRestart, "everything in this save: it could not be applied "+
+			"while running ("+unwrapApply(err)+")")
+	case err != nil:
 		s.writeSaveError(w, r, session.Username, err)
 		return
 	}
@@ -169,8 +183,18 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.log, http.StatusOK, saveResponse{
 		Version:      version.Number,
 		Changes:      changes,
-		NeedsRestart: config.NeedsRestart(before, req.Config),
+		NeedsRestart: needsRestart,
 	})
+}
+
+// unwrapApply gives the reason a saved configuration could not be applied,
+// without the sentinel's own words in front of it.
+func unwrapApply(err error) string {
+	msg := err.Error()
+	if _, reason, ok := strings.Cut(msg, "; it will take effect on restart: "); ok {
+		return reason
+	}
+	return msg
 }
 
 // writeSaveError turns a refused save into something actionable.

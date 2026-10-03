@@ -122,8 +122,8 @@ func (m *configManager) Save(ctx context.Context, cfg config.Config, author, sum
 			// Written and not applied. Reporting success would leave the
 			// operator believing a change is live when the next restart is
 			// what will make it so.
-			return version, fmt.Errorf("the configuration was saved but could not be applied "+
-				"to the running instance; it will take effect on restart: %w", err)
+			return version, fmt.Errorf("%w; it will take effect on restart: %w",
+				config.ErrSavedNotApplied, err)
 		}
 	}
 	return version, nil

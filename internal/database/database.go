@@ -18,6 +18,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -90,23 +91,30 @@ func Open(ctx context.Context, log *slog.Logger, opts Options) (*DB, error) {
 			ErrDriverNotRegistered, opts.Driver, have)
 	}
 
-	handle, err := sql.Open(opts.Driver, opts.DSN)
+	probe, err := sql.Open(opts.Driver, opts.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open database with driver %q: %w", opts.Driver, err)
 	}
+	// **Every connection, not the first one.** The pragmas were run once on
+	// the pool, which is to say on whichever connection the pool handed over.
+	// busy_timeout and foreign_keys belong to a connection: the other three
+	// of the pool's four never had them, and the one that did was recycled
+	// after ConnMaxLifetime, an hour. From then on any two writes that
+	// overlapped failed at once with SQLITE_BUSY, and a call record or an
+	// audit event was lost (found 2026-10-03). A connector runs them on each
+	// connection as it is made, without this package learning the driver's
+	// DSN syntax (ADR-0005).
+	drv := probe.Driver()
+	if err := probe.Close(); err != nil {
+		return nil, fmt.Errorf("cannot open database with driver %q: %w", opts.Driver, err)
+	}
+	handle := sql.OpenDB(&pragmaConnector{drv: drv, dsn: opts.DSN, pragmas: pragmasFor(opts)})
 
 	if opts.MaxOpenConns > 0 {
 		handle.SetMaxOpenConns(opts.MaxOpenConns)
 	}
 	if opts.ConnMaxLifetime > 0 {
 		handle.SetConnMaxLifetime(opts.ConnMaxLifetime)
-	}
-
-	if err := applyPragmas(ctx, handle, opts); err != nil {
-		if closeErr := handle.Close(); closeErr != nil {
-			return nil, fmt.Errorf("%w (and closing the handle failed: %v)", err, closeErr)
-		}
-		return nil, err
 	}
 
 	if err := handle.PingContext(ctx); err != nil {
@@ -120,7 +128,7 @@ func Open(ctx context.Context, log *slog.Logger, opts Options) (*DB, error) {
 	return &DB{sql: handle, log: logging.Subsystem(log, "database")}, nil
 }
 
-// applyPragmas sets the three SQLite defaults this project cannot live with.
+// pragmasFor lists the three SQLite defaults this project cannot live with.
 //
 // **None of them were being set.** `sql.Open` was given a bare DSN and the
 // connection took SQLite's defaults, which are chosen for a single-process
@@ -146,22 +154,63 @@ func Open(ctx context.Context, log *slog.Logger, opts Options) (*DB, error) {
 //
 // Set with SQL rather than DSN parameters, because DSN syntax is the driver's
 // and ADR-0005 keeps this package from knowing which driver it has.
-func applyPragmas(ctx context.Context, handle *sql.DB, opts Options) error {
+func pragmasFor(opts Options) []string {
 	ms := opts.BusyTimeout.Milliseconds()
 	if ms <= 0 {
 		ms = 5000
 	}
-	pragmas := []string{
+	return []string{
+		// First, so the two after it wait for a lock rather than fail on one.
 		fmt.Sprintf("PRAGMA busy_timeout = %d", ms),
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA foreign_keys = ON",
 	}
-	for _, p := range pragmas {
-		if _, err := handle.ExecContext(ctx, p); err != nil {
-			return fmt.Errorf("cannot apply %q: %w", p, err)
+}
+
+// pragmaConnector opens connections with the driver and runs the pragmas on
+// each before the pool sees it.
+type pragmaConnector struct {
+	drv     driver.Driver
+	dsn     string
+	pragmas []string
+}
+
+func (c *pragmaConnector) Driver() driver.Driver { return c.drv }
+
+func (c *pragmaConnector) Connect(ctx context.Context) (driver.Conn, error) {
+	conn, err := c.drv.Open(c.dsn)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range c.pragmas {
+		if err := execOn(ctx, conn, p); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("cannot apply %q: %w", p, err)
 		}
 	}
-	return nil
+	return conn, nil
+}
+
+// execOn runs one statement with no arguments on a raw driver connection.
+func execOn(ctx context.Context, conn driver.Conn, query string) error {
+	if ex, ok := conn.(driver.ExecerContext); ok {
+		_, err := ex.ExecContext(ctx, query, nil)
+		if !errors.Is(err, driver.ErrSkip) {
+			return err
+		}
+	}
+	stmt, err := conn.Prepare(query)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
+	if sc, ok := stmt.(driver.StmtExecContext); ok {
+		_, err = sc.ExecContext(ctx, nil)
+		return err
+	}
+	//lint:ignore SA1019 the fallback for a driver with no context-aware statement
+	_, err = stmt.Exec(nil)
+	return err
 }
 
 // SQL exposes the underlying handle for repository implementations.

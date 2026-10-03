@@ -61,6 +61,36 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Bug hunt, fifth patch: things that break after days, or at the next
+  restart.**
+  - **A link's far end is looked up more than once.** Both link transports
+    resolved the name at start and never again. A neighbour on dynamic DNS
+    whose address changed was dialled at the old one until QSP restarted;
+    and a name that did not resolve at boot stopped QSP starting, one absent
+    neighbour taking every local repeater with it. A link that is down now
+    looks its far end up again each minute and dials the new address, an
+    OpenBridge link (which has no handshake to say it is down) looks every
+    minute, and a name that does not resolve is a warning and a retry rather
+    than a failed start. A malformed address still stops the start.
+  - **SQLite's busy timeout and foreign keys were set on one connection of
+    the pool's four**, and that one was recycled after an hour. After that,
+    two writes that overlapped failed at once and a call record or audit
+    event was lost. They are now applied to every connection as it is made.
+  - **A configuration could be saved that the server would not start with**:
+    a schedule timezone like "CST", a window under a minute or over twelve
+    hours, a weekday listed twice, a trigger hang time over thirty minutes,
+    a bridge endpoint listed twice, or a listen port that is not a port.
+    Validation now applies the limits the scheduler, the router and the
+    socket do, and a test holds them together.
+  - **A save that was written but could not be applied live was reported as
+    "could not be saved"**, with no version number and a failure in the
+    audit trail. It is reported as the save it was, and the page says it is
+    waiting for a restart and why.
+
+  Tests: `internal/upstream/resolve_test.go`,
+  `internal/database/pragmas_test.go`, `internal/config/startable_test.go`,
+  and one in `internal/server/config_test.go`.
+
 - **Bug hunt, third patch: routing.** Reproduced first, as before.
   - **A text reached a link as its first burst and nothing else.** A text is
     a run of data bursts with a stream ID each. Peers have been exempt from

@@ -31,6 +31,11 @@ type PeerConfig struct {
 	// TickInterval is how often the state machine is given the chance to act
 	// on elapsed time. Zero selects DefaultTickInterval.
 	TickInterval time.Duration
+	// Resolve looks the far end up. Nil means the system resolver.
+	Resolve Resolver
+	// ResolveInterval is how often a link that is not connected looks the
+	// far end up again. Zero selects DefaultResolveInterval.
+	ResolveInterval time.Duration
 	// Now supplies the clock. Nil means time.Now.
 	Now func() time.Time
 }
@@ -52,10 +57,20 @@ const DefaultTickInterval = time.Second
 // outward. Serialising them is this type's job, so the state machine stays a
 // pure function of its inputs and remains testable without any of this.
 type PeerLink struct {
-	cfg  PeerConfig
-	log  *slog.Logger
-	now  func() time.Time
-	conn *net.UDPConn
+	cfg PeerConfig
+	log *slog.Logger
+	now func() time.Time
+
+	// connMu guards conn, remote and resolved. conn is nil until the far
+	// end's name has resolved, and is replaced when it resolves to somewhere
+	// new; see redial.
+	connMu   sync.Mutex
+	conn     *net.UDPConn
+	remote   *net.UDPAddr
+	resolved time.Time
+	// lookupFailing is set while the name does not resolve, so that is said
+	// once rather than every minute.
+	lookupFailing bool
 
 	running atomic.Bool
 
@@ -92,6 +107,12 @@ func NewPeer(log *slog.Logger, cfg PeerConfig) (*PeerLink, error) {
 	if cfg.TickInterval <= 0 {
 		cfg.TickInterval = DefaultTickInterval
 	}
+	if cfg.Resolve == nil {
+		cfg.Resolve = systemResolver
+	}
+	if cfg.ResolveInterval <= 0 {
+		cfg.ResolveInterval = DefaultResolveInterval
+	}
 	now := cfg.Now
 	if now == nil {
 		now = time.Now
@@ -113,21 +134,17 @@ func (l *PeerLink) Name() string { return l.cfg.Name }
 // between this and an OpenBridge link: QSP is dialling out, so the kernel can
 // discard datagrams from anywhere else before they reach this code.
 func (l *PeerLink) Start(ctx context.Context) error {
-	dest, err := net.ResolveUDPAddr("udp", l.cfg.TargetAddress)
-	if err != nil {
+	// A malformed address is a configuration mistake and stops the start. A
+	// name that does not resolve right now is not: the link starts, says so,
+	// and looks again every ResolveInterval.
+	if err := checkAddress(l.cfg.TargetAddress); err != nil {
 		return fmt.Errorf("upstream %q: cannot understand target address %q: %w "+
 			"(use host:port, for example \"xlx950.example.org:62030\")",
 			l.cfg.Name, l.cfg.TargetAddress, err)
 	}
-
-	conn, err := net.DialUDP("udp", nil, dest)
-	if err != nil {
-		return fmt.Errorf("upstream %q: cannot reach %s: %w", l.cfg.Name, dest, err)
-	}
-	l.conn = conn
 	l.running.Store(true)
-
-	l.log.Info("outbound link starting", "target", dest.String())
+	l.log.Info("outbound link starting", "target", l.cfg.TargetAddress)
+	l.redial()
 
 	l.mu.Lock()
 	out := l.link.Start()
@@ -136,6 +153,74 @@ func (l *PeerLink) Start(ctx context.Context) error {
 
 	go l.serve(ctx)
 	return nil
+}
+
+// current returns the socket in use, nil while the far end's name has not
+// resolved.
+func (l *PeerLink) current() *net.UDPConn {
+	l.connMu.Lock()
+	defer l.connMu.Unlock()
+	return l.conn
+}
+
+// redial looks the far end up and, if it is somewhere new or was never
+// found, dials it there. The old socket is closed after the new one is in
+// place, and the reader notices the change and carries on with the new one.
+func (l *PeerLink) redial() {
+	dest, err := l.cfg.Resolve(l.cfg.TargetAddress)
+
+	l.connMu.Lock()
+	l.resolved = l.now()
+	if err != nil {
+		first := !l.lookupFailing
+		l.lookupFailing = true
+		l.connMu.Unlock()
+		if first {
+			l.log.Warn("the far end's address cannot be looked up; the link keeps trying",
+				"target", l.cfg.TargetAddress, "error", err)
+		}
+		return
+	}
+	wasFailing := l.lookupFailing
+	l.lookupFailing = false
+	if l.conn != nil && sameAddr(l.remote, dest) {
+		l.connMu.Unlock()
+		return
+	}
+	conn, err := net.DialUDP("udp", nil, dest)
+	if err != nil {
+		l.connMu.Unlock()
+		l.log.Warn("cannot open a socket to the far end", "target", dest.String(), "error", err)
+		return
+	}
+	old, moved := l.conn, l.remote
+	l.conn, l.remote = conn, dest
+	l.connMu.Unlock()
+
+	switch {
+	case old != nil:
+		_ = old.Close()
+		l.log.Info("the far end's address changed; dialling the new one",
+			"was", moved.String(), "now", dest.String())
+	case wasFailing:
+		l.log.Info("the far end's address was found", "target", dest.String())
+	}
+}
+
+// maybeRedial looks the far end up again when the link is down and the last
+// lookup is old enough. A connected link is left alone: its address works.
+func (l *PeerLink) maybeRedial() {
+	l.connMu.Lock()
+	have := l.conn != nil
+	due := l.now().Sub(l.resolved) >= l.cfg.ResolveInterval
+	l.connMu.Unlock()
+	if !due || (have && isLiteral(l.cfg.TargetAddress)) {
+		return
+	}
+	if have && l.State() == homebrew.StateConnected {
+		return
+	}
+	l.redial()
 }
 
 // Close stops the link, telling the far end first.
@@ -152,8 +237,8 @@ func (l *PeerLink) Close() error {
 	l.mu.Unlock()
 	l.apply(out)
 
-	if l.conn != nil {
-		return l.conn.Close()
+	if conn := l.current(); conn != nil {
+		return conn.Close()
 	}
 	return nil
 }
@@ -178,7 +263,11 @@ func (l *PeerLink) Send(frame hbp.Data) error {
 	}
 	l.mu.Unlock()
 
-	if _, err := l.conn.Write(payload); err != nil {
+	conn := l.current()
+	if conn == nil {
+		return fmt.Errorf("upstream %q: the far end's address has not been found yet", l.cfg.Name)
+	}
+	if _, err := conn.Write(payload); err != nil {
 		l.mu.Lock()
 		l.stats.SendErrors++
 		l.mu.Unlock()
@@ -194,10 +283,11 @@ func (l *PeerLink) Send(frame hbp.Data) error {
 // decided to say.
 func (l *PeerLink) apply(out homebrew.Outcome) {
 	for _, payload := range out.Send {
-		if l.conn == nil {
-			return
+		conn := l.current()
+		if conn == nil {
+			break
 		}
-		if _, err := l.conn.Write(payload); err != nil {
+		if _, err := conn.Write(payload); err != nil {
 			l.mu.Lock()
 			l.stats.SendErrors++
 			l.mu.Unlock()
@@ -251,15 +341,39 @@ func (l *PeerLink) serve(ctx context.Context) {
 				out := l.link.Tick()
 				l.mu.Unlock()
 				l.apply(out)
+				l.maybeRedial()
 			}
 		}
 	}()
 
 	buf := make([]byte, 1024)
 	for {
-		n, err := l.conn.Read(buf)
+		conn := l.current()
+		if conn == nil {
+			// The far end's name has not resolved yet; the ticker is looking.
+			select {
+			case <-ctx.Done():
+				l.log.Info("outbound link closed")
+				return
+			case <-time.After(l.cfg.TickInterval):
+			}
+			if !l.running.Load() {
+				l.log.Info("outbound link closed")
+				return
+			}
+			continue
+		}
+		n, err := conn.Read(buf)
 		if err != nil {
-			if ctx.Err() != nil || !l.running.Load() || errors.Is(err, net.ErrClosed) {
+			if ctx.Err() != nil || !l.running.Load() {
+				l.log.Info("outbound link closed")
+				return
+			}
+			if conn != l.current() {
+				// The far end moved and redial replaced the socket.
+				continue
+			}
+			if errors.Is(err, net.ErrClosed) {
 				l.log.Info("outbound link closed")
 				return
 			}

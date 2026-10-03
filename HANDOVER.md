@@ -124,18 +124,21 @@ private call. **0.1.298 is the rest of the security findings**: the setup
 token behind a proxy, addresses on the event stream, and bans that did not
 apply to a connected repeater or over a link.
 
-**Still open from the hunt** (reviewed, not yet fixed, in rough order of
-worth): a link's hostname is resolved once at start, and one that does not
-resolve stops QSP starting; SQLite's busy timeout and foreign keys are set on
-one pooled connection only; configuration Validate accepts schedules, hang
-times and ports the server then refuses to start with; a save that fails to
-apply is reported as not saved though it was; link handlers edit the running
-configuration in place; the full backup omits link and peer password files;
-the Zello "USRP audio stopped without a release" line (likely a full queue
-dropping the release; check `dropped_from_usrp`); a hotspot can claim to be a
-linked QSP server; console login lockout can be used against an
+**0.1.299 is the long-uptime findings**: links look their far end up again
+(and a name that does not resolve no longer stops QSP starting), SQLite's
+settings reach every pooled connection, validation refuses what the server
+would not start with, and a save that could not be applied live is reported
+as saved. **The pragma change could only be tested here against a recording
+driver; Fedora's check.sh is the first run against real SQLite.**
+
+**Still open from the hunt** (reviewed, not yet fixed): link handlers edit
+the running configuration in place; the full backup omits link and peer
+password files; revert and restore skip some load-time fixes and pin too
+little; the Zello "USRP audio stopped without a release" line (likely a full
+queue dropping the release; check `dropped_from_usrp`); a hotspot can claim
+to be a linked QSP server; console login lockout can be used against an
 administrator; weather alerts with no end time from NWS read their expiry as
-their end. The reviewers' full reports are in the 2026-10-03 session.
+their end; retention 0 stops pruning rather than pruning everything. The reviewers' full reports are in the 2026-10-03 session.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -211,7 +214,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.298 | `cat VERSION` |
+| **Fedora working tree** | 0.1.299 | `cat VERSION` |
 | **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |

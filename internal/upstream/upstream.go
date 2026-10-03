@@ -50,6 +50,11 @@ type Config struct {
 	// It runs on the link's read goroutine, so it must not block: a slow
 	// receiver stops the link reading, and UDP discards what it cannot deliver.
 	Receive func(name string, frame hbp.Data)
+	// Resolve looks the far end up. Nil means the system resolver.
+	Resolve Resolver
+	// ResolveInterval is how often the far end is looked up again. Zero
+	// selects DefaultResolveInterval.
+	ResolveInterval time.Duration
 	// Now supplies the clock. Nil means time.Now.
 	Now func() time.Time
 }
@@ -60,7 +65,12 @@ type Link struct {
 	log  *slog.Logger
 	now  func() time.Time
 	conn *net.UDPConn
-	dest *net.UDPAddr
+
+	// destMu guards dest, which is nil until the far end's name resolves and
+	// changes when it resolves to somewhere new.
+	destMu   sync.Mutex
+	dest     *net.UDPAddr
+	lookedUp bool
 
 	running atomic.Bool
 
@@ -136,8 +146,9 @@ func (l *Link) Name() string { return l.cfg.Name }
 
 // Start binds the socket and begins receiving.
 func (l *Link) Start(ctx context.Context) error {
-	dest, err := net.ResolveUDPAddr("udp", l.cfg.TargetAddress)
-	if err != nil {
+	// As PeerLink.Start: a malformed address stops the start, a name that
+	// does not resolve today does not.
+	if err := checkAddress(l.cfg.TargetAddress); err != nil {
 		return fmt.Errorf("upstream %q: cannot understand target address %q: %w "+
 			"(use host:port, for example \"3102.master.brandmeister.network:62035\")",
 			l.cfg.Name, l.cfg.TargetAddress, err)
@@ -156,8 +167,12 @@ func (l *Link) Start(ctx context.Context) error {
 	}
 
 	l.conn = conn
-	l.dest = dest
 	l.running.Store(true)
+	if !l.lookup() {
+		l.log.Warn("the far end's address cannot be looked up; the link keeps trying",
+			"target", l.cfg.TargetAddress)
+	}
+	go l.keepResolving(ctx)
 
 	l.log.Info("link open",
 		"target", l.cfg.TargetAddress,
@@ -166,6 +181,60 @@ func (l *Link) Start(ctx context.Context) error {
 
 	go l.serve(ctx)
 	return nil
+}
+
+// lookup resolves the far end and adopts the answer, reporting whether there
+// is an address to send to afterwards.
+func (l *Link) lookup() bool {
+	resolve := l.cfg.Resolve
+	if resolve == nil {
+		resolve = systemResolver
+	}
+	dest, err := resolve(l.cfg.TargetAddress)
+
+	l.destMu.Lock()
+	defer l.destMu.Unlock()
+	failedBefore := l.lookedUp && l.dest == nil
+	l.lookedUp = true
+	if err != nil {
+		return l.dest != nil
+	}
+	if l.dest != nil && !sameAddr(l.dest, dest) {
+		l.log.Info("the far end's address changed", "was", l.dest.String(), "now", dest.String())
+	} else if failedBefore {
+		l.log.Info("the far end's address was found", "target", dest.String())
+	}
+	l.dest = dest
+	return true
+}
+
+// keepResolving looks the far end up again every ResolveInterval. OpenBridge
+// has no keepalive to say the far end has gone, so this cannot wait for an
+// outage the way PeerLink does; a name by IP address is never looked up again.
+func (l *Link) keepResolving(ctx context.Context) {
+	l.destMu.Lock()
+	have := l.dest != nil
+	l.destMu.Unlock()
+	if have && isLiteral(l.cfg.TargetAddress) {
+		return
+	}
+	every := l.cfg.ResolveInterval
+	if every <= 0 {
+		every = DefaultResolveInterval
+	}
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			if !l.running.Load() {
+				return
+			}
+			l.lookup()
+		}
+	}
 }
 
 // Address reports the local address actually bound, which differs from the
@@ -201,7 +270,13 @@ func (l *Link) Send(frame hbp.Data) error {
 		return fmt.Errorf("upstream %q: %w", l.cfg.Name, err)
 	}
 
-	if _, err := l.conn.WriteToUDP(packet, l.dest); err != nil {
+	l.destMu.Lock()
+	dest := l.dest
+	l.destMu.Unlock()
+	if dest == nil {
+		return fmt.Errorf("upstream %q: the far end's address has not been found yet", l.cfg.Name)
+	}
+	if _, err := l.conn.WriteToUDP(packet, dest); err != nil {
 		l.mu.Lock()
 		l.stats.SendErrors++
 		l.mu.Unlock()
