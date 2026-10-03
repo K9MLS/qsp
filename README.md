@@ -7,6 +7,12 @@ QSP is named for the Q-code meaning *"I will relay your message."*
 Run it on a machine you own, point your hotspots and repeaters at it, and run
 your club's network from a web browser. No dealer, no licence fee, no INI files.
 
+![The QSP console's Overview: traffic counters, four connected hotspots, the last transmissions heard with one in progress, and a map of where the hotspots are](docs/images/overview.png)
+
+*The Overview, as any visitor sees it. The stations are invented:
+[`scripts/overview-screenshot/run.sh`](scripts/overview-screenshot/run.sh)
+starts a server, logs four demonstration hotspots in and takes the picture.*
+
 ## What it does
 
 - **Hotspots and repeaters connect to it.** Pi-Star and WPSD hotspots, and
@@ -23,6 +29,8 @@ your club's network from a web browser. No dealer, no licence fee, no INI files.
   [`docs/P25-GATEWAY.md`](docs/P25-GATEWAY.md) is how to point one at it.
 - **Zello channels** are linked to a talkgroup through an AMBE vocoder dongle,
   bought separately. See [`docs/ZELLO.md`](docs/ZELLO.md).
+- **Weather alerts** from the US National Weather Service go out as text
+  messages to the radios on your own server, for the counties you choose.
 - **Everything is set up from a web console**: who may connect, bridges, the
   schedule, links, accounts, the call record, backup and restore.
 

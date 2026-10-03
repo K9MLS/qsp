@@ -2,6 +2,7 @@
 /qsp
 /qsp-*
 /dist/
+/build/
 *.exe
 
 # Local databases and configuration

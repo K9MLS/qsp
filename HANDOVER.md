@@ -149,6 +149,13 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.302 changes no code a station runs**: the README gains a picture of
+the Overview, made from invented stations by
+`scripts/overview-screenshot/run.sh` (regenerate it when the page changes;
+it shows the version), and `build/`, where the Zello connector is compiled,
+is ignored by git and by the address scan, which a leftover binary there had
+failed.
+
 **Still open from the hunt**: a hotspot can claim to be a linked QSP server
 and is then offered private calls for radios not yet located (needs linked
 servers to prove who they are — K9MLS to decide); the connector's own
@@ -231,10 +238,10 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.301 | `cat VERSION` |
-| **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
-| **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |
+| **Fedora working tree** | 0.1.302 | `cat VERSION` |
+| **GitHub** `main` | 0.1.301, tagged `v0.1.301`, pushed 2026-10-03 | the push output (`8b1f5ec..b0cc257`); Actions green, by K9MLS's report |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.301** from 2026-10-03, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
+| **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
 
 **The compose files pin the working tree's version, enforced by
 `TestThePublishedImageIsPinnedToThisVersion`**, so between tags `main` names an

@@ -59,7 +59,11 @@ func TestTheRepositoryPublishesNoAddress(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			if d.Name() == ".git" {
+			// build/ is where docs/ZELLO.md has the connector compiled. It is
+			// not committed, and a binary is full of version strings that
+			// read as addresses: one left there failed this test on the
+			// machine that had just built it.
+			if d.Name() == ".git" || path == filepath.Join(repoRoot, "build") {
 				return fs.SkipDir
 			}
 			return nil

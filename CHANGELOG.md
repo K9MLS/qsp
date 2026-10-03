@@ -4,6 +4,21 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Documentation
+
+- **The README shows the Overview.** The picture is of the real console with
+  invented stations: `scripts/overview-screenshot/run.sh` starts a server on
+  the machine, logs four demonstration hotspots in (callsigns K9MLS and
+  N0CALL, radio IDs beginning 999, which no country is allocated), has them
+  talk, and photographs the page as a visitor who is not signed in sees it.
+  No member's callsign, radio ID or address is published, and the picture
+  can be made again whenever the page changes.
+- The README's list of what QSP does names weather alerts.
+- `build/`, where `docs/ZELLO.md` has the connector compiled, is ignored by
+  git and skipped by `TestTheRepositoryPublishesNoAddress`. A binary left
+  there holds version strings that read as addresses and failed the check
+  on the machine that had just built it.
+
 ### Security
 
 - **Bug hunt, sixth patch: the console.**
