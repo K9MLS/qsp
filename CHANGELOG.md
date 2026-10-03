@@ -39,6 +39,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Bug hunt, third patch: routing.** Reproduced first, as before.
+  - **A text reached a link as its first burst and nothing else.** A text is
+    a run of data bursts with a stream ID each. Peers have been exempt from
+    contention with themselves since texts first worked; links and
+    transcoders were not, so of seventeen bursts the hotspots got seventeen
+    and a QSP link, an OpenBridge link and a transcoder got one each.
+    Announcements and texts over a link this server dialled were unreadable
+    at the far end. (A server that dialled in is a peer and was unaffected,
+    which is why private texts between the two servers worked on air.)
+  - **A talkgroup allow list refused every private call and private text.**
+    A private call's target is a radio ID, and it was tested as a talkgroup.
+    Private calls are no longer subject to `dmr.access.talkgroups`.
+  - **A replay replaced by a newer one forgot the newer one.** The player
+    then reported nothing playing to that peer, so a key-up could not stop
+    the replay and a text could be sent over it.
+
+  **Looked at and left alone:** a bridge between two talkgroups on "any
+  peer" delivers the bridged talkgroup to the other hotspots, not the one
+  keyed. The review called it a bug; the existing tests and the on-air
+  capture test pin it as the design (a bridge translates, and a timeslot
+  carries one copy). Changing it is a decision, not a fix.
+
+  Tests: `internal/routing/text_links_test.go`,
+  `internal/parrot/player_test.go`.
+
 - **Bug hunt, second patch: weather alerts that were held or sent wrongly.**
   All found by review of 0.1.294 and reproduced first.
   - **A watch upgraded to a warning was not sent.** NWS issues the warning as

@@ -46,8 +46,15 @@ type Player struct {
 	finished string
 
 	// mu guards running, which is the set of peers being replayed to.
-	mu      sync.Mutex
-	running map[hbp.RepeaterID]context.CancelFunc
+	mu         sync.Mutex
+	running    map[hbp.RepeaterID]running
+	generation uint64
+}
+
+// running is one replay in progress: how to stop it, and which Start it was.
+type running struct {
+	cancel context.CancelFunc
+	gen    uint64
 }
 
 // PlayerStats counts what happened, for the health report.
@@ -80,7 +87,7 @@ func NewPlayerAs(log *slog.Logger, sink Sink, finished string) *Player {
 		sink:     sink,
 		stats:    &PlayerStats{},
 		finished: finished,
-		running:  make(map[hbp.RepeaterID]context.CancelFunc),
+		running:  make(map[hbp.RepeaterID]running),
 	}
 }
 
@@ -105,16 +112,18 @@ func (p *Player) Start(ctx context.Context, rec Recording) {
 
 	inner, cancel := context.WithCancel(ctx)
 	p.mu.Lock()
-	p.running[rec.Peer] = cancel
+	p.generation++
+	gen := p.generation
+	p.running[rec.Peer] = running{cancel: cancel, gen: gen}
 	p.mu.Unlock()
 
-	go p.play(inner, rec)
+	go p.play(inner, rec, gen)
 }
 
 // Stop ends a peer's replay, if one is running.
 func (p *Player) Stop(peer hbp.RepeaterID) {
 	p.mu.Lock()
-	cancel := p.running[peer]
+	cancel := p.running[peer].cancel
 	delete(p.running, peer)
 	p.mu.Unlock()
 
@@ -134,10 +143,16 @@ func (p *Player) Active() int {
 }
 
 // play sends the frames, then forgets the peer.
-func (p *Player) play(ctx context.Context, rec Recording) {
+func (p *Player) play(ctx context.Context, rec Recording, gen uint64) {
 	defer func() {
 		p.mu.Lock()
-		delete(p.running, rec.Peer)
+		// **Only its own entry.** A replay cancelled by the one that replaced
+		// it used to delete its successor's entry on the way out, and the
+		// player then said nothing was playing to that peer while something
+		// was: a key-up could not stop it and a text was sent over it.
+		if p.running[rec.Peer].gen == gen {
+			delete(p.running, rec.Peer)
+		}
 		p.mu.Unlock()
 	}()
 

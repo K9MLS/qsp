@@ -666,7 +666,7 @@ func (c *Core) routeScoped(origin Endpoint, frame hbp.Data, now time.Time, local
 	// translates, so a frame arriving on TG 9 and leaving on TG 91 is tested
 	// against two different entries — and the arriving talkgroup is the one an
 	// operator means when they say which talkgroups their network carries.
-	if !c.access.Talkgroups(int(origin.Timeslot)).Allows(origin.Talkgroup) {
+	if !c.talkgroupAllowed(frame, origin.Timeslot, origin.Talkgroup) {
 		return Result{Reason: fmt.Sprintf(
 			"talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
 			origin.Talkgroup, origin.Timeslot)}
@@ -986,7 +986,7 @@ func (c *Core) routeScoped(origin Endpoint, frame hbp.Data, now time.Time, local
 			// console shows it the way it shows any other refused destination.
 			// Nothing is reserved: a destination refused by an access list is
 			// not carrying this transmission and must stay free for the next.
-			if !c.access.Talkgroups(int(dest.Timeslot)).Allows(dest.Talkgroup) {
+			if !c.talkgroupAllowed(frame, dest.Timeslot, dest.Talkgroup) {
 				res.Drops = append(res.Drops, Drop{
 					To: dest,
 					Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by "+
@@ -1179,7 +1179,7 @@ func unlocatedResult(frame hbp.Data, partial ...Result) Result {
 func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src sourceKey, bridge string, now time.Time) {
 	// A link is a destination like any other, and a talkgroup this instance
 	// does not carry should not be exported to somebody else's network either.
-	if !c.access.Talkgroups(int(target.Timeslot)).Allows(target.Talkgroup) {
+	if !c.talkgroupAllowed(frame, target.Timeslot, target.Talkgroup) {
 		res.Drops = append(res.Drops, Drop{
 			To: target,
 			Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
@@ -1193,6 +1193,13 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 	key := contend(target)
 	held, occupied := c.busy[key]
 	switch {
+	case occupied && held.source != src && sameOrigin(held.source, src) && !contendsForSlot(frame):
+		// **A data burst from the station already holding the link.** A text
+		// is a run of bursts with a stream ID each, and peers have been
+		// exempt from contention with themselves since texts first worked;
+		// links were not, so a text left for a link as its first burst and
+		// nothing else (found 2026-10-03: seventeen bursts to the hotspots,
+		// one to the link). Delivered without disturbing the reservation.
 	case occupied && held.source != src:
 		if now.Sub(held.lastSeen) <= c.timeout {
 			res.Drops = append(res.Drops, Drop{
@@ -1233,7 +1240,7 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 // ADR-0063: the key comes from contend, which drops the talkgroup and the
 // timeslot, so a chip carrying one call refuses a second on any talkgroup.
 func (c *Core) deliverTranscoder(res *Result, target Endpoint, frame hbp.Data, src sourceKey, bridge string, now time.Time) {
-	if !c.access.Talkgroups(int(target.Timeslot)).Allows(target.Talkgroup) {
+	if !c.talkgroupAllowed(frame, target.Timeslot, target.Talkgroup) {
 		res.Drops = append(res.Drops, Drop{
 			To: target,
 			Reason: fmt.Sprintf("talkgroup %d on TS%d is not permitted by dmr.access.talkgroups",
@@ -1245,6 +1252,10 @@ func (c *Core) deliverTranscoder(res *Result, target Endpoint, frame hbp.Data, s
 	key := contend(target)
 	held, occupied := c.busy[key]
 	switch {
+	case occupied && held.source != src && sameOrigin(held.source, src) && !contendsForSlot(frame):
+		// As deliverUpstream: one station's data bursts are not each other's
+		// competition. Refusing them here also made a text look refused
+		// everywhere on a server with a transcoder and no hotspots.
 	case occupied && held.source != src:
 		if now.Sub(held.lastSeen) <= c.timeout {
 			res.Drops = append(res.Drops, Drop{
@@ -1404,6 +1415,21 @@ func (c *Core) Busy() []Endpoint {
 	}
 	sortEndpoints(out)
 	return out
+}
+
+// talkgroupAllowed applies dmr.access.talkgroups to a group call.
+//
+// **A private call has no talkgroup.** Its target is a radio ID, and testing
+// that against a list of talkgroups refused every private call and private
+// text on any server with an allow list: radio 3121002 is not "talkgroup
+// 3121002", and no operator listing the talkgroups they carry meant to ban
+// private calls by it (found 2026-10-03). Who may transmit is the subscriber
+// list's business, and that is a ban list.
+func (c *Core) talkgroupAllowed(frame hbp.Data, slot hbp.Timeslot, talkgroup uint32) bool {
+	if frame.CallType == hbp.CallPrivate {
+		return true
+	}
+	return c.access.Talkgroups(int(slot)).Allows(talkgroup)
 }
 
 // contendsForSlot reports whether a frame competes for a destination.
