@@ -113,9 +113,15 @@ type Service struct {
 	// every later Apply is known to be the operator's.
 	baselined bool
 	applied   bool
-	// sent maps the ID of every alert that went on the air (or would have,
-	// before the baseline) to when it stops applying.
-	sent map[string]time.Time
+	// sent remembers every alert that went on the air, was held as in effect
+	// at a restart, or was held as an update to one of those.
+	sent map[string]airing
+	// started is when this process began. An alert issued after it cannot
+	// have gone out before the restart, whatever the first poll finds.
+	started time.Time
+	// sending is the alert Flush has handed to the sender and not yet heard
+	// back about.
+	sending string
 	// decided holds the view of every alert still active, so each is decided
 	// once rather than once a minute.
 	decided map[string]AlertView
@@ -154,7 +160,8 @@ func New(opts Options) *Service {
 		wake:         make(chan struct{}, 1),
 		zones:        map[string]Zone{},
 		zoneProblems: map[string]string{},
-		sent:         map[string]time.Time{},
+		sent:         map[string]airing{},
+		started:      opts.Now(),
 		decided:      map[string]AlertView{},
 	}
 }
@@ -183,11 +190,16 @@ func (s *Service) Apply(set Settings) {
 		// An alert still waiting was recorded as sent when it was decided;
 		// it is decided again, so it must not be remembered as gone out.
 		for _, q := range s.queue {
+			if q.id == s.sending {
+				// On its way out this instant. Forgetting it would let the
+				// next poll decide it afresh and send it twice.
+				continue
+			}
 			delete(s.sent, q.id)
 		}
 		s.decided = map[string]AlertView{}
 		s.active = nil
-		s.queue = nil
+		s.unqueue()
 	}
 	switch {
 	case !set.Enabled:
@@ -200,16 +212,20 @@ func (s *Service) Apply(set Settings) {
 		// whatever the preview recorded.
 		s.baselined = true
 		forget()
-		s.sent = map[string]time.Time{}
+		aired := s.sent[s.sending]
+		s.sent = map[string]airing{}
+		if s.sending != "" {
+			s.sent[s.sending] = aired
+		}
 	case !slices.Equal(prev.Zones, set.Zones), !sameEvents(prev.Events, set.Events):
 		// Decided again under the new choice. What already went out is
-		// remembered, so only what the change added is sent.
-		s.baselined = true
+		// remembered, so only what the change added is sent. A restart's
+		// baseline, if the first poll has not happened yet, still stands.
 		forget()
 	}
 	if !set.Transmit {
 		// Nothing waits to go out in Preview.
-		s.queue = nil
+		s.unqueue()
 	}
 	if !slices.Equal(prev.Zones, set.Zones) {
 		// A code NWS did not know is asked about again once the operator
@@ -233,25 +249,67 @@ func (s *Service) Apply(set Settings) {
 	}
 }
 
-// extends reports whether an update moves an alert's end later than every
-// earlier version of it that was sent. Called with the lock held.
-//
-// **A longer warning is news; a redrawn one is not.** NWS reissues a warning
-// every few minutes as the storm moves, and those stay off the air. But when
-// a flash flood warning that ran until 10:30 is extended to 12:30, a station
-// that read the first text believes it is over two hours early.
-func (s *Service) extends(a Alert) bool {
-	until := a.until()
-	if until.IsZero() {
-		return false
+// unqueue empties the queue, and stops the page saying its alerts are still
+// waiting. Called with the lock held.
+func (s *Service) unqueue() {
+	for _, q := range s.queue {
+		s.updateView(q.id, func(v *AlertView) { v.Waiting = "" })
 	}
-	var latest time.Time
+	s.queue = nil
+}
+
+// airing is what is remembered about an alert that was sent, or held as an
+// update to one that was.
+type airing struct {
+	// until is when the alert stops applying; it is forgotten a day later.
+	until time.Time
+	// event, end and at are what stations were last told for this alert's
+	// chain, and when: the alert's own if it was sent, or inherited from the
+	// alert it updates if it was held. An update is news when it differs
+	// from these, not when it differs from the reissue before it.
+	event string
+	end   time.Time
+	at    time.Time
+}
+
+// told finds what stations were last told about the chain an update belongs
+// to: among the alerts it references that are remembered, the one aired most
+// recently. Called with the lock held.
+func (s *Service) told(a Alert) (airing, bool) {
+	var last airing
+	found := false
 	for _, ref := range a.References {
-		if t, ok := s.sent[ref]; ok && t.After(latest) {
-			latest = t
+		if r, ok := s.sent[ref]; ok && (!found || r.at.After(last.at)) {
+			last, found = r, true
 		}
 	}
-	return !latest.IsZero() && until.Sub(latest) > extensionSlack
+	return last, found
+}
+
+// isNews reports whether an update says something stations have not been
+// told. Called with the lock held.
+//
+// **A redrawn warning is not news; a different or longer one is.** NWS
+// reissues a warning every few minutes as the storm moves, and those stay off
+// the air. Two kinds of update do not:
+//
+//   - **A different alert.** A Winter Storm Watch upgraded to a Winter Storm
+//     Warning arrives as an update to the watch. Held, stations were told to
+//     watch for a storm that had arrived.
+//   - **A later end**, by more than extensionSlack, **than the last end that
+//     was sent** — not than the reissue before it. Compared with the last
+//     reissue, a warning extended nine minutes at a time crept from 10:30 to
+//     noon and was never mentioned again.
+func (s *Service) isNews(a Alert) bool {
+	last, ok := s.told(a)
+	if !ok {
+		return false
+	}
+	if !strings.EqualFold(strings.TrimSpace(a.Event), strings.TrimSpace(last.event)) {
+		return true
+	}
+	until := a.until()
+	return !until.IsZero() && !last.end.IsZero() && until.Sub(last.end) > extensionSlack
 }
 
 // extensionSlack is how much later an update must end to count as an
@@ -440,22 +498,33 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			continue
 		}
 		verdict, reason := Decide(a, set, sentNow, now)
-		if reason == ReasonUpdate && s.extends(a) {
+		if reason == ReasonUpdate && s.isNews(a) {
 			verdict, reason = Send, ""
 		}
-		if verdict == Send && !s.baselined {
+		// **The baseline is what was issued before QSP started**, found by
+		// the first poll that succeeds. An alert issued since cannot have
+		// gone out before the restart: when the first poll failed because
+		// the network was not up yet, a warning issued in that minute used
+		// to be held as old.
+		if verdict == Send && !s.baselined && a.Sent.Before(s.started) {
 			verdict, reason = Hold, ReasonBaseline
 		}
-		// Recorded as sent for both: a baseline alert was on the air before
-		// QSP looked, and an update chain must keep being recognised.
+		// Remembered: one that goes out, one that went out before a restart,
+		// and an update held, which carries forward what its chain last said.
 		if (verdict == Send || reason == ReasonBaseline || reason == ReasonUpdate) && a.ID != "" {
-			// Remembered until it stops applying; one with no end NWS gave
-			// is remembered for a day from now, so it is still forgotten.
+			// Kept until it stops applying and a day more; one with no end
+			// NWS gave is kept a day from now.
 			until := a.until()
 			if until.IsZero() {
 				until = now
 			}
-			s.sent[a.ID] = until
+			rec := airing{until: until, event: a.Event, end: a.until(), at: now}
+			if reason == ReasonUpdate {
+				if last, ok := s.told(a); ok {
+					rec.event, rec.end, rec.at = last.event, last.end, last.at
+				}
+			}
+			s.sent[a.ID] = rec
 			sentNow[a.ID] = true
 		}
 		v := AlertView{
@@ -495,8 +564,18 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			delete(s.decided, id)
 		}
 	}
-	for id, until := range s.sent {
-		if now.Sub(until) > sentMemory {
+	// An alert NWS has withdrawn is not sent late. One waiting on the pacing
+	// limit used to go out minutes after it was cancelled, because only its
+	// end time took it off the queue.
+	kept := s.queue[:0]
+	for _, q := range s.queue {
+		if stillActive[q.id] || q.id == s.sending {
+			kept = append(kept, q)
+		}
+	}
+	s.queue = kept
+	for id, rec := range s.sent {
+		if now.Sub(rec.until) > sentMemory {
 			delete(s.sent, id)
 		}
 	}

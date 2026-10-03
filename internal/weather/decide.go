@@ -27,8 +27,8 @@ const (
 	ReasonNotChosen   = "not a type of alert you chose"
 	ReasonExpired     = "already expired"
 	ReasonAlreadySent = "already sent"
-	ReasonUpdate      = "an update to an alert already sent"
-	ReasonBaseline    = "already in effect when QSP started, so it went out before the restart"
+	ReasonUpdate      = "an update to an alert already sent, saying nothing new"
+	ReasonBaseline    = "issued before QSP started; a restart does not repeat what was already in effect"
 )
 
 // Decide runs one alert through the filter chain of ADR-0068, in its order.
@@ -127,7 +127,9 @@ func chosen(event string, events []string) bool {
 	event = strings.TrimSpace(event)
 	for _, e := range events {
 		e = strings.TrimSpace(e)
-		switch class, isClass := strings.CutPrefix(e, "* "); {
+		// "*Warning" is read as "* Warning": a class typed by hand without
+		// its space would otherwise be an exact name no alert has.
+		switch class, isClass := strings.CutPrefix(e, "*"); {
 		case e == EveryAlert:
 			return true
 		case isClass:

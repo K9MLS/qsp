@@ -116,8 +116,10 @@ needs it. **0.1.295 is the first patch from the 2026-10-03 bug hunt and both
 servers need it**: one IPSC datagram could stop the server and one login
 request could take any hotspot off the air. The hunt's full list, and what is
 still open, is in the CHANGELOG under Security and in the session that
-produced it; later patches take the weather, routing, link and configuration
-findings in that order.
+produced it. **0.1.296 is the weather findings** (a watch upgraded to a
+warning, a warning extended a little at a time, a warning issued in the first
+minute after a restart); later patches take the routing, link and
+configuration findings in that order.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -193,7 +195,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.295 | `cat VERSION` |
+| **Fedora working tree** | 0.1.296 | `cat VERSION` |
 | **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |

@@ -147,6 +147,11 @@ func (c *Config) openSubscribers() {
 // Flood Watch and would through a Winter Storm Warning. A list that differs
 // from those five in any way was somebody's decision and is left alone.
 func (c *Config) widenWeather() {
+	// Codes are upper case to NWS and to the service, which reads them
+	// either way; a file typed by hand in lower case used to be refused.
+	for i, z := range c.Weather.Zones {
+		c.Weather.Zones[i] = strings.ToUpper(strings.TrimSpace(z))
+	}
 	got := make([]string, 0, len(c.Weather.Events))
 	for _, e := range c.Weather.Events {
 		got = append(got, strings.ToLower(strings.TrimSpace(e)))

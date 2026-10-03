@@ -122,7 +122,7 @@ func TestNothingIsSentInPreviewOrFromTheBaseline(t *testing.T) {
 		baseline bool
 	}{
 		{"preview", false, false},
-		{"already running when switched on", true, true},
+		{"issued before QSP started", true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f, srv := newFakeNWS(t)
@@ -134,7 +134,8 @@ func TestNothingIsSentInPreviewOrFromTheBaseline(t *testing.T) {
 			})
 			set := denton()
 			set.Transmit = tc.transmit
-			warning := alertJSON("urn:warn", "Tornado Warning", "Actual", []string{"TXC121"}, c.Now(), c.Now().Add(time.Hour))
+			// Issued before QSP started, which is what the baseline is.
+			warning := alertJSON("urn:warn", "Tornado Warning", "Actual", []string{"TXC121"}, c.Now().Add(-time.Minute), c.Now().Add(time.Hour))
 			if tc.baseline {
 				f.setAlerts(warning)
 			}

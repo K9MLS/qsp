@@ -39,6 +39,36 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Bug hunt, second patch: weather alerts that were held or sent wrongly.**
+  All found by review of 0.1.294 and reproduced first.
+  - **A watch upgraded to a warning was not sent.** NWS issues the warning as
+    an update to the watch, and every update was a reissue. An update whose
+    alert type differs from what stations were last told is now sent.
+  - **A warning extended a little at a time was never sent again.** Each
+    extension was compared with the reissue before it; nine minutes at a time
+    a warning crept from 10:30 to noon unmentioned. It is compared with the
+    last end that went on the air.
+  - **A warning issued in QSP's first minute was held as old** when the first
+    poll failed, which it does when the network is not up yet. The restart
+    baseline is now alerts issued before QSP started, and nothing else.
+  - **An alert NWS withdrew while it waited on the pacing limit went out
+    late.** It is taken off the queue.
+  - **A save during a send sent the alert twice.**
+  - Changing alert types or areas between a restart and the first poll no
+    longer repeats everything in effect.
+  - The page: an alert that expired waiting shows Held, not Waiting; alerts
+    no longer show Waiting after Put alerts on the air is switched off; the
+    restart reason no longer claims an alert "went out before the restart".
+  - `"*Warning"` typed without its space is read as the class; county and
+    zone codes in lower case in a configuration file are accepted.
+
+  **Not changed, and why:** an alert with no end time from NWS is written
+  with its expiry time as its end. A reviewer believes river flood warnings
+  arrive that way and so read too short; that needs a look at the live feed
+  before the text is changed on a guess.
+
+  Tests: `internal/weather/open_test.go`.
+
 - **Weather alerts went unsent through two days of flooding** (K9MLS, on
   production). Nothing was broken and nothing was sent, which is the same
   thing to a station. Three rules, each defensible alone, added up to silence:

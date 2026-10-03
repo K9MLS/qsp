@@ -5,6 +5,9 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/k9mls/qsp/internal/protocol/hbp"
+	"github.com/k9mls/qsp/internal/tms"
 )
 
 // A choice of alert types may be a whole class, and the classes are what a
@@ -33,6 +36,7 @@ func TestAlertTypesMayBeChosenByClass(t *testing.T) {
 		{"Special Weather Statement", []string{EveryAlert}, true},
 		{"Flood Watch", []string{" *  "}, true},
 		{"Flood Watch", []string{"*  watch"}, true},
+		{"Flood Watch", []string{"*Watch"}, true},
 		{"Flood Watch", nil, false},
 	}
 	for _, tc := range cases {
@@ -162,4 +166,207 @@ func TestAnExtendedWarningIsSentAgain(t *testing.T) {
 	if got, want := send.texts()[len(send.texts())-1], "FLASH FLOOD WARNING Denton until 12:30PM CDT"; got != want {
 		t.Errorf("the extension read %q, want %q", got, want)
 	}
+}
+
+// An update is news when it differs from what stations were last told, not
+// from the reissue before it. Each case is a chain of NWS messages for one
+// storm and the texts it should put on the air.
+//
+// To see it fail:
+//   - drop the event comparison from isNews: the upgrade is held;
+//   - choose told() by latest end rather than latest airing
+//     (`r.end.After(last.end)`): the creeping warning is compared with the
+//     reissue before it and never sent again, and the reissues after an
+//     upgrade are compared with the watch and all sent.
+func TestAnUpdateIsNewsWhenItSaysSomethingNew(t *testing.T) {
+	type msg struct {
+		id, event string
+		endMin    int // minutes after the first message
+		refs      []string
+	}
+	cases := []struct {
+		name string
+		msgs []msg
+		want []string
+	}{
+		{
+			"a watch upgraded to a warning, then the warning reissued",
+			[]msg{
+				{"w", "Winter Storm Watch", 360, nil},
+				{"W1", "Winter Storm Warning", 360, []string{"w"}},
+				{"W2", "Winter Storm Warning", 360, []string{"w", "W1"}},
+				{"W3", "Winter Storm Warning", 362, []string{"w", "W1", "W2"}},
+			},
+			[]string{"WINTER STORM WATCH Denton until 1:00PM CDT", "WINTER STORM WARNING Denton until 1:00PM CDT"},
+		},
+		{
+			"a warning extended nine minutes at a time",
+			[]msg{
+				{"a0", "Flash Flood Warning", 60, nil},
+				{"a1", "Flash Flood Warning", 69, []string{"a0"}},
+				{"a2", "Flash Flood Warning", 78, []string{"a0", "a1"}},
+				{"a3", "Flash Flood Warning", 87, []string{"a0", "a1", "a2"}},
+				{"a4", "Flash Flood Warning", 96, []string{"a0", "a1", "a2", "a3"}},
+			},
+			[]string{
+				"FLASH FLOOD WARNING Denton until 8:00AM CDT",
+				"FLASH FLOOD WARNING Denton until 8:18AM CDT",
+				"FLASH FLOOD WARNING Denton until 8:36AM CDT",
+			},
+		},
+		{
+			"a warning reissued as the storm moves",
+			[]msg{
+				{"t0", "Tornado Warning", 30, nil},
+				{"t1", "Tornado Warning", 30, []string{"t0"}},
+				{"t2", "Tornado Warning", 33, []string{"t0", "t1"}},
+				{"t3", "Tornado Warning", 25, []string{"t0", "t1", "t2"}},
+			},
+			[]string{"TORNADO WARNING Denton until 7:30AM CDT"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f, srv := newFakeNWS(t)
+			c := &clock{now: time.Date(2026, 10, 1, 11, 59, 0, 0, time.UTC)}
+			send := &fakeSender{}
+			s := newTransmitService(t, f, srv.URL, c, send, Pacing{Gap: time.Nanosecond})
+			ctx := context.Background()
+			c.Advance(time.Minute)
+			first := c.Now()
+			for _, m := range tc.msgs {
+				f.setAlerts(alertJSON("urn:"+m.id, m.event, "Actual", []string{"TXC121"}, c.Now(),
+					first.Add(time.Duration(m.endMin)*time.Minute), prefixed(m.refs)...))
+				s.Poll(ctx)
+				c.Advance(time.Second)
+				s.Flush(ctx)
+				c.Advance(time.Minute)
+			}
+			if got := send.texts(); !slices.Equal(got, tc.want) {
+				t.Errorf("on the air:\n  %q\nwant:\n  %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func prefixed(ids []string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, "urn:"+id)
+	}
+	return out
+}
+
+// The baseline is what was issued before QSP started. When the first poll
+// fails — the network is often not up when the service starts — a warning
+// issued in that minute is new and must go out; the watch from yesterday must
+// still not.
+//
+// To see it fail: drop `&& a.Sent.Before(s.started)` from decide, and the new
+// warning is held as old.
+func TestAFailedFirstPollDoesNotHideANewWarning(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	c := &clock{now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
+	send := &fakeSender{}
+	s := New(Options{Log: discardLog(), Version: "0.1.296", BaseURL: srv.URL, Now: c.Now, Sender: send, Pace: Pacing{Gap: time.Nanosecond}})
+	s.Apply(transmitting())
+	ctx := context.Background()
+
+	f.mu.Lock()
+	f.fail = true
+	f.mu.Unlock()
+	s.Poll(ctx)
+	if s.Status().LastError == "" {
+		t.Fatal("the first poll was meant to fail")
+	}
+
+	old := alertJSON("urn:old", "Flood Watch", "Actual", []string{"TXC121"}, c.Now().Add(-20*time.Hour), c.Now().Add(4*time.Hour))
+	c.Advance(30 * time.Second)
+	fresh := alertJSON("urn:new", "Tornado Warning", "Actual", []string{"TXC121"}, c.Now(), c.Now().Add(30*time.Minute))
+	f.mu.Lock()
+	f.fail = false
+	f.mu.Unlock()
+	f.setAlerts(old, fresh)
+	c.Advance(30 * time.Second)
+	s.Poll(ctx)
+	for range 3 {
+		c.Advance(time.Second)
+		s.Flush(ctx)
+	}
+	if got, want := send.texts(), []string{"TORNADO WARNING Denton until 7:30AM CDT"}; !slices.Equal(got, want) {
+		t.Errorf("on the air: %q, want %q", got, want)
+	}
+	if got := verdicts(s.Status())["urn:old"]; got != "hold:"+ReasonBaseline {
+		t.Errorf("the watch from before the restart was %q", got)
+	}
+}
+
+// An alert NWS withdraws while it waits on the pacing limit is not sent late.
+//
+// To see it fail: remove the stillActive filter on s.queue in decide.
+func TestAWithdrawnAlertIsNotSentLate(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	c := &clock{now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
+	send := &fakeSender{}
+	s := newTransmitService(t, f, srv.URL, c, send, Pacing{Gap: 5 * time.Minute})
+	ctx := context.Background()
+
+	c.Advance(time.Minute)
+	first := alertJSON("urn:1", "Tornado Warning", "Actual", []string{"TXC121"}, c.Now(), c.Now().Add(time.Hour))
+	second := alertJSON("urn:2", "Severe Thunderstorm Warning", "Actual", []string{"TXC121"}, c.Now().Add(time.Second), c.Now().Add(time.Hour))
+	f.setAlerts(first, second)
+	s.Poll(ctx)
+	s.Flush(ctx) // the tornado warning; the other waits out the gap
+
+	c.Advance(time.Minute)
+	f.setAlerts(first) // NWS withdrew the second
+	s.Poll(ctx)
+	c.Advance(10 * time.Minute)
+	s.Flush(ctx)
+	if got := send.texts(); len(got) != 1 {
+		t.Errorf("on the air: %q, want the tornado warning alone", got)
+	}
+}
+
+// A save that lands while an alert is being handed to the sender must not
+// make the next poll send it again.
+//
+// To see it fail: remove the `q.id == s.sending` skip from Apply's forget.
+func TestASaveDuringASendDoesNotSendTwice(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	c := &clock{now: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)}
+	var s *Service
+	more := transmitting()
+	more.Events = []string{EveryAlert}
+	send := &savingSender{save: func() { s.Apply(more) }}
+	s = newTransmitService(t, f, srv.URL, c, send, Pacing{Gap: time.Nanosecond})
+	ctx := context.Background()
+
+	c.Advance(time.Minute)
+	f.setAlerts(alertJSON("urn:1", "Tornado Warning", "Actual", []string{"TXC121"}, c.Now(), c.Now().Add(time.Hour)))
+	s.Poll(ctx)
+	s.Flush(ctx) // the sender saves new settings while it holds the alert
+	for range 3 {
+		c.Advance(time.Minute)
+		s.Poll(ctx)
+		c.Advance(time.Second)
+		s.Flush(ctx)
+	}
+	if send.n != 1 {
+		t.Errorf("the warning went out %d times, want once", send.n)
+	}
+}
+
+// savingSender saves settings in the middle of its first send.
+type savingSender struct {
+	save func()
+	n    int
+}
+
+func (s *savingSender) SendLocalText(hbp.Timeslot, tms.Message) error {
+	s.n++
+	if s.n == 1 {
+		s.save()
+	}
+	return nil
 }

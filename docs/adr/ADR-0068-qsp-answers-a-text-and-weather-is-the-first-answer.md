@@ -325,3 +325,10 @@ Three things in this ADR are **superseded**:
 - **An update that makes an alert last longer is sent.** More than ten minutes
   later than every earlier version that was sent counts; anything less is the
   reissue this ADR always held.
+
+**Refined the same day (0.1.296), after review.** "An update that makes an
+alert last longer" is measured against the last end that went on the air, not
+the reissue before it, so an extension made a few minutes at a time is still
+sent. An update whose alert type differs from what stations were last told —
+a watch upgraded to a warning — is sent. The restart baseline is exactly the
+alerts issued before the process started.

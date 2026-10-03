@@ -105,7 +105,8 @@ func (s *Service) Flush(ctx context.Context) {
 	kept := s.queue[:0]
 	for _, q := range s.queue {
 		if !q.until.IsZero() && !now.Before(q.until) {
-			s.updateView(q.id, func(v *AlertView) { v.Waiting = waitingExpired })
+			// Held, not Waiting: it is not going out, and the page says so.
+			s.updateView(q.id, func(v *AlertView) { v.Verdict, v.Reason, v.Waiting = Hold, waitingExpired, "" })
 			continue
 		}
 		kept = append(kept, q)
@@ -153,6 +154,7 @@ func (s *Service) Flush(ctx context.Context) {
 	q := s.queue[0]
 	m := s.message(q.text)
 	slot := hbp.Timeslot(s.settings.Timeslot)
+	s.sending = q.id
 	s.mu.Unlock()
 
 	// Outside the lock: the sender takes the listener's locks, and a status
@@ -161,6 +163,7 @@ func (s *Service) Flush(ctx context.Context) {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.sending = ""
 	if err != nil {
 		// Usually a call on the timeslot or another text going out; it is
 		// tried again in a few seconds, and the page says why it waits.
