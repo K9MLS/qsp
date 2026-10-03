@@ -329,6 +329,8 @@ func (m *Master) Handle(datagram []byte, from netip.AddrPort) Outcome {
 		return m.handleData(v, from, now)
 	case hbp.RepeaterClose:
 		return m.handleClose(v, from)
+	case hbp.TalkerAlias:
+		return m.handleTalkerAlias(v, from, now)
 	default:
 		// Messages a master receives but has no role for, such as MSTPONG
 		// arriving at a master rather than a peer.
@@ -717,8 +719,25 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 	// users of shared infrastructure.
 	p.LastHeard = now
 
+	// **The ban is asked of the frame as it arrived.** A banned radio is
+	// refused before anything below can put its audio into somebody else's
+	// call, and a refused frame never opens a call for a later one to join.
 	if !m.cfg.Access.Subscriber.Allows(msg.SourceID) {
 		return m.refuseSubscriber(p, msg, now)
+	}
+
+	original := msg
+	linked := p.Config != nil && m.cfg.IsQSPLink != nil && m.cfg.IsQSPLink(*p.Config)
+	msg, rejoined := p.continuing(msg, now, !linked)
+	if rejoined {
+		m.log.Info("a transmission restarted without a header and is carried as the call it belongs to",
+			logging.PeerID(uint32(p.ID)),
+			slog.Uint64("source", uint64(msg.SourceID)),
+			slog.Uint64("target", uint64(msg.TargetID)),
+			slog.String("timeslot", msg.Timeslot.String()),
+			slog.Uint64("arrived_as_source", uint64(original.SourceID)),
+			slog.Uint64("arrived_as_target", uint64(original.TargetID)),
+		)
 	}
 	p.refused = refusedStream{}
 
@@ -747,6 +766,28 @@ func (m *Master) handleData(msg hbp.Data, from netip.AddrPort, now time.Time) Ou
 
 	frame := msg
 	return Outcome{Data: &frame, From: p.ID}
+}
+
+// handleTalkerAlias takes a peer's report of a radio's Talker Alias.
+//
+// **Accepted and not used.** It is ordinary traffic from a working hotspot,
+// and counting it as ignored put a warning on the overview that sent the
+// operator looking for a fault. It is held to the same test as a frame: a
+// registered peer, at the address it registered from. See hbp.TalkerAlias for
+// why it goes no further.
+func (m *Master) handleTalkerAlias(msg hbp.TalkerAlias, from netip.AddrPort, now time.Time) Outcome {
+	p, ok := m.peers[msg.RepeaterID]
+	switch {
+	case !ok:
+		return dropped("talker alias from repeater ID %d at %s, which is not registered", msg.RepeaterID, displayAddr(from))
+	case !p.State.CanPassTraffic():
+		return dropped("talker alias from repeater ID %d while %s", msg.RepeaterID, p.State)
+	case p.Addr != from:
+		return dropped("talker alias for repeater ID %d arrived from %s but it registered from %s",
+			msg.RepeaterID, displayAddr(from), displayAddr(p.Addr))
+	}
+	p.LastHeard = now
+	return Outcome{}
 }
 
 // refuseSubscriber drops a frame from a subscriber the access list refuses.

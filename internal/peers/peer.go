@@ -87,6 +87,10 @@ type Peer struct {
 	// ConfiguredAt is when it completed registration, in UTC. Zero until then.
 	ConfiguredAt time.Time
 
+	// calls is the voice transmission in progress on each timeslot, for
+	// continuing.
+	calls [2][]openCall
+
 	// relogins are challenges issued for this ID while it is registered and
 	// working. See Master.handleLogin.
 	relogins []relogin
@@ -186,6 +190,7 @@ func (p *Peer) String() string {
 func (p *Peer) clone() Peer {
 	out := *p
 	out.relogins = nil
+	out.calls = [2][]openCall{}
 	if p.Config != nil {
 		cfg := *p.Config
 		out.Config = &cfg

@@ -138,6 +138,8 @@ func Parse(b []byte) (Message, error) {
 		return parseIdentity(b)
 	case hasTag(b, "DMRD"):
 		return parseData(b)
+	case hasTag(b, "DMRA"):
+		return parseTalkerAlias(b)
 	case hasTag(b, "DMRC"):
 		return parseGatewayConfig(b)
 	case hasTag(b, "DMRP"):

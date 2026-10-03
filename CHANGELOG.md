@@ -78,6 +78,30 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The rest of an over was lost when a hotspot picked a radio up again
+  mid-transmission** (K9MLS, from production's log). After an instant's
+  dropout a hotspot restarts the transmission as a new stream with no voice
+  header. Routing refused it as a collision with the call it was part of,
+  for two seconds; and one hotspot rebuilt the caller and talkgroup from the
+  radio's Talker Alias, so the rest of an over on TG 2 arrived as radio
+  5002016 calling talkgroup 4929869 — "LS" and "K9M" — and went to nobody.
+  Thirteen times in a week. A voice frame on a new stream with no header, on
+  a timeslot where that peer's own call has not ended and was heard within
+  the stream timeout, is now carried as that call. A frame that follows a
+  header is a new call however soon it comes, a banned radio is refused
+  before this is considered, a peer sending more than one call at once on
+  the timeslot is left alone, and so is a linked QSP server. Each rejoining is logged with what it arrived
+  as.
+- **A hotspot's Talker Alias datagrams were counted as ignored traffic.**
+  QSP had no handler for the `DMRA` tag a Pi-Star sends when a radio has
+  Talker Alias on, so the overview warned about the operator's own hotspot.
+  They are accepted from a registered peer at its own address, and not
+  relayed: neither MMDVMHost nor DMRGateway reads one from a master, and the
+  alias already travels inside the voice frames.
+
+  Tests: `internal/peers/continuation_test.go` (the 12:47:57 sequence
+  replayed) and `TestTalkerAliasRoundTrips`.
+
 - **Bug hunt, sixth patch: backup and restore, Zello, weather, and the
   rest of the long-uptime list.**
   - **Link pages edited the running configuration in place.** The copy a

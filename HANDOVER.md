@@ -141,6 +141,14 @@ prunes. **Not run here, and Fedora's check.sh is the first real run:** the
 zello-tagged connector against real libopus, everything SQLite-backed, and
 Go 1.27 itself.
 
+**0.1.301 came from production's own log**, not the review: a call that a
+hotspot restarts mid-transmission without a header is carried as the call it
+belongs to (it had been arriving as radio 5002016 on talkgroup 4929869, the
+Talker Alias read as IDs, from peer 3132913), and `DMRA` Talker Alias
+datagrams are accepted rather than counted as ignored. **To confirm on air:**
+the line "a transmission restarted without a header" should appear where
+"4929869" used to, and the overview's ignored count should stay at zero.
+
 **Still open from the hunt**: a hotspot can claim to be a linked QSP server
 and is then offered private calls for radios not yet located (needs linked
 servers to prove who they are — K9MLS to decide); the connector's own
@@ -223,7 +231,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.300 | `cat VERSION` |
+| **Fedora working tree** | 0.1.301 | `cat VERSION` |
 | **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |

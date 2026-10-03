@@ -351,3 +351,42 @@ func hexOf(b []byte) string {
 	}
 	return string(out)
 }
+
+// A talker alias is read as far as it has been seen: the repeater ID, with
+// the rest kept as it arrived, at any length a sender has been found to use.
+//
+// To see it fail: remove the "DMRA" case from Parse.
+func TestTalkerAliasRoundTrips(t *testing.T) {
+	for _, n := range []int{8, 12, 15, 19, 64} {
+		raw := make([]byte, n)
+		copy(raw, "DMRA")
+		copy(raw[4:], []byte{0x00, 0x2f, 0xcd, 0xee})
+		for i := 8; i < n; i++ {
+			raw[i] = byte(i)
+		}
+		msg, err := hbp.Parse(raw)
+		if err != nil {
+			t.Fatalf("%d bytes: %v", n, err)
+		}
+		ta, ok := msg.(hbp.TalkerAlias)
+		if !ok || ta.RepeaterID != 3132910 {
+			t.Fatalf("%d bytes: parsed as %#v", n, msg)
+		}
+		if got := msg.Marshal(); string(got) != string(raw) {
+			t.Errorf("%d bytes: marshals to % x, want % x", n, got, raw)
+		}
+		if n > 9 {
+			raw[9] = 0xff
+		}
+		if n > 9 && ta.Rest[1] == 0xff {
+			t.Errorf("%d bytes: the parsed message kept the caller's buffer", n)
+		}
+	}
+	for _, n := range []int{4, 7, 65} {
+		raw := make([]byte, n)
+		copy(raw, "DMRA")
+		if _, err := hbp.Parse(raw); err == nil {
+			t.Errorf("a talker alias of %d bytes was parsed", n)
+		}
+	}
+}
