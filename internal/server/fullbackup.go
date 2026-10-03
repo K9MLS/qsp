@@ -6,7 +6,12 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,13 +92,34 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.opts.Config.Current()
+	files, err := readPasswordFiles(cfg)
+	if err != nil {
+		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
+		writeJSON(w, s.log, http.StatusInternalServerError,
+			map[string]string{"error": "cannot read a password file: " + err.Error()})
+		return
+	}
 	full := config.NewFullBackup(cfg, values, buildinfo.Version, time.Now())
+	full.PasswordFiles = files
 
 	var out bytes.Buffer
 	if err := config.WriteFullBackup(&out, full, body.Passphrase); err != nil {
 		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": err.Error()})
+		return
+	}
+	// **A backup that cannot be restored is refused when it is made**, which
+	// is the only moment the operator can still do something about it. See
+	// fullRestoreBodyLimit.
+	if size := int64(base64.StdEncoding.EncodedLen(out.Len())); size > fullRestoreBodyLimit-fullRestoreEnvelope {
+		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
+		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{
+			"error": fmt.Sprintf("this server's full backup would be %d KiB as a restore "+
+				"sends it, and a restore reads %d KiB; it was not written, because a "+
+				"backup that cannot be restored is worse than none",
+				size>>10, fullRestoreBodyLimit>>10),
+		})
 		return
 	}
 
@@ -128,8 +154,7 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 //
 // The document is base64 because the file is binary and this travels as JSON —
 // the same shape as the shareable restore, so one console page pattern covers
-// both and the body is bounded by the JSON decoder rather than by a limit this
-// handler has to remember.
+// both. The body is bounded by fullRestoreBodyLimit.
 type fullRestoreRequest struct {
 	Document   string `json:"document"`
 	Passphrase string `json:"passphrase"`
@@ -162,7 +187,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req fullRestoreRequest
-	if !decodeJSON(w, s.log, r, &req) {
+	if !decodeJSONWithin(w, s.log, r, &req, fullRestoreBodyLimit) {
 		return
 	}
 	if strings.TrimSpace(req.Passphrase) == "" {
@@ -208,18 +233,39 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	before := s.opts.Config.Current()
+	cfg := full.Backup.Config
+	keepMachineLocal(&cfg, before)
+
+	// Worked out before the confirmation, so that what the operator agrees to
+	// is what will happen.
+	absent := absentPasswordFiles(cfg, full.PasswordFiles)
+
 	if !req.Confirm {
 		// Said before it happens, in the operator's terms, and naming what
 		// will come back rather than summarising it. The identity warning is
 		// the shareable restore's, unchanged, because the hazard is the same
 		// one.
+		//
+		// **It used to end "Links and members will work immediately", whatever
+		// the file held.** The password files were never in it, so that was
+		// false for every link the console had made. It now says what comes
+		// back and names what does not.
+		summary := fmt.Sprintf("This replaces every setting on this server "+
+			"with the full backup taken on %s by QSP %s, and restores %d "+
+			"credentials and %d password files.",
+			full.Backup.ExportedAt.Format("2 January 2006"),
+			full.Backup.QSPVersion, len(full.Secrets), len(full.PasswordFiles))
+		if len(absent) == 0 {
+			summary += " Every password file the configuration names comes back with it."
+		} else {
+			summary += fmt.Sprintf(" %d password files the configuration names are neither "+
+				"in this backup nor on this machine; the links and members that need them "+
+				"will be refused until they are reissued.", len(absent))
+		}
 		writeJSON(w, s.log, http.StatusPreconditionRequired, map[string]any{
-			"error": "not confirmed",
-			"summary": fmt.Sprintf("This replaces every setting on this server "+
-				"with the full backup taken on %s by QSP %s, and restores %d "+
-				"credentials. Links and members will work immediately.",
-				full.Backup.ExportedAt.Format("2 January 2006"),
-				full.Backup.QSPVersion, len(full.Secrets)),
+			"error":   "not confirmed",
+			"summary": summary,
 			"identity": "The backup carries a server identifier. Taking it makes " +
 				"this machine a replacement for the one that made the backup — if " +
 				"that server is still running, two servers will claim one identity " +
@@ -229,9 +275,13 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 				"not been asked. Restoring them revives the passwords the other " +
 				"operators issued, which is why this is a replacement rather than " +
 				"a second server.",
-			"credential_names": full.SecretNames(),
-			"exported_at":      full.Backup.ExportedAt,
-			"qsp_version":      full.Backup.QSPVersion,
+			"kept": "This machine keeps its own console address and its own " +
+				"database; neither is taken from the backup.",
+			"credential_names":       full.SecretNames(),
+			"password_files":         full.PasswordFilePaths(),
+			"missing_password_files": absent,
+			"exported_at":            full.Backup.ExportedAt,
+			"qsp_version":            full.Backup.QSPVersion,
 		})
 		return
 	}
@@ -260,7 +310,16 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		restored = append(restored, name)
 	}
 
-	version, err := s.opts.Config.Save(r.Context(), full.Backup.Config, actor,
+	// The password files in the same position, for the same reason. A file
+	// that cannot be written does not stop the restore: it is one link
+	// awaiting a credential, which the answer names, where stopping here
+	// would leave the credentials above restored and nothing else.
+	written, failed := writePasswordFiles(cfg, full.PasswordFiles)
+	for _, f := range failed {
+		s.log.Warn("cannot restore a password file", "path", f.Path, "error", f.Error)
+	}
+
+	version, err := s.opts.Config.Save(r.Context(), cfg, actor,
 		fmt.Sprintf("restored from a full backup of %s",
 			full.Backup.ExportedAt.Format("2006-01-02")))
 	if err != nil {
@@ -277,12 +336,194 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	// **What came back, named.** An operator told "restored" has a different
 	// confidence from one who can see that four credentials returned — and
 	// ADR-0065 replaced the shareable export's missing-credentials list with
-	// exactly this positive statement.
+	// exactly this positive statement. What did not come back is named beside
+	// it, because a positive statement about part of a restore reads as one
+	// about all of it.
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
-		"version":     version.Number,
-		"exported":    full.Backup.ExportedAt,
-		"credentials": restored,
+		"version":                version.Number,
+		"exported":               full.Backup.ExportedAt,
+		"credentials":            restored,
+		"password_files":         written,
+		"password_files_failed":  failed,
+		"missing_password_files": absentPasswordFiles(cfg, nil),
+		"needs_restart":          config.NeedsRestart(before, cfg),
 	})
+}
+
+// fullRestoreBodyLimit is the largest full restore request read, and so the
+// largest full backup handleFullBackup will write.
+//
+// A full backup is the configuration, which a save bounds at a megabyte; every
+// stored credential, each bounded by the 64 KiB its own endpoint reads; and
+// every password file, each bounded by passwordFileLimit. It carries no call
+// history and no audit trail. Encrypted and then base64, it travels at four
+// thirds of that. Sixteen megabytes is the configuration at its limit and well
+// over a hundred credentials at theirs — far past any server this project has
+// seen, and still small enough to hold in memory three times over, which is
+// what decoding, decrypting and parsing it costs.
+//
+// **The backup side checks against the same number**, so the limit cannot
+// produce a file that is made in good faith and refused on the day it is
+// needed.
+const fullRestoreBodyLimit = 16 << 20
+
+// fullRestoreEnvelope is the room left for the passphrase and the JSON around
+// the document in a restore request.
+const fullRestoreEnvelope = 8 << 10
+
+// passwordFileLimit is the largest password file a backup will carry. A
+// password is tens of bytes; a file this large named as one is a mistake in
+// the configuration, and copying it into a backup would not make it a
+// credential.
+const passwordFileLimit = 64 << 10
+
+// passwordFilePaths lists the password files a configuration names, and the
+// directory holding each member's own.
+//
+// The same four references config.MissingCredentials reports for the
+// shareable export, which names what it cannot carry; this is the list of
+// what the full backup does carry.
+func passwordFilePaths(cfg config.Config) (files []string, memberDir string) {
+	add := func(path string) {
+		if path = strings.TrimSpace(path); path != "" && !slices.Contains(files, path) {
+			files = append(files, path)
+		}
+	}
+	add(cfg.DMR.PasswordFile)
+	for _, u := range cfg.DMR.Upstreams {
+		add(u.PasswordFile)
+		add(u.PassphraseFile)
+	}
+	slices.Sort(files)
+	return files, strings.TrimSpace(cfg.DMR.PeerPasswords)
+}
+
+// memberPasswordFile reports whether path is a member's password in dir: a
+// file directly inside it, named by a radio ID, which is the only thing QSP
+// reads from there (ADR-0035).
+func memberPasswordFile(dir, path string) bool {
+	if dir == "" || filepath.Clean(filepath.Dir(path)) != filepath.Clean(dir) {
+		return false
+	}
+	id, err := strconv.ParseUint(filepath.Base(path), 10, 32)
+	return err == nil && id != 0
+}
+
+// readPasswordFiles reads every password file the configuration names.
+//
+// **A file that is not there is left out; a file that cannot be read fails the
+// backup.** Absent is a fact about the server — a link whose password was
+// never issued — and the restore reports it. Unreadable is allSecrets' case: a
+// backup silently lacking a credential the server does have, which the
+// operator cannot know about when they make it.
+func readPasswordFiles(cfg config.Config) (map[string]string, error) {
+	files, dir := passwordFilePaths(cfg)
+	if dir != "" {
+		entries, err := os.ReadDir(dir)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("the member password directory: %w", err)
+		}
+		for _, e := range entries {
+			path := filepath.Join(dir, e.Name())
+			if e.Type().IsRegular() && memberPasswordFile(dir, path) {
+				files = append(files, path)
+			}
+		}
+	}
+
+	out := make(map[string]string, len(files))
+	for _, path := range files {
+		raw, err := os.ReadFile(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w", path, err)
+		}
+		if len(raw) > passwordFileLimit {
+			return nil, fmt.Errorf("%q is %d KiB, which is not a password", path, len(raw)>>10)
+		}
+		out[path] = string(raw)
+	}
+	return out, nil
+}
+
+// passwordFileFailure is one password file a restore could not write.
+type passwordFileFailure struct {
+	Path  string `json:"path"`
+	Error string `json:"error"`
+}
+
+// writePasswordFiles puts a backup's password files where the restored
+// configuration names them.
+//
+// **Only a path the configuration names is written.** The file says where each
+// one goes, and a file is not to be trusted with that on its own: without this
+// check a backup could carry anything to anywhere the service can write. A
+// path the configuration does not name is reported and left alone.
+//
+// The directory at 0700 before the file at 0600, as everywhere else a
+// credential is written. The mode is set again afterwards because WriteFile
+// keeps the mode of a file that already exists, and QSP refuses to use a
+// password file anybody else can read.
+func writePasswordFiles(cfg config.Config, files map[string]string) (written []string, failed []passwordFileFailure) {
+	named, dir := passwordFilePaths(cfg)
+	written = []string{}
+
+	paths := make([]string, 0, len(files))
+	for path := range files {
+		paths = append(paths, path)
+	}
+	slices.Sort(paths)
+
+	for _, path := range paths {
+		if !slices.Contains(named, path) && !memberPasswordFile(dir, path) {
+			failed = append(failed, passwordFileFailure{Path: path,
+				Error: "the restored configuration does not name this file, so it was not written"})
+			continue
+		}
+		if err := writePasswordFile(path, files[path]); err != nil {
+			failed = append(failed, passwordFileFailure{Path: path, Error: err.Error()})
+			continue
+		}
+		written = append(written, path)
+	}
+	return written, failed
+}
+
+// writePasswordFile writes one credential, readable by nobody else.
+func writePasswordFile(path, contents string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("cannot create the password directory: %w", err)
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		return fmt.Errorf("cannot write the password file: %w", err)
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		return fmt.Errorf("cannot restrict the password file: %w", err)
+	}
+	return nil
+}
+
+// absentPasswordFiles lists the password files the configuration names that
+// are neither on this machine nor in carried.
+//
+// Each of these is a link or a member that will be refused, and the page says
+// so by path rather than claiming the restore is complete. A member's own file
+// cannot be listed: the configuration names the directory, not who has one.
+func absentPasswordFiles(cfg config.Config, carried map[string]string) []string {
+	named, _ := passwordFilePaths(cfg)
+	out := []string{}
+	for _, path := range named {
+		if _, ok := carried[path]; ok {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
 }
 
 // allSecrets reads every stored credential for a backup.

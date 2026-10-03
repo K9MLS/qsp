@@ -79,7 +79,13 @@ func (s *Server) handleLinkAddress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before := s.opts.Config.Current()
-	cfg := before
+	// **A copy that shares nothing.** `cfg := before` copied the struct and
+	// shared the upstreams behind it, so the assignment below wrote the new
+	// address into `before` as well — and into the running configuration, when
+	// the manager handed out its own slices. NeedsRestart then compared the
+	// change with itself and reported nothing for a link that always needs a
+	// restart, and a save that failed left the address live.
+	cfg := before.Clone()
 
 	found := false
 	for i := range cfg.DMR.Upstreams {

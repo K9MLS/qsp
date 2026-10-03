@@ -34,10 +34,12 @@ type Options struct {
 	ReadHeaderTimeout time.Duration
 	// ReadTimeout bounds reading a whole request.
 	ReadTimeout time.Duration
-	// WriteTimeout bounds writing a response.
+	// WriteTimeout bounds writing a response, counted from the request's
+	// headers being read. Zero means no bound.
 	//
-	// It is deliberately not applied to the event stream: a long-lived SSE
-	// connection would be severed by it. See the events handler.
+	// The event stream is the exception, because a long-lived connection would
+	// be severed by it: there it bounds each write instead, so a stream lives
+	// as long as its reader keeps reading. See the events handler.
 	WriteTimeout time.Duration
 	// IdleTimeout bounds an unused keep-alive connection.
 	IdleTimeout time.Duration
@@ -173,6 +175,9 @@ type Server struct {
 	// operator saw it on the first try.
 	baseCtx    context.Context
 	cancelBase context.CancelFunc
+
+	// streams counts the open event streams. See events.go.
+	streams streamSlots
 }
 
 // Registry is the subset of health.Registry the server needs. Depending on the
@@ -203,11 +208,16 @@ func New(log *slog.Logger, reg Registry, bus *events.Bus, opts Options) (*Server
 	}
 	s.baseCtx, s.cancelBase = context.WithCancel(context.Background())
 
+	// **The write timeout was configured, validated, documented and never
+	// set.** A client that asked for a response and then stopped reading it
+	// held its connection, and the goroutine writing to it, for as long as it
+	// liked.
 	s.http = &http.Server{
 		Addr:              opts.ListenAddress,
 		Handler:           s.handler(),
 		ReadHeaderTimeout: opts.ReadHeaderTimeout,
 		ReadTimeout:       opts.ReadTimeout,
+		WriteTimeout:      opts.WriteTimeout,
 		IdleTimeout:       opts.IdleTimeout,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
 		BaseContext:       func(net.Listener) context.Context { return s.baseCtx },
@@ -477,6 +487,18 @@ func (s *Server) handleNoConsole(w http.ResponseWriter, _ *http.Request) {
 		"error":  "no console assets are embedded in this binary",
 		"detail": "these API endpoints are available: " + strings.Join(APIPaths(), ", "),
 	})
+}
+
+// extendWriteDeadline gives one response longer than WriteTimeout to be
+// written, for a handler that knowingly waits on something slow first.
+//
+// It does nothing when no write timeout is configured, and nothing when the
+// connection cannot have a deadline set, which is a test recorder.
+func (s *Server) extendWriteDeadline(w http.ResponseWriter, extra time.Duration) {
+	if s.opts.WriteTimeout <= 0 {
+		return
+	}
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(s.opts.WriteTimeout + extra))
 }
 
 func writeJSON(w http.ResponseWriter, log *slog.Logger, status int, body any) {

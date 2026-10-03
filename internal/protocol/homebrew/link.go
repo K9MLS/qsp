@@ -217,6 +217,19 @@ func New(cfg Config) (*Link, error) {
 	return &Link{cfg: cfg, state: StateIdle, backoff: cfg.MinBackoff}, nil
 }
 
+// now is the time every interval on this link is measured from.
+//
+// **Never .UTC() here.** UTC, Local and In strip the monotonic clock reading
+// from a time, and without it Sub and Before compare wall clocks. A Raspberry
+// Pi boots without a battery-backed clock and steps it when NTP answers: a
+// step forward then reads as a far end silent for longer than the timeout and
+// drops a healthy link, and a step back reads as a keepalive not yet due for
+// as long as the step was, while the status says connected and the far end
+// gives up. Nothing kept from this value is displayed or stored -- it is only
+// subtracted and compared -- so there is no zone to normalise. A time that is
+// one day shown to somebody should be converted where it is shown.
+func (l *Link) now() time.Time { return l.cfg.Now() }
+
 // State returns the link's current state.
 func (l *Link) State() State { return l.state }
 
@@ -225,7 +238,7 @@ func (l *Link) EverConnected() bool { return l.everConnected }
 
 // Start begins a login attempt.
 func (l *Link) Start() Outcome {
-	return l.login(l.cfg.Now().UTC(), "starting")
+	return l.login(l.now(), "starting")
 }
 
 func (l *Link) login(now time.Time, why string) Outcome {
@@ -299,7 +312,7 @@ func (l *Link) jittered(d time.Duration) time.Duration {
 // the current state is dropped with an explanation rather than acted on, which
 // is what stops a spoofed ack advancing the handshake.
 func (l *Link) Handle(datagram []byte) Outcome {
-	now := l.cfg.Now().UTC()
+	now := l.now()
 
 	msg, err := hbp.Parse(datagram)
 	if err != nil {
@@ -431,7 +444,7 @@ func (l *Link) config() hbp.Config {
 // happen when *nothing* arrives, which is exactly the case a link has to get
 // right and the one a test driven only by incoming datagrams never reaches.
 func (l *Link) Tick() Outcome {
-	now := l.cfg.Now().UTC()
+	now := l.now()
 
 	switch l.state {
 	case StateIdle:
@@ -487,7 +500,7 @@ func (l *Link) Close() Outcome {
 		return Outcome{}
 	}
 	payload := hbp.RepeaterClose{RepeaterID: l.cfg.RepeaterID}.Marshal()
-	l.enter(StateIdle, l.cfg.Now().UTC())
+	l.enter(StateIdle, l.now())
 	return Outcome{
 		Send:    [][]byte{payload},
 		Changed: true,

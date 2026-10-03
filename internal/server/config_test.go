@@ -972,3 +972,175 @@ func TestASaveThatCouldNotBeAppliedIsReportedAsSaved(t *testing.T) {
 		t.Errorf("audited as %s %s, want a successful configuration change", last.Action, last.Outcome)
 	}
 }
+
+// A version in the history is read as a configuration file is, so going back
+// to one works.
+//
+// **A revert posted the old document as it was recorded.** One holding an
+// allow-only subscriber list was refused with a 400, though the same document
+// in the file starts the server; one recorded before the server had an
+// identifier saved an empty one, and the next start made the server a stranger
+// to its neighbours.
+//
+// The save itself stays strict — the last case posts the allow-only list
+// directly and must still be refused (0448).
+//
+// To see it fail: in handleConfigVersion, answer with version.Config instead of
+// asLoaded(version.Config, running).
+func TestGoingBackToAnOldVersionWorks(t *testing.T) {
+	identifier, err := config.NewIdentifier()
+	if err != nil {
+		t.Fatalf("NewIdentifier: %v", err)
+	}
+	running := config.Default()
+	running.Server.Identifier = identifier
+	running.DMR.Join.NetworkName = "now"
+
+	allowOnly := config.Default()
+	allowOnly.Server.Identifier = identifier
+	allowOnly.DMR.Enabled = true
+	allowOnly.DMR.PasswordFile = "/etc/qsp/peer.password"
+	allowOnly.DMR.Access = &config.Access{
+		Registration: config.ACL{Mode: "deny", IDs: []string{}},
+		Subscribers:  config.ACL{Mode: "permit", IDs: []string{"3132910"}},
+	}
+
+	unnamed := config.Default()
+	unnamed.DMR.Join.NetworkName = "before identifiers"
+
+	narrow := config.Default()
+	narrow.Server.Identifier = identifier
+	narrow.Weather.Events = []string{"Tornado Warning", "Tornado Watch",
+		"Severe Thunderstorm Warning", "Severe Thunderstorm Watch", "Flash Flood Warning"}
+
+	for _, tc := range []struct {
+		name    string
+		version config.Config
+		check   func(*testing.T, config.Config)
+	}{
+		{"an allow-only subscriber list is opened", allowOnly, func(t *testing.T, got config.Config) {
+			if got.DMR.Access == nil || got.DMR.Access.Subscribers.Mode != "deny" ||
+				len(got.DMR.Access.Subscribers.IDs) != 0 {
+				t.Errorf("the subscriber list was saved as %+v", got.DMR.Access)
+			}
+		}},
+		{"a version with no identifier keeps this server's", unnamed, func(t *testing.T, got config.Config) {
+			if got.Server.Identifier != identifier {
+				t.Errorf("the identifier was saved as %q, want the running one", got.Server.Identifier)
+			}
+		}},
+		{"the first weather list is widened", narrow, func(t *testing.T, got config.Config) {
+			if len(got.Weather.Events) != 2 {
+				t.Errorf("the weather events were saved as %v", got.Weather.Events)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cm := newStubConfig()
+			cm.current = running
+			cm.versions = []config.Version{{Number: 1, Config: tc.version}}
+			srv, a := newConfigServer(t, cm, nil)
+
+			rec := authed(t, srv, a, http.MethodGet, "/api/config/versions/1", "")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("reading the version gave %d: %s", rec.Code, rec.Body)
+			}
+			var read struct {
+				Config json.RawMessage `json:"config"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &read); err != nil {
+				t.Fatalf("decoding: %v", err)
+			}
+
+			// Exactly what history.js posts: the version's document, back.
+			rec = authed(t, srv, a, http.MethodPost, "/api/config",
+				`{"config":`+string(read.Config)+`,"summary":"restored version 1"}`)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("going back gave %d: %s", rec.Code, rec.Body)
+			}
+			if len(cm.saved) != 1 {
+				t.Fatalf("%d configurations were saved, want 1", len(cm.saved))
+			}
+			tc.check(t, cm.saved[0])
+		})
+	}
+
+	t.Run("an allow-only list posted as a save is still refused", func(t *testing.T) {
+		cm := newStubConfig()
+		cm.current = running
+		srv, a := newConfigServer(t, cm, nil)
+		raw, err := json.Marshal(saveRequest{Config: allowOnly})
+		if err != nil {
+			t.Fatalf("marshalling: %v", err)
+		}
+		rec := authed(t, srv, a, http.MethodPost, "/api/config", string(raw))
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "ban list") {
+			t.Errorf("an allow-only subscriber list gave %d: %s", rec.Code, rec.Body)
+		}
+	})
+}
+
+// A save that leaves the identifier out does not blank it.
+//
+// To see it fail: remove the `req.Config.Server.Identifier =
+// before.Server.Identifier` assignment from handleSaveConfig.
+func TestASaveCannotTakeTheIdentifierAway(t *testing.T) {
+	identifier, err := config.NewIdentifier()
+	if err != nil {
+		t.Fatalf("NewIdentifier: %v", err)
+	}
+	cm := newStubConfig()
+	cm.current.Server.Identifier = identifier
+	srv, a := newConfigServer(t, cm, nil)
+
+	next := config.Default()
+	next.DMR.Join.NetworkName = "renamed"
+	raw, err := json.Marshal(saveRequest{Config: next})
+	if err != nil {
+		t.Fatalf("marshalling: %v", err)
+	}
+	rec := authed(t, srv, a, http.MethodPost, "/api/config", string(raw))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body)
+	}
+	if got := cm.saved[0].Server.Identifier; got != identifier {
+		t.Errorf("the identifier was saved as %q", got)
+	}
+}
+
+// A save naming a field QSP does not have is refused, and says which.
+//
+// **Load refuses an unknown field and the save did not**, so a mistyped
+// setting was dropped, the save reported success, and the operator believed it
+// had been applied.
+//
+// To see it fail: remove dec.DisallowUnknownFields() from handleSaveConfig.
+func TestASaveRefusesAFieldQSPDoesNotHave(t *testing.T) {
+	raw, err := json.Marshal(config.Default())
+	if err != nil {
+		t.Fatalf("marshalling: %v", err)
+	}
+	document := strings.TrimSuffix(string(raw), "}")
+
+	for _, tc := range []struct {
+		name, body, field string
+	}{
+		{"in the configuration", `{"config":` + document + `,"sesion_lifetime":"1h"},"summary":"x"}`, "sesion_lifetime"},
+		{"beside the configuration", `{"config":` + string(raw) + `,"sumary":"x"}`, "sumary"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cm := newStubConfig()
+			srv, a := newConfigServer(t, cm, nil)
+			rec := authed(t, srv, a, http.MethodPost, "/api/config", tc.body)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status %d, want 400: %s", rec.Code, rec.Body)
+			}
+			if !strings.Contains(rec.Body.String(), tc.field) {
+				t.Errorf("the refusal does not name %q: %s", tc.field, rec.Body)
+			}
+			if len(cm.saved) != 0 {
+				t.Error("a configuration was saved")
+			}
+		})
+	}
+}

@@ -606,9 +606,28 @@ func firstNetworkID(cfg config.Config) uint32 {
 
 // decodeJSON reads a request body, answering the caller on failure.
 func decodeJSON(w http.ResponseWriter, log *slog.Logger, r *http.Request, into any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10))
+	return decodeJSONWithin(w, log, r, into, 64<<10)
+}
+
+// decodeJSONWithin is decodeJSON for the few requests that carry a document
+// rather than a form, with the limit that document needs.
+//
+// **The limit belongs to what the request carries, not to the helper.** Both
+// restores went through decodeJSON and so inherited 64 KiB, while a save
+// accepts a megabyte: a configuration could be saved, exported, and then not
+// restored onto the machine that made it.
+func decodeJSONWithin(w http.ResponseWriter, log *slog.Logger, r *http.Request, into any, limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeJSON(w, log, http.StatusRequestEntityTooLarge, map[string]string{
+				"error": fmt.Sprintf("the request is larger than the %d KiB this endpoint reads",
+					limit>>10),
+			})
+			return false
+		}
 		writeJSON(w, log, http.StatusBadRequest,
 			map[string]string{"error": "cannot read the request: " + err.Error()})
 		return false

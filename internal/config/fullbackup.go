@@ -67,7 +67,13 @@ var FullBackupMagic = [8]byte{'Q', 'S', 'P', 'F', 'U', 'L', 'L', '1'}
 // is refused, for ADR-0054's reason: importing three-quarters of a
 // configuration is worse than importing none, because the quarter that was
 // dropped is invisible.
-const FullBackupFormat uint16 = 1
+//
+// Format 2 added the password files. **The number moved because an older
+// build would otherwise read the file, drop them without a word, and report a
+// restore** — the invisible quarter the rule above exists for. Format 1 still
+// opens here; it simply carries no files, and the restore says which are
+// missing.
+const FullBackupFormat uint16 = 2
 
 // PBKDF2 parameters.
 const (
@@ -101,6 +107,29 @@ type FullBackup struct {
 	// **This is the whole difference from the shareable export**, and the
 	// reason the file is encrypted and must never be sent to anybody.
 	Secrets map[string]string `json:"secrets"`
+	// PasswordFiles are the password files the configuration names, by the
+	// path it names them at: the shared peer password, each member's own, and
+	// each link's password or passphrase.
+	//
+	// **Format 1 did not carry these, and said a restore would work.** The
+	// console writes a link's password to a file (ADR-0012) and never to the
+	// store, so Secrets alone restored a server whose every link and member
+	// was refused, under a confirmation promising the opposite. They are
+	// secrets and travel inside the same encrypted payload.
+	//
+	// A path is absent when the file was absent on the machine that made the
+	// backup. A restore reports those rather than guessing at them.
+	PasswordFiles map[string]string `json:"password_files,omitempty"`
+}
+
+// PasswordFilePaths lists the password files carried, sorted.
+func (f FullBackup) PasswordFilePaths() []string {
+	out := make([]string, 0, len(f.PasswordFiles))
+	for path := range f.PasswordFiles {
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // SecretNames lists the secrets carried, sorted.
@@ -282,8 +311,7 @@ func ReadFullBackup(r io.Reader, passphrase string) (FullBackup, error) {
 	}
 	// Made before 0448, it may hold an allow-only subscriber list; opened as
 	// a configuration file is, so the restore is not refused for it.
-	f.Backup.Config.openSubscribers()
-	f.Backup.Config.widenWeather()
+	f.Backup.Config.Upgrade()
 	return f, nil
 }
 

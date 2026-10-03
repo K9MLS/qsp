@@ -47,6 +47,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -1345,12 +1346,7 @@ func (l *Listener) ExpireAt(now time.Time) int {
 			continue
 		}
 		delete(l.peers, id)
-		// The converter goes with the peer. A repeater that returns is a new
-		// transmission's worth of state, not a resumption of one that ended
-		// however long ago, and keeping them would grow without bound on an
-		// address that attracts strangers.
-		delete(l.bridges, id)
-		delete(l.encoders, id)
+		l.forgetPeerLocked(id)
 		dropped++
 		l.log.Info("peer timed out", logging.PeerID(id), "silent_for",
 			now.Sub(p.LastHeard).Round(time.Second))
@@ -1359,6 +1355,24 @@ func (l *Listener) ExpireAt(now time.Time) int {
 		l.publishLocked()
 	}
 	return dropped
+}
+
+// forgetPeerLocked drops everything kept on a peer's behalf. Called with l.mu
+// held, wherever a peer leaves l.peers.
+//
+// **Every map keyed by a peer is listed here, and a new one belongs here.** A
+// repeater that returns is a new transmission's worth of state, not a
+// resumption of one that ended however long ago. The converter and encoder
+// were always dropped; the last stream relayed and the timeslot claims were
+// not, and each is an entry per sender ID ever registered. With an empty allow
+// list a sender ID is whatever a datagram claims, so on an address that
+// attracts strangers those two grew for as long as the process ran -- which
+// for this server is months.
+func (l *Listener) forgetPeerLocked(id uint32) {
+	delete(l.bridges, id)
+	delete(l.encoders, id)
+	delete(l.relayed, id)
+	maps.DeleteFunc(l.slots, func(k slotKey, _ slotUse) bool { return k.peer == id })
 }
 
 func (l *Listener) publish() {

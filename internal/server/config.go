@@ -134,7 +134,21 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	var req saveRequest
 	// Bounded: a configuration is a few kilobytes and an unbounded read is a
 	// way to spend memory.
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, saveBodyLimit))
+	// **Unknown fields are refused, as Load refuses them**, and for Load's
+	// reason: a field this build does not have is dropped by the decoder, the
+	// save reports success, and the operator believes a setting was applied
+	// that was never written. This decoder used to accept what the file's own
+	// reader would not.
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		if field, ok := unknownField(err); ok {
+			writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+				"error": fmt.Sprintf("the request names %s, which is not a setting this "+
+					"QSP has; nothing was saved", field),
+			})
+			return
+		}
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
 			"error": "the request body is not a configuration document",
 		})
@@ -142,6 +156,14 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before := s.opts.Config.Current()
+	// **A document with no identifier does not take this server's away.** The
+	// identifier is written once and never rewritten (ADR-0053), and a version
+	// recorded before the server had one carries none — so reverting to it
+	// saved an empty identifier, the next start minted a new one, and the
+	// server became a stranger to every neighbour that knew it.
+	if strings.TrimSpace(req.Config.Server.Identifier) == "" {
+		req.Config.Server.Identifier = before.Server.Identifier
+	}
 	changes, err := config.Diff(before, req.Config)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
@@ -185,6 +207,42 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		Changes:      changes,
 		NeedsRestart: needsRestart,
 	})
+}
+
+// saveBodyLimit is the largest configuration POST /api/config reads. The
+// restore limits are derived from it, because what can be saved has to be
+// restorable.
+const saveBodyLimit = 1 << 20
+
+// unknownField recognises the decoder's refusal of a field it does not know,
+// and returns the field, quoted.
+//
+// encoding/json has no typed error for this, so the message is matched — which
+// is why it is matched in one place.
+func unknownField(err error) (string, bool) {
+	return strings.CutPrefix(err.Error(), "json: unknown field ")
+}
+
+// asLoaded is a recorded version as this server would run it today.
+//
+// **A version in the history is a document an older QSP wrote**, exactly as a
+// configuration file can be, and it was not treated as one: a version holding
+// an allow-only subscriber list was refused with a 400 when an operator tried
+// to go back to it, though the same document in the file starts the server.
+// So it gets what Load gives a file, and the identifier this server has now
+// when the version predates identifiers.
+//
+// Done where the version is read rather than where a configuration is saved,
+// because a save is an operator's choice and must still be refused for an
+// allow-only list (0448) and must keep a weather list they picked; and done
+// before the preview, so the changes shown are the ones a restore makes.
+func asLoaded(version, running config.Config) config.Config {
+	cfg := version.Clone()
+	cfg.Upgrade()
+	if strings.TrimSpace(cfg.Server.Identifier) == "" {
+		cfg.Server.Identifier = running.Server.Identifier
+	}
+	return cfg
 }
 
 // unwrapApply gives the reason a saved configuration could not be applied,
@@ -309,7 +367,9 @@ func (s *Server) handleConfigVersion(w http.ResponseWriter, r *http.Request) {
 
 	// The difference from what is running, so an operator restoring a version
 	// sees what it would change before they do it rather than after.
-	changes, err := config.Diff(s.opts.Config.Current(), version.Config)
+	running := s.opts.Config.Current()
+	cfg := asLoaded(version.Config, running)
+	changes, err := config.Diff(running, cfg)
 	if err != nil {
 		changes = nil
 	}
@@ -320,9 +380,9 @@ func (s *Server) handleConfigVersion(w http.ResponseWriter, r *http.Request) {
 		"author":        version.Author,
 		"summary":       version.Summary,
 		"checksum":      version.Checksum,
-		"config":        version.Config,
+		"config":        cfg,
 		"changes":       changes,
-		"needs_restart": config.NeedsRestart(s.opts.Config.Current(), version.Config),
+		"needs_restart": config.NeedsRestart(running, cfg),
 	})
 }
 

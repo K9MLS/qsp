@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -94,6 +95,11 @@ func (s *statusRecorder) Flush() {
 		f.Flush()
 	}
 }
+
+// Unwrap lets http.ResponseController reach the connection through this
+// wrapper, which is how the event stream moves its own write deadline. Without
+// it the controller finds no deadline to set and says so.
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // withLogging records one line per completed request.
 func withLogging(log *slog.Logger) middleware {
@@ -221,21 +227,41 @@ func withSecurityHeaders(tileURL string) middleware {
 	}
 }
 
-// clientIP extracts the client address for logging and audit.
+// clientIP extracts the client address for logging, audit and the login
+// throttle.
 //
 // Forwarding headers are honoured only when the operator has declared that QSP
 // runs behind a reverse proxy. Trusting them unconditionally would let any
 // client forge its own address in the audit trail.
+//
+// **Behind a proxy it is the last X-Forwarded-For entry, not the first.** A
+// proxy appends the address it saw to whatever the client sent, so everything
+// to the left of the last entry is the client's own claim — the first entry
+// was "203.0.113.5" for anybody who cared to send that header, in the audit
+// trail and in the count of failed logins alike. `behind_proxy` declares one
+// proxy in front of QSP, and the entry that one proxy wrote is the last.
+//
+// X-Real-IP is read only when there is no X-Forwarded-For at all. A proxy that
+// sets it replaces what the client sent, so it carries one address and there is
+// no choosing to do.
+//
+// What the header holds is used only if it is an address. Anything else falls
+// back to the socket, which behind a proxy is the proxy — unhelpful and true,
+// rather than a string a client chose.
 func clientIP(r *http.Request, behindProxy bool) string {
 	if behindProxy {
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			if first, _, found := strings.Cut(fwd, ","); found {
-				return strings.TrimSpace(first)
+		// Values rather than Get: a proxy may add its entry as a second header
+		// line instead of extending the first, and Get reads only the first.
+		if lines := r.Header.Values("X-Forwarded-For"); len(lines) > 0 {
+			last := lines[len(lines)-1]
+			if i := strings.LastIndexByte(last, ','); i >= 0 {
+				last = last[i+1:]
 			}
-			return strings.TrimSpace(fwd)
-		}
-		if real := r.Header.Get("X-Real-Ip"); real != "" {
-			return strings.TrimSpace(real)
+			if ip, ok := forwardedAddress(last); ok {
+				return ip
+			}
+		} else if ip, ok := forwardedAddress(r.Header.Get("X-Real-Ip")); ok {
+			return ip
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -243,6 +269,24 @@ func clientIP(r *http.Request, behindProxy bool) string {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// forwardedAddress reads one address out of a forwarding header.
+//
+// Some proxies write a port after it, and bracket an IPv6 address to do so;
+// both are accepted and neither is kept.
+func forwardedAddress(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if addr, err := netip.ParseAddr(strings.Trim(value, "[]")); err == nil {
+		return addr.String(), true
+	}
+	if ap, err := netip.ParseAddrPort(value); err == nil {
+		return ap.Addr().String(), true
+	}
+	return "", false
 }
 
 // tileOrigin returns the scheme and host of a tile URL, prefixed with a space,

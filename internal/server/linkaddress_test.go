@@ -1,10 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 
+	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/peering"
 )
 
@@ -50,5 +53,68 @@ func TestARefusedAddressSaysWhichWayItIsWrong(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "host:port") {
 		t.Errorf("the refusal does not say what an address is: %v", err)
+	}
+}
+
+// linkedConfig is a configuration with one link, turned off so that it needs
+// no password file to be valid.
+func linkedConfig() config.Config {
+	cfg := config.Default()
+	cfg.DMR.Upstreams = []config.Upstream{{
+		Name: "cameron", Protocol: "openbridge",
+		Address: "kb9tyc.example.com:62045", ListenAddress: "0.0.0.0:62045",
+		NetworkID: 3127045,
+	}}
+	return cfg
+}
+
+// An edited address is reported as needing a restart, and one that could not
+// be saved is not left in the running configuration.
+//
+// **The handler edited the configuration it was comparing against.** `cfg :=
+// before` shared the upstreams, so NeedsRestart saw the new address on both
+// sides and said nothing — for a link, which is built once at startup — and a
+// refused save left the address in what the server went on running.
+//
+// To see it fail: in handleLinkAddress, put `cfg := before.Clone()` back to
+// `cfg := before`.
+func TestAnEditedLinkAddressIsNotWrittenIntoTheRunningConfiguration(t *testing.T) {
+	const was, now = "kb9tyc.example.com:62045", "kb9tyc.example.com:62031"
+
+	for _, tc := range []struct {
+		name    string
+		saveErr error
+		status  int
+		// after is the address the running configuration must hold.
+		after string
+	}{
+		{"saved", nil, http.StatusOK, now},
+		{"refused", errors.New("the file is read-only"), http.StatusBadRequest, was},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cm := newStubConfig()
+			cm.current = linkedConfig()
+			cm.saveErr = tc.saveErr
+			srv, a := newConfigServer(t, cm, nil)
+
+			rec := authed(t, srv, a, http.MethodPut, "/api/links/cameron/address",
+				`{"address":"`+now+`"}`)
+			if rec.Code != tc.status {
+				t.Fatalf("status %d, want %d: %s", rec.Code, tc.status, rec.Body)
+			}
+			if got := cm.current.DMR.Upstreams[0].Address; got != tc.after {
+				t.Errorf("the running configuration holds %q, want %q", got, tc.after)
+			}
+			if tc.saveErr != nil {
+				return
+			}
+			var body addressResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decoding: %v", err)
+			}
+			if len(body.NeedsRestart) == 0 {
+				t.Error("a changed link address was reported as needing no restart")
+			}
+		})
 	}
 }

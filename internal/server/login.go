@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -72,12 +73,33 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		clientIP(r, s.opts.BehindProxy), r.UserAgent())
 	switch {
 	case errors.Is(err, auth.ErrLockedOut):
-		// Said plainly. An operator who has locked themselves out and is told
-		// only "incorrect" will keep trying, which extends the lockout.
-		s.log.Warn("login refused: account locked", "username", req.Username)
+		// Said plainly, with how long. An operator who has mistyped their way
+		// into this and is told only "incorrect" will keep trying.
+		//
+		// **It is the address that is refused, not the account**, so this
+		// answer is the same for a real username and for one nobody holds, and
+		// it cannot be used to ask which is which.
+		s.log.Warn("login refused: too many failed attempts from this address",
+			"username", req.Username, "from", clientIP(r, s.opts.BehindProxy))
 		s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeDenied, "locked out")
+		wait := "a few minutes"
+		var lockout *auth.Lockout
+		if errors.As(err, &lockout) {
+			if left := time.Until(lockout.Until); left > 0 {
+				// Rounded up, so the wait named is never shorter than the wait.
+				seconds := int(left/time.Second) + 1
+				minutes := (seconds + 59) / 60
+				w.Header().Set("Retry-After", strconv.Itoa(seconds))
+				wait = "about " + strconv.Itoa(minutes) + " minutes"
+				if minutes == 1 {
+					wait = "about a minute"
+				}
+			}
+		}
 		writeJSON(w, s.log, http.StatusTooManyRequests, map[string]string{
-			"error": "too many failed attempts; wait a few minutes and try again",
+			"error": "too many failed attempts to sign in from your address; wait " + wait +
+				" and try again. Nobody else is affected, and `qsp unlock <username>` on " +
+				"the server ends the wait now",
 		})
 		return
 	case err != nil:
@@ -293,8 +315,8 @@ func SessionFrom(ctx context.Context) (auth.Session, bool) {
 // did what — which it could not answer for the question of who was in the
 // system at all.
 //
-// Failures are recorded as well as successes, and a lockout distinctly from a
-// wrong password: an attempt against a username that holds no account is the
+// Failures are recorded as well as successes, and a refusal for too many
+// attempts distinctly from a wrong password: an attempt against a username that holds no account is the
 // shape of somebody guessing, and a trail of successes alone cannot show it.
 func (s *Server) recordAuth(r *http.Request, action audit.Action, username string, outcome audit.Outcome, note string) {
 	if s.opts.Audit == nil {
@@ -319,5 +341,43 @@ func (s *Server) recordAuth(r *http.Request, action audit.Action, username strin
 		// a trail that could not be written, and refusing the request would
 		// lock an operator out of a console over a database problem.
 		s.log.Warn("cannot record an authentication in the audit trail", "error", err)
+	}
+}
+
+// recordAccount writes a change to an administrator's account to the audit
+// trail.
+//
+// **The actor is whoever is signed in, and the account is the subject.** These
+// events used to go through recordAuth, which names its username as the actor —
+// right for a sign-in, where the two are the same person, and wrong here: a
+// reset of W9XYZ's password was recorded as done by W9XYZ, so the one question
+// the trail exists to answer, who removed or reset this account, had no answer
+// in it.
+func (s *Server) recordAccount(r *http.Request, action audit.Action, target string, outcome audit.Outcome, note string) {
+	if s.opts.Audit == nil {
+		return
+	}
+	// Every route that reaches this is behind requireSession, so the fallback
+	// is for a future caller that is not rather than for anything today.
+	actor := "unknown"
+	if sess, ok := SessionFrom(r.Context()); ok {
+		actor = sess.Username
+	}
+	var detail map[string]string
+	if note != "" {
+		detail = map[string]string{"reason": note}
+	}
+	if err := s.opts.Audit.Record(r.Context(), audit.Event{
+		OccurredAt: time.Now().UTC(),
+		Actor:      actor,
+		Action:     action,
+		Subject:    target,
+		Outcome:    outcome,
+		SourceIP:   clientIP(r, s.opts.BehindProxy),
+		Detail:     detail,
+	}); err != nil {
+		// Warned rather than failed, as for a sign-in: the account has already
+		// been changed, and reporting an error would say it had not.
+		s.log.Warn("cannot record an account change in the audit trail", "error", err)
 	}
 }

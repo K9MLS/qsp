@@ -130,3 +130,21 @@ proxy an operator controls.
   `SameSite=Lax` mitigates and does not close.
 - A locked-out club is not locked out: the host they run QSP on is the recovery
   path, and it is the same one they used to install it.
+
+## Amendment, 2026-10-03: failed logins are counted against the source, not the account
+
+"Failed attempts are counted per account" is **superseded**. Counted per
+account, five wrong passwords from anybody locked the administrator out of
+their own console, and repeating them every fifteen minutes kept them out; and
+a locked account answered differently from an unknown name, which told a
+guesser which names were real.
+
+Failures are now counted against the address they came from (an IPv6 address
+by its /64), in memory. A throttled address is refused whatever name it
+tries, with the same answer for a real name and an invented one; the correct
+password from any other address signs in. The table is bounded, at most two
+password checks run at once, and a restart forgets it. `qsp unlock` and a
+password reset still lift a refusal for that account.
+
+Behind a reverse proxy `behind_proxy` must be set, or every visitor is one
+address sharing one set of attempts.

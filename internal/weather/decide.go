@@ -153,7 +153,8 @@ func chosen(event string, events []string) bool {
 // neither is used (ADR-0068). The area is the name of the first of the
 // operator's own zones, in their order, that the alert covers, so a warning
 // for four counties names the one the operator chose. The time is in that
-// zone's own time zone, with the day added when it is not today there. If NWS
+// zone's own time zone, with the day added when it is not today there. An
+// alert with no set end reads "FLOOD WARNING Denton until further notice". If NWS
 // has not yet said what the zone is called, the server's own time zone is used
 // rather than UTC, which on the air would read as a wrong time.
 //
@@ -182,8 +183,12 @@ func Format(a Alert, zones []Zone, now time.Time) string {
 		area = strings.TrimSpace(area)
 	}
 
+	// An alert NWS issued until further notice says so. Its Expires is only
+	// when the message is next reissued, and on the air it read as an end.
 	until := ""
-	if t := a.until(); !t.IsZero() {
+	if a.Ends.IsZero() && a.NoSetEnd {
+		until = "until further notice"
+	} else if t := a.hazardEnd(); !t.IsZero() {
 		local := t.In(loc)
 		layout := "3:04PM MST"
 		if !sameDay(local, now.In(loc)) {

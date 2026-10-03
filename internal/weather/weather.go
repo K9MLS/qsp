@@ -172,14 +172,41 @@ type Alert struct {
 	// Ends is when the hazard ends. NWS leaves it null on many alerts while
 	// Expires is set, so it is preferred only when present.
 	Ends time.Time
+	// NoSetEnd means NWS issued the alert "until further notice": it gave no
+	// Ends, and the alert's VTEC line carries the all-zero end time that says
+	// so. River flood warnings and tropical storm and hurricane warnings are
+	// issued this way.
+	NoSetEnd bool
 }
 
 // until is when the alert stops applying: Ends if NWS gave one, else Expires.
+// It is when to stop sending and remembering this message, which is not
+// always when the weather ends: see hazardEnd.
 func (a Alert) until() time.Time {
 	if !a.Ends.IsZero() {
 		return a.Ends
 	}
 	return a.Expires
+}
+
+// hazardEnd is when the weather itself is expected to end, which is what a
+// radio is told and what an extension is measured by. Zero means NWS has not
+// said.
+//
+// **Expires is not it for an alert in effect until further notice.** On
+// those, Expires is only when NWS will next reissue the message: a river
+// flood warning read from the live feed on 2026-10-03 expired the next
+// morning, as did the one before it and the one before that, each a day later
+// than the last. Read as an end, stations were told "until 6:30AM" about a
+// flood with no end in sight, and told again with a new wrong time at every
+// routine reissue. An alert with no VTEC line at all, such as a Special
+// Weather Statement, has only Expires and nothing contradicting it, so it is
+// still used there.
+func (a Alert) hazardEnd() time.Time {
+	if a.Ends.IsZero() && a.NoSetEnd {
+		return time.Time{}
+	}
+	return a.until()
 }
 
 // fits reports whether s is short enough for one group text.

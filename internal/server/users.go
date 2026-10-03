@@ -115,11 +115,11 @@ func (s *Server) handleAddUser(w http.ResponseWriter, r *http.Request) {
 	account, err := s.opts.Accounts.CreateAccount(r.Context(),
 		strings.TrimSpace(req.Username), password)
 	if err != nil {
-		s.recordAuth(r, audit.ActionUserCreated, req.Username, audit.OutcomeFailure, err.Error())
+		s.recordAccount(r, audit.ActionUserCreated, req.Username, audit.OutcomeFailure, err.Error())
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordAuth(r, audit.ActionUserCreated, account.Username, audit.OutcomeSuccess, "")
+	s.recordAccount(r, audit.ActionUserCreated, account.Username, audit.OutcomeSuccess, "")
 
 	writeJSON(w, s.log, http.StatusCreated, map[string]any{
 		"username": account.Username,
@@ -150,11 +150,11 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, auth.ErrNoSuchAccount) {
 			status = http.StatusNotFound
 		}
-		s.recordAuth(r, audit.ActionUserPasswordReset, name, audit.OutcomeFailure, err.Error())
+		s.recordAccount(r, audit.ActionUserPasswordReset, name, audit.OutcomeFailure, err.Error())
 		writeJSON(w, s.log, status, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordAuth(r, audit.ActionUserPasswordReset, name, audit.OutcomeSuccess, "")
+	s.recordAccount(r, audit.ActionUserPasswordReset, name, audit.OutcomeSuccess, "")
 
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
 		"username": name,
@@ -185,11 +185,11 @@ func (s *Server) handleRemoveUser(w http.ResponseWriter, r *http.Request) {
 			// input.
 			status = http.StatusConflict
 		}
-		s.recordAuth(r, audit.ActionUserDeleted, name, audit.OutcomeFailure, err.Error())
+		s.recordAccount(r, audit.ActionUserDeleted, name, audit.OutcomeFailure, err.Error())
 		writeJSON(w, s.log, status, map[string]string{"error": err.Error()})
 		return
 	}
-	s.recordAuth(r, audit.ActionUserDeleted, name, audit.OutcomeSuccess, "")
+	s.recordAccount(r, audit.ActionUserDeleted, name, audit.OutcomeSuccess, "")
 
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
 		"username": name,

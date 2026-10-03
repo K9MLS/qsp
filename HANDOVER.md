@@ -131,14 +131,23 @@ would not start with, and a save that could not be applied live is reported
 as saved. **The pragma change could only be tested here against a recording
 driver; Fedora's check.sh is the first run against real SQLite.**
 
-**Still open from the hunt** (reviewed, not yet fixed): link handlers edit
-the running configuration in place; the full backup omits link and peer
-password files; revert and restore skip some load-time fixes and pin too
-little; the Zello "USRP audio stopped without a release" line (likely a full
-queue dropping the release; check `dropped_from_usrp`); a hotspot can claim
-to be a linked QSP server; console login lockout can be used against an
-administrator; weather alerts with no end time from NWS read their expiry as
-their end; retention 0 stops pruning rather than pruning everything. The reviewers' full reports are in the 2026-10-03 session.
+**0.1.300 is most of the rest**, built by four agents in parallel and merged:
+the configuration is cloned wherever it is handed out; the full backup
+carries the password files (format 2); console logins are throttled by
+source address rather than by account (ADR-0026 amended); the three causes of
+the Zello "USRP audio stopped without a release" line; weather alerts with no
+set end read "until further notice" (from the live feed); retention zero
+prunes. **Not run here, and Fedora's check.sh is the first real run:** the
+zello-tagged connector against real libopus, everything SQLite-backed, and
+Go 1.27 itself.
+
+**Still open from the hunt**: a hotspot can claim to be a linked QSP server
+and is then offered private calls for radios not yet located (needs linked
+servers to prove who they are — K9MLS to decide); the connector's own
+QSP-to-Zello queue can still drop a release when full; a callsign is cached
+for ever once known; two administrators saving stale forms overwrite each
+other silently; no console page calls full restore, so its new report of
+written and missing password files is API-only. The reviewers' full reports are in the 2026-10-03 session.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
 closed a crash risk that has been live since Motorola repeaters were first observed:
 the call tracker was written from several goroutines at once, and Go treats
@@ -214,7 +223,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.299 | `cat VERSION` |
+| **Fedora working tree** | 0.1.300 | `cat VERSION` |
 | **GitHub** `main` | 0.1.292, tagged `v0.1.292`, pushed 2026-09-30 | the push output; `podman pull ghcr.io/k9mls/qsp:0.1.292` anonymously reported `0.1.292 (v0.1.292)`; Actions green |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.290** from 2026-09-29, `qsp-zello` 0.1.240, AMBEserver as `ambeserver.service` | `qsp -version` |
 | **Test server** (Docker, 192.168.1.27) | 0.1.290 built from source, 2026-09-29; its checkout was reset to the scrubbed history then | the `starting` log line |

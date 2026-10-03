@@ -332,3 +332,13 @@ the reissue before it, so an extension made a few minutes at a time is still
 sent. An update whose alert type differs from what stations were last told —
 a watch upgraded to a warning — is sent. The restart baseline is exactly the
 alerts issued before the process started.
+
+**Alerts with no set end (0.1.300), from the live feed.** Read on 2026-10-03:
+across 396 active alerts, `ends` was null only where the VTEC line's end is
+all zeros ("until further notice": river flood warnings, tropical storm
+warnings) or where there is no VTEC line (special weather statements).
+`expires` on those is when the message lapses, about a day on, and every
+reissue moves it. So an alert with no set end reads "until further notice",
+shows no end on the page, and is never an extension. The development
+container can reach api.weather.gov with a User-Agent, which the 403 measured
+earlier in this ADR predates.

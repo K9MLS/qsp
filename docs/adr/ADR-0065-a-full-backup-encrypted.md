@@ -146,3 +146,14 @@ is on the machine that died, which is ADR-0054's objection restored in full.
 **Leaving ADR-0054 as it stands and doing this quietly.** Rejected because it
 was accepted with reasoning, and a decision reversed without a record is a
 decision somebody reinstates later from the argument still written down.
+
+## Amendment, 2026-10-03: the full backup carries the password files
+
+"A restore from it comes up with links that work" was not true: the peer
+password, members' passwords and each link's `.pass` file are files the
+configuration names, not entries in the secrets store, and the backup held
+only the store. Format 2 carries every password file the configuration names,
+inside the encrypted payload; a restore writes them back, mode 0600, only at
+the paths the restored configuration names, and reports any it could not
+write. Format 1 still opens. Both restores keep this machine's console
+address and database location.

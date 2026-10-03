@@ -63,10 +63,16 @@ func (m *configManager) PendingRestart() []string {
 }
 
 // Current implements server.ConfigManager.
+//
+// **A copy that shares nothing, not the struct.** Returning `m.current` handed
+// every caller the running configuration's own slices and its Access pointer,
+// so a handler that edited "its" copy edited the live one — unvalidated,
+// outside the mutex, and invisible to PendingRestart because `startup` was
+// built from the same slices and changed with it. See config.Config.Clone.
 func (m *configManager) Current() config.Config {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.current
+	return m.current.Clone()
 }
 
 // Writable implements server.ConfigManager.
@@ -86,6 +92,10 @@ func (m *configManager) Save(ctx context.Context, cfg config.Config, author, sum
 		return config.Version{}, fmt.Errorf("%w: this instance was started without -config",
 			config.ErrNotWritable)
 	}
+	// The manager keeps its own copy, for the reason Current returns one: the
+	// caller still holds cfg and whatever it does next must not reach what is
+	// recorded, written and running.
+	cfg = cfg.Clone()
 	// Checked before anything is recorded, so the history never holds a
 	// configuration that could not be restored.
 	if err := cfg.Validate(); err != nil {

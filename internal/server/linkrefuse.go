@@ -88,7 +88,9 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 	id := uint32(id64)
 
 	before := s.opts.Config.Current()
-	cfg := before
+	// A copy that shares nothing, because what follows edits the registration
+	// list in place; see handleLinkAddress.
+	cfg := before.Clone()
 
 	refused, why := refuseRegistration(&cfg, id)
 

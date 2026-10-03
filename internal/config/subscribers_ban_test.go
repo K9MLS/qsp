@@ -165,7 +165,7 @@ func TestAnAllowOnlySubscriberListCannotBeSaved(t *testing.T) {
 
 // A backup taken before 0448 restores, and restores open.
 //
-// To see it fail: remove b.Config.openSubscribers() from ReadBackup.
+// To see it fail: remove b.Config.Upgrade() from ReadBackup.
 func TestABackupWithAnAllowOnlyListRestoresOpen(t *testing.T) {
 	c := enabledDMR()
 	c.DMR.Access = &Access{

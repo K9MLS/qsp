@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/audio"
+	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/zello"
 	"github.com/k9mls/qsp/internal/zellobridge"
 	"github.com/k9mls/qsp/internal/zellologon"
@@ -46,9 +47,34 @@ const (
 	stateZelloUnreachable   = "zello_unreachable" // network, or Zello is down
 )
 
-// idle ends a transmission whose release never came, in either direction.
-// It matches QSP's routing.StreamTimeout, so both ends give up together.
+// idle ends a transmission from QSP whose release never came. It matches
+// QSP's routing.StreamTimeout: QSP has given the call up by then too.
 const idle = 2 * time.Second
+
+// zelloIdle ends a Zello stream whose on_stream_stop never came, by sending
+// QSP the release the stop would have sent.
+//
+// **It must fire before QSP's own timer, so it is shorter, not equal.** QSP
+// ends a transmission from USRP that is silent for routing.StreamTimeout and
+// records "USRP audio stopped without a release" -- a line that means this
+// program crashed or lost the socket. When both timers were two seconds, on
+// ticks of the same length, QSP's fired first about half the time and blamed
+// a fault that had not happened, for an over this side was about to release.
+// A second of silence is already seventeen missed packets, so nothing that is
+// still a transmission is cut short; and if audio does resume on the same
+// stream, the bridge keys up again on its first packet.
+const zelloIdle = time.Second
+
+// pumpTick is how often pump looks for a transmission that went quiet, so a
+// timeout is acted on up to this long after it passes.
+const pumpTick = idle / 4
+
+// The relationship above, checked by the compiler: the latest this side can
+// release -- the timeout plus a whole tick -- with half a second in hand for
+// the release to cross the socket and wait its turn in QSP's queue. A change
+// to either constant that breaks it is a negative constant converted to an
+// unsigned type, which does not build.
+const _ = uint64(routing.StreamTimeout - (zelloIdle + pumpTick) - 500*time.Millisecond)
 
 // connector owns the loop. Its dependencies are fields so a test can replace
 // the network at each boundary without replacing the logic between them.
@@ -188,7 +214,7 @@ func (c *connector) once(ctx context.Context, frames <-chan audio.Frame, radio z
 // pump carries audio for one session, on one goroutine, so the bridge's two
 // directions are never driven concurrently from here.
 func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-chan audio.Frame) {
-	tick := time.NewTicker(idle / 4)
+	tick := time.NewTicker(pumpTick)
 	defer tick.Stop()
 
 	var (
@@ -257,9 +283,24 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 					c.log.Warn("cannot send audio to Zello", slog.String("error", err.Error()))
 				}
 			}
-		case p := <-s.Audio():
+		case p, ok := <-s.Audio():
+			if !ok {
+				// **A closed channel is the session ending, not a packet.**
+				// The session's reader closes Audio on its way out, and a
+				// receive from a closed channel yields a zero packet for as
+				// long as anyone asks. Played, it is stream 0 with no Opus:
+				// the bridge keys nothing for it, the decoder conceals the
+				// "loss" into real audio frames, and QSP receives audio with
+				// no keyup and -- because nothing is keyed here -- no
+				// release, so it holds a repeater keyed for two seconds.
+				return
+			}
 			play(p)
-		case ev := <-s.Events():
+		case ev, ok := <-s.Events():
+			if !ok {
+				// Closed with Audio, by the same reader: the session is over.
+				return
+			}
 			if ev.Command == zello.EventStreamStart {
 				// **Said once per stream**: what the far side chose to send.
 				// The first real connection failed on a packet shape nothing
@@ -280,7 +321,12 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 		drain:
 			for {
 				select {
-				case p := <-s.Audio():
+				case p, ok := <-s.Audio():
+					if !ok {
+						// Closed is always ready: without this the drain
+						// would never reach its default and never end.
+						break drain
+					}
 					play(p)
 				default:
 					break drain
@@ -294,7 +340,7 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 				c.log.Warn("audio from QSP stopped without a release; closing the Zello stream")
 				release()
 			}
-			if toRadio && now.Sub(lastZelloAudio) > idle {
+			if toRadio && now.Sub(lastZelloAudio) > zelloIdle {
 				c.log.Warn("a Zello stream stopped without on_stream_stop; ending it toward QSP")
 				stopRadio()
 			}

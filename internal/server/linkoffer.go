@@ -92,7 +92,9 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before := s.opts.Config.Current()
-	cfg := before
+	// A copy that shares nothing, because what follows edits the registration
+	// list in place; see handleLinkAddress.
+	cfg := before.Clone()
 
 	if req.RepeaterID == 0 {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{

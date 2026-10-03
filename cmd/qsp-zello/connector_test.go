@@ -14,6 +14,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/audio"
 	"github.com/k9mls/qsp/internal/opus"
+	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/zello"
 	"github.com/k9mls/qsp/internal/zellobridge"
 	"github.com/k9mls/qsp/internal/zellologon"
@@ -339,5 +340,127 @@ func TestMissingCredentialsNeverReachZello(t *testing.T) {
 	}
 	if state != stateCredentialsMissing {
 		t.Errorf("state %q", state)
+	}
+}
+
+// countingBridge records what pump asks of the bridge, with no codec behind
+// it, so a test can say exactly which packets were played and when a
+// transmission toward QSP was ended.
+type countingBridge struct {
+	mu      sync.Mutex
+	played  []zello.IncomingPacket
+	stopped []time.Time
+}
+
+func (b *countingBridge) RadioKeyup() error        { return nil }
+func (b *countingBridge) RadioFrame([]int16) error { return nil }
+func (b *countingBridge) RadioRelease() error      { return nil }
+func (b *countingBridge) Close()                   {}
+func (b *countingBridge) ZelloPacket(p zello.IncomingPacket) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.played = append(b.played, p)
+	return nil
+}
+func (b *countingBridge) ZelloStreamStopped(uint32) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.stopped = append(b.stopped, time.Now())
+	return nil
+}
+func (b *countingBridge) snapshot() (played []zello.IncomingPacket, stopped []time.Time) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]zello.IncomingPacket(nil), b.played...), append([]time.Time(nil), b.stopped...)
+}
+
+// TestAClosedAudioChannelIsNotAPacket: the session's reader closes Audio and
+// Events when it exits, and a closed channel hands out zero values for ever.
+// A zero packet played is stream 0 with no Opus -- audio toward QSP with no
+// keyup and, because nothing is keyed, no release: QSP keys a repeater for
+// two seconds and logs "USRP audio stopped without a release".
+//
+// Done is deliberately left open in every row, so the only way pump can
+// return is by noticing the closed channel.
+//
+// To see it fail: in pump, replace the `if !ok { return }` under
+// `case p, ok := <-s.Audio():` with nothing; every row plays zero packets.
+// Remove the `break drain` on !ok instead, and the last row never returns.
+func TestAClosedAudioChannelIsNotAPacket(t *testing.T) {
+	real := zello.IncomingPacket{StreamID: 7, PacketID: 1, Opus: []byte{1}}
+	stop := zello.Event{Command: zello.EventStreamStop, StreamID: 7}
+	tests := []struct {
+		name        string
+		packets     []zello.IncomingPacket
+		events      []zello.Event
+		closeEvents bool
+	}{
+		{name: "closed with nothing queued"},
+		{name: "closed behind a queued packet, which is still played", packets: []zello.IncomingPacket{real}},
+		{name: "events closed as well, as the real session does", closeEvents: true},
+		{name: "closed behind a packet and its stop", packets: []zello.IncomingPacket{real},
+			events: []zello.Event{stop}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newFakeSession()
+			for _, p := range tc.packets {
+				s.audio <- p
+			}
+			for _, ev := range tc.events {
+				s.events <- ev
+			}
+			close(s.audio)
+			if tc.closeEvents {
+				close(s.events)
+			}
+			br := &countingBridge{}
+			c := testConnector(t, s)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			done := make(chan struct{})
+			go func() { c.pump(ctx, s, br, make(chan audio.Frame)); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				played, _ := br.snapshot()
+				t.Fatalf("pump did not return when Audio closed; it played %d packet(s)", len(played))
+			}
+			played, _ := br.snapshot()
+			for _, p := range played {
+				if p.StreamID == 0 && p.Opus == nil {
+					t.Fatalf("played %d packet(s), one of them the zero value of a closed channel", len(played))
+				}
+			}
+			// What was queued before the close is still delivered, in order.
+			if len(played) != len(tc.packets) {
+				t.Errorf("played %d packet(s), %d were sent", len(played), len(tc.packets))
+			}
+		})
+	}
+}
+
+// TestAZelloStreamWithNoStopIsReleasedBeforeQSPGivesUp: when on_stream_stop is
+// missed, this side's fallback release has to reach QSP before QSP's own
+// routing.StreamTimeout, or QSP records a fault for an over that was about to
+// be released.
+//
+// To see it fail: in pump's tick case, compare lastZelloAudio against idle
+// rather than zelloIdle; the release comes at two seconds or later.
+func TestAZelloStreamWithNoStopIsReleasedBeforeQSPGivesUp(t *testing.T) {
+	s := newFakeSession()
+	br := &countingBridge{}
+	c := testConnector(t, s)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go c.pump(ctx, s, br, make(chan audio.Frame))
+
+	sent := time.Now()
+	s.audio <- zello.IncomingPacket{StreamID: 7, PacketID: 1, Opus: []byte{1}}
+	waitFor(t, "the fallback release", func() bool { _, stopped := br.snapshot(); return len(stopped) > 0 })
+	_, stopped := br.snapshot()
+	if took := stopped[0].Sub(sent); took >= routing.StreamTimeout {
+		t.Errorf("released %s after the last audio; QSP gives up at %s and blames a crash",
+			took.Round(10*time.Millisecond), routing.StreamTimeout)
 	}
 }

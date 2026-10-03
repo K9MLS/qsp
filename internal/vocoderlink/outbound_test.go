@@ -336,3 +336,125 @@ func waitUntil(t *testing.T, what string, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+// slowChip is a vocoder that takes a moment over every frame, as a real one
+// does: a round trip to the chip per 20 ms of audio.
+type slowChip struct {
+	*fakeChip
+	each time.Duration
+}
+
+func (s slowChip) Encode(samples []int16) (ambe.ChannelFrame, error) {
+	time.Sleep(s.each)
+	return s.fakeChip.Encode(samples)
+}
+
+// TestAReleaseSurvivesAClumpOfAudio is the production log line "USRP audio
+// stopped without a release" after short Zello overs that were released
+// properly: the over arrived as one clump, faster than the chip encodes, the
+// queue filled, and the frame dropped was the last one -- the release.
+//
+// Each row is an over delivered all at once to a channel whose chip is slow.
+// The transmission must end because of the release, not because the idle
+// timer gave up on it.
+//
+// To see it fail: in queueUSRP, change `if f.PTT {` to `if true {`, so a
+// release is dropped like any frame, and the second row ends by the idle
+// timer; or set USRPQueueDepth to 64, and the first row loses audio.
+func TestAReleaseSurvivesAClumpOfAudio(t *testing.T) {
+	tests := []struct {
+		name   string
+		frames int
+		each   time.Duration
+		// wantDropped says whether the clump is larger than the queue. The
+		// counter must say so when it is, and stay at zero when it is not.
+		wantDropped bool
+	}{
+		{"two seconds of audio in one clump fits the queue", 100, 5 * time.Millisecond, false},
+		{"a clump larger than the queue loses audio, never the release", USRPQueueDepth + 100, time.Millisecond, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			chip := &fakeChip{rate: ambe.RateIndexDMR}
+			out := &delivered{}
+			radio := &scriptedRadio{in: make(chan audio.Frame, tc.frames+2)}
+			// The clump is waiting on the socket before anything reads it.
+			radio.in <- usrpKeyup
+			for i := range tc.frames {
+				radio.in <- pcm(int16(i + 1))
+			}
+			radio.in <- usrpRelease
+
+			ch := outboundChannel(t, slowChip{chip, tc.each}, radio, out, 400*time.Millisecond)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go ch.Run(ctx)
+
+			// The chip is freed when the transmission ends, by the release or
+			// by the idle timer; the bursts themselves leave later, at a
+			// radio's cadence, and are not what this test is about.
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				chip.mu.Lock()
+				released := chip.released
+				chip.mu.Unlock()
+				if released > 0 {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("the transmission never ended")
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+			if n := ch.txAbandoned.Load(); n != 0 {
+				t.Errorf("abandoned %d transmission(s); the release was lost and the idle timer ended it", n)
+			}
+			ch.mu.Lock()
+			problem := ch.problem
+			ch.mu.Unlock()
+			if problem != "" {
+				t.Errorf("problem %q after an over that was released properly", problem)
+			}
+			if got := ch.fromRadio.Load(); got != uint64(tc.frames+2) {
+				t.Errorf("received %d frames, want %d", got, tc.frames+2)
+			}
+			if dropped := ch.txDropped.Load(); (dropped > 0) != tc.wantDropped {
+				t.Errorf("dropped_from_usrp is %d, want dropped=%v: the counter must say "+
+					"what was lost and nothing else", dropped, tc.wantDropped)
+			}
+			chip.mu.Lock()
+			held := chip.held
+			chip.mu.Unlock()
+			if held {
+				t.Error("the chip is still held after the release")
+			}
+		})
+	}
+}
+
+// TestAFullQueueCountsEveryFrameItLoses pins the counter exactly, without a
+// Run loop emptying the queue behind it.
+//
+// To see it fail: move c.txDropped.Add(1) in queueUSRP below the `if f.PTT`
+// return, and the displaced frame goes uncounted.
+func TestAFullQueueCountsEveryFrameItLoses(t *testing.T) {
+	ch := outboundChannel(t, &fakeChip{rate: ambe.RateIndexDMR}, &fakeRadio{}, &delivered{}, 0)
+	ctx := context.Background()
+	for i := range USRPQueueDepth + 7 {
+		ch.queueUSRP(ctx, pcm(int16(i+1)))
+	}
+	ch.queueUSRP(ctx, usrpRelease)
+	if got := ch.txDropped.Load(); got != 8 {
+		t.Errorf("dropped %d, want 8: seven frames that found the queue full, and one displaced by the release", got)
+	}
+	if len(ch.fromUSRP) != USRPQueueDepth {
+		t.Fatalf("queue holds %d, want %d", len(ch.fromUSRP), USRPQueueDepth)
+	}
+	var last audio.Frame
+	for range USRPQueueDepth {
+		last = <-ch.fromUSRP
+	}
+	if last.PTT {
+		t.Error("the last frame queued is audio; the release was dropped")
+	}
+}

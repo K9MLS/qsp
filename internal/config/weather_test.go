@@ -118,7 +118,7 @@ func TestWeatherRoundTrips(t *testing.T) {
 // to every warning and every watch when it is read; any other list was chosen
 // and is kept.
 //
-// To see it fail: remove the cfg.widenWeather() call from Load, and the five
+// To see it fail: remove the c.widenWeather() call from Upgrade, which Load runs, and the five
 // names come back as they were saved.
 func TestTheFirstDefaultAlertTypesAreWidened(t *testing.T) {
 	shuffled := []string{"tornado watch", "Tornado Warning", " Flash Flood Warning", "Severe Thunderstorm Watch", "Severe Thunderstorm Warning"}

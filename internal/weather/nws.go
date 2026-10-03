@@ -156,6 +156,10 @@ type alertsResponse struct {
 			Sent    *time.Time `json:"sent"`
 			Expires *time.Time `json:"expires"`
 			Ends    *time.Time `json:"ends"`
+			// Parameters is read leniently, one name at a time: it is a bag
+			// of whatever the issuing office attached, and a shape nobody
+			// expected in a field QSP does not need must not fail the poll.
+			Parameters map[string]json.RawMessage `json:"parameters"`
 		} `json:"properties"`
 	} `json:"features"`
 }
@@ -204,6 +208,7 @@ func (c *Client) ActiveAlerts(ctx context.Context, zones []string) ([]Alert, err
 		if p.Ends != nil {
 			a.Ends = *p.Ends
 		}
+		a.NoSetEnd = p.Ends == nil && untilFurtherNotice(p.Parameters["VTEC"])
 		if a.ID == "" {
 			// An alert with no identity cannot be remembered as sent, so it
 			// would be sent on every poll. Skipped rather than trusted.
@@ -212,4 +217,31 @@ func (c *Client) ActiveAlerts(ctx context.Context, zones []string) ([]Alert, err
 		out = append(out, a)
 	}
 	return out, nil
+}
+
+// vtecNoEnd is how a VTEC line ends when the alert is in effect until further
+// notice: an end time of all zeros, where a date and time would be.
+const vtecNoEnd = "-000000T0000Z/"
+
+// untilFurtherNotice reports whether an alert's VTEC lines, as NWS gives them
+// in parameters.VTEC, say it has no set end.
+//
+// VTEC is the coded line NWS puts on every watch, warning and advisory, such
+// as /O.CON.KDVN.FL.W.0067.000000T0000Z-000000T0000Z/, and its last field is
+// when the event ends. Of 396 alerts active on 2026-10-03, every one with a
+// null "ends" either had this all-zero end or had no VTEC line at all, and
+// every one with a real end there had the same time in "ends".
+func untilFurtherNotice(raw json.RawMessage) bool {
+	var lines []string
+	if err := json.Unmarshal(raw, &lines); err != nil {
+		// Absent, or not the list of strings NWS sends: nothing is known, and
+		// the alert is read as it was before this field was.
+		return false
+	}
+	for _, line := range lines {
+		if strings.HasSuffix(strings.TrimSpace(line), vtecNoEnd) {
+			return true
+		}
+	}
+	return false
 }

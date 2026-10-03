@@ -1118,8 +1118,8 @@ type Server struct {
 	ReadHeaderTimeout Duration `json:"read_header_timeout"`
 	// ReadTimeout bounds the total time to read a request.
 	ReadTimeout Duration `json:"read_timeout"`
-	// WriteTimeout bounds the total time to write a response. Server-Sent
-	// Events connections are exempt; see the server package.
+	// WriteTimeout bounds the total time to write a response. On a Server-Sent
+	// Events connection it bounds each write instead; see the server package.
 	WriteTimeout Duration `json:"write_timeout"`
 	// IdleTimeout bounds how long a keep-alive connection may sit unused.
 	IdleTimeout Duration `json:"idle_timeout"`
@@ -2319,8 +2319,7 @@ func Load(r io.Reader) (Config, error) {
 	// server whose first run wrote an allow-only subscriber list must not stop
 	// at its next restart because that shape is no longer accepted; it opens
 	// instead, and says so in the startup log.
-	cfg.openSubscribers()
-	cfg.widenWeather()
+	cfg.Upgrade()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
 	}

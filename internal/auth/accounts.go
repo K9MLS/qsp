@@ -20,16 +20,17 @@ const (
 	// stops being a way in by the next day.
 	DefaultSessionLifetime = 12 * time.Hour
 
-	// DefaultMaxFailures is how many wrong passwords an account tolerates
-	// before it stops accepting attempts.
+	// DefaultMaxFailures is how many failed attempts one source address is
+	// allowed before it stops being answered.
 	DefaultMaxFailures = 5
 
-	// DefaultLockout is how long it then refuses them.
+	// DefaultLockout is how long it then goes unanswered, and the period the
+	// failures are counted over.
 	//
 	// **This bounds guessing, it does not stop it.** Five attempts every
-	// fifteen minutes is twenty an hour, which is useless against a password
-	// worth having and ruinous against a weak one — which is why
-	// MinPasswordLength exists and why this is not the only defence.
+	// fifteen minutes is twenty an hour from each address, which is useless
+	// against a password worth having and ruinous against a weak one — which
+	// is why MinPasswordLength exists and why this is not the only defence.
 	DefaultLockout = 15 * time.Minute
 
 	// tokenBytes is the entropy in a session token. 32 bytes is more than the
@@ -44,7 +45,12 @@ var (
 	// **One error for both**, deliberately. Distinguishing them turns the login
 	// form into a way of asking whether a callsign holds an account here.
 	ErrInvalidCredentials = errors.New("auth: the username or password is incorrect")
-	// ErrLockedOut means the account is refusing attempts for now.
+	// ErrLockedOut means the address the attempt came from has failed too often
+	// and is not being answered for now.
+	//
+	// **It says nothing about the username**, and is returned before the name
+	// is considered: an address that has used up its attempts gets this for a
+	// real account and for a name nobody holds alike.
 	ErrLockedOut = errors.New("auth: too many failed attempts; try again later")
 	// ErrNoSession means the token is unknown, expired, or belongs to an
 	// account that no longer exists.
@@ -56,6 +62,23 @@ var (
 	ErrInvalidUsername = errors.New("auth: invalid username")
 )
 
+// Lockout is ErrLockedOut with the time it ends.
+//
+// It exists so the console can tell somebody who mistyped their passphrase how
+// long to wait, rather than "later". errors.Is(err, ErrLockedOut) matches it.
+type Lockout struct {
+	// Until is when the address will be answered again.
+	Until time.Time
+}
+
+// Error implements error.
+func (l *Lockout) Error() string {
+	return fmt.Sprintf("%s (after %s)", ErrLockedOut.Error(), l.Until.UTC().Format(time.RFC3339))
+}
+
+// Unwrap makes a Lockout match ErrLockedOut.
+func (l *Lockout) Unwrap() error { return ErrLockedOut }
+
 // Account is an administrator.
 type Account struct {
 	ID           int64
@@ -63,8 +86,15 @@ type Account struct {
 	PasswordHash string
 	CreatedAt    time.Time
 	LastLoginAt  time.Time
-	FailedCount  int
-	LockedUntil  time.Time
+	// FailedCount is no longer counted: failures are counted against the
+	// address they came from, not the account. The column remains and is
+	// written as zero.
+	FailedCount int
+	// LockedUntil is set while an address is being refused for guessing at
+	// this account. **It refuses nobody by itself** — a correct password from
+	// anywhere else still signs in — and clearing it is how `qsp unlock` and a
+	// password reset let that address try again.
+	LockedUntil time.Time
 }
 
 // Session is a logged-in browser.
@@ -122,9 +152,11 @@ type Repository interface {
 type Policy struct {
 	// SessionLifetime is how long a session lasts. Zero selects the default.
 	SessionLifetime time.Duration
-	// MaxFailures before an account locks. Zero selects the default.
+	// MaxFailures is how many failed attempts one source address is allowed
+	// before it stops being answered. Zero selects the default.
 	MaxFailures int
-	// Lockout is how long it stays locked. Zero selects the default.
+	// Lockout is how long it then goes unanswered, and the period the failures
+	// are counted over. Zero selects the default.
 	Lockout time.Duration
 	// Hash is the password hashing cost. The zero value selects
 	// DefaultParams.
@@ -149,8 +181,9 @@ func (p Policy) withDefaults() Policy {
 
 // Service is the login flow.
 //
-// It is safe for concurrent use to the extent its Repository is: it holds no
-// mutable state of its own.
+// It is safe for concurrent use to the extent its Repository is. The only
+// mutable state it holds is the count of failed attempts by source address,
+// which guards itself.
 type Service struct {
 	repo   Repository
 	policy Policy
@@ -162,6 +195,11 @@ type Service struct {
 	// derivation happens, and the difference is measurable from outside — which
 	// turns the form into a way of asking which callsigns hold accounts here.
 	decoy string
+	// throttle counts failed attempts by the address they came from.
+	throttle *sourceThrottle
+	// verifying bounds how many passwords are checked at once. See
+	// maxConcurrentVerifies.
+	verifying chan struct{}
 }
 
 // NewService constructs the login flow.
@@ -180,7 +218,14 @@ func NewService(repo Repository, policy Policy, now func() time.Time) (*Service,
 	if err != nil {
 		return nil, fmt.Errorf("auth: cannot prepare the login flow: %w", err)
 	}
-	return &Service{repo: repo, policy: policy, now: now, decoy: decoy}, nil
+	return &Service{
+		repo:      repo,
+		policy:    policy,
+		now:       now,
+		decoy:     decoy,
+		throttle:  newSourceThrottle(policy.MaxFailures, policy.Lockout),
+		verifying: make(chan struct{}, maxConcurrentVerifies),
+	}, nil
 }
 
 // NormaliseUsername folds a username for comparison.
@@ -247,48 +292,92 @@ func (s *Service) CreateAccount(ctx context.Context, username, password string) 
 }
 
 // Authenticate checks a username and password and returns a new session.
+//
+// **Failures are counted against the address they came from, never against the
+// account.** After MaxFailures within Lockout, that address gets ErrLockedOut
+// for Lockout whatever name it sends, and everybody else is unaffected: a
+// stranger guessing at an administrator's password cannot keep the
+// administrator out, because the correct password from any other address still
+// signs in.
+//
+// **A name nobody holds is treated exactly as a wrong password** — the same
+// error, the same work, the same count, and the same refusal once the address
+// has used up its attempts — so nothing here says which callsigns hold
+// accounts.
 func (s *Service) Authenticate(ctx context.Context, username, password, ip, agent string) (Session, error) {
 	now := s.now().UTC()
 	fold := NormaliseUsername(username)
+	source := throttleKey(ip)
 
 	account, found, err := s.repo.AccountByUsername(ctx, fold)
+	if err != nil {
+		return Session{}, fmt.Errorf("auth: cannot look up the account: %w", err)
+	}
+
+	// Refused before the password is looked at, so an address that has used up
+	// its attempts costs a map lookup rather than a key derivation.
+	if until, against, refused := s.throttle.refused(source, now); refused {
+		// **The one way out early is the host.** `qsp unlock` runs in another
+		// process and cannot reach this table, so what it clears is the mark
+		// on the account, and an address refused for guessing at that account
+		// is let try again when the mark is gone. Nothing an anonymous sender
+		// can do removes the mark, so the answer they get does not depend on
+		// whether the name is real.
+		if !found || against != account.ID || !account.LockedUntil.IsZero() {
+			return Session{}, &Lockout{Until: until}
+		}
+		s.throttle.forget(source)
+	}
+
+	hash := s.decoy
+	if found {
+		hash = account.PasswordHash
+	}
+	// Do the work for an unknown name too. One that answers in a microsecond
+	// while a known one takes a hundred milliseconds is a way of listing which
+	// callsigns hold accounts.
+	verr, err := s.verify(ctx, password, hash)
 	if err != nil {
 		return Session{}, err
 	}
 
-	if !found {
-		// Do the work anyway. An unknown name that answers in a microsecond
-		// while a known one takes a hundred milliseconds is a way of listing
-		// which callsigns hold accounts.
-		_ = Verify(password, s.decoy)
+	if !found || verr != nil {
+		var id int64
+		if found {
+			id = account.ID
+		}
+		until := s.throttle.fail(source, id, now)
+		if found && !until.IsZero() {
+			// Marked on the account so the users page can show that somebody is
+			// being refused for guessing at it, and so that clearing the mark
+			// from the host reaches the refusal. Never shortened: a second
+			// address tripping must not cut the first one's mark short.
+			if account.LockedUntil.After(until) {
+				until = account.LockedUntil
+			}
+			if err := s.repo.UpdateAttempts(ctx, account.ID, 0, until, account.LastLoginAt); err != nil {
+				return Session{}, fmt.Errorf("auth: cannot record the refusal: %w", err)
+			}
+		}
+		// The attempt that uses up the allowance is still answered as a wrong
+		// password; it is the next one that is refused.
 		return Session{}, ErrInvalidCredentials
 	}
 
-	// The lock is checked before the password so that a locked account costs
-	// nothing to refuse, which is the point of locking it.
-	if !account.LockedUntil.IsZero() && now.Before(account.LockedUntil) {
-		return Session{}, ErrLockedOut
-	}
+	// A success clears the address's count. Somebody who mistypes twice and
+	// then gets it right should not be one mistake from a refusal tomorrow.
+	s.throttle.forget(source)
 
-	if err := Verify(password, account.PasswordHash); err != nil {
-		failed := account.FailedCount + 1
-		var lockedUntil time.Time
-		if failed >= s.policy.MaxFailures {
-			lockedUntil = now.Add(s.policy.Lockout)
-			// The counter resets with the lock, so the next window is a fresh
-			// set of attempts rather than one attempt and an immediate relock.
-			failed = 0
-		}
-		if err := s.repo.UpdateAttempts(ctx, account.ID, failed, lockedUntil, account.LastLoginAt); err != nil {
-			return Session{}, err
-		}
-		return Session{}, ErrInvalidCredentials
+	// **A mark that is still running is left alone.** It belongs to some other
+	// address that was guessing at this account, and clearing it here would
+	// hand that address a fresh set of attempts every time the real
+	// administrator signed in.
+	mark := account.LockedUntil
+	if !now.Before(mark) {
+		mark = time.Time{}
 	}
-
-	// A success clears the count. Somebody who mistypes twice and then gets it
-	// right should not be one mistake from a lockout tomorrow.
-	if err := s.repo.UpdateAttempts(ctx, account.ID, 0, time.Time{}, now); err != nil {
-		return Session{}, err
+	if err := s.repo.UpdateAttempts(ctx, account.ID, 0, mark, now); err != nil {
+		return Session{}, fmt.Errorf("auth: cannot record the sign-in: %w", err)
 	}
 
 	token, err := NewToken()
@@ -310,12 +399,30 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 	return session, nil
 }
 
-// Unlock clears an account's failed attempts and its lock.
+// verify checks a password against a hash, taking a turn to do it.
+//
+// The first result is the verdict on the password; the second is a failure to
+// reach one, which is the caller's request ending while it waited.
+func (s *Service) verify(ctx context.Context, password, hash string) (verdict, err error) {
+	select {
+	case s.verifying <- struct{}{}:
+	case <-ctx.Done():
+		return nil, fmt.Errorf("auth: gave up waiting to check a password: %w", ctx.Err())
+	}
+	defer func() { <-s.verifying }()
+	return Verify(password, hash), nil
+}
+
+// Unlock lets an address that was refused for guessing at an account try again.
 //
 // **The recovery path is the host, as it is for the password.** Fifteen minutes
 // is a short wait for somebody guessing and a long one for an operator who
 // fat-fingered their own passphrase five times, and the person with shell
 // access on the machine is already trusted with more than this.
+//
+// It clears the mark on the account, which the running server reads on the
+// next attempt; see Authenticate. An address refused only for names that hold
+// no account has nothing to clear and waits the period out.
 //
 // It reports whether there was such an account, so the caller can say "no such
 // user" rather than silently doing nothing.

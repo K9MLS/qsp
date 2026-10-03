@@ -90,6 +90,10 @@ func (s *Server) handleCheckZones(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// The lookup may take as long as the whole write timeout, which is counted
+	// from the request arriving; without more time the answer would be ready
+	// just as the connection stopped accepting it.
+	s.extendWriteDeadline(w, 30*time.Second)
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 	writeJSON(w, s.log, http.StatusOK, map[string]any{

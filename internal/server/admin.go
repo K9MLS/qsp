@@ -2,11 +2,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/buildinfo"
 	"github.com/k9mls/qsp/internal/config"
@@ -289,6 +291,7 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	s.recordSettingSave(r, author, summary, version.Number, err)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -299,6 +302,24 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 		"version":       version.Number,
 		"needs_restart": config.NeedsRestart(s.opts.Config.Current(), cfg),
 	})
+}
+
+// recordSettingSave writes the audit event for a setting this page saved.
+//
+// **Nothing did.** Save writes the configuration history and no audit event;
+// the event is written by the handler that calls it, and only /api/config's
+// handler did. The two settings this page edits went through Save directly, so
+// a change to how long a login lasts — a security setting — appeared in the
+// configuration history and nowhere in the trail that says who did what.
+//
+// A save that was written but could not be applied while running is recorded
+// as the success it is, for the reason handleSaveConfig gives: saved is saved.
+func (s *Server) recordSettingSave(r *http.Request, author, summary string, version int64, err error) {
+	if err != nil && !errors.Is(err, config.ErrSavedNotApplied) {
+		s.recordConfigChange(r, author, summary, 0, audit.OutcomeFailure)
+		return
+	}
+	s.recordConfigChange(r, author, summary, version, audit.OutcomeSuccess)
 }
 
 // sessionState reports the lifetime, the count, and this session's own end.
@@ -371,8 +392,9 @@ func (s *Server) handleSessionLifetime(w http.ResponseWriter, r *http.Request) {
 	// again here: two places that decide what a valid lifetime is are two
 	// places that disagree later. The bounds and their reasons come back as
 	// the error the page shows.
-	version, err := s.opts.Config.Save(r.Context(), cfg, author,
-		fmt.Sprintf("session lifetime %s", time.Duration(req.Seconds)*time.Second))
+	summary := fmt.Sprintf("session lifetime %s", time.Duration(req.Seconds)*time.Second)
+	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	s.recordSettingSave(r, author, summary, version.Number, err)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

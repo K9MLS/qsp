@@ -65,6 +65,16 @@ var ErrQueueFull = errors.New("the transcoder's queue is full; the vocoder is no
 // so this is about four seconds of a stalled chip before anything is dropped.
 const QueueDepth = 64
 
+// USRPQueueDepth is how many 20 ms frames from the USRP side a channel holds:
+// about ten seconds of audio.
+//
+// **Sized for a clump, not for a stalled chip.** Zello delivers over the
+// internet, and a short over that sat in a buffer on the way arrives all at
+// once: a three-second over is 150 frames in a few milliseconds, while Run
+// empties the queue one chip round trip per frame. At QueueDepth that clump
+// overflowed, and the frame lost was the last to arrive -- the release.
+const USRPQueueDepth = 512
+
 // Options configures a Channel.
 type Options struct {
 	// Name is the transcoder's configured name.
@@ -203,7 +213,7 @@ func New(opts Options) (*Channel, error) {
 		talkgroup: opts.Talkgroup,
 		timeslot:  opts.Timeslot,
 		deliver:   opts.Deliver,
-		fromUSRP:  make(chan audio.Frame, QueueDepth),
+		fromUSRP:  make(chan audio.Frame, USRPQueueDepth),
 		started:   time.Now(),
 		toUSRP:    NewGain(opts.GainToUSRPDB),
 		toDMR:     NewGain(opts.GainToDMRDB),
@@ -376,7 +386,7 @@ func (c *Channel) flushPaced() {
 
 // drainRadio receives what the far side sends and queues it for Run.
 //
-// A full queue drops the frame and counts it rather than blocking, for the
+// A full queue drops a frame and counts it rather than blocking, for the
 // same reason Send does: the socket buffer behind it would fill instead, and
 // the loss would be the kernel's and invisible.
 func (c *Channel) drainRadio(ctx context.Context) {
@@ -389,11 +399,43 @@ func (c *Channel) drainRadio(ctx context.Context) {
 			return
 		}
 		c.fromRadio.Add(1)
-		select {
-		case c.fromUSRP <- f:
-		default:
-			c.txDropped.Add(1)
-		}
+		c.queueUSRP(ctx, f)
+	}
+}
+
+// queueUSRP queues one frame from the far side. Only drainRadio calls it.
+//
+// **A release is never the frame that is dropped.** Twenty milliseconds of
+// audio lost from a full queue is a click; a release lost is a transmission
+// that never ends, a repeater keyed until the idle timer, and "USRP audio
+// stopped without a release" in the log after an over that was released
+// properly. The release is also the last frame of a clump, so it is exactly
+// the one that arrives to find the queue full. It takes the place of the
+// oldest frame queued instead.
+//
+// The oldest frame may itself be an earlier over's release, in which case two
+// overs become one: still a transmission that ends, which is the property
+// being kept. Either way one frame is lost and one is counted.
+func (c *Channel) queueUSRP(ctx context.Context, f audio.Frame) {
+	select {
+	case c.fromUSRP <- f:
+		return
+	default:
+	}
+	c.txDropped.Add(1)
+	if f.PTT {
+		return
+	}
+	select {
+	case <-c.fromUSRP:
+	default:
+		// Run emptied a slot in the meantime; the release takes that one.
+	}
+	// This goroutine is the only sender, so there is room now. The select
+	// is so that even a mistake about that cannot outlive shutdown.
+	select {
+	case c.fromUSRP <- f:
+	case <-ctx.Done():
 	}
 }
 

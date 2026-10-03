@@ -50,7 +50,12 @@ seriously.
 3. **TLS is terminated by a reverse proxy.** QSP does not implement TLS. It
    honours forwarding headers **only** when the operator has declared
    `behind_proxy` — otherwise any client could forge its address in the audit
-   trail.
+   trail. Behind a proxy it takes the **last** `X-Forwarded-For` entry, the one
+   the proxy itself appended; everything before it is the client's own claim.
+   That is right for the one proxy `behind_proxy` declares, and with a second
+   proxy in front of the first it names the outer proxy rather than the client.
+   `X-Real-IP` is read only when there is no `X-Forwarded-For`. A proxy that
+   sets neither header leaves both to the client, so it must set one.
 4. **Handlers can have defects.** Panics are recovered into a 500 so that one
    broken console endpoint cannot drop a bridge carrying live traffic.
 5. **Secrets reach logs by accident.** `audit.Redact` matches key names
@@ -92,16 +97,27 @@ in the README rather than displayed in the console.
 produce one.
 
 A wrong password and an unknown username give the same answer and take the same
-time. Failed attempts are counted on the account and lock it briefly;
-`qsp unlock <username>` clears that from the host, which is the same recovery
-path the password itself has. The cookie
+time. **Failed attempts are counted against the address they come from, not the
+account**: after five in fifteen minutes that address is refused with a 429 for
+fifteen minutes, whatever username it sends and whether or not the name is
+real, and nobody else is affected — a stranger guessing at an administrator's
+password cannot lock the administrator out, because the right password from any
+other address still signs in. An IPv6 address is counted by its /64. The count
+is held in memory, for at most 4096 addresses, and a restart forgets it. At most
+two passwords are checked at once, so a flood of attempts takes a bounded share
+of the processor. `qsp unlock <username>` ends the wait for an address refused
+for guessing at that account, which is the same recovery path the password
+itself has. All of this depends on QSP seeing the real client address: behind a
+reverse proxy without `server.behind_proxy` set, every visitor shares the
+proxy's address and its five attempts. The cookie
 is `HttpOnly` and `SameSite=Lax`, and carries `Secure` when `server.behind_proxy`
 says QSP is behind TLS — setting it unconditionally would silently break a club
 running plain HTTP on a LAN.
 
 Roles are deliberately absent: there is one kind of account and it can do
 everything. The audit trail records who did what, which is the part that settles
-arguments.
+arguments. A change to an account — created, password reset, removed — names
+the signed-in administrator as the actor and the account as the subject.
 
 Events are written to the log and to `audit_events` in the database, and the
 two fail independently — a database that is locked or full does not take the
@@ -110,8 +126,8 @@ because a secret written to an append-only table is a secret in every backup of
 it.
 
 Every authentication is recorded: a successful sign-in, a sign-out, a refused
-password, and a refusal caused by lockout, the last as `denied` rather than
-`failure`. **The failures matter more than the successes.** An attempt against a
+password, and a refusal of an address that has failed too often, the last as
+`denied` rather than `failure`. **The failures matter more than the successes.** An attempt against a
 username that holds no account is the shape of somebody guessing, and a trail
 containing only successes cannot show it. The username is recorded as typed,
 which may name no account.
@@ -170,6 +186,23 @@ covering more.
 landed first and a credential write then failed, the server would be running a
 configuration whose links have no passwords — silent, and looking correct. The
 other order leaves credentials for links that do not exist yet, which is inert.
+
+**The password files travel in it too** (format 2): the shared peer password,
+each member's own, and each link's password or passphrase — the files the
+configuration names, which ADR-0012 keeps outside the credential store. They
+are inside the encrypted payload and nowhere else. A restore writes each back
+at mode 0600, in a directory created 0700, **only at a path the restored
+configuration names**: the file says where each one goes, and without that
+check a backup could put anything anywhere the service can write. That check
+is against the configuration in the same file, so restoring a full backup from
+somebody else is trusting them with every path QSP can write — it is for an
+operator's own server. A password file that is neither in the backup nor on
+the machine is named in the confirmation and in the answer, rather than the
+restore claiming links will work. A file that exists and cannot be read fails
+the backup, as an undecryptable credential does.
+
+A full backup is refused when it is made if it would be larger than the 16 MiB
+a restore reads.
 
 The audit trail records that a full backup was taken and by whom, and **never
 the passphrase or the names of the credentials**: a trail listing which
@@ -352,7 +385,12 @@ than by QSP, and no telemetry of any kind is sent anywhere.
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join`,
 `/api/join/config` and static
 console assets are unauthenticated and read-only. The event stream carries a
-peer's ID and callsign when it connects or leaves and never its address. That includes the access
+peer's ID and callsign when it connects or leaves and never its address. At most
+256 event streams are open at once, of which at most 192 may be anonymous and at
+most 32 anonymous from one address; one more is refused with a 503 and a
+`Retry-After`, and the difference is kept for signed-in administrators.
+`server.write_timeout` bounds every response, and on the event stream bounds
+each write rather than the stream. That includes the access
 control, network settings, bridges and history pages, which are markup like
 every other console page: the endpoints
 behind it refuse anonymously, which is where the decision belongs, and it shows
@@ -469,6 +507,10 @@ see the other machine, so it asks rather than checking. `new_identity` generates
 a fresh one instead. The console's own listening address is deliberately not
 restored — it belongs to the machine rather than to the configuration, and a
 restored server that cannot bind is discovered when the console stops answering.
+Nor are `database.driver` and `database.dsn`, on either restore: the database
+holding this machine's accounts and history is where this machine put it, not
+where another one did. A restore request is read up to 8 MiB, so that the export
+of any configuration a save accepts can be taken back.
 An export from a newer QSP is refused outright with both versions named, because
 importing three-quarters of a configuration leaves the missing quarter invisible.
 

@@ -299,7 +299,8 @@ func (s *Service) told(a Alert) (airing, bool) {
 //   - **A later end**, by more than extensionSlack, **than the last end that
 //     was sent** — not than the reissue before it. Compared with the last
 //     reissue, a warning extended nine minutes at a time crept from 10:30 to
-//     noon and was never mentioned again.
+//     noon and was never mentioned again. An alert in effect until further
+//     notice is never extended, whatever its reissues say of themselves.
 func (s *Service) isNews(a Alert) bool {
 	last, ok := s.told(a)
 	if !ok {
@@ -308,7 +309,10 @@ func (s *Service) isNews(a Alert) bool {
 	if !strings.EqualFold(strings.TrimSpace(a.Event), strings.TrimSpace(last.event)) {
 		return true
 	}
-	until := a.until()
+	// The end of the weather, not of the message: an alert in effect until
+	// further notice has no end to move, and its reissues, each expiring
+	// hours after the last, were every one sent as an extension.
+	until := a.hazardEnd()
 	return !until.IsZero() && !last.end.IsZero() && until.Sub(last.end) > extensionSlack
 }
 
@@ -518,7 +522,7 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			if until.IsZero() {
 				until = now
 			}
-			rec := airing{until: until, event: a.Event, end: a.until(), at: now}
+			rec := airing{until: until, event: a.Event, end: a.hazardEnd(), at: now}
 			if reason == ReasonUpdate {
 				if last, ok := s.told(a); ok {
 					rec.event, rec.end, rec.at = last.event, last.end, last.at
@@ -531,7 +535,7 @@ func (s *Service) decide(gen uint64, set Settings, alerts []Alert, now time.Time
 			ID:        a.ID,
 			Event:     a.Event,
 			Area:      areaName(a, zones),
-			Until:     a.until(),
+			Until:     a.hazardEnd(),
 			Verdict:   verdict,
 			Reason:    reason,
 			Text:      Format(a, zones, now),

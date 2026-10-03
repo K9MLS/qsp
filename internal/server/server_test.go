@@ -212,12 +212,81 @@ func TestClientIPIgnoresForwardingHeadersUnlessBehindProxy(t *testing.T) {
 	}
 }
 
-func TestClientIPTakesFirstOfForwardedChain(t *testing.T) {
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	r.RemoteAddr = "192.0.2.10:1"
-	r.Header.Set("X-Forwarded-For", "203.0.113.5, 198.51.100.7")
-	if got := clientIP(r, true); got != "203.0.113.5" {
-		t.Errorf("clientIP = %q, want 203.0.113.5", got)
+// TestClientIPTakesTheProxysEntryOfAForwardedChain. A proxy appends the address
+// it saw to whatever the client sent, so the last entry is the only one the
+// client did not write. This test used to assert the first entry, which is the
+// one anybody can set: the audit trail then recorded whatever address the
+// sender liked, and so would the login throttle that counts by address.
+//
+// To see it fail: in clientIP, take the entry before the first comma of the
+// header instead of the one after the last.
+func TestClientIPTakesTheProxysEntryOfAForwardedChain(t *testing.T) {
+	tests := []struct {
+		name      string
+		forwarded []string
+		realIP    string
+		want      string
+	}{
+		{
+			name:      "a client-supplied entry is ignored in favour of the proxy's",
+			forwarded: []string{"203.0.113.5, 198.51.100.7"},
+			want:      "198.51.100.7",
+		},
+		{
+			name:      "however many the client supplied",
+			forwarded: []string{"10.0.0.1, 127.0.0.1,203.0.113.5,  198.51.100.7 "},
+			want:      "198.51.100.7",
+		},
+		{
+			name:      "the proxy's entry may be a header line of its own",
+			forwarded: []string{"203.0.113.5", "198.51.100.7"},
+			want:      "198.51.100.7",
+		},
+		{
+			name:      "a port on the entry is not part of the address",
+			forwarded: []string{"203.0.113.5, 198.51.100.7:4711"},
+			want:      "198.51.100.7",
+		},
+		{
+			name:      "nor are the brackets round an IPv6 one",
+			forwarded: []string{"203.0.113.5, [2001:db8::7]:4711"},
+			want:      "2001:db8::7",
+		},
+		{
+			name:      "X-Real-IP does not override the forwarded chain",
+			forwarded: []string{"198.51.100.7"},
+			realIP:    "203.0.113.5",
+			want:      "198.51.100.7",
+		},
+		{
+			name:   "X-Real-IP is used when it is all the proxy sends",
+			realIP: "198.51.100.7",
+			want:   "198.51.100.7",
+		},
+		{
+			name:      "something that is not an address falls back to the socket",
+			forwarded: []string{"203.0.113.5, K9MLS"},
+			want:      "192.0.2.10",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, "/", nil)
+			r.RemoteAddr = "192.0.2.10:1"
+			for _, line := range tc.forwarded {
+				r.Header.Add("X-Forwarded-For", line)
+			}
+			if tc.realIP != "" {
+				r.Header.Set("X-Real-Ip", tc.realIP)
+			}
+			if got := clientIP(r, true); got != tc.want {
+				t.Errorf("clientIP = %q, want %q", got, tc.want)
+			}
+			// And none of it counts without behind_proxy.
+			if got := clientIP(r, false); got != "192.0.2.10" {
+				t.Errorf("clientIP without a proxy = %q, want the socket address", got)
+			}
+		})
 	}
 }
 

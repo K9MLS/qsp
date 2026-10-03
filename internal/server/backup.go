@@ -105,7 +105,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req restoreRequest
-	if !decodeJSON(w, s.log, r, &req) {
+	if !decodeJSONWithin(w, s.log, r, &req, restoreBodyLimit) {
 		return
 	}
 
@@ -156,12 +156,8 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		replaced = true
 	}
 
-	// **The console's own address is not restored.** A backup taken from a
-	// server bound to one address, imported onto a machine that does not have
-	// it, produces an instance that cannot bind — and the operator finds out
-	// when the console they are reading stops answering. The listening address
-	// belongs to the machine, not to the configuration being carried.
-	cfg.Server.ListenAddress = s.opts.Config.Current().Server.ListenAddress
+	before := s.opts.Config.Current()
+	keepMachineLocal(&cfg, before)
 
 	author := "unknown"
 	if sess, ok := SessionFrom(r.Context()); ok {
@@ -170,7 +166,6 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	summary := fmt.Sprintf("restored from a backup taken %s",
 		backup.ExportedAt.Format("2006-01-02"))
 
-	before := s.opts.Config.Current()
 	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
 	if err != nil {
 		s.recordBackup(r, audit.ActionConfigRestored, audit.OutcomeFailure)
@@ -186,6 +181,42 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		Missing:      config.MissingCredentials(cfg),
 		NeedsRestart: config.NeedsRestart(before, cfg),
 	})
+}
+
+// restoreBodyLimit is the largest shareable restore request read.
+//
+// **What can be saved has to be restorable.** A save reads a megabyte; the
+// export of that same configuration is larger than it, because WriteBackup
+// indents it and the page then sends the file as a JSON string, which escapes
+// every quote and newline. A list of short numbers is the worst case, at about
+// six bytes sent for each one saved, so eight times the save limit covers any
+// configuration a save accepts with the envelope to spare. A test saves a
+// large configuration and restores its own export to hold the two together.
+const restoreBodyLimit = 8 * saveBodyLimit
+
+// keepMachineLocal carries over the settings that describe this machine rather
+// than the server being restored onto it.
+//
+// **The console's own address is not restored.** A backup taken from a
+// server bound to one address, imported onto a machine that does not have
+// it, produces an instance that cannot bind — and the operator finds out
+// when the console they are reading stops answering. The listening address
+// belongs to the machine, not to the configuration being carried.
+//
+// **Nor is where the database lives.** `database.driver` and `database.dsn`
+// came from the backup, so the next restart opened whatever the other machine
+// had called its database: a path that does not exist here, or one that does
+// and belongs to something else — with this machine's accounts, sessions and
+// history left behind in a file nothing opens any more. The accounts an
+// operator logs in with to perform the restore are in that database.
+//
+// Both restores call this. The password files a configuration names are not
+// pinned: ADR-0054 has the backup name them by path, and a full restore writes
+// them back to those paths.
+func keepMachineLocal(cfg *config.Config, running config.Config) {
+	cfg.Server.ListenAddress = running.Server.ListenAddress
+	cfg.Database.Driver = running.Database.Driver
+	cfg.Database.DSN = running.Database.DSN
 }
 
 // recordBackup writes the audit event ADR-0032 requires.

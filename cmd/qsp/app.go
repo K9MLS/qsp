@@ -80,6 +80,10 @@ type app struct {
 	transcoding *vocoderlink.Set
 	// transcodingChannels are the same channels, for their health checks.
 	transcodingChannels []*vocoderlink.Channel
+	// transcodingDone is closed when every channel's Run has returned, which
+	// is after each has sent its terminator and release. Nil until run()
+	// starts them. See shutdown.
+	transcodingDone chan struct{}
 	// zelloLogon hands qsp-zello a logon (ADR-0066). Nil when
 	// zello.logon_socket is empty.
 	zelloLogon *zellologon.Server
@@ -169,16 +173,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 		callStore = calls.NewStore(db.SQL(), log, cfg.DMR.Calls.Retain.AsDuration())
 		a.callStore = callStore
+		// **Pruned at startup and then on a timer**, not on every write:
+		// deleting on each insert makes every transmission pay for the
+		// retention policy. A row outliving its window by an hour matters
+		// to nobody. See ADR-0033.
+		pruneCallsAtStart(ctx, callStore, log, time.Now().UTC())
 		if callStore.Enabled() {
-			// **Pruned at startup and then on a timer**, not on every write:
-			// deleting on each insert makes every transmission pay for the
-			// retention policy. A row outliving its window by an hour matters
-			// to nobody. See ADR-0033.
-			if n, err := callStore.Prune(ctx, time.Now().UTC()); err != nil {
-				log.Warn("cannot prune the call history", "error", err)
-			} else if n > 0 {
-				log.Info("pruned the call history", slog.Int64("removed", n))
-			}
 			log.Info("call history persisted",
 				slog.String("table", "calls"),
 				slog.String("retain", cfg.DMR.Calls.Retain.AsDuration().String()))
@@ -800,7 +800,10 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// started without -config runs on defaults and cannot be reconfigured from
 	// a browser, which the console reports rather than discovering at save.
 
-	manager := &configManager{current: cfg, startup: cfg}
+	// Two copies, so that nothing done to one of them — or to cfg, which this
+	// function goes on using — can change what the other says the process
+	// started with.
+	manager := &configManager{current: cfg.Clone(), startup: cfg.Clone()}
 	a.configManager = manager
 	if configPath != "" {
 		writer, werr := config.NewWriter(configPath)
@@ -1097,7 +1100,12 @@ func (a *app) run(ctx context.Context) error {
 	// The channels run beside it and ask for a chip at the start of each
 	// call, so a vocoder that opens late is used from the next call on.
 	if a.transcoding != nil {
-		go a.transcoding.Run(ctx)
+		done := make(chan struct{})
+		a.transcodingDone = done
+		go func() {
+			defer close(done)
+			a.transcoding.Run(ctx)
+		}()
 	}
 	if a.zelloLogon != nil {
 		go a.zelloLogon.Serve(ctx)
@@ -1142,6 +1150,35 @@ func (a *app) sweepSessions(ctx context.Context) {
 // pruning on every write would make each transmission pay for the policy.
 const callPruneInterval = 6 * time.Hour
 
+// callPruner is the part of the call store that startup pruning needs, so the
+// decision below can be tested without a database.
+type callPruner interface {
+	Prune(ctx context.Context, now time.Time) (int64, error)
+}
+
+// pruneCallsAtStart trims the call history once, before anything reads it.
+//
+// **It does not ask whether the history is enabled.** `dmr.calls.retain: 0` is
+// documented as "keeps nothing", and it is how a club says it would rather not
+// hold a record of who transmitted when. This used to be skipped for a store
+// that was not enabled -- which is exactly the store with zero retention -- so
+// a club that had kept a month and then set zero kept that month for ever, and
+// could still read it in the console. Prune with zero retention deletes every
+// row; that is the case this call exists for.
+//
+// Retention is read once, at startup, so once is enough: with zero retention
+// nothing is recorded afterwards, and the six-hourly loop has nothing to do.
+func pruneCallsAtStart(ctx context.Context, store callPruner, log *slog.Logger, now time.Time) {
+	n, err := store.Prune(ctx, now)
+	if err != nil {
+		log.Warn("cannot prune the call history", "error", err)
+		return
+	}
+	if n > 0 {
+		log.Info("pruned the call history", slog.Int64("removed", n))
+	}
+}
+
 func (a *app) pruneCalls(ctx context.Context) {
 	if a.callStore == nil || !a.callStore.Enabled() {
 		return
@@ -1179,6 +1216,19 @@ func (a *app) shutdown(ctx context.Context) error {
 		a.log.Warn("cannot record shutdown in the audit trail", slog.String("error", err.Error()))
 	}
 
+	// **Before any socket is closed.** A channel carrying a call when the
+	// context is cancelled ends it on the way out of Run: a terminator to
+	// every repeater through the DMR listener, a release to qsp-zello through
+	// the USRP socket. Both sockets are among the closers below, and Run is
+	// on its own goroutine, so closing at once raced it -- and when the
+	// closers won, a SIGTERM during an over from Zello left repeaters keyed
+	// until their own timeout.
+	if !awaitDone(ctx, a.transcodingDone, transcoderFlushWait) {
+		a.log.Warn("transcoder channels were still ending their calls at shutdown; "+
+			"a repeater may stay keyed until its own timeout",
+			slog.Duration("waited", transcoderFlushWait))
+	}
+
 	var errs []error
 	for i := len(a.closers) - 1; i >= 0; i-- {
 		if err := a.closers[i](ctx); err != nil {
@@ -1186,6 +1236,34 @@ func (a *app) shutdown(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// transcoderFlushWait bounds how long shutdown waits for transcoder channels
+// to end the calls they are carrying.
+//
+// Ending a call is at most two chip round trips to pad the last burst and a
+// handful of socket writes, so this is reached only when a vocoder has stopped
+// answering -- and a service manager is waiting behind it with a deadline of
+// its own.
+const transcoderFlushWait = 2 * time.Second
+
+// awaitDone waits for done to close, for at most limit, and reports whether
+// it did. A nil channel is something that was never started, so there is
+// nothing to wait for.
+func awaitDone(ctx context.Context, done <-chan struct{}, limit time.Duration) bool {
+	if done == nil {
+		return true
+	}
+	timer := time.NewTimer(limit)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	case <-ctx.Done():
+		return false
+	}
 }
 
 // bridgeState merges the two mechanisms that can open a bridge.

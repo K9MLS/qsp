@@ -18,8 +18,8 @@ import (
 // fakeNWS serves /zones and /alerts/active in the shapes api.weather.gov
 // uses.
 //
-// **Constructed, not captured.** The development container cannot reach
-// api.weather.gov (ADR-0068 measured a 403 at its egress proxy), so these are
+// **Constructed, not captured.** When these were written the development
+// container could not reach api.weather.gov (ADR-0068 measured a 403), so they are
 // built from the fields ADR-0068 recorded from the live API on 2026-09-27 and
 // from the published API. What this version exists to do is show the real
 // feed on production in Preview before anything transmits, which is the check
@@ -113,7 +113,13 @@ func newFakeNWS(t *testing.T) (*fakeNWS, *httptest.Server) {
 	return f, srv
 }
 
-// alertJSON is one alert's properties as NWS sends them.
+// alertJSON is one alert's properties as NWS sends them for a warning with a
+// set end.
+//
+// **"ends" is the same time as "expires", not null.** Read from the live feed
+// on 2026-10-03, every tornado, severe thunderstorm and flash flood warning
+// carried "ends", and on a new one it equalled "expires". Null is what an
+// alert with no set end or no VTEC line has; noSetEnd makes one of those.
 func alertJSON(id, event, status string, ugc []string, sent, expires time.Time, refs ...string) map[string]any {
 	references := make([]map[string]any, 0, len(refs))
 	for _, r := range refs {
@@ -127,8 +133,18 @@ func alertJSON(id, event, status string, ugc []string, sent, expires time.Time, 
 		"geocode":    map[string]any{"SAME": sameFor(ugc), "UGC": ugc},
 		"references": references,
 		"sent":       sent.Format(time.RFC3339), "effective": sent.Format(time.RFC3339),
-		"expires": expires.Format(time.RFC3339), "ends": nil,
+		"expires": expires.Format(time.RFC3339), "ends": expires.Format(time.RFC3339),
 	}
+}
+
+// noSetEnd turns a fixture into an alert in effect until further notice, in
+// the shape of the Flood Warning KDVN reissued on 2026-10-03: "ends" null, an
+// all-zero end in its VTEC line, and "expires" only when the next reissue is
+// due.
+func noSetEnd(a map[string]any) map[string]any {
+	a["ends"] = nil
+	a["parameters"] = map[string]any{"VTEC": []string{"/O.CON.KDVN.FL.W.0067.000000T0000Z-000000T0000Z/"}}
+	return a
 }
 
 // sameFor gives the SAME codes NWS would list for the counties among ugc, so

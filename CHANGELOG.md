@@ -6,6 +6,23 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **Bug hunt, sixth patch: the console.**
+  - **Anybody could lock an administrator out of the console**, five wrong
+    passwords at a time, and a locked account answered differently from an
+    unknown name. Failed logins are now counted against the address they
+    come from; a throttled address is refused whatever name it tries, and
+    the right password from anywhere else signs in. ADR-0026 amended.
+  - **The audit trail's source address could be forged behind a proxy**: it
+    took the first `X-Forwarded-For` entry, which the client writes. It takes
+    the last, which the proxy wrote.
+  - **Account changes were audited under the wrong name**: the account
+    changed, not the administrator who changed it. Radio ID lookup and
+    session-lifetime settings were not audited at all.
+  - **The event stream had no limit on connections**, and
+    `server.write_timeout` was validated and never applied. Streams are
+    capped, with room kept for signed-in sessions; the timeout applies to
+    ordinary responses and per write on a stream.
+
 - **Bug hunt, fourth patch: bans and what a stranger can read.**
   - **First-run setup behind a reverse proxy needed no token.** The loopback
     exemption read the connection's address, which behind nginx or Caddy on
@@ -60,6 +77,32 @@ All notable changes to QSP. Dates are UTC.
   fails under the deliberate break noted in it.
 
 ### Fixed
+
+- **Bug hunt, sixth patch: backup and restore, Zello, weather, and the
+  rest of the long-uptime list.**
+  - **Link pages edited the running configuration in place.** The copy a
+    handler was given shared its lists with the live one, so an address was
+    changed before it was validated, a restart it needed was never reported,
+    and a failed save left the edit live. Every copy handed out is now a
+    full one (`Config.Clone`).
+  - **The full backup did not carry link and peer password files**, though a
+    restore said links would work at once. Format 2 carries them; ADR-0065
+    amended. Both restores keep this machine's console address and database.
+  - **A configuration that could be saved could be too large to restore.**
+  - **Going back to an old version could be refused**, or take the server's
+    identifier away. Unknown fields in a save are refused by name.
+  - **Zello: "USRP audio stopped without a release".** Three causes, all
+    real: a release was the frame dropped when a clump of audio filled the
+    queue; a closed audio channel was played as a packet with no key-up; and
+    the connector's own fallback fired no sooner than QSP's timeout.
+  - **Weather: alerts with no set end read their expiry as their end**, and
+    every daily reissue was sent again as an extension. Checked against the
+    live feed; they now read "until further notice". ADR-0068 amended.
+  - **Call history retention of zero kept everything**; it now removes what
+    is there, as documented.
+  - A timed-out Motorola repeater left per-repeater state behind; shutdown
+    closed sockets a transcoder was still flushing through; a link's timers
+    ran on the wall clock and misbehaved when it was stepped.
 
 - **Bug hunt, fifth patch: things that break after days, or at the next
   restart.**
