@@ -624,6 +624,14 @@ func (l *Listener) DeliverFromUpstream(link string, frame hbp.Data) {
 	// being relayed — the frame was carried and the record said nobody had
 	// spoken.
 	l.observe(0, frame)
+	// **A banned radio is banned whichever door it comes through.** The
+	// Homebrew and Motorola paths both refuse it; this one did not, so a
+	// banned radio was carried when it keyed up on the far side of a link.
+	// Observed first, as on the other two, so the console shows who it was.
+	if l.cfg.Master != nil && !l.cfg.Master.SubscriberAllowed(frame.SourceID) {
+		l.refuseIPSCSubscriber(0, frame)
+		return
+	}
 	res := l.cfg.Routing.RouteFromUpstream(link, frame, time.Now())
 	l.deliver(0, res)
 	// **The Motorola side was never offered a frame that arrived over a link.**
@@ -809,7 +817,7 @@ func (l *Listener) refuseIPSCSubscriber(from hbp.RepeaterID, frame hbp.Data) {
 		slog.Uint64("subscriber", uint64(frame.SourceID)),
 		slog.Uint64("talkgroup", uint64(frame.TargetID)),
 		slog.String("timeslot", frame.Timeslot.String()),
-		slog.String("protocol", "ipsc"),
+		slog.String("arrived", map[bool]string{true: "over a link", false: "from a Motorola repeater"}[from == 0]),
 	)
 }
 
@@ -1541,10 +1549,13 @@ func (l *Listener) publish(evs []Event) {
 		default:
 			continue
 		}
+		// **No address.** /api/events needs no session, and /api/peers
+		// blanks a member's IP address for anybody not signed in; this put
+		// it back, for every connect and disconnect in the retained history.
+		// Nothing on the console reads it from here.
 		l.cfg.Bus.Publish(t, map[string]any{
 			"peer_id":  uint32(e.Peer.ID),
 			"callsign": e.Peer.Callsign(),
-			"address":  e.Peer.Addr.String(),
 			"reason":   e.Reason,
 		})
 	}

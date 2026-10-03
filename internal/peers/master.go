@@ -196,6 +196,8 @@ type Master struct {
 	// for the console. The address is what is throttled; the ID is what an
 	// operator recognises.
 	claimedIDs map[netip.Addr]hbp.RepeaterID
+	// evicted holds disconnections SetAccess caused, for Expire to report.
+	evicted []Event
 	// answeredUnregistered records when each repeater ID last had a frame
 	// answered with MSTNAK, so a stale peer is told once rather than once per
 	// 60 ms. See handleData and unregisteredFrameInterval.
@@ -783,6 +785,24 @@ func (m *Master) SetAccess(l access.Lists) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.cfg.Access = l
+
+	// **A ban takes effect now, not at the next login.** The registration
+	// list was consulted only when a peer logged in, so banning a repeater
+	// that was connected did nothing for as long as it kept pinging. It is
+	// removed here; its next keepalive is answered with MSTNAK, it logs in
+	// again, and that login is refused with the reason.
+	for id, p := range m.peers {
+		if l.Registration.Allows(uint32(id)) {
+			continue
+		}
+		reason := "no longer permitted by dmr.access.registration"
+		m.log.Info("peer removed", logging.PeerID(uint32(id)), logging.Callsign(p.Callsign()),
+			slog.String("reason", reason))
+		delete(m.peers, id)
+		if p.State == StateConfigured {
+			m.evicted = append(m.evicted, Event{Kind: EventDisconnected, Peer: p.clone(), Reason: reason})
+		}
+	}
 }
 
 func (m *Master) refuseSubscriber(p *Peer, msg hbp.Data, now time.Time) Outcome {
@@ -905,7 +925,9 @@ func (m *Master) Expire() []Event {
 	// iteration order, which makes tests and logs reproducible.
 	sort.Slice(stale, func(i, j int) bool { return stale[i] < stale[j] })
 
-	events := make([]Event, 0, len(stale))
+	// Peers a new ban removed since the last sweep are reported with it.
+	events := append(make([]Event, 0, len(stale)+len(m.evicted)), m.evicted...)
+	m.evicted = nil
 	for _, id := range stale {
 		p := m.peers[id]
 		reason := fmt.Sprintf("no traffic for %s", p.Idle(now).Truncate(time.Second))

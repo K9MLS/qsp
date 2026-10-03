@@ -112,6 +112,18 @@ func (s *Server) setupNeeded(ctx context.Context) bool {
 	return !any
 }
 
+// setupTokenRequired reports whether first-run setup must present the token.
+//
+// **Behind a reverse proxy, always.** The exemption is for somebody sitting
+// at the machine, and the connection's address is how that is known. With
+// nginx or Caddy on the same host every request arrives from 127.0.0.1, the
+// whole internet included, so on a fresh install anybody could create the
+// first administrator without the token (found 2026-10-03). The forwarded
+// header cannot be used instead, for the reason fromLoopback gives.
+func (s *Server) setupTokenRequired(r *http.Request) bool {
+	return s.opts.BehindProxy || !fromLoopback(r)
+}
+
 // fromLoopback reports whether a request came from this machine.
 //
 // **Read from the connection, never from a header.** `X-Forwarded-For` is
@@ -147,7 +159,7 @@ func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := setupBody{Needed: true, TokenRequired: !fromLoopback(r)}
+	body := setupBody{Needed: true, TokenRequired: s.setupTokenRequired(r)}
 	if body.TokenRequired {
 		body.Note = "This server printed a setup token when it started. Find it with " +
 			"`docker logs qsp` or `journalctl -u qsp`, and paste it below."
@@ -174,7 +186,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !fromLoopback(r) {
+	if s.setupTokenRequired(r) {
 		s.setup.mu.Lock()
 		want := s.setup.token
 		s.setup.mu.Unlock()

@@ -177,3 +177,34 @@ func (haveAccounts) AnyAccount(ctx context.Context) (bool, error) { return true,
 func (haveAccounts) CreateAccount(ctx context.Context, u, p string) (auth.Account, error) {
 	return auth.Account{Username: u}, nil
 }
+
+// Behind a reverse proxy the setup token is always required. With nginx or
+// Caddy on the same host every request arrives from 127.0.0.1, so the
+// exemption for somebody at the machine let anybody on the internet create
+// the first administrator of a fresh install.
+//
+// To see it fail: drop `s.opts.BehindProxy ||` from setupTokenRequired.
+func TestTheSetupTokenIsRequiredBehindAProxy(t *testing.T) {
+	cases := []struct {
+		name        string
+		behindProxy bool
+		remote      string
+		want        bool
+	}{
+		{"at the machine, no proxy", false, "127.0.0.1:50000", false},
+		{"from the network, no proxy", false, "203.0.113.7:50000", true},
+		{"through a proxy on this host", true, "127.0.0.1:50000", true},
+		{"through a proxy on this host, over IPv6", true, "[::1]:50000", true},
+		{"through a proxy elsewhere", true, "10.0.0.5:50000", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &Server{opts: Options{BehindProxy: tc.behindProxy}}
+			r := httptest.NewRequest("POST", "/api/setup", nil)
+			r.RemoteAddr = tc.remote
+			if got := s.setupTokenRequired(r); got != tc.want {
+				t.Errorf("token required: %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

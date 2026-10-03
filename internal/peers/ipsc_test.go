@@ -848,3 +848,65 @@ func TestTheLoopRuleIsNotAJudgement(t *testing.T) {
 		t.Error("the reason claims a refusal nobody made; that sentence cost a day of silence")
 	}
 }
+
+// A banned radio is banned whichever door it comes through. The Homebrew and
+// Motorola paths refused it and the link path did not, so a banned radio was
+// carried when it keyed up on the far side of a link.
+//
+// To see it fail: remove the SubscriberAllowed check from DeliverFromUpstream.
+func TestABannedRadioIsRefusedOverALink(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source uint32
+		want   bool
+	}{
+		{"a banned radio", 3121077, false},
+		{"any other radio", 3121001, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ban, err := access.Parse("dmr.access.subscribers", access.Subscriber, access.ModeDeny, []string{"3121077"})
+			if err != nil {
+				t.Fatalf("access.Parse: %v", err)
+			}
+			master, err := peers.NewMaster(logging.Discard(), peers.MasterConfig{
+				Password: func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true },
+				Access:   access.Lists{Subscriber: ban},
+			})
+			if err != nil {
+				t.Fatalf("NewMaster: %v", err)
+			}
+			table, err := routing.NewTable([]routing.Bridge{pairBridge(2)})
+			if err != nil {
+				t.Fatalf("NewTable: %v", err)
+			}
+			core, err := routing.NewCore(routing.CoreOptions{Table: table, Peers: noHomebrewPeers{}})
+			if err != nil {
+				t.Fatalf("NewCore: %v", err)
+			}
+			toIPSC := 0
+			l, err := peers.NewListener(logging.Discard(), peers.ListenerConfig{
+				ListenAddress: "127.0.0.1:0", Master: master, Routing: core,
+				Calls: calls.NewTracker(calls.Options{}),
+				IPSC:  func(uint32, hbp.Data) { toIPSC++ },
+			})
+			if err != nil {
+				t.Fatalf("NewListener: %v", err)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+			if err := l.Start(ctx); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			t.Cleanup(func() { _ = l.Close() })
+
+			l.DeliverFromUpstream("pair", hbp.Data{
+				RepeaterID: 3132910, SourceID: tc.source, TargetID: 2,
+				Timeslot: hbp.Timeslot1, CallType: hbp.CallGroup,
+				FrameType: hbp.FrameTypeVoiceSync, StreamID: 225593499,
+			})
+			if got := toIPSC > 0; got != tc.want {
+				t.Errorf("carried to the repeaters: %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -77,7 +77,8 @@ an attacker who wins the race gets a form they cannot submit.
 The token is generated at startup when no account exists, logged once, held in
 memory and never written to disk. **It is not required from loopback**, because
 a request from the machine itself is from somebody who could read the journal
-anyway. It is compared in constant time, and a refusal does not distinguish a
+anyway — **unless `behind_proxy` is set**, when every request arrives from the
+proxy and the token is always required. It is compared in constant time, and a refusal does not distinguish a
 wrong token from an absent one.
 
 **Every account after the first is created from the console**, by an
@@ -350,7 +351,8 @@ than by QSP, and no telemetry of any kind is sent anywhere.
 
 `/healthz`, `/readyz`, `/api/events`, `/api/peers`, `/api/join`,
 `/api/join/config` and static
-console assets are unauthenticated and read-only. That includes the access
+console assets are unauthenticated and read-only. The event stream carries a
+peer's ID and callsign when it connects or leaves and never its address. That includes the access
 control, network settings, bridges and history pages, which are markup like
 every other console page: the endpoints
 behind it refuse anonymously, which is where the decision belongs, and it shows
@@ -425,7 +427,9 @@ when the server starts with no account, logged once, held in memory only and
 never written to disk; a restart mints a new one. **No token is required from
 loopback**, because a request from the machine itself is from somebody who could
 read the token from the journal in any case — that recognises a check already
-passed rather than removing one. The token is compared in constant time and a
+passed rather than removing one. With `behind_proxy` set that check has not
+been passed by anybody: a proxy on the same host makes every request look
+local, so the token is then required from everyone. The token is compared in constant time and a
 refusal does not distinguish a wrong token from an absent one. See ADR-0056,
 which amends ADR-0026.
 

@@ -6,6 +6,28 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **Bug hunt, fourth patch: bans and what a stranger can read.**
+  - **First-run setup behind a reverse proxy needed no token.** The loopback
+    exemption read the connection's address, which behind nginx or Caddy on
+    the same host is 127.0.0.1 for everybody. With `behind_proxy` set the
+    token is now always required. Servers already set up were never exposed.
+  - **The event stream gave members' IP addresses to anybody.** `/api/peers`
+    hides them from visitors who are not signed in; connect and disconnect
+    events on `/api/events` carried them, with history. They no longer do.
+  - **Banning a connected repeater did nothing until it logged in again.** It
+    is removed when the ban is saved, and the console is told.
+  - **A banned radio was carried when it arrived over a link.** The subscriber
+    ban now applies on that path as on the other two.
+
+  **Open, and needing a decision rather than a patch:** a station logged in
+  with the shared password can announce itself as a linked QSP server and is
+  then offered private calls for radios this server has not located. Closing
+  it means linked servers proving who they are, which changes how links are
+  set up.
+
+  Tests: in `internal/peers` (`relogin_test.go`, `ipsc_test.go`) and
+  `internal/server/setup_test.go`.
+
 - **Bug hunt, 2026-10-03, first patch: what anybody on the internet could do
   with one packet.** Five independent reviews of the code; each finding here
   was reproduced before it was fixed.

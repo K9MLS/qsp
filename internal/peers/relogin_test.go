@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/k9mls/qsp/internal/access"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 )
@@ -190,4 +191,49 @@ func reply(t *testing.T, raw []byte) hbp.Message {
 		t.Fatalf("unparseable reply: %v", err)
 	}
 	return m
+}
+
+// A ban on a repeater that is connected takes effect when it is saved. The
+// registration list was read only at login, so a banned repeater stayed on
+// for as long as it kept pinging.
+//
+// To see it fail: remove the eviction loop from SetAccess.
+func TestBanningAConnectedPeerRemovesItNow(t *testing.T) {
+	h := newHarness(t)
+	h.login(addrA)
+	ban, err := access.Parse("dmr.access.registration", access.Registration, access.ModeDeny, []string{"3132910"})
+	if err != nil {
+		t.Fatalf("access.Parse: %v", err)
+	}
+	h.m.SetAccess(access.Lists{Registration: ban})
+
+	if _, ok := h.m.Lookup(testID); ok {
+		t.Fatal("the banned peer is still registered")
+	}
+	if out := h.send(voice(3121001, 0x7100, 0), addrA); out.Data != nil {
+		t.Error("the banned peer's frame was carried")
+	}
+	evs := h.m.Expire()
+	if len(evs) != 1 || evs[0].Kind != peers.EventDisconnected || evs[0].Peer.ID != testID {
+		t.Errorf("the console was told %+v, want one disconnection of the banned peer", evs)
+	}
+	if evs := h.m.Expire(); len(evs) != 0 {
+		t.Errorf("the disconnection was reported twice")
+	}
+	out := h.send(hbp.Login{RepeaterID: testID}, addrA)
+	if len(out.Responses) != 1 {
+		t.Fatalf("its next login got %d answers, want a refusal", len(out.Responses))
+	}
+	if _, nak := reply(t, out.Responses[0].Payload).(hbp.Nak); !nak {
+		t.Error("its next login was not refused")
+	}
+
+	// A list that does not name a peer leaves it alone.
+	g := newHarness(t)
+	g.login(addrA)
+	other, _ := access.Parse("dmr.access.registration", access.Registration, access.ModeDeny, []string{"999999"})
+	g.m.SetAccess(access.Lists{Registration: other})
+	if _, ok := g.m.Lookup(testID); !ok {
+		t.Error("a ban on another ID removed this peer")
+	}
 }
