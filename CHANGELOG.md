@@ -6,6 +6,9 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- A test of the Motorola repeater link waited for a transmission to begin and
+  then asserted its frames had been counted, so it failed when it looked in
+  between. It waits for what it asserts. No change to what QSP does.
 - **P25 calls are in Last heard, and in the record.** Calls through Motorola
   repeaters and through P25 hotspots appear on the Overview beside DMR calls,
   live while in progress: the radio, the talkgroup, and where the call came

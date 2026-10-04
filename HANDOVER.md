@@ -153,6 +153,11 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.310 changes no code a station runs**: one test in `internal/v24link`
+waited on a weaker condition than it asserted and failed once on Fedora, in
+the plain run and not the race run. **0.1.309's database tests passed there**,
+which was their first real run.
+
 **0.1.309 puts P25 in Last heard** (ADR-0059, Accepted by the operator
 2026-10-04). `internal/p25calls` is a tracker and a store of their own; both
 P25 listeners report to it; migration 0007 adds `p25_calls` and alters nothing.
@@ -318,7 +323,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.309 | `cat VERSION` |
+| **Fedora working tree** | 0.1.310 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

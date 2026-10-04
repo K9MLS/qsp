@@ -522,9 +522,14 @@ func TestATransmissionWithNoEndIsClosedWhenItGoesQuiet(t *testing.T) {
 		tunnel([]byte{0x07, 0x03, 0x00, 0x02, 0x02, 0x0C, 0x0B, 0, 0, 0, 0, 0}),
 		tunnel(voice), tunnel(voice)))
 
+	// **Waited for by what is then asserted.** This waited only for the
+	// transmission to begin, which the start marker does, and then asserted
+	// both voice frames had been counted — so it failed whenever it looked
+	// between the marker and the frames behind it. It did, once, on the
+	// machine that runs the project's checks.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		if rs := l.Repeaters(); len(rs) == 1 && rs[0].Transmitting {
+		if rs := l.Repeaters(); len(rs) == 1 && rs[0].Transmitting && rs[0].Frames == 2 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
