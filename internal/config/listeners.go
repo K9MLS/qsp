@@ -48,9 +48,9 @@ func (c Config) Listeners() []Listener {
 			out = append(out, Listener{"ipsc.listen_address", "the IPSC listener", "udp", addr})
 		}
 	}
-	if c.Quantar.Enabled {
-		if addr := strings.TrimSpace(c.Quantar.ListenAddress); addr != "" {
-			out = append(out, Listener{"quantar.listen_address", "the Quantar link", "tcp", addr})
+	if c.P25Repeaters.Enabled {
+		if addr := strings.TrimSpace(c.P25Repeaters.ListenAddress); addr != "" {
+			out = append(out, Listener{"p25_repeaters.listen_address", "the Motorola P25 repeater link", "tcp", addr})
 		}
 	}
 	for i, u := range c.DMR.Upstreams {

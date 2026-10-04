@@ -1,4 +1,4 @@
-package quantar
+package v24link
 
 import (
 	"bytes"
@@ -296,7 +296,7 @@ func TestTheRecordHoldsBothDirections(t *testing.T) {
 	cancel()
 	l.Wait()
 
-	files, _ := filepath.Glob(filepath.Join(dir, "quantar-*.log"))
+	files, _ := filepath.Glob(filepath.Join(dir, "v24-*.log"))
 	if len(files) != 1 {
 		t.Fatalf("found %d record files", len(files))
 	}
@@ -402,5 +402,84 @@ func TestAConfigurationThatCannotWorkIsRefused(t *testing.T) {
 				t.Errorf("Validate returned %v", err)
 			}
 		})
+	}
+}
+
+// The whole of the repeater's side of 2026-10-04, from the router connecting
+// to the last transmission, sent to a listener as the router sent it.
+//
+// Break it: count voice as frames QSP cannot read, leave the link down after
+// the repeater's keepalive, or lose a transmission, and this fails.
+func TestTheCapturedSessionIsALinkedRepeaterWithThreeCalls(t *testing.T) {
+	raw, err := os.ReadFile(voiceFixture)
+	if err != nil {
+		t.Fatalf("reading the capture: %v", err)
+	}
+	l, _ := start(t, Config{})
+	c := dial(t, l)
+	go func() { _, _ = io.Copy(io.Discard, c) }() // QSP's answers are not under test here
+	if _, err := c.Write(raw); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for l.Calls() != 3 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	rs := l.Repeaters()
+	if len(rs) != 1 {
+		t.Fatalf("%d repeaters", len(rs))
+	}
+	r := rs[0]
+	if !r.Up || !r.Introduced || r.Site != 1 || StationTypeName(r.StationType) != "Quantar" {
+		t.Errorf("up %v, introduced %v, site %d, %s", r.Up, r.Introduced, r.Site, StationTypeName(r.StationType))
+	}
+	if r.Frames != 513 || r.Calls != 3 || r.Transmitting {
+		t.Errorf("%d frames, %d calls, transmitting %v", r.Frames, r.Calls, r.Transmitting)
+	}
+	if r.Talkgroup != 1 || r.SourceID != 8080303 || r.LastHeard.IsZero() {
+		t.Errorf("talkgroup %d, radio %d, last heard %v", r.Talkgroup, r.SourceID, r.LastHeard)
+	}
+	if l.VoiceFrames() != 513 || l.Calls() != 3 || l.Unknown() != 0 || l.LinksUp() != 1 {
+		t.Errorf("%d voice frames, %d calls, %d unread, %d links up",
+			l.VoiceFrames(), l.Calls(), l.Unknown(), l.LinksUp())
+	}
+
+	// The tunnel closing takes the repeater off the list.
+	_ = c.Close()
+	for deadline = time.Now().Add(2 * time.Second); len(l.Repeaters()) != 0 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := len(l.Repeaters()); n != 0 {
+		t.Errorf("%d repeaters after the tunnel closed", n)
+	}
+}
+
+// Break it: never look for a transmission that has gone quiet, and it stays
+// open for as long as the tunnel does.
+func TestATransmissionWithNoEndIsClosedWhenItGoesQuiet(t *testing.T) {
+	l, _ := start(t, Config{Request: 50 * time.Millisecond})
+	c := dial(t, l)
+	go func() { _, _ = io.Copy(io.Discard, c) }()
+	voice := append([]byte{0x07, 0x03, 0x63}, make([]byte, 13)...)
+	_, _ = c.Write(join(
+		tunnel([]byte{0x07, 0x03, 0x00, 0x02, 0x02, 0x0C, 0x0B, 0, 0, 0, 0, 0}),
+		tunnel(voice), tunnel(voice)))
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if rs := l.Repeaters(); len(rs) == 1 && rs[0].Transmitting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if rs := l.Repeaters(); len(rs) != 1 || !rs[0].Transmitting || rs[0].Frames != 2 {
+		t.Fatalf("the transmission was not heard: %+v", rs)
+	}
+	for deadline = time.Now().Add(CallTimeout + 2*time.Second); l.Calls() != 1 && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if rs := l.Repeaters(); l.Calls() != 1 || rs[0].Transmitting || rs[0].Calls != 1 {
+		t.Fatalf("%d calls finished, repeater %+v", l.Calls(), rs)
 	}
 }

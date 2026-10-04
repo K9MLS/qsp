@@ -58,19 +58,25 @@ type Config struct {
 	// Weather configures weather alerts from the National Weather Service
 	// (ADR-0068). Set from the console's Weather page; off by default.
 	Weather Weather `json:"weather,omitzero"`
-	// Quantar configures the link to a Motorola Quantar (ADR-0060). Off by
-	// default, because it opens a TCP port.
-	Quantar Quantar `json:"quantar,omitzero"`
+	// P25Repeaters configures the link to Motorola P25 repeaters over V.24
+	// (ADR-0060). Off by default, because it opens a TCP port.
+	P25Repeaters P25Repeaters `json:"p25_repeaters,omitzero"`
 }
 
-// Quantar configures the listener a Cisco router's serial tunnel dials.
+// P25Repeaters configures the listener a Cisco router's serial tunnel dials.
 //
-// **It opens the station's link and carries no voice yet.** A Quantar asks to
-// open its V.24 link twice a second until something accepts, then introduces
-// itself and expects keepalives; this does all three, and records what the
-// station sends on the open link. Voice is built from that record, the way
-// the IPSC listener was (ADR-0029).
-type Quantar struct {
+// **Named for the family, proven on one member.** The interface is V.24, which
+// a Quantar and a GTR 8000 both have. A Quantar is what has been on the far
+// end; a GTR 8000 is expected to work and has not been tried.
+//
+// **It opens the repeater's link, reads its calls, and relays nothing yet.**
+// The repeater's voice is read as far as who is talking and on which
+// talkgroup, and counted. Carrying it to P25 gateways and back is the next
+// step.
+//
+// The section was `quantar` in 0.1.303 to 0.1.305. A document saying that is
+// read as this, and written back under this name.
+type P25Repeaters struct {
 	// Enabled turns the listener on.
 	Enabled bool `json:"enabled"`
 	// ListenAddress is the TCP host:port to bind. 1994 is the port the
@@ -90,7 +96,7 @@ type Quantar struct {
 	// PresentAs is what QSP tells the station it is: "repeater", a second
 	// Quantar, or "console", a Motorola console interface. Empty is
 	// "repeater". Two forms because which one a station takes is for the
-	// station to say; see internal/quantar.
+	// station to say; see internal/v24link.
 	PresentAs string `json:"present_as,omitempty"`
 }
 
@@ -124,7 +130,7 @@ const maxPeerName = 20
 // protocol that hotspots and reflectors speak over UDP, evidenced by three
 // captures in testdata/p25. A Motorola Quantar links over a V.24 daughtercard
 // running bit-oriented HDLC, which is a different transport entirely: the
-// Quantar section below, and docs/P25-PLANNING.md.
+// P25Repeaters section below, and docs/P25-PLANNING.md.
 type P25 struct {
 	// Enabled turns the P25 listener on.
 	Enabled bool `json:"enabled"`
@@ -1562,26 +1568,26 @@ func (c Config) Validate() error {
 			"use \"text\" for interactive use or \"json\" for production")
 	}
 
-	if c.Quantar.Enabled {
-		if strings.TrimSpace(c.Quantar.ListenAddress) == "" {
-			v.add("quantar.listen_address", "must not be empty when the Quantar link is enabled",
+	if c.P25Repeaters.Enabled {
+		if strings.TrimSpace(c.P25Repeaters.ListenAddress) == "" {
+			v.add("p25_repeaters.listen_address", "must not be empty when the Motorola P25 repeater link is enabled",
 				"use \"0.0.0.0:1994\", the port a router's serial tunnel dials")
-		} else if !hostPort(c.Quantar.ListenAddress) {
-			v.add("quantar.listen_address",
-				fmt.Sprintf("%q is not a host:port address", c.Quantar.ListenAddress),
+		} else if !hostPort(c.P25Repeaters.ListenAddress) {
+			v.add("p25_repeaters.listen_address",
+				fmt.Sprintf("%q is not a host:port address", c.P25Repeaters.ListenAddress),
 				"include a port, for example \"0.0.0.0:1994\"")
 		}
-		if c.Quantar.Site > 127 {
-			v.add("quantar.site", fmt.Sprintf("%d is beyond 127", c.Quantar.Site),
+		if c.P25Repeaters.Site > 127 {
+			v.add("p25_repeaters.site", fmt.Sprintf("%d is beyond 127", c.P25Repeaters.Site),
 				"use a site number from 1 to 127 that is not the station's own; empty uses 2")
 		}
-		if p := c.Quantar.PresentAs; p != "" && p != "repeater" && p != "console" {
-			v.add("quantar.present_as", fmt.Sprintf("%q is not a form QSP can present", p),
+		if p := c.P25Repeaters.PresentAs; p != "" && p != "repeater" && p != "console" {
+			v.add("p25_repeaters.present_as", fmt.Sprintf("%q is not a form QSP can present", p),
 				"use \"repeater\" or \"console\"; empty is \"repeater\"")
 		}
-		for i, r := range c.Quantar.AllowedRouters {
+		for i, r := range c.P25Repeaters.AllowedRouters {
 			if net.ParseIP(strings.TrimSpace(r)) == nil {
-				v.add(fmt.Sprintf("quantar.allowed_routers[%d]", i),
+				v.add(fmt.Sprintf("p25_repeaters.allowed_routers[%d]", i),
 					fmt.Sprintf("%q is not an address", r),
 					"name the router by its IP address, for example \"192.0.2.4\"")
 			}

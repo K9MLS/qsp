@@ -58,15 +58,15 @@
   var p25EnabledState = document.getElementById("p25-enabled-state");
   var p25State = document.getElementById("p25-state");
   var p25AllowedState = document.getElementById("p25-allowed-state");
-  var quantarEnabled = document.getElementById("quantar-enabled");
-  var quantarListen = document.getElementById("quantar-listen");
-  var quantarRecord = document.getElementById("quantar-record");
-  var quantarSite = document.getElementById("quantar-site");
-  var quantarPresent = document.getElementById("quantar-present");
-  var quantarAllowed = document.getElementById("quantar-allowed");
-  var quantarEnabledState = document.getElementById("quantar-enabled-state");
-  var quantarState = document.getElementById("quantar-state");
-  var quantarAllowedState = document.getElementById("quantar-allowed-state");
+  var repeatersEnabled = document.getElementById("p25_repeaters-enabled");
+  var repeatersListen = document.getElementById("p25_repeaters-listen");
+  var repeatersRecord = document.getElementById("p25_repeaters-record");
+  var repeatersSite = document.getElementById("p25_repeaters-site");
+  var repeatersPresent = document.getElementById("p25_repeaters-present");
+  var repeatersAllowed = document.getElementById("p25_repeaters-allowed");
+  var repeatersEnabledState = document.getElementById("p25_repeaters-enabled-state");
+  var repeatersState = document.getElementById("p25_repeaters-state");
+  var repeatersAllowedState = document.getElementById("p25_repeaters-allowed-state");
   var ipscEnabled = document.getElementById("ipsc-enabled");
   var ipscListen = document.getElementById("ipsc-listen");
   var ipscMaster = document.getElementById("ipsc-master");
@@ -160,24 +160,24 @@
     }
   }
 
-  function quantarRouters() {
-    return quantarAllowed.value.split("\n")
+  function repeatersRouters() {
+    return repeatersAllowed.value.split("\n")
       .map(function (r) { return r.trim(); })
       .filter(function (r) { return r !== ""; });
   }
 
-  function refreshQuantarState() {
-    quantarEnabledState.textContent = quantarEnabled.checked ? "On" : "Off";
-    var routers = quantarRouters();
-    if (!quantarEnabled.checked) {
-      quantarState.textContent = "off";
-      quantarAllowedState.textContent = "";
+  function refreshRepeatersState() {
+    repeatersEnabledState.textContent = repeatersEnabled.checked ? "On" : "Off";
+    var routers = repeatersRouters();
+    if (!repeatersEnabled.checked) {
+      repeatersState.textContent = "off";
+      repeatersAllowedState.textContent = "";
       return;
     }
-    quantarState.textContent = routers.length
+    repeatersState.textContent = routers.length
       ? "on, " + routers.length + (routers.length === 1 ? " router" : " routers")
       : "on, any router";
-    quantarAllowedState.textContent = routers.length
+    repeatersAllowedState.textContent = routers.length
       ? "Only the " + routers.length + " router" + (routers.length === 1 ? "" : "s") +
         " listed are accepted. Everything else is refused and counted."
       : "Every router that can reach the port is accepted.";
@@ -313,14 +313,14 @@
     p25Allowed.value = (p25.allowed_callsigns || []).join("\n");
     refreshP25State();
 
-    var quantar = cfg.quantar || {};
-    quantarEnabled.checked = !!quantar.enabled;
-    quantarListen.value = quantar.listen_address || "";
-    quantarRecord.value = quantar.record_dir || "";
-    quantarSite.value = quantar.site ? String(quantar.site) : "";
-    quantarPresent.value = quantar.present_as === "console" ? "console" : "";
-    quantarAllowed.value = (quantar.allowed_routers || []).join("\n");
-    refreshQuantarState();
+    var repeaters = cfg.p25_repeaters || {};
+    repeatersEnabled.checked = !!repeaters.enabled;
+    repeatersListen.value = repeaters.listen_address || "";
+    repeatersRecord.value = repeaters.record_dir || "";
+    repeatersSite.value = repeaters.site ? String(repeaters.site) : "";
+    repeatersPresent.value = repeaters.present_as === "console" ? "console" : "";
+    repeatersAllowed.value = (repeaters.allowed_routers || []).join("\n");
+    refreshRepeatersState();
 
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
@@ -434,16 +434,16 @@
       next.p25.listen_address = "0.0.0.0:41000";
     }
 
-    next.quantar = next.quantar || {};
-    next.quantar.enabled = quantarEnabled.checked;
-    next.quantar.listen_address = quantarListen.value.trim();
-    next.quantar.record_dir = quantarRecord.value.trim();
-    next.quantar.site = parseInt(quantarSite.value, 10) || 0;
-    next.quantar.present_as = quantarPresent.value;
-    next.quantar.allowed_routers = quantarRouters();
+    next.p25_repeaters = next.p25_repeaters || {};
+    next.p25_repeaters.enabled = repeatersEnabled.checked;
+    next.p25_repeaters.listen_address = repeatersListen.value.trim();
+    next.p25_repeaters.record_dir = repeatersRecord.value.trim();
+    next.p25_repeaters.site = parseInt(repeatersSite.value, 10) || 0;
+    next.p25_repeaters.present_as = repeatersPresent.value;
+    next.p25_repeaters.allowed_routers = repeatersRouters();
     /* Supplied for the same reason as the P25 port above. */
-    if (next.quantar.enabled && !next.quantar.listen_address) {
-      next.quantar.listen_address = "0.0.0.0:1994";
+    if (next.p25_repeaters.enabled && !next.p25_repeaters.listen_address) {
+      next.p25_repeaters.listen_address = "0.0.0.0:1994";
     }
 
     next.dmr = next.dmr || {};
@@ -617,8 +617,8 @@
   ipscPeers.addEventListener("input", refreshIPSCState);
   p25Enabled.addEventListener("change", refreshP25State);
   p25Allowed.addEventListener("input", refreshP25State);
-  quantarEnabled.addEventListener("change", refreshQuantarState);
-  quantarAllowed.addEventListener("input", refreshQuantarState);
+  repeatersEnabled.addEventListener("change", refreshRepeatersState);
+  repeatersAllowed.addEventListener("input", refreshRepeatersState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

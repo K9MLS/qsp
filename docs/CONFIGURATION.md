@@ -143,21 +143,25 @@ A bridge may be scheduled, triggered, both, or neither. Either mechanism opening
 it is enough, and the frame that opens it is itself relayed — no clipped first
 syllable.
 
-## Motorola Quantar
+## Motorola P25 repeaters
 
 Set from the console's **Network** page; this is the block it writes. **Off by
-default.** A Quantar's V.24 card connects to a Cisco router's serial port, and
-the router carries its frames to QSP over TCP (`stun route all tcp` and this
-server's address). **QSP opens the station's link — accepts its request,
-asks in turn, answers its introduction, and keeps the link alive — and records what it sends;
-it does not carry the station's calls yet.**
+default.** A Motorola P25 repeater's V.24 card connects to a Cisco router's
+serial port, and the router carries its frames to QSP over TCP (`stun route all
+tcp` and this server's address). **QSP opens the repeater's link, keeps it
+alive, and reads each call as far as who is talking and on which talkgroup; it
+does not carry those calls anywhere yet.** The Overview's P25 row counts the
+voice frames and names the repeater, its link and the last radio heard.
+
+**Proven on a Quantar.** A GTR 8000 has the same V.24 interface and is expected
+to work; none has been tried.
 
 ```json
-"quantar": {
+"p25_repeaters": {
   "enabled":         true,
   "listen_address":  "0.0.0.0:1994",
   "allowed_routers": ["192.0.2.4"],
-  "record_dir":      "/var/lib/qsp/quantar",
+  "record_dir":      "/var/lib/qsp/repeaters",
   "site":            2,
   "present_as":      "repeater"
 }
@@ -165,14 +169,18 @@ it does not carry the station's calls yet.**
 
 `allowed_routers` are router addresses; empty accepts any router that can reach
 the port. `record_dir` is optional: when set, every frame in both directions is
-written there as text, one file per connection. `site` is the site number QSP
-introduces itself with, 1 to 127, and it must not be the station's own.
-`present_as` is what QSP tells the station it is: `"repeater"` (the default, a
-second Quantar, site 2 unless set) or `"console"` (a Motorola console
-interface, site 13 unless set). A station set for repeater-to-repeater linking
-expects a repeater; try the other if the link does not come up. A connection silent for 30
-seconds is closed, and a new connection from the same router replaces the old.
-Changing any of these needs a restart.
+written there as text, one file per connection, **voice included, so it grows
+by about a megabyte for every five minutes of talking**. `site` is the site
+number QSP introduces itself with, 1 to 127, and it must not be the repeater's
+own. `present_as` is what QSP tells the repeater it is: `"repeater"` (the
+default, a second repeater, site 2 unless set) or `"console"` (a Motorola
+console interface, site 13 unless set). A repeater set for repeater-to-repeater
+linking expects a repeater, and that is what the Quantar here took. A
+connection silent for 30 seconds is closed, and a new connection from the same
+router replaces the old. Changing any of these needs a restart.
+
+The section was named `quantar` in 0.1.303 to 0.1.305. A configuration saying
+that still loads, and is written back as `p25_repeaters`.
 
 ## Weather alerts
 

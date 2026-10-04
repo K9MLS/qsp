@@ -495,7 +495,7 @@
           <span class="panel__count" id="p25-state">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-p25">
-          <p class="hint__text"><strong>This is P25 over IP, not a Motorola Quantar link.</strong> Enabling it makes QSP a P25 reflector that hotspots and P25 gateways can link to, carrying their audio between each other untouched. A Quantar connects over a V.24 daughtercard rather than over a network, which is a different link with its own panel below. <strong>P25 traffic does not reach DMR</strong> and will not: P25 carries IMBE and DMR carries AMBE+2, so passing one through the other would decode and re-encode the audio and everybody would hear the difference.</p>
+          <p class="hint__text"><strong>This is P25 over IP, not a Motorola repeater's V.24 link.</strong> Enabling it makes QSP a P25 reflector that hotspots and P25 gateways can link to, carrying their audio between each other untouched. A Motorola repeater connects over a V.24 card rather than over a network, which is a different link with its own panel below. <strong>P25 traffic does not reach DMR</strong> and will not: P25 carries IMBE and DMR carries AMBE+2, so passing one through the other would decode and re-encode the audio and everybody would hear the difference.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -547,13 +547,13 @@
       <section class="panel">
         <div class="panel__head">
           <div class="panel__heading">
-            <h2 class="panel__title">Motorola Quantar</h2>
-            <button class="hint" type="button" aria-controls="hint-quantar" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
+            <h2 class="panel__title">Motorola P25 repeaters</h2>
+            <button class="hint" type="button" aria-controls="hint-p25_repeaters" aria-label="Explain this"><svg class="hint__mark" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M5.4 6.2a2.9 2.9 0 1 1 3.9 2.7c-.8.3-1.3 1-1.3 1.9v.3"/><circle cx="8" cy="13.4" r="1" fill="currentColor" stroke="none"/></svg></button>
           </div>
-          <span class="panel__count" id="quantar-state">&mdash;</span>
+          <span class="panel__count" id="p25_repeaters-state">&mdash;</span>
         </div>
-        <div class="panel__disclosure" id="hint-quantar">
-          <p class="hint__text"><strong>The link is opened; voice is not carried yet.</strong> A Quantar's V.24 card speaks to a Cisco router's serial port, and the router carries those frames here over TCP. The station asks to open its link twice a second, expects to be asked in turn, then introduces itself and expects to hear a keepalive every few seconds. Turning this on makes QSP do all of that, and record what the station sends on the open link. Carrying its calls is the next step and is written from that record.</p>
+        <div class="panel__disclosure" id="hint-p25_repeaters">
+          <p class="hint__text"><strong>The link is opened and its calls are counted; they are not carried yet.</strong> A Motorola P25 repeater's V.24 card speaks to a Cisco router's serial port, and the router carries those frames here over TCP. The repeater asks to open its link twice a second, expects to be asked in turn, then introduces itself and expects to hear a keepalive every few seconds. Turning this on makes QSP do all of that, and read each call as far as who is talking and on which talkgroup. Carrying those calls to P25 gateways and back is the next step. <strong>A Quantar is what this has been proven on.</strong> A GTR 8000 has the same V.24 interface and is expected to work; none has been tried.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -563,16 +563,16 @@
           </p>
 
           <label class="toggle">
-            <input class="toggle__input" id="quantar-enabled" type="checkbox">
+            <input class="toggle__input" id="p25_repeaters-enabled" type="checkbox">
             <span class="toggle__track"></span>
-            <span class="toggle__state" id="quantar-enabled-state">Off</span>
-            <span>Answer a Quantar</span>
+            <span class="toggle__state" id="p25_repeaters-enabled-state">Off</span>
+            <span>Link Motorola P25 repeaters</span>
           </label>
 
           <div class="settings">
             <label class="picker__field">
               <span class="picker__label">Listen on</span>
-              <input class="picker__input" id="quantar-listen" type="text"
+              <input class="picker__input" id="p25_repeaters-listen" type="text"
                      placeholder="0.0.0.0:1994">
               <p class="field__note">The local address this server binds for
                 the router. 1994 is the port a router's serial tunnel
@@ -580,7 +580,7 @@
             </label>
             <label class="picker__field">
               <span class="picker__label">Record to</span>
-              <input class="picker__input" id="quantar-record" type="text"
+              <input class="picker__input" id="p25_repeaters-record" type="text"
                      spellcheck="false" placeholder="">
               <p class="field__note">A folder on this server. Every frame in
                 both directions is written there, one file per connection.
@@ -591,29 +591,29 @@
           <div class="settings">
             <label class="picker__field">
               <span class="picker__label">Site number</span>
-              <input class="picker__input" id="quantar-site" type="number"
+              <input class="picker__input" id="p25_repeaters-site" type="number"
                      min="1" max="127" step="1" placeholder="2">
               <p class="field__note">What this server calls itself to the
-                station. It must not be the station's own site number, which
+                repeater. It must not be the repeater's own site number, which
                 is 1 unless its codeplug says otherwise. Empty uses 2 as a
                 repeater and 13 as a console.</p>
             </label>
             <label class="picker__field">
               <span class="picker__label">Present as</span>
-              <select class="picker__input" id="quantar-present">
+              <select class="picker__input" id="p25_repeaters-present">
                 <option value="">Repeater</option>
                 <option value="console">Console</option>
               </select>
-              <p class="field__note">What this server tells the station it
-                is. A station set for repeater-to-repeater linking expects a
+              <p class="field__note">What this server tells the repeater it
+                is. A repeater set for repeater-to-repeater linking expects a
                 repeater. Try Console if the link does not come up.</p>
             </label>
           </div>
 
-          <label class="field__label" for="quantar-allowed">Allowed routers</label>
-          <textarea class="field__input acl__ids" id="quantar-allowed" rows="2"
+          <label class="field__label" for="p25_repeaters-allowed">Allowed routers</label>
+          <textarea class="field__input acl__ids" id="p25_repeaters-allowed" rows="2"
                     spellcheck="false"></textarea>
-          <p class="acl__state" id="quantar-allowed-state"></p>
+          <p class="acl__state" id="p25_repeaters-allowed-state"></p>
           <p class="acl__hint">
             One router address per line. Empty accepts any router that can
             reach the port. Changing any of these needs a restart of QSP.

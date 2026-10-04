@@ -2,7 +2,7 @@
 
 **The first bytes a Motorola Quantar sent QSP**, and the capture
 [ADR-0060](../../docs/adr/ADR-0060-qsp-terminates-the-serial-tunnel.md) required
-before any of `internal/quantar` could be written.
+before any of `internal/v24link` could be written.
 
 SHA-256 `d8e2bb3fae006b24de514a76a9a3ad4d92bed78209e84e94bc50ad062322fffd`
 

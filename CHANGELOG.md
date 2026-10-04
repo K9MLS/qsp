@@ -6,6 +6,21 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Motorola P25 repeaters: the link is up, and its calls are read.** With
+  0.1.305 the Quantar accepted QSP's link request, introduced itself, and the
+  link stayed open. QSP now reads each transmission — start, header, voice
+  and end — and the Overview's P25 row counts the voice frames and names the
+  repeater, whether its link is open, and the last radio and talkgroup heard.
+  Each call is logged when it ends, with its length. The health page gains
+  **p25-repeaters**. **Calls are not relayed yet, and are not in Last heard**,
+  which is ADR-0059's decision.
+- **Renamed from Quantar to Motorola P25 repeaters.** The interface is V.24,
+  which a GTR 8000 has too; only a Quantar has been tried. The Network panel,
+  the log and the documents say so, and the setting is `p25_repeaters`. A
+  configuration saved as `quantar` by 0.1.303 to 0.1.305 still loads and is
+  written back under the new name. **A backup file taken by those three
+  versions with the link turned on is the exception**: edit `quantar` to
+  `p25_repeaters` in it before restoring.
 - **The Quantar's link is opened from both ends.** The station ignored
   0.1.304's introduction: its own request had been accepted and QSP had made
   none in return, so the link was open one way. QSP now asks until the

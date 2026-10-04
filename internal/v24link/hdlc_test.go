@@ -1,4 +1,4 @@
-package quantar
+package v24link
 
 import (
 	"bytes"
@@ -64,16 +64,16 @@ func TestWhatQSPSaysInEachForm(t *testing.T) {
 		got  []byte
 		want []byte
 	}{
-		{"repeater asks", Repeater.LinkRequest(), []byte{0xFD, 0x3F}},
-		{"repeater introduces site 2", Repeater.Introduction(2),
+		{"repeater asks", AsRepeater.LinkRequest(), []byte{0xFD, 0x3F}},
+		{"repeater introduces site 2", AsRepeater.Introduction(2),
 			[]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}},
-		{"repeater introduces the largest site", Repeater.Introduction(MaxSite),
+		{"repeater introduces the largest site", AsRepeater.Introduction(MaxSite),
 			[]byte{0xFD, 0xBF, 0x01, 0xFF, 0xC2, 0, 0, 0, 0, 0xFF}},
-		{"repeater keeps alive", Repeater.Keepalive(), []byte{0xFD, 0x01}},
-		{"console asks", Console.LinkRequest(), []byte{0x0B, 0x3F}},
-		{"console introduces site 13, as published", Console.Introduction(13),
+		{"repeater keeps alive", AsRepeater.Keepalive(), []byte{0xFD, 0x01}},
+		{"console asks", AsConsole.LinkRequest(), []byte{0x0B, 0x3F}},
+		{"console introduces site 13, as published", AsConsole.Introduction(13),
 			[]byte{0x0B, 0xBF, 0x01, 0x1B, 0x00, 0, 0, 0, 0, 0xFF}},
-		{"console keeps alive", Console.Keepalive(), []byte{0x0B, 0x01}},
+		{"console keeps alive", AsConsole.Keepalive(), []byte{0x0B, 0x01}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

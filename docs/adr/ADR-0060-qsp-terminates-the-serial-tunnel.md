@@ -113,7 +113,7 @@ not send a keepalive: it sends `FD 3F`, an HDLC request to open the link, every
 "answer the keepalive" but "accept the link"**, and there is no voice to capture
 before it.
 
-**Phase 2, built in 0.1.303.** `internal/quantar` accepts with `FD 73`: the
+**Phase 2, built in 0.1.303.** `internal/v24link` accepts with `FD 73`: the
 station's address, and the standard's acceptance with the poll bit carried
 back. The control values are ISO/IEC 13239's, a published standard, which is
 what lets the reply be written without a capture of one. Everything else is
@@ -144,9 +144,40 @@ alternative it leaves is that the introduction's form was wrong, so the other
 form on record — a console interface: address `0B`, type `00`, site 13 — is a
 setting, `quantar.present_as`, and not a build.
 
-**Audio is king, and nothing here touches it.** Voice frames are recorded whole
-and answered with nothing. When they are carried, the IMBE inside them is
-copied, never decoded (ADR-0034).
+**It worked, on the first try of that form.** 0.1.305, 2026-10-04 16:34:59 UTC:
+the repeater accepted QSP's request 30 milliseconds after QSP accepted its own,
+both introduced themselves, and its first keepalive came five seconds later.
+The link then stayed open. It sends Receive Ready every 5.01 seconds; QSP's
+two-second interval was never tested by a drop. The console form was not
+needed for this repeater and stays as a setting.
+
+**Phase 3, built in 0.1.306 from the same capture**
+(`testdata/quantar/stun-voice-three-calls.bin`). A transmission is information
+frames, control `03`, from address `07`: a start marker `00 02 02 0C 0B …`, a
+header in two records `60` and `61`, then voice, then an end marker
+`00 02 02 25 0B …` sent twice. **From the record's first byte the voice is the
+frame `internal/protocol/p25` already parses** — types `62` to `73` at the same
+lengths — so the prediction above held exactly, and the reader is a wrapper
+around that package.
+
+One thing the reflector side had not shown: the link control alternates. Every
+other voice unit carries the standard word, which names the talkgroup and the
+radio, and the ones between carry a Motorola word, manufacturer `90`, whose
+bytes in the same places are neither. Frame `64` says which, so it is read
+before `65` and `66` are believed.
+
+**Renamed in 0.1.306.** The interface is V.24 and a GTR 8000 has it too, so the
+package is `internal/v24link`, the setting `p25_repeaters`, and the console
+says Motorola P25 repeaters. Only a Quantar has been on the far end. The
+fixtures stay under `testdata/quantar` because a Quantar is what they are of.
+
+**Not in Last heard, deliberately.** A repeater's calls are counted and named
+on the Overview and in the log. Last heard is ADR-0059's question and that
+decision is the operator's; this does not make it by the back door.
+
+**Audio is king, and nothing here touches it.** Voice frames are read for who
+is talking and answered with nothing. When they are carried, the IMBE inside
+them is copied, never decoded (ADR-0034).
 
 ## Alternatives considered
 

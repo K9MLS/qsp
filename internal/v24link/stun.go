@@ -6,7 +6,7 @@
 // 2026-10-04 and nothing more: a two-byte marker, a two-byte type, a two-byte
 // length, one further byte, and then that many bytes of whatever the serial
 // line carried. What is not in a capture is not in this package.
-package quantar
+package v24link
 
 import (
 	"encoding/binary"
@@ -41,10 +41,10 @@ const (
 )
 
 // ErrNotTunnel reports bytes that do not begin with the tunnel's marker.
-var ErrNotTunnel = errors.New("quantar: not a serial tunnel frame")
+var ErrNotTunnel = errors.New("v24link: not a serial tunnel frame")
 
 // ErrTooLong reports a length no serial frame can have.
-var ErrTooLong = errors.New("quantar: frame length is beyond the serial line's limit")
+var ErrTooLong = errors.New("v24link: frame length is beyond the serial line's limit")
 
 // Frame is one tunnel frame.
 type Frame struct {
@@ -85,7 +85,7 @@ func ReadFrame(r io.Reader) (Frame, error) {
 		if errors.Is(err, io.EOF) {
 			err = io.ErrUnexpectedEOF
 		}
-		return Frame{}, fmt.Errorf("quantar: frame cut short: %w", err)
+		return Frame{}, fmt.Errorf("v24link: frame cut short: %w", err)
 	}
 	return f, nil
 }

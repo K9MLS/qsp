@@ -19,6 +19,7 @@ that actually matters. See Constitution §3 and
 | `quantar/stun-link-request.bin` | A Quantar asking to open its V.24 link, as a router's serial tunnel delivers it |
 | `quantar/stun-introduction-unanswered.bin` | The same station, accepted and then left unanswered: its introduction, three times, and round again |
 | `quantar/stun-introduction-ignored.bin` | The same station ignoring an introduction sent before QSP had asked for the link itself |
+| `quantar/stun-voice-three-calls.bin` | The link open at last, and three transmissions from a handheld: start, header, voice and end |
 | `ipsc/*.pcap` | Registration, voice, private calls and text over IP Site Connect |
 
 **IPSC is implemented entirely from these captures.** See

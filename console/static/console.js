@@ -838,7 +838,11 @@
         p25Lines.push("Last refused: " + escapeText(p25.refused_last));
       }
 
-      if (gws.length === 0) {
+      if (p25.gateways_off) {
+        /* The gateway listener is not running, so there is nothing to say
+         * about gateways: "none have linked yet" would describe a listener
+         * that is not there to be linked to. */
+      } else if (gws.length === 0) {
         /* Not a fault, and the health check says the same: a reflector nobody
          * has linked to is a working reflector waiting. */
         p25Lines.push("No P25 gateways have linked yet");
@@ -857,6 +861,29 @@
           return p25Lines.push(bits.join(", "));
         });
       }
+
+      /* Motorola repeaters, linked over V.24. One line each, built the way
+       * a gateway's is: what it is, whether its link is open, and the last
+       * radio heard through it once one has been. */
+      (p25.repeaters || []).forEach(function (r) {
+        var bits = ["Motorola repeater" +
+          (r.type ? " (" + escapeText(r.type) + ")" : "") +
+          (r.site ? ", site " + r.site : "")];
+        bits.push(r.up ? "link up" : "link opening");
+        if (r.transmitting) bits.push("transmitting now");
+        /* Zero is not a talkgroup or a radio, so neither is printed until a
+         * transmission has said who it was. */
+        if (r.talkgroup) bits.push("TG " + r.talkgroup);
+        if (r.source_id) {
+          bits.push("last heard " + r.source_id +
+            (r.heard && !r.transmitting ? " " + r.last_heard_ago_seconds + "s ago" : ""));
+        }
+        bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
+        bits.push(r.frames + (r.frames === 1 ? " frame" : " frames"));
+        /* Withheld from a public view, so printed only when carried. */
+        if (r.router) bits.push("through " + escapeText(r.router));
+        p25Lines.push(bits.join(", "));
+      });
 
       /* **Neutral, not amber.** `.inline-note` alone is
        * `var(--color-degraded)`, so the first version of this drew a gateway

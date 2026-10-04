@@ -38,12 +38,12 @@ import (
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/homebrew"
-	"github.com/k9mls/qsp/internal/quantar"
 	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/scheduler"
 	"github.com/k9mls/qsp/internal/secrets"
 	"github.com/k9mls/qsp/internal/server"
 	"github.com/k9mls/qsp/internal/upstream"
+	"github.com/k9mls/qsp/internal/v24link"
 	"github.com/k9mls/qsp/internal/vocoderlink"
 	"github.com/k9mls/qsp/internal/weather"
 	"github.com/k9mls/qsp/internal/zellologon"
@@ -67,9 +67,9 @@ type app struct {
 	dmr       *peers.Listener
 	ipsc      *ipsclink.Listener
 	p25       *p25link.Listener
-	// quantar answers a Motorola Quantar through a router's serial tunnel
-	// (ADR-0060). Nil when off.
-	quantar   *quantar.Listener
+	// repeaters links Motorola P25 repeaters over V.24, through a router's
+	// serial tunnel (ADR-0060). Nil when off.
+	repeaters *v24link.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
 
@@ -608,23 +608,23 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		a.p25 = pl
 	}
 
-	if cfg.Quantar.Enabled {
-		// **The link is opened and nothing is carried.** ADR-0060 phase 2:
-		// the link is opened from both ends, the station's
-		// introduction answered and the link kept alive, and what it sends on
-		// the open link is recorded. It has no sink into DMR or P25 because there
-		// is no voice to deliver yet.
-		ql, qerr := quantar.New(logging.Subsystem(log, "quantar"), quantar.Config{
-			ListenAddress:  cfg.Quantar.ListenAddress,
-			AllowedRouters: cfg.Quantar.AllowedRouters,
-			RecordDir:      cfg.Quantar.RecordDir,
-			Site:           cfg.Quantar.Site,
-			PresentAs:      cfg.Quantar.PresentAs,
+	if cfg.P25Repeaters.Enabled {
+		// **The link is opened, its calls are read, and nothing is carried.**
+		// ADR-0060 phases 2 and 3: the link is opened from both ends and kept
+		// alive, and the repeater's voice is read as far as who is talking
+		// and counted. It has no sink into the gateway listener yet; that is
+		// phase 4, and the frames will cross untouched when it is built.
+		ql, qerr := v24link.New(logging.Subsystem(log, "p25-repeaters"), v24link.Config{
+			ListenAddress:  cfg.P25Repeaters.ListenAddress,
+			AllowedRouters: cfg.P25Repeaters.AllowedRouters,
+			RecordDir:      cfg.P25Repeaters.RecordDir,
+			Site:           cfg.P25Repeaters.Site,
+			PresentAs:      cfg.P25Repeaters.PresentAs,
 		})
 		if qerr != nil {
 			return nil, qerr
 		}
-		a.quantar = ql
+		a.repeaters = ql
 	}
 
 	if cfg.IPSC.Enabled {
@@ -728,6 +728,11 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 	registry.MustRegister(ipsclink.HealthCheck{Listener: a.ipsc, DisabledReason: ipscDisabledReason})
 	registry.MustRegister(p25link.HealthCheck{Listener: a.p25, DisabledReason: p25DisabledReason})
+	registry.MustRegister(v24link.HealthCheck{
+		Listener: a.repeaters,
+		DisabledReason: "Motorola P25 repeaters are off. Turn them on in Network settings " +
+			"to link a repeater over V.24",
+	})
 
 	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
@@ -874,7 +879,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		IPSCPeers:           ipscPeerSource(a.ipsc, a.names),
-		P25Gateways:         p25Source(a.p25),
+		P25Gateways:         p25Source(a.p25, a.repeaters),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
 		// The first administrator comes from the setup page (ADR-0056) and
@@ -1061,8 +1066,8 @@ func (a *app) run(ctx context.Context) error {
 			return err
 		}
 	}
-	if a.quantar != nil {
-		if err := a.quantar.Start(ctx); err != nil {
+	if a.repeaters != nil {
+		if err := a.repeaters.Start(ctx); err != nil {
 			return err
 		}
 	}
@@ -1630,18 +1635,23 @@ func (p ipscPeerViews) Traffic() server.Traffic {
 // return nothing deliberately, and that is a statement rather than a stub:
 // once P25 reaches the call tracker (see docs/P25-PLANNING.md) CallViews is
 // where it arrives.
-type p25GatewaySource struct{ listener *p25link.Listener }
+type p25GatewaySource struct {
+	// listener is the gateway listener and repeaters the Motorola repeater
+	// link. Either may be nil; both are P25, so both report in one place.
+	listener  *p25link.Listener
+	repeaters *v24link.Listener
+}
 
-// p25Source returns nil when P25 is disabled, so the payload omits the object
-// entirely rather than carrying zeroes. **A nil interface, not a nil
+// p25Source returns nil when no P25 listener is running, so the payload omits
+// the object entirely rather than carrying zeroes. **A nil interface, not a nil
 // pointer**: a typed nil inside an interface is non-nil at the call site, which
 // would make the console show an empty P25 panel on a server that is not
 // running P25 at all.
-func p25Source(l *p25link.Listener) server.PeerSource {
-	if l == nil {
+func p25Source(l *p25link.Listener, r *v24link.Listener) server.PeerSource {
+	if l == nil && r == nil {
 		return nil
 	}
-	return p25GatewaySource{listener: l}
+	return p25GatewaySource{listener: l, repeaters: r}
 }
 
 func (p p25GatewaySource) PeerViews(time.Time) []server.PeerView { return nil }
@@ -1651,6 +1661,48 @@ func (p p25GatewaySource) CallViews(time.Time) (active, recent []server.CallView
 }
 
 func (p p25GatewaySource) Traffic() server.Traffic {
+	out := &server.P25Traffic{GatewaysOff: p.listener == nil}
+	if p.listener != nil {
+		p.gateways(out)
+	}
+	if p.repeaters != nil {
+		p.repeaterRows(out, time.Now())
+	}
+	return server.Traffic{P25: out}
+}
+
+// repeaterRows adds the Motorola repeaters to the P25 figures.
+func (p p25GatewaySource) repeaterRows(out *server.P25Traffic, now time.Time) {
+	out.RepeaterFrames = p.repeaters.VoiceFrames()
+	out.VoiceFrames += out.RepeaterFrames
+	out.Unparsed += p.repeaters.Unknown()
+	out.Refused += p.repeaters.Refused()
+	for _, r := range p.repeaters.Repeaters() {
+		row := server.P25RepeaterView{
+			Router:       r.Router,
+			Up:           r.Up,
+			Transmitting: r.Transmitting,
+			Frames:       r.Frames,
+			Calls:        r.Calls,
+			Talkgroup:    r.Talkgroup,
+			SourceID:     r.SourceID,
+		}
+		if r.Introduced {
+			row.Site, row.Type = int(r.Site), v24link.StationTypeName(r.StationType)
+		}
+		if r.Up {
+			row.UpForSeconds = int(now.Sub(r.UpSince).Round(time.Second).Seconds())
+		}
+		if !r.LastHeard.IsZero() {
+			row.Heard = true
+			row.LastHeardAgoSeconds = int(now.Sub(r.LastHeard).Round(time.Second).Seconds())
+		}
+		out.Repeaters = append(out.Repeaters, row)
+	}
+}
+
+// gateways adds the gateway listener's figures.
+func (p p25GatewaySource) gateways(out *server.P25Traffic) {
 	gateways := p.listener.Gateways()
 	refused, refusedWho := p.listener.Refused()
 
@@ -1681,14 +1733,12 @@ func (p p25GatewaySource) Traffic() server.Traffic {
 	// five seconds is unreadable.
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Callsign < rows[j].Callsign })
 
-	return server.Traffic{P25: &server.P25Traffic{
-		VoiceFrames: frames,
-		Polls:       polls,
-		Refused:     refused,
-		RefusedLast: refusedWho,
-		Unparsed:    p.listener.Unparsed(),
-		Gateways:    rows,
-	}}
+	out.VoiceFrames = frames
+	out.Polls = polls
+	out.Refused = refused
+	out.RefusedLast = refusedWho
+	out.Unparsed = p.listener.Unparsed()
+	out.Gateways = rows
 }
 
 // peerViews adapts the peer listener to the console's narrow view of it.

@@ -8,17 +8,18 @@ transcoder, **ADR-0062** through **0066** and `docs/ZELLO.md`.
 
 ## The two live threads
 
-**1. The Quantar is talking, and QSP answers its link request (0.1.303).** On
-2026-10-04 the station's **wireline board was replaced** and frames reached the
-router for the first time. The fault was never the V.24 card or the cable: the
-Status Report screen read `Station Wireline FW: NOT_PRESENT`, the control module
-could not see the wireline board, and a V.24 card on a board nobody is talking
-to sends nothing. **Read the Service screens first.** The capture is in
-`testdata/quantar`: the station sends `FD 3F`, an HDLC link request, every 0.51
-seconds and nothing else until it is accepted. `internal/quantar` accepts it
-with `FD 73` and records what follows. **What the station does after being
-accepted has not been seen**; turn on `record_dir`, key a P25 radio, and write
-phase 3 from that file. See `docs/P25-PLANNING.md` and ADR-0060.
+**1. A Quantar is linked, and QSP reads its calls (0.1.306).** On 2026-10-04
+the station's **wireline board was replaced** and frames reached the router for
+the first time: the Status Report screen had read `Station Wireline FW:
+NOT_PRESENT`, and a V.24 card on a board nobody is talking to sends nothing.
+**Read the Service screens first.** Four patches later the link is open and
+stays open, and three transmissions from a handheld were captured and are the
+fixture (`testdata/quantar/stun-voice-three-calls.bin`). `internal/v24link`
+opens the link from both ends, keeps it alive, and reads each call as far as
+talkgroup and radio; the Overview's P25 row shows it. **Nothing is relayed
+yet** — that is ADR-0060 phase 4, a repeater's call reaching P25 gateways and
+back, and it needs a frame QSP has never sent: voice *to* a repeater. See
+`docs/P25-PLANNING.md` and ADR-0060.
 
 **2. The text service can send, and waits on a radio's display.** An
 administrator composes a group text on the **Administration** page —
@@ -152,20 +153,25 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.306 reads a repeater's calls and renames the link**: Motorola P25
+repeaters, `p25_repeaters`, `internal/v24link`; the old `quantar` section
+still loads. The Overview's P25 row and the health page show the repeater.
+**To confirm on air**: the Overview line, and "a transmission ended" in the
+log with the talkgroup, radio and seconds.
+
 **0.1.305 opens the link from both ends**: QSP sends its own link request
 until the station accepts it, and introduces itself only then; 0.1.304's
 introduction, sent on a link open one way, was ignored 65 times. **Present
 as** (`quantar.present_as`) switches QSP between the repeater form and the
-published console form without a build. **Unproven on the station.** The log
-lines to read, in order: "the station accepted QSP's link request", "QSP
-introduced itself", "the Quantar's link is up".
+published console form without a build. **Proven on the Quantar the same day**:
+the link came up in the repeater form and stayed up.
 
 **0.1.304 opens the Quantar's link**: the station's introduction is answered
 (`quantar.site`, 2 unless set) and Receive Ready goes out every two seconds.
 **Both are reasoned and unproven on the station**; the log line "the Quantar's
 link is up" is the proof, and "the link dropped" the disproof.
 
-**0.1.303 answers a Quantar** (ADR-0060 phase 2): `internal/quantar` listens
+**0.1.303 answers a Quantar** (ADR-0060 phase 2): `internal/v24link` listens
 for a router's serial tunnel on TCP, accepts the station's link request and
 records every frame. Off by default; the **Network** page has the switch.
 **Unproven on the station** until it is deployed and the log is read.
@@ -259,9 +265,9 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.305 | `cat VERSION` |
+| **Fedora working tree** | 0.1.306 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.301** from 2026-10-03, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
 
 **The compose files pin the working tree's version, enforced by
@@ -337,15 +343,26 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **The Quantar link, ADR-0060: phase 2 is built; its last step is unproven.**
-   0.1.303 accepted the link request and the station answered with its
-   introduction, `FD BF 01 03 C2 00 00 00 00 FF`, then started again every 1.55
-   seconds because nothing replied. 0.1.304 replies as a Quantar at site 2 and
-   sends Receive Ready every two seconds. **Not yet seen: whether the station
-   takes that.** In QSP's log: "the Quantar's link is up" means it did; "the
-   station introduced itself" repeating with no "up" means the introduction
-   was refused, and the published alternative is the console form, address
-   `0B`, type `00`; "the link dropped" means the keepalive is wrong or late.
+3. **Motorola P25 repeaters, ADR-0060: phases 1 to 3 are done; phase 4 is
+   next.** The link opened on 0.1.305 at the first try of the both-ends
+   handshake: request and acceptance each way, an introduction each way, then
+   Receive Ready (the repeater's every 5.01 s, QSP's every 2 s). 0.1.306 reads
+   the calls. **To confirm on the console**: key a P25 radio and the Overview's
+   P25 row should count voice frames and say "Motorola repeater (Quantar), site
+   1, link up, TG …, last heard …". **To confirm with the operator**: the
+   capture reads talkgroup **1** and radio **8080303**; he was asked what the
+   radio was set to and had not answered when this was written.
+
+   **Phase 4, relay**, in the order to build it: (a) a repeater's voice to
+   every registered P25 gateway, which is `p25link`'s own frames with the
+   wrapper removed and a terminator added; (b) a gateway's voice to the
+   repeater, which needs the start marker, header and end marker QSP has only
+   ever received — reuse the captured forms, and expect one round of the
+   repeater refusing them. **The IMBE crosses untouched both ways.** Talkgroup
+   contention between the two is item 4 below.
+
+   **Not in Last heard**, and not by oversight: ADR-0059 is the operator's
+   decision.
 
    What 2026-10-04 proved, each with its instrument:
 
@@ -416,9 +433,9 @@ learned to run it as a service.
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
 - **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
-- **A Quantar recording after the link is accepted**: deploy 0.1.303 with
-  `quantar.record_dir` set, key a P25 radio, send the file. And **12 November**
-  is when the router's evaluation licence ends; see `docs/P25-PLANNING.md`.
+- **What the P25 radio was set to on 2026-10-04**, to confirm the talkgroup (1)
+  and radio ID (8080303) QSP reads from the repeater. And **12 November** is
+  when the router's evaluation licence ends; see `docs/P25-PLANNING.md`.
 - **Colour codes 1, 2 and 8** EMB captures — completeness, not confidence;
   method in `testdata/hbp/EMB-CAPTURE-REQUEST.md`.
 

@@ -104,9 +104,10 @@ directions; and Zello both ways, heard on hotspots and Motorola repeaters.
 
 What has not happened yet: a third linked server, so relaying between more than
 two is unit-tested and never exercised; the arm64 image run on a Raspberry Pi;
-and the two-week unattended soak. A Motorola Quantar links over a V.24 interface
-rather than IP: QSP answers its link request through a router's serial tunnel,
-and carrying its calls is still being built.
+and the two-week unattended soak. A Motorola P25 repeater links over a V.24 interface
+rather than IP: QSP opens that link through a router's serial tunnel and reads
+its calls, proven on a Quantar, and carrying them to P25 gateways is still being
+built.
 
 [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) is the full list of what is
 built and where the line is. [`BLUEPRINT.md`](BLUEPRINT.md) is the product

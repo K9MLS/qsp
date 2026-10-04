@@ -1,4 +1,4 @@
-package quantar
+package v24link
 
 import (
 	"bytes"

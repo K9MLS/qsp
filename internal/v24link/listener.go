@@ -1,6 +1,7 @@
-package quantar
+package v24link
 
 import (
+	"cmp"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,18 +71,18 @@ type Config struct {
 // Validate reports why a configuration cannot be used.
 func (c Config) Validate() error {
 	if _, _, err := net.SplitHostPort(c.ListenAddress); err != nil {
-		return fmt.Errorf("quantar: %q is not a host:port address: %w", c.ListenAddress, err)
+		return fmt.Errorf("v24link: %q is not a host:port address: %w", c.ListenAddress, err)
 	}
 	for _, r := range c.AllowedRouters {
 		if net.ParseIP(strings.TrimSpace(r)) == nil {
-			return fmt.Errorf("quantar: allowed router %q is not an address", r)
+			return fmt.Errorf("v24link: allowed router %q is not an address", r)
 		}
 	}
 	if _, ok := IdentityNamed(c.PresentAs); !ok {
-		return fmt.Errorf("quantar: %q is not \"repeater\" or \"console\"", c.PresentAs)
+		return fmt.Errorf("v24link: %q is not \"repeater\" or \"console\"", c.PresentAs)
 	}
 	if c.Site > MaxSite {
-		return fmt.Errorf("quantar: site %d is beyond %d, the most an introduction can carry",
+		return fmt.Errorf("v24link: site %d is beyond %d, the most an introduction can carry",
 			c.Site, MaxSite)
 	}
 	return nil
@@ -98,9 +100,13 @@ type Listener struct {
 	mu    sync.Mutex
 	ln    net.Listener
 	conns map[string]net.Conn // by router address; one tunnel per router
+	// stations is what each tunnel's repeater is doing, for the console.
+	stations map[string]*station
 
 	running  atomic.Bool
 	up       atomic.Int64
+	voice    atomic.Uint64
+	calls    atomic.Uint64
 	answered atomic.Uint64
 	unknown  atomic.Uint64
 	refused  atomic.Uint64
@@ -113,11 +119,12 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 		return nil, err
 	}
 	l := &Listener{
-		log:     log,
-		cfg:     cfg,
-		now:     cfg.Now,
-		allowed: make(map[string]bool, len(cfg.AllowedRouters)),
-		conns:   make(map[string]net.Conn),
+		log:      log,
+		cfg:      cfg,
+		now:      cfg.Now,
+		allowed:  make(map[string]bool, len(cfg.AllowedRouters)),
+		conns:    make(map[string]net.Conn),
+		stations: make(map[string]*station),
 	}
 	if l.now == nil {
 		l.now = time.Now
@@ -140,6 +147,71 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 
 // Running reports whether the listener is accepting.
 func (l *Listener) Running() bool { return l.running.Load() }
+
+// Repeater is one repeater as the console sees it.
+type Repeater struct {
+	// Router is the address of the router carrying its serial line.
+	Router string
+	// Connected is when the router's tunnel connected.
+	Connected time.Time
+	// Site and StationType are what the repeater said in its introduction.
+	// Introduced is false, and both zero, until it has.
+	Introduced  bool
+	Site        uint8
+	StationType byte
+	// Up reports an open link, and UpSince when it opened.
+	Up      bool
+	UpSince time.Time
+	// Frames is voice frames heard, and Calls transmissions finished, on
+	// this tunnel.
+	Frames uint64
+	Calls  uint64
+	// Transmitting reports a transmission in progress.
+	Transmitting bool
+	// Talkgroup, SourceID and LastHeard are the last transmission that said
+	// who it was, in progress or finished. Zero until one has.
+	Talkgroup uint16
+	SourceID  uint32
+	LastHeard time.Time
+}
+
+// StationTypeName names the type byte of an introduction. **One is known**:
+// C2, which the published account gives for a Quantar and the Quantar here
+// sent. Anything else is shown as the byte it is.
+func StationTypeName(t byte) string {
+	if t == 0xC2 {
+		return "Quantar"
+	}
+	return fmt.Sprintf("type %02X", t)
+}
+
+// station is one tunnel's repeater: the view, and the transmission in
+// progress.
+type station struct {
+	mu   sync.Mutex
+	view Repeater
+	call *Call
+}
+
+// Repeaters is every repeater with a tunnel open, ordered by router.
+func (l *Listener) Repeaters() []Repeater {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	out := make([]Repeater, 0, len(l.stations))
+	for _, st := range l.stations {
+		st.mu.Lock()
+		out = append(out, st.view)
+		st.mu.Unlock()
+	}
+	slices.SortFunc(out, func(a, b Repeater) int { return strings.Compare(a.Router, b.Router) })
+	return out
+}
+
+// VoiceFrames is voice frames heard from every repeater since start.
+func (l *Listener) VoiceFrames() uint64 { return l.voice.Load() }
+
+// Calls is transmissions finished since start.
+func (l *Listener) Calls() uint64 { return l.calls.Load() }
 
 // LinksUp is how many stations have an open link now.
 func (l *Listener) LinksUp() int { return int(l.up.Load()) }
@@ -172,7 +244,7 @@ func (l *Listener) Start(ctx context.Context) error {
 	var lc net.ListenConfig
 	ln, err := lc.Listen(ctx, "tcp", l.cfg.ListenAddress)
 	if err != nil {
-		return fmt.Errorf("quantar: cannot listen on %s: %w", l.cfg.ListenAddress, err)
+		return fmt.Errorf("v24link: cannot listen on %s: %w", l.cfg.ListenAddress, err)
 	}
 	l.mu.Lock()
 	l.ln = ln
@@ -227,10 +299,12 @@ func (l *Listener) accept(ctx context.Context, ln net.Listener) {
 			_ = old.Close()
 		}
 		l.conns[router] = conn
+		st := &station{view: Repeater{Router: router, Connected: l.now()}}
+		l.stations[router] = st
 		l.mu.Unlock()
 
 		l.done.Add(1)
-		go l.serve(ctx, conn, router)
+		go l.serve(ctx, conn, router, st)
 	}
 }
 
@@ -246,7 +320,7 @@ func hostOf(addr net.Addr) string {
 }
 
 // serve reads one router's frames until the connection ends.
-func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
+func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *station) {
 	defer l.done.Done()
 	log := l.log.With(slog.String("router", router))
 	opened := l.now()
@@ -260,9 +334,53 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 		if l.conns[router] == conn {
 			delete(l.conns, router)
 		}
+		if l.stations[router] == st {
+			delete(l.stations, router)
+		}
 		l.mu.Unlock()
 	}()
 	log.Info("a router's tunnel connected")
+
+	// finish records a transmission that is over.
+	finish := func(c *Call) {
+		l.calls.Add(1)
+		closed := "by the repeater"
+		if !c.Marked {
+			closed = "it went quiet"
+		}
+		log.Info("a transmission ended",
+			slog.Int("talkgroup", int(c.Talkgroup)),
+			slog.Uint64("source", uint64(c.SourceID)),
+			slog.Float64("seconds", c.Duration(c.Ended).Round(100*time.Millisecond).Seconds()),
+			slog.Uint64("voice_frames", c.Frames),
+			slog.String("closed", closed))
+	}
+	// expire closes a transmission whose end marker never came.
+	expire := func(now time.Time) {
+		st.mu.Lock()
+		c := st.call
+		if !c.stale(now) {
+			st.mu.Unlock()
+			return
+		}
+		c.Ended = c.last
+		st.call = nil
+		st.view.Transmitting = false
+		st.view.Calls++
+		st.mu.Unlock()
+		finish(c)
+	}
+	defer func() {
+		// The tunnel is gone and so is whatever was being said through it.
+		st.mu.Lock()
+		c := st.call
+		st.call = nil
+		st.mu.Unlock()
+		if c != nil {
+			c.Ended = c.last
+			finish(c)
+		}
+	}()
 
 	// One lock for the socket and the record, because two things write: this
 	// loop answering, and the keepalive below.
@@ -308,7 +426,15 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			l.up.Add(1)
 		case was && !is:
 			l.up.Add(-1)
+		default:
+			return
 		}
+		st.mu.Lock()
+		st.view.Up = is
+		if is {
+			st.view.UpSince = l.now()
+		}
+		st.mu.Unlock()
 	}
 	defer func() {
 		mu.Lock()
@@ -336,6 +462,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			case <-ctx.Done():
 				return
 			case <-request.C:
+				expire(l.now())
 				mu.Lock()
 				due, g := groupSet && !link.ours, group
 				mu.Unlock()
@@ -401,6 +528,37 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			continue
 		}
 
+		// Voice first: on an open link it is nearly every frame.
+		if rec, isRecord := ReadRecord(f.Payload); isRecord && rec.Kind != RecordUnknown {
+			now := l.now()
+			st.mu.Lock()
+			current, finished, began := heard(st.call, rec, now)
+			st.call = current
+			st.view.Transmitting = current != nil
+			if rec.Kind == RecordVoice {
+				st.view.Frames++
+			}
+			if finished != nil {
+				st.view.Calls++
+			}
+			// The view keeps the last transmission that said who it was, so a
+			// kerchunk too short to say does not blank the one before it.
+			if c := cmp.Or(current, finished); c != nil && c.SourceID != 0 {
+				st.view.Talkgroup, st.view.SourceID, st.view.LastHeard = c.Talkgroup, c.SourceID, now
+			}
+			st.mu.Unlock()
+			if rec.Kind == RecordVoice {
+				l.voice.Add(1)
+			}
+			if began {
+				log.Debug("a transmission began")
+			}
+			if finished != nil {
+				finish(finished)
+			}
+			continue
+		}
+
 		reply, kind := Answer(f.Payload)
 		if kind == KindUnknown {
 			l.unknown.Add(1)
@@ -409,7 +567,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 				key = fmt.Sprintf("control %02x len %d", f.Payload[1], len(f.Payload))
 			}
 			if once(key) {
-				log.Info("the station sent a frame QSP does not answer yet",
+				log.Info("the repeater sent a frame QSP does not read yet",
 					slog.Int("bytes", len(f.Payload)),
 					slog.String("payload", clip(f.Payload)))
 			}
@@ -425,24 +583,30 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 		link = next
 		mu.Unlock()
 		countUp(was.up, next.up)
+		if kind == KindIntroduction {
+			st.mu.Lock()
+			st.view.Introduced = true
+			st.view.Site, st.view.StationType = f.Payload[3]>>1, f.Payload[4]
+			st.mu.Unlock()
+		}
 
 		switch {
 		case kind == KindLinkRequest && was.up:
-			log.Warn("the link dropped: the station is asking to open it again")
+			log.Warn("the repeater's link dropped: it is asking to open it again")
 		case kind == KindLinkRequest && once("request"):
-			log.Info("the station asked for a link and was answered",
+			log.Info("the repeater asked for a link and was answered",
 				slog.String("request", clip(f.Payload)),
 				slog.String("answer", clip(reply)))
 		case kind == KindAcceptance && !was.ours && once("acceptance"):
-			log.Info("the station accepted QSP's link request",
+			log.Info("the repeater accepted QSP's link request",
 				slog.String("acceptance", clip(f.Payload)))
 		case kind == KindIntroduction && once("introduction"):
-			log.Info("the station introduced itself",
-				slog.Int("station_site", int(f.Payload[3]>>1)),
-				slog.String("station_type", fmt.Sprintf("%02x", f.Payload[4])),
+			log.Info("the repeater introduced itself",
+				slog.Int("site", int(f.Payload[3]>>1)),
+				slog.String("type", StationTypeName(f.Payload[4])),
 				slog.String("introduction", clip(f.Payload)))
 		case next.up && !was.up:
-			log.Info("the Quantar's link is up", slog.String("keepalive", clip(f.Payload)))
+			log.Info("the repeater's link is up", slog.String("keepalive", clip(f.Payload)))
 		}
 
 		var out [][]byte
@@ -540,7 +704,7 @@ func (l *Listener) openRecord(log *slog.Logger, router string, opened time.Time)
 		log.Warn("not recording: the directory could not be made", slog.String("error", err.Error()))
 		return nil
 	}
-	name := fmt.Sprintf("quantar-%s-%s.log", opened.UTC().Format("20060102-150405.000"),
+	name := fmt.Sprintf("v24-%s-%s.log", opened.UTC().Format("20060102-150405.000"),
 		strings.NewReplacer(":", "-", "%", "-").Replace(router))
 	path := filepath.Join(l.cfg.RecordDir, name)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o640)

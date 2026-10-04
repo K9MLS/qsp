@@ -52,6 +52,19 @@ var retired = []string{
 	"dmr.upstreams[].import",
 }
 
+// moved lists top-level sections that have been renamed, old name to current.
+//
+// **A rename is a removal and an addition, and the first half stops servers.**
+// QSP refuses unknown fields, so a section renamed in the Go struct turns every
+// document already holding it into one that will not load. The value is carried
+// to the current name instead, and the next save writes it there.
+//
+// `quantar` was the Motorola P25 repeater link in 0.1.303 to 0.1.305, before a
+// GTR 8000 made the name too narrow.
+var moved = map[string]string{
+	"quantar": "p25_repeaters",
+}
+
 // stripRetired removes retired fields from a configuration document.
 //
 // Returns the document unchanged when it contains none, so the common path
@@ -66,6 +79,20 @@ func stripRetired(raw []byte) ([]byte, bool, error) {
 	}
 
 	removed := false
+	for old, now := range moved {
+		value, present := doc[old]
+		if !present {
+			continue
+		}
+		// A document holding both was written by hand; the current name wins
+		// and the old one is dropped rather than refused, because refusing
+		// would stop a server over a section it would have ignored.
+		if _, both := doc[now]; !both {
+			doc[now] = value
+		}
+		delete(doc, old)
+		removed = true
+	}
 	for _, path := range retired {
 		if removeAt(doc, strings.Split(path, ".")) {
 			removed = true

@@ -202,6 +202,43 @@ type P25Traffic struct {
 	Unparsed uint64 `json:"unparsed"`
 	// Gateways is one row per registered gateway.
 	Gateways []P25GatewayView `json:"gateways,omitempty"`
+	// GatewaysOff reports that the gateway listener is not running, so the
+	// console does not say "no gateways have linked yet" about a listener
+	// that is not there to be linked to.
+	GatewaysOff bool `json:"gateways_off,omitempty"`
+	// RepeaterFrames is voice frames heard from Motorola repeaters, which
+	// VoiceFrames includes. Separate as well, so the two can be told apart.
+	RepeaterFrames uint64 `json:"repeater_frames,omitempty"`
+	// Repeaters is one row per Motorola P25 repeater with a tunnel open.
+	Repeaters []P25RepeaterView `json:"repeaters,omitempty"`
+}
+
+// P25RepeaterView is one Motorola P25 repeater, linked over V.24 through a
+// router's serial tunnel, as the console sees it.
+type P25RepeaterView struct {
+	// Router is the address of the router carrying its serial line. Withheld
+	// from a public view, like a gateway's address.
+	Router string `json:"router,omitempty"`
+	// Site is the site number the repeater gave for itself, and Type what it
+	// said it is. Both are absent until it has introduced itself.
+	Site int    `json:"site,omitempty"`
+	Type string `json:"type,omitempty"`
+	// Up reports an open link.
+	Up bool `json:"up"`
+	// UpForSeconds is how long it has been open.
+	UpForSeconds int `json:"up_for_seconds,omitempty"`
+	// Transmitting reports a transmission in progress.
+	Transmitting bool `json:"transmitting,omitempty"`
+	// Frames is voice frames heard and Calls transmissions finished.
+	Frames uint64 `json:"frames"`
+	Calls  uint64 `json:"calls"`
+	// Talkgroup and SourceID are the last transmission that said who it was.
+	// Zero until one has; zero is not a talkgroup.
+	Talkgroup uint16 `json:"talkgroup,omitempty"`
+	SourceID  uint32 `json:"source_id,omitempty"`
+	// Heard reports that LastHeardAgoSeconds means something.
+	Heard               bool `json:"heard,omitempty"`
+	LastHeardAgoSeconds int  `json:"last_heard_ago_seconds,omitempty"`
 }
 
 // P25GatewayView is one registered gateway as the console sees it.
@@ -513,6 +550,11 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		if body.Traffic.P25 != nil {
 			for i := range body.Traffic.P25.Gateways {
 				body.Traffic.P25.Gateways[i].Address = ""
+			}
+			// And the router a repeater is reached through: an address on
+			// the operator's own network.
+			for i := range body.Traffic.P25.Repeaters {
+				body.Traffic.P25.Repeaters[i].Router = ""
 			}
 		}
 	}

@@ -217,13 +217,13 @@ func NeedsRestart(before, after Config) []string {
 	// Comparing the whole list rather than field by field is deliberate: a new
 	// upstream field added later would otherwise be silently applied live,
 	// which is the failure this function exists to prevent.
-	add("quantar.enabled", before.Quantar.Enabled != after.Quantar.Enabled)
-	add("quantar.listen_address", before.Quantar.ListenAddress != after.Quantar.ListenAddress)
-	add("quantar.allowed_routers",
-		!slices.Equal(before.Quantar.AllowedRouters, after.Quantar.AllowedRouters))
-	add("quantar.site", before.Quantar.Site != after.Quantar.Site)
-	add("quantar.present_as", before.Quantar.PresentAs != after.Quantar.PresentAs)
-	add("quantar.record_dir", before.Quantar.RecordDir != after.Quantar.RecordDir)
+	add("p25_repeaters.enabled", before.P25Repeaters.Enabled != after.P25Repeaters.Enabled)
+	add("p25_repeaters.listen_address", before.P25Repeaters.ListenAddress != after.P25Repeaters.ListenAddress)
+	add("p25_repeaters.allowed_routers",
+		!slices.Equal(before.P25Repeaters.AllowedRouters, after.P25Repeaters.AllowedRouters))
+	add("p25_repeaters.site", before.P25Repeaters.Site != after.P25Repeaters.Site)
+	add("p25_repeaters.present_as", before.P25Repeaters.PresentAs != after.P25Repeaters.PresentAs)
+	add("p25_repeaters.record_dir", before.P25Repeaters.RecordDir != after.P25Repeaters.RecordDir)
 
 	add("dmr.upstreams", !sameUpstreams(before.DMR.Upstreams, after.DMR.Upstreams))
 

@@ -68,11 +68,14 @@ somebody else a decade earlier.
   exchange in both directions. **Seen here on 2026-10-04**: this station sends
   `FD 3F` every 0.51 seconds until accepted (`testdata/quantar`), and QSP
   0.1.303 accepts it. The station's XID was then seen, exactly as published;
-  0.1.304 answers it and sends Receive Ready.
+  0.1.305 opens the link from both ends, answers it and sends Receive Ready,
+  and the link came up and stayed up.
 - Both ends then send Receive Ready frames as keepalives. A Quantar that hears
   none for about five seconds reverts to sending SABM.
 - Conventional P25 speech travels in unnumbered information frames carrying the
-  encoded voice, in frames of roughly 18 to 34 bytes.
+  encoded voice, in frames of roughly 18 to 34 bytes. **Seen here**: 12 to 32
+  bytes with the address and control, and the records inside are the P25
+  network frames QSP already reads (`testdata/quantar/stun-voice-three-calls.bin`).
 - The voice frames carry a sequential first byte across a run, which looks like
   the same kind of superframe structure IPSC turned out to have.
 - The wireline board's J300 header exposes the interface at 5V TTL without the

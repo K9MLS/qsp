@@ -69,7 +69,7 @@ func (c Config) Clone() Config {
 		out.DMR.Access = &a
 	}
 
-	out.Quantar.AllowedRouters = slices.Clone(c.Quantar.AllowedRouters)
+	out.P25Repeaters.AllowedRouters = slices.Clone(c.P25Repeaters.AllowedRouters)
 	out.Weather.Zones = slices.Clone(c.Weather.Zones)
 	out.Weather.Events = slices.Clone(c.Weather.Events)
 

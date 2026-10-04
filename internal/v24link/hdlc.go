@@ -1,4 +1,4 @@
-package quantar
+package v24link
 
 // The station's frames are HDLC: an address byte, then a control byte. The
 // control values are the published standard's (ISO/IEC 13239), which is why
@@ -41,19 +41,19 @@ type Identity struct {
 }
 
 var (
-	// Repeater is QSP presenting as a second Quantar.
-	Repeater = Identity{Name: "repeater", Address: 0xFD, StationType: 0xC2, DefaultSite: 2}
-	// Console is QSP presenting as a console interface.
-	Console = Identity{Name: "console", Address: 0x0B, StationType: 0x00, DefaultSite: 13}
+	// AsRepeater is QSP presenting as a second Quantar.
+	AsRepeater = Identity{Name: "repeater", Address: 0xFD, StationType: 0xC2, DefaultSite: 2}
+	// AsConsole is QSP presenting as a console interface.
+	AsConsole = Identity{Name: "console", Address: 0x0B, StationType: 0x00, DefaultSite: 13}
 )
 
-// IdentityNamed returns the identity a setting names. Empty is Repeater.
+// IdentityNamed returns the identity a setting names. Empty is AsRepeater.
 func IdentityNamed(name string) (Identity, bool) {
 	switch name {
-	case "", Repeater.Name:
-		return Repeater, true
-	case Console.Name:
-		return Console, true
+	case "", AsRepeater.Name:
+		return AsRepeater, true
+	case AsConsole.Name:
+		return AsConsole, true
 	}
 	return Identity{}, false
 }
