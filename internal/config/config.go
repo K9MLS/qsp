@@ -58,6 +58,29 @@ type Config struct {
 	// Weather configures weather alerts from the National Weather Service
 	// (ADR-0068). Set from the console's Weather page; off by default.
 	Weather Weather `json:"weather,omitzero"`
+	// Quantar configures the link to a Motorola Quantar (ADR-0060). Off by
+	// default, because it opens a TCP port.
+	Quantar Quantar `json:"quantar,omitzero"`
+}
+
+// Quantar configures the listener a Cisco router's serial tunnel dials.
+//
+// **It answers the station's link request and carries no voice yet.** A
+// Quantar asks to open its V.24 link twice a second until something accepts;
+// this accepts, and records what the station sends next. What comes next is
+// built from that record, the way the IPSC listener was (ADR-0029).
+type Quantar struct {
+	// Enabled turns the listener on.
+	Enabled bool `json:"enabled"`
+	// ListenAddress is the TCP host:port to bind. 1994 is the port the
+	// router's `stun route all tcp` dials.
+	ListenAddress string `json:"listen_address"`
+	// AllowedRouters names the routers accepted, by address. Empty accepts
+	// any router that can reach the port.
+	AllowedRouters []string `json:"allowed_routers"`
+	// RecordDir, when set, receives one text file per connection holding
+	// every frame in both directions.
+	RecordDir string `json:"record_dir,omitempty"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -89,8 +112,8 @@ const maxPeerName = 20
 // **A P25 reflector, not a Quantar link.** This is the MMDVM P25 network
 // protocol that hotspots and reflectors speak over UDP, evidenced by three
 // captures in testdata/p25. A Motorola Quantar links over a V.24 daughtercard
-// running bit-oriented HDLC, which is a different transport entirely and is
-// documented separately in docs/P25-PLANNING.md.
+// running bit-oriented HDLC, which is a different transport entirely: the
+// Quantar section below, and docs/P25-PLANNING.md.
 type P25 struct {
 	// Enabled turns the P25 listener on.
 	Enabled bool `json:"enabled"`
@@ -1526,6 +1549,24 @@ func (c Config) Validate() error {
 	if _, err := parseFormat(c.Logging.Format); err != nil {
 		v.add("logging.format", fmt.Sprintf("%q is not a recognised format", c.Logging.Format),
 			"use \"text\" for interactive use or \"json\" for production")
+	}
+
+	if c.Quantar.Enabled {
+		if strings.TrimSpace(c.Quantar.ListenAddress) == "" {
+			v.add("quantar.listen_address", "must not be empty when the Quantar link is enabled",
+				"use \"0.0.0.0:1994\", the port a router's serial tunnel dials")
+		} else if !hostPort(c.Quantar.ListenAddress) {
+			v.add("quantar.listen_address",
+				fmt.Sprintf("%q is not a host:port address", c.Quantar.ListenAddress),
+				"include a port, for example \"0.0.0.0:1994\"")
+		}
+		for i, r := range c.Quantar.AllowedRouters {
+			if net.ParseIP(strings.TrimSpace(r)) == nil {
+				v.add(fmt.Sprintf("quantar.allowed_routers[%d]", i),
+					fmt.Sprintf("%q is not an address", r),
+					"name the router by its IP address, for example \"192.0.2.4\"")
+			}
+		}
 	}
 
 	if c.P25.Enabled {

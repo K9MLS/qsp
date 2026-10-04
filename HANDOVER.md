@@ -8,14 +8,17 @@ transcoder, **ADR-0062** through **0066** and `docs/ZELLO.md`.
 
 ## The two live threads
 
-**1. The Quantar link waits on one part.** A replacement V.24 card is inbound
-from KD9EJA. The station's **AUX LED has never lit**, which is the board's own
-report that its V.24 section is not running, and it is the first thing to check
-on this path — ahead of anything the router can tell you. Everything else is
-proven: the router configuration matches the published build line for line, and
-the cable, two separate adapters, the 9600 clock and the codeplug each have an
-instrument behind them. The router is parked with `shutdown` saved to startup
-and is one `no shutdown` from live. See `docs/P25-PLANNING.md`.
+**1. The Quantar is talking, and QSP answers its link request (0.1.303).** On
+2026-10-04 the station's **wireline board was replaced** and frames reached the
+router for the first time. The fault was never the V.24 card or the cable: the
+Status Report screen read `Station Wireline FW: NOT_PRESENT`, the control module
+could not see the wireline board, and a V.24 card on a board nobody is talking
+to sends nothing. **Read the Service screens first.** The capture is in
+`testdata/quantar`: the station sends `FD 3F`, an HDLC link request, every 0.51
+seconds and nothing else until it is accepted. `internal/quantar` accepts it
+with `FD 73` and records what follows. **What the station does after being
+accepted has not been seen**; turn on `record_dir`, key a P25 radio, and write
+phase 3 from that file. See `docs/P25-PLANNING.md` and ADR-0060.
 
 **2. The text service can send, and waits on a radio's display.** An
 administrator composes a group text on the **Administration** page —
@@ -149,6 +152,11 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.303 answers a Quantar** (ADR-0060 phase 2): `internal/quantar` listens
+for a router's serial tunnel on TCP, accepts the station's link request and
+records every frame. Off by default; the **Network** page has the switch.
+**Unproven on the station** until it is deployed and the log is read.
+
 **0.1.302 changes no code a station runs**: the README gains a picture of
 the Overview, made from invented stations by
 `scripts/overview-screenshot/run.sh` (regenerate it when the page changes;
@@ -238,8 +246,8 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.302 | `cat VERSION` |
-| **GitHub** `main` | 0.1.301, tagged `v0.1.301`, pushed 2026-10-03 | the push output (`8b1f5ec..b0cc257`); Actions green, by K9MLS's report |
+| **Fedora working tree** | 0.1.303 | `cat VERSION` |
+| **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.301** from 2026-10-03, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
 
@@ -316,45 +324,36 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **The Quantar link, ADR-0060. Waiting on a replacement card from KD9EJA.**
-   **The station's V.24 interface has never been alive: its AUX LED has never
-   lit**, which is the board's own report and was identified on 2026-09-27. A
-   card is on the way; which one was not known when this was written, and what
-   to re-check depends on it — see `docs/P25-PLANNING.md`. An earlier reading
-   that the TTN4010 was simply *not fitted* was wrong: both front-panel RJ-45
-   jacks belong to that card, so its presence was never in doubt.
+3. **The Quantar link, ADR-0060: phase 2 is built and unproven on the station.**
+   QSP 0.1.303 accepts the station's link request. **Not yet seen: the station's
+   reaction.** Three outcomes, each visible in QSP's log and the record file:
+   it keeps sending `FD 3F` (the answer was not accepted, or did not reach it —
+   check `rx_pkts` in `show stun`); it sends something new, logged once per kind
+   as "a frame QSP does not answer yet" (expected: an XID exchange, then Receive
+   Ready keepalives, per the published reverse engineering); or it goes quiet
+   and the tunnel is closed after 30 seconds.
 
-   **Check the AUX LED before anything else** on this path. Everything else was
-   proven, each with its own instrument:
+   What 2026-10-04 proved, each with its instrument:
 
    | Proven | How |
    |---|---|
-   | Router configuration | matches the published build line for line |
-   | Serial path, cable, hood, 9600 clock | HDLC loopback: `up (looped)`, 552 bytes, **zero errors** |
-   | Codeplug | all five ASTRO settings read back from the station |
-   | DIP switches | S101 switch 1 on, rest off, the published Motorola setting |
+   | Router, 9600 clock, cable, adapter data path | HDLC loopback: `up (looped)`, 92 packets, **zero errors** |
+   | Adapter clock wires | `External Transmit Clock: ENABLED`, 49 packets, zero errors |
+   | V.24 card (TTN4010D) | -9.46 V idle on DB-25 pin 2; S101 and S102 switch 1 on, rest off; **bottom** jack |
+   | Codeplug | all five ASTRO settings read back; `ASTRO CAI CAPABLE`, `Astro To Wireline: ENABLED` |
+   | Wireline board | replaced; before, `Station Wireline FW: NOT_PRESENT` |
+   | Tunnel framing | `testdata/quantar/stun-link-request.bin` |
 
-   Against that, nothing ever reached the router and **with zero framing
-   errors** — two ends that cannot hear each other, not one that is mis-set. The
-   dark AUX LED is what explains it: the TTN4010 is fitted, and its V.24 section
-   has never run. `RT/RT Configuration` was also found disabled and corrected on
-   the way.
+   **The router** is `Router1`, a Cisco 2921, reached with `ssh router` from the
+   test server as user `mike`. **Its address is from DHCP and has changed once**
+   (now 192.168.1.44); `stun peer-name` must equal it, so give it a reservation.
+   Its running configuration has `stun peer-name 192.168.1.44` and
+   `stun route all tcp 192.168.1.247`, **not saved**: a reload returns it to a
+   peer name of .45 and the tunnel will not open. `write memory` once the link
+   is proven. Changing `encapsulation` on the serial interface drops the two
+   `stun` lines; re-enter them.
 
-   Also found on 2026-09-27: **`Station is Currently ACCESS DISABLED`**, printed
-   at the foot of every RSS Alignment screen and unnoticed through six rounds of
-   counter tests at the router. The Service screens — Status Report, Status
-   Panel, Version — are where a silent station explains itself, and they are now
-   the first place to look rather than the last.
-
-   **The router is parked and correct**: `clock rate 9600`, `stun group 1` and
-   `stun route all tcp 192.168.1.247`, with `shutdown` saved to startup so a
-   reload parks it safely. One `no shutdown` from live.
-
-   When the card arrives: the **bottom** V.24 port, the AUX LED, then the
-   bring-up steps in `docs/P25-PLANNING.md`. The capture rig is already written
-   and tested — `scripts/stun-capture.py`, which records and deliberately does
-   not answer. **The Quantar link's code waits for captured bytes**, per
-   ADR-0060.
+   Next: phase 3, voice captured and parsed, from QSP's own record.
 4. **Talkgroup routing and contention in `internal/p25link`**: voice reads the
    talkgroup and relays to every registered gateway regardless. Waiting on a
    second gateway to demonstrate it. P25-NETWORK.md §2 and §6.
@@ -403,15 +402,9 @@ learned to run it as a service.
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
 - **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
-- **One Quantar part: a replacement V.24 card, inbound from KD9EJA.** The
-  station's AUX LED has never lit. The `CAB-SS-232FC` is
-  in hand and proven — `show controllers` reads the cable's own identification
-  as DCE RS-232, and the HDLC loopback carried frames through it with zero
-  errors. The router needs nothing more: its HWIC-2A/S carries STUN, configured
-  and saved 2026-09-21, clock corrected to 9600 on 2026-09-26. **12 November**
-  is when the router's evaluation licence ends; see `docs/P25-PLANNING.md` for
-  the fallback, and note the card is now the only thing between here and a
-  first capture.
+- **A Quantar recording after the link is accepted**: deploy 0.1.303 with
+  `quantar.record_dir` set, key a P25 radio, send the file. And **12 November**
+  is when the router's evaluation licence ends; see `docs/P25-PLANNING.md`.
 - **Colour codes 1, 2 and 8** EMB captures — completeness, not confidence;
   method in `testdata/hbp/EMB-CAPTURE-REQUEST.md`.
 

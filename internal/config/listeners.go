@@ -48,6 +48,11 @@ func (c Config) Listeners() []Listener {
 			out = append(out, Listener{"ipsc.listen_address", "the IPSC listener", "udp", addr})
 		}
 	}
+	if c.Quantar.Enabled {
+		if addr := strings.TrimSpace(c.Quantar.ListenAddress); addr != "" {
+			out = append(out, Listener{"quantar.listen_address", "the Quantar link", "tcp", addr})
+		}
+	}
 	for i, u := range c.DMR.Upstreams {
 		if !u.Enabled || u.HomebrewProtocol() {
 			continue

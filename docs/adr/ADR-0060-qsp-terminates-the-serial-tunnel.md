@@ -102,6 +102,23 @@ excluded — it is simply not what this decision builds, and the STUN path is
 preferred because it works for a remote site over a network and needs no new
 device handling.
 
+### What the phases found
+
+**Phase 1, 2026-10-04.** `testdata/quantar/stun-link-request.bin`. The tunnel's
+header is seven bytes — `08 31`, a two-byte type, a two-byte length, and one
+byte that was 1 with the interface in `stun group 1` — and the router opens
+with one thirty-byte message of type 2 that needs no answer. The station does
+not send a keepalive: it sends `FD 3F`, an HDLC request to open the link, every
+0.51 seconds, and nothing else until it is accepted. **So phase 2 is not
+"answer the keepalive" but "accept the link"**, and there is no voice to capture
+before it.
+
+**Phase 2, built in 0.1.303.** `internal/quantar` accepts with `FD 73`: the
+station's address, and the standard's acceptance with the poll bit carried
+back. The control values are ISO/IEC 13239's, a published standard, which is
+what lets the reply be written without a capture of one. Everything else is
+recorded and not answered. The station's reaction is not yet known.
+
 ## Alternatives considered
 
 **Keep the bridge host permanently.** Refused. Four processes to reach a

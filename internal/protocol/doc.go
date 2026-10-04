@@ -15,8 +15,9 @@
 // testdata/p25 now holds three — voice, four talkgroups, and the registration
 // exchange, which turned out not to exist.
 //
-// **Linking a Motorola Quantar is a different problem and is not built.** A
-// Quantar's linking interface is a V.24 daughtercard running bit-oriented HDLC
-// rather than anything over IP, and nothing here opens a serial port. See
-// docs/P25-PLANNING.md.
+// **Linking a Motorola Quantar is a different problem, in internal/quantar.**
+// A Quantar's linking interface is a V.24 daughtercard running bit-oriented
+// HDLC, carried here by a router's serial tunnel, so nothing opens a serial
+// port. Its link request is answered and its voice is not carried yet. See
+// ADR-0060 and docs/P25-PLANNING.md.
 package protocol

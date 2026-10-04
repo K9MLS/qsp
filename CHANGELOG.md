@@ -4,6 +4,17 @@ All notable changes to QSP. Dates are UTC.
 
 ## [Unreleased]
 
+### Added
+
+- **QSP answers a Motorola Quantar** (ADR-0060 phase 2). A Quantar's V.24 card
+  connects to a Cisco router's serial port and the router carries its frames
+  over TCP. The station asks to open its link twice a second until something
+  accepts; QSP now accepts, and records what the station sends next. **It does
+  not carry the station's calls yet** — that is written from the record. Off
+  by default; the **Network** page has a **Motorola Quantar** panel, and
+  `quantar` in the configuration. Built from the first capture of the
+  station, `testdata/quantar/stun-link-request.bin`.
+
 ### Documentation
 
 - **The README shows the Overview.** The picture is of the real console with

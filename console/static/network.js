@@ -58,6 +58,13 @@
   var p25EnabledState = document.getElementById("p25-enabled-state");
   var p25State = document.getElementById("p25-state");
   var p25AllowedState = document.getElementById("p25-allowed-state");
+  var quantarEnabled = document.getElementById("quantar-enabled");
+  var quantarListen = document.getElementById("quantar-listen");
+  var quantarRecord = document.getElementById("quantar-record");
+  var quantarAllowed = document.getElementById("quantar-allowed");
+  var quantarEnabledState = document.getElementById("quantar-enabled-state");
+  var quantarState = document.getElementById("quantar-state");
+  var quantarAllowedState = document.getElementById("quantar-allowed-state");
   var ipscEnabled = document.getElementById("ipsc-enabled");
   var ipscListen = document.getElementById("ipsc-listen");
   var ipscMaster = document.getElementById("ipsc-master");
@@ -149,6 +156,29 @@
         renderTalkgroups();
       });
     }
+  }
+
+  function quantarRouters() {
+    return quantarAllowed.value.split("\n")
+      .map(function (r) { return r.trim(); })
+      .filter(function (r) { return r !== ""; });
+  }
+
+  function refreshQuantarState() {
+    quantarEnabledState.textContent = quantarEnabled.checked ? "On" : "Off";
+    var routers = quantarRouters();
+    if (!quantarEnabled.checked) {
+      quantarState.textContent = "off";
+      quantarAllowedState.textContent = "";
+      return;
+    }
+    quantarState.textContent = routers.length
+      ? "on, " + routers.length + (routers.length === 1 ? " router" : " routers")
+      : "on, any router";
+    quantarAllowedState.textContent = routers.length
+      ? "Only the " + routers.length + " router" + (routers.length === 1 ? "" : "s") +
+        " listed are accepted. Everything else is refused and counted."
+      : "Every router that can reach the port is accepted.";
   }
 
   /* **The panel is shown whether or not IPSC is on**, so the summary has to
@@ -281,6 +311,13 @@
     p25Allowed.value = (p25.allowed_callsigns || []).join("\n");
     refreshP25State();
 
+    var quantar = cfg.quantar || {};
+    quantarEnabled.checked = !!quantar.enabled;
+    quantarListen.value = quantar.listen_address || "";
+    quantarRecord.value = quantar.record_dir || "";
+    quantarAllowed.value = (quantar.allowed_routers || []).join("\n");
+    refreshQuantarState();
+
     var parrot = (cfg.dmr && cfg.dmr.parrot) || {};
     parrotEnabled.checked = !!parrot.enabled;
     parrotTalkgroup.value = parrot.talkgroup || "";
@@ -391,6 +428,16 @@
      * operator turning this on should not have to know a port number. */
     if (next.p25.enabled && !next.p25.listen_address) {
       next.p25.listen_address = "0.0.0.0:41000";
+    }
+
+    next.quantar = next.quantar || {};
+    next.quantar.enabled = quantarEnabled.checked;
+    next.quantar.listen_address = quantarListen.value.trim();
+    next.quantar.record_dir = quantarRecord.value.trim();
+    next.quantar.allowed_routers = quantarRouters();
+    /* Supplied for the same reason as the P25 port above. */
+    if (next.quantar.enabled && !next.quantar.listen_address) {
+      next.quantar.listen_address = "0.0.0.0:1994";
     }
 
     next.dmr = next.dmr || {};
@@ -564,6 +611,8 @@
   ipscPeers.addEventListener("input", refreshIPSCState);
   p25Enabled.addEventListener("change", refreshP25State);
   p25Allowed.addEventListener("input", refreshP25State);
+  quantarEnabled.addEventListener("change", refreshQuantarState);
+  quantarAllowed.addEventListener("input", refreshQuantarState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);
 

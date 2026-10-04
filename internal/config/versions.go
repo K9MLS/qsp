@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 // VersionStore keeps the configuration history.
@@ -216,6 +217,12 @@ func NeedsRestart(before, after Config) []string {
 	// Comparing the whole list rather than field by field is deliberate: a new
 	// upstream field added later would otherwise be silently applied live,
 	// which is the failure this function exists to prevent.
+	add("quantar.enabled", before.Quantar.Enabled != after.Quantar.Enabled)
+	add("quantar.listen_address", before.Quantar.ListenAddress != after.Quantar.ListenAddress)
+	add("quantar.allowed_routers",
+		!slices.Equal(before.Quantar.AllowedRouters, after.Quantar.AllowedRouters))
+	add("quantar.record_dir", before.Quantar.RecordDir != after.Quantar.RecordDir)
+
 	add("dmr.upstreams", !sameUpstreams(before.DMR.Upstreams, after.DMR.Upstreams))
 
 	return fields

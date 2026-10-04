@@ -143,6 +143,29 @@ A bridge may be scheduled, triggered, both, or neither. Either mechanism opening
 it is enough, and the frame that opens it is itself relayed — no clipped first
 syllable.
 
+## Motorola Quantar
+
+Set from the console's **Network** page; this is the block it writes. **Off by
+default.** A Quantar's V.24 card connects to a Cisco router's serial port, and
+the router carries its frames to QSP over TCP (`stun route all tcp` and this
+server's address). **QSP accepts the station's link request and records what it
+sends; it does not carry the station's calls yet.**
+
+```json
+"quantar": {
+  "enabled":         true,
+  "listen_address":  "0.0.0.0:1994",
+  "allowed_routers": ["192.0.2.4"],
+  "record_dir":      "/var/lib/qsp/quantar"
+}
+```
+
+`allowed_routers` are router addresses; empty accepts any router that can reach
+the port. `record_dir` is optional: when set, every frame in both directions is
+written there as text, one file per connection. A connection silent for 30
+seconds is closed, and a new connection from the same router replaces the old.
+Changing any of these needs a restart.
+
 ## Weather alerts
 
 Set from the console's **Weather** page; this is the block it writes. **Off by

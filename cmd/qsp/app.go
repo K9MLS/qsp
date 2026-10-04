@@ -38,6 +38,7 @@ import (
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/protocol/hbp"
 	"github.com/k9mls/qsp/internal/protocol/homebrew"
+	"github.com/k9mls/qsp/internal/quantar"
 	"github.com/k9mls/qsp/internal/routing"
 	"github.com/k9mls/qsp/internal/scheduler"
 	"github.com/k9mls/qsp/internal/secrets"
@@ -66,6 +67,9 @@ type app struct {
 	dmr       *peers.Listener
 	ipsc      *ipsclink.Listener
 	p25       *p25link.Listener
+	// quantar answers a Motorola Quantar through a router's serial tunnel
+	// (ADR-0060). Nil when off.
+	quantar   *quantar.Listener
 	health    *health.Registry
 	upstreams *upstream.Set
 
@@ -604,6 +608,22 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		a.p25 = pl
 	}
 
+	if cfg.Quantar.Enabled {
+		// **The link is answered and nothing is carried.** ADR-0060 phase 2:
+		// the station's request to open its V.24 link is accepted, and what it
+		// sends next is recorded. It has no sink into DMR or P25 because there
+		// is no voice to deliver yet.
+		ql, qerr := quantar.New(logging.Subsystem(log, "quantar"), quantar.Config{
+			ListenAddress:  cfg.Quantar.ListenAddress,
+			AllowedRouters: cfg.Quantar.AllowedRouters,
+			RecordDir:      cfg.Quantar.RecordDir,
+		})
+		if qerr != nil {
+			return nil, qerr
+		}
+		a.quantar = ql
+	}
+
 	if cfg.IPSC.Enabled {
 		// A Motorola repeater's audio reaches the rest of the network through
 		// the DMR listener, because that listener owns the socket Homebrew
@@ -1035,6 +1055,11 @@ func (a *app) run(ctx context.Context) error {
 	}
 	if a.p25 != nil {
 		if err := a.p25.Start(ctx); err != nil {
+			return err
+		}
+	}
+	if a.quantar != nil {
+		if err := a.quantar.Start(ctx); err != nil {
 			return err
 		}
 	}
