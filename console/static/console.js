@@ -791,6 +791,41 @@
       }
     }
 
+    /* **Placed under the DMR row, and named for it.** It was the last thing
+     * in the box when DMR was the only row; once P25 had lines of its own
+     * beneath, it read as a remark about them, directly under a P25 voice
+     * frame count that contradicted it.
+     *
+     * The case that cost an evening: a peer connected and sending keepalives,
+     * whose voice frames never arrive. The peer table looks healthy and Last
+     * heard looks empty, which is indistinguishable from nobody talking.
+     *
+     * **And that is the point — it really is indistinguishable.** A hotspot
+     * sends the same keepalives whether its owner is misconfigured or simply
+     * not talking, so nothing here can tell the two apart. The earlier wording
+     * picked one and stated it: "its transmissions are not reaching QSP". On a
+     * quiet club network, and for several minutes after every restart, that is
+     * an alarm about a fault that does not exist, and an operator who learns to
+     * disbelieve one warning stops reading all of them.
+     *
+     * So the hint names both possibilities and asserts neither. The threshold
+     * is a few minutes of keepalives rather than one, which keeps it out of the
+     * window after a restart while still appearing early enough to help
+     * somebody setting a hotspot up for the first time. */
+    /* **frames counts both listeners**, which is what makes this hint safe to
+     * show. Before it did, a network whose only traffic was Motorola repeaters
+     * saw this note while working perfectly, and it named a hotspot that had
+     * nothing to do with anything. A hint that is confidently wrong is worse
+     * than no hint: an operator who learns to disbelieve one warning stops
+     * reading all of them. */
+    if (peers > 0 && inCount > 30 && frames === 0) {
+      trafficBody.innerHTML +=
+        '<p class="inline-note inline-note--neutral">DMR: no voice frames yet, only keepalives. ' +
+        "If nobody has transmitted, that is exactly what this should look like. " +
+        "If somebody has, the sending side is probably not routing a talkgroup " +
+        "to this network \u2014 check there.</p>";
+    }
+
     /* **P25, which had nowhere to be shown until 2026-09-12.**
      *
      * The listener computed a gateway's talkgroup and the last radio heard
@@ -865,7 +900,16 @@
       /* Motorola repeaters, linked over V.24. One line each, built the way
        * a gateway's is: what it is, whether its link is open, and the last
        * radio heard through it once one has been. */
-      (p25.repeaters || []).forEach(function (r) {
+      var reps = p25.repeaters || [];
+      if (reps.length > 0) {
+        /* The count first, because "is everything linked" is the question an
+         * administrator opens this page with, and with several repeaters it
+         * should not take reading every line to answer. */
+        var linked = reps.filter(function (r) { return r.up; }).length;
+        p25Lines.push(linked + " of " + reps.length + " Motorola " +
+          (reps.length === 1 ? "repeater" : "repeaters") + " linked");
+      }
+      reps.forEach(function (r) {
         var bits = ["Motorola repeater" +
           (r.type ? " (" + escapeText(r.type) + ")" : "") +
           (r.site ? ", site " + r.site : "")];
@@ -879,11 +923,26 @@
             (r.heard && !r.transmitting ? " " + r.last_heard_ago_seconds + "s ago" : ""));
         }
         bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
-        bits.push(r.frames + (r.frames === 1 ? " frame" : " frames"));
+        bits.push(r.frames + (r.frames === 1 ? " frame" : " frames") +
+          " heard, " + (r.relayed || 0) + " carried");
         /* Withheld from a public view, so printed only when carried. */
         if (r.router) bits.push("through " + escapeText(r.router));
         p25Lines.push(bits.join(", "));
       });
+
+      /* One call at a time crosses between gateways and repeaters. The ones
+       * that lost are said plainly and only when there are any: a count of
+       * zero is not news. */
+      if ((p25.held_calls || 0) > 0 || (p25.held_frames || 0) > 0) {
+        var lost = [];
+        if (p25.held_calls) {
+          lost.push(p25.held_calls + (p25.held_calls === 1 ? " repeater call" : " repeater calls"));
+        }
+        if (p25.held_frames) {
+          lost.push(p25.held_frames + (p25.held_frames === 1 ? " gateway frame" : " gateway frames"));
+        }
+        p25Lines.push("Not carried because another station was talking: " + lost.join(" and "));
+      }
 
       /* **Neutral, not amber.** `.inline-note` alone is
        * `var(--color-degraded)`, so the first version of this drew a gateway
@@ -896,35 +955,6 @@
       }
     }
 
-    /* The case that cost an evening: a peer connected and sending keepalives,
-     * whose voice frames never arrive. The peer table looks healthy and Last
-     * heard looks empty, which is indistinguishable from nobody talking.
-     *
-     * **And that is the point — it really is indistinguishable.** A hotspot
-     * sends the same keepalives whether its owner is misconfigured or simply
-     * not talking, so nothing here can tell the two apart. The earlier wording
-     * picked one and stated it: "its transmissions are not reaching QSP". On a
-     * quiet club network, and for several minutes after every restart, that is
-     * an alarm about a fault that does not exist, and an operator who learns to
-     * disbelieve one warning stops reading all of them.
-     *
-     * So the hint names both possibilities and asserts neither. The threshold
-     * is a few minutes of keepalives rather than one, which keeps it out of the
-     * window after a restart while still appearing early enough to help
-     * somebody setting a hotspot up for the first time. */
-    /* **frames counts both listeners**, which is what makes this hint safe to
-     * show. Before it did, a network whose only traffic was Motorola repeaters
-     * saw this note while working perfectly, and it named a hotspot that had
-     * nothing to do with anything. A hint that is confidently wrong is worse
-     * than no hint: an operator who learns to disbelieve one warning stops
-     * reading all of them. */
-    if (peers > 0 && inCount > 30 && frames === 0) {
-      trafficBody.innerHTML +=
-        '<p class="inline-note inline-note--neutral">No voice frames yet, only keepalives. ' +
-        "If nobody has transmitted, that is exactly what this should look like. " +
-        "If somebody has, the sending side is probably not routing a talkgroup " +
-        "to this network \u2014 check there.</p>";
-    }
   }
 
   function callRow(call, live) {

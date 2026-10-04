@@ -16,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/k9mls/qsp/internal/p25link"
 )
 
 // IdleTimeout ends a connection that has gone quiet. A station with no link
@@ -64,8 +66,24 @@ type Config struct {
 	// Keepalive is how often Receive Ready is sent on an open link. Zero is
 	// KeepaliveInterval.
 	Keepalive time.Duration
+	// Gateways, when set, receives every voice frame a repeater's call
+	// carries, and the end of the call. Nil relays between repeaters only.
+	Gateways Sink
+	// Floor is shared with the gateway listener so that one call at a time
+	// crosses between the two. Nil is a floor of this listener's own, so
+	// repeaters still take turns among themselves.
+	Floor *p25link.Floor
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
+}
+
+// Sink is where a repeater's voice goes besides other repeaters: the P25
+// gateway listener, which takes the frames as they are.
+type Sink interface {
+	// FromRepeater carries one voice frame, from its type byte on.
+	FromRepeater(frame []byte) int
+	// EndFromRepeater says the transmission is over.
+	EndFromRepeater() int
 }
 
 // Validate reports why a configuration cannot be used.
@@ -97,16 +115,24 @@ type Listener struct {
 
 	allowed map[string]bool
 
-	mu    sync.Mutex
-	ln    net.Listener
-	conns map[string]net.Conn // by router address; one tunnel per router
-	// stations is what each tunnel's repeater is doing, for the console.
-	stations map[string]*station
+	mu sync.Mutex
+	ln net.Listener
+	// **One tunnel is one repeater, and a router may carry several.** A
+	// router with two serial ports dials twice from one address, so tunnels
+	// are numbered as they arrive and not named for the router. 0.1.303 to
+	// 0.1.306 kept one per router address, and a second repeater on the same
+	// router would have closed the first.
+	nextID   uint64
+	conns    map[uint64]net.Conn
+	stations map[uint64]*station
+	floor    *p25link.Floor
 
 	running  atomic.Bool
 	up       atomic.Int64
 	voice    atomic.Uint64
 	calls    atomic.Uint64
+	relayed  atomic.Uint64
+	held     atomic.Uint64
 	answered atomic.Uint64
 	unknown  atomic.Uint64
 	refused  atomic.Uint64
@@ -123,8 +149,9 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 		cfg:      cfg,
 		now:      cfg.Now,
 		allowed:  make(map[string]bool, len(cfg.AllowedRouters)),
-		conns:    make(map[string]net.Conn),
-		stations: make(map[string]*station),
+		conns:    make(map[uint64]net.Conn),
+		stations: make(map[uint64]*station),
+		floor:    cfg.Floor,
 	}
 	if l.now == nil {
 		l.now = time.Now
@@ -132,6 +159,9 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	l.id, _ = IdentityNamed(cfg.PresentAs)
 	if l.cfg.Site == 0 {
 		l.cfg.Site = l.id.DefaultSite
+	}
+	if l.floor == nil {
+		l.floor = &p25link.Floor{}
 	}
 	if l.cfg.Request <= 0 {
 		l.cfg.Request = RequestInterval
@@ -166,6 +196,11 @@ type Repeater struct {
 	// this tunnel.
 	Frames uint64
 	Calls  uint64
+	// Relayed is voice frames carried onward, to gateways and to other
+	// repeaters. Held is transmissions not carried because another station
+	// was talking when they began.
+	Relayed uint64
+	Held    uint64
 	// Transmitting reports a transmission in progress.
 	Transmitting bool
 	// Talkgroup, SourceID and LastHeard are the last transmission that said
@@ -188,9 +223,24 @@ func StationTypeName(t byte) string {
 // station is one tunnel's repeater: the view, and the transmission in
 // progress.
 type station struct {
-	mu   sync.Mutex
+	id     uint64
+	router string
+	conn   net.Conn
+	// holder is this repeater's name on the floor.
+	holder string
+	mu     sync.Mutex
+	// send writes one frame to this repeater, and is nil until its tunnel is
+	// being served. Safe to call from any goroutine, without mu held.
+	send func(payload []byte) error
+
 	view Repeater
 	call *Call
+	// group is the tunnel's group byte, copied from the router's own frames,
+	// and zero until one has arrived.
+	group byte
+	// relaying reports that the transmission in progress has the floor and
+	// is being carried onward.
+	relaying bool
 }
 
 // Repeaters is every repeater with a tunnel open, ordered by router.
@@ -203,9 +253,19 @@ func (l *Listener) Repeaters() []Repeater {
 		out = append(out, st.view)
 		st.mu.Unlock()
 	}
-	slices.SortFunc(out, func(a, b Repeater) int { return strings.Compare(a.Router, b.Router) })
+	slices.SortFunc(out, func(a, b Repeater) int {
+		return cmp.Or(strings.Compare(a.Router, b.Router), cmp.Compare(a.Site, b.Site),
+			a.Connected.Compare(b.Connected))
+	})
 	return out
 }
+
+// Relayed is voice frames carried onward since start, and Held transmissions
+// not carried because another station was talking.
+func (l *Listener) Relayed() uint64 { return l.relayed.Load() }
+
+// Held is transmissions not carried because another station was talking.
+func (l *Listener) Held() uint64 { return l.held.Load() }
 
 // VoiceFrames is voice frames heard from every repeater since start.
 func (l *Listener) VoiceFrames() uint64 { return l.voice.Load() }
@@ -292,15 +352,17 @@ func (l *Listener) accept(ctx context.Context, ln net.Listener) {
 			_ = conn.Close()
 			continue
 		}
-		// A router that restarts dials again and never closes what it had.
-		// The new connection is the live one, so it takes the place.
 		l.mu.Lock()
-		if old := l.conns[router]; old != nil {
-			_ = old.Close()
+		l.nextID++
+		st := &station{
+			id:     l.nextID,
+			router: router,
+			conn:   conn,
+			holder: fmt.Sprintf("repeater %d", l.nextID),
+			view:   Repeater{Router: router, Connected: l.now()},
 		}
-		l.conns[router] = conn
-		st := &station{view: Repeater{Router: router, Connected: l.now()}}
-		l.stations[router] = st
+		l.conns[st.id] = conn
+		l.stations[st.id] = st
 		l.mu.Unlock()
 
 		l.done.Add(1)
@@ -331,12 +393,8 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			_ = rec.Close()
 		}
 		l.mu.Lock()
-		if l.conns[router] == conn {
-			delete(l.conns, router)
-		}
-		if l.stations[router] == st {
-			delete(l.stations, router)
-		}
+		delete(l.conns, st.id)
+		delete(l.stations, st.id)
 		l.mu.Unlock()
 	}()
 	log.Info("a router's tunnel connected")
@@ -368,6 +426,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		st.view.Transmitting = false
 		st.view.Calls++
 		st.mu.Unlock()
+		l.endRelay(st)
 		finish(c)
 	}
 	defer func() {
@@ -376,6 +435,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		c := st.call
 		st.call = nil
 		st.mu.Unlock()
+		l.endRelay(st)
 		if c != nil {
 			c.Ended = c.last
 			finish(c)
@@ -412,6 +472,15 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		}
 		return err
 	}
+
+	st.mu.Lock()
+	st.send = func(payload []byte) error {
+		st.mu.Lock()
+		g := st.group
+		st.mu.Unlock()
+		return send(g, payload)
+	}
+	st.mu.Unlock()
 
 	// The link, as the station's own frames report it. Guarded by mu, because
 	// the timers below read it.
@@ -546,9 +615,14 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			if c := cmp.Or(current, finished); c != nil && c.SourceID != 0 {
 				st.view.Talkgroup, st.view.SourceID, st.view.LastHeard = c.Talkgroup, c.SourceID, now
 			}
+			st.group = f.Group
 			st.mu.Unlock()
 			if rec.Kind == RecordVoice {
 				l.voice.Add(1)
+			}
+			if !l.relay(st, f.Payload, rec, began, finished != nil, now) && began {
+				log.Info("a transmission was not carried: another station was talking",
+					slog.String("talking", l.floor.Holder(now)))
 			}
 			if began {
 				log.Debug("a transmission began")
@@ -583,11 +657,15 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		link = next
 		mu.Unlock()
 		countUp(was.up, next.up)
+		st.mu.Lock()
+		st.group = f.Group
 		if kind == KindIntroduction {
-			st.mu.Lock()
 			st.view.Introduced = true
 			st.view.Site, st.view.StationType = f.Payload[3]>>1, f.Payload[4]
-			st.mu.Unlock()
+		}
+		st.mu.Unlock()
+		if kind == KindIntroduction {
+			l.supersede(st, f.Group, f.Payload[3]>>1, log)
 		}
 
 		switch {

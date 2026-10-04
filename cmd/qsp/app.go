@@ -591,6 +591,14 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// hint where an operator is already reading about P25.
 	ipscDisabledReason := "IPSC is off. Turn it on in Network settings to serve Motorola repeaters"
 	p25DisabledReason := "P25 is off. Turn it on in Network settings to serve P25 gateways"
+	// **One call at a time across the P25 side**, once there are two kinds of
+	// station on it. The floor exists only when Motorola repeaters are
+	// linked: without them the gateway listener has nothing to take turns
+	// with, and is handed nil so that it behaves exactly as it did.
+	var p25Floor *p25link.Floor
+	if cfg.P25Repeaters.Enabled {
+		p25Floor = &p25link.Floor{}
+	}
 	if cfg.P25.Enabled {
 		// **A P25 reflector, and it does not touch DMR.** ADR-0034: P25
 		// carries IMBE and DMR carries AMBE+2, so routing one through the
@@ -601,6 +609,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			ListenAddress:    cfg.P25.ListenAddress,
 			Callsign:         cfg.P25.Callsign,
 			AllowedCallsigns: cfg.P25.AllowedCallsigns,
+			Floor:            p25Floor,
 		})
 		if perr != nil {
 			return nil, perr
@@ -609,18 +618,26 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	}
 
 	if cfg.P25Repeaters.Enabled {
-		// **The link is opened, its calls are read, and nothing is carried.**
-		// ADR-0060 phases 2 and 3: the link is opened from both ends and kept
-		// alive, and the repeater's voice is read as far as who is talking
-		// and counted. It has no sink into the gateway listener yet; that is
-		// phase 4, and the frames will cross untouched when it is built.
-		ql, qerr := v24link.New(logging.Subsystem(log, "p25-repeaters"), v24link.Config{
+		// **A repeater's calls go out; nothing comes back to it yet.** ADR-0060
+		// phase 4, first half: its voice is carried to every registered P25
+		// gateway and to every other linked repeater, as the bytes it arrived
+		// as. The other direction needs a frame QSP has never sent — voice to
+		// a repeater — and is the second half.
+		repeaterCfg := v24link.Config{
 			ListenAddress:  cfg.P25Repeaters.ListenAddress,
 			AllowedRouters: cfg.P25Repeaters.AllowedRouters,
 			RecordDir:      cfg.P25Repeaters.RecordDir,
 			Site:           cfg.P25Repeaters.Site,
 			PresentAs:      cfg.P25Repeaters.PresentAs,
-		})
+			Floor:          p25Floor,
+		}
+		// Assigned only when there is one. A nil *p25link.Listener stored in
+		// the interface would not be a nil interface, and the repeater link
+		// would call into it.
+		if a.p25 != nil {
+			repeaterCfg.Gateways = a.p25
+		}
+		ql, qerr := v24link.New(logging.Subsystem(log, "p25-repeaters"), repeaterCfg)
 		if qerr != nil {
 			return nil, qerr
 		}
@@ -1673,6 +1690,7 @@ func (p p25GatewaySource) Traffic() server.Traffic {
 
 // repeaterRows adds the Motorola repeaters to the P25 figures.
 func (p p25GatewaySource) repeaterRows(out *server.P25Traffic, now time.Time) {
+	out.HeldCalls = p.repeaters.Held()
 	out.RepeaterFrames = p.repeaters.VoiceFrames()
 	out.VoiceFrames += out.RepeaterFrames
 	out.Unparsed += p.repeaters.Unknown()
@@ -1684,6 +1702,8 @@ func (p p25GatewaySource) repeaterRows(out *server.P25Traffic, now time.Time) {
 			Transmitting: r.Transmitting,
 			Frames:       r.Frames,
 			Calls:        r.Calls,
+			Relayed:      r.Relayed,
+			Held:         r.Held,
 			Talkgroup:    r.Talkgroup,
 			SourceID:     r.SourceID,
 		}
@@ -1738,6 +1758,7 @@ func (p p25GatewaySource) gateways(out *server.P25Traffic) {
 	out.Refused = refused
 	out.RefusedLast = refusedWho
 	out.Unparsed = p.listener.Unparsed()
+	out.HeldFrames = p.listener.Held()
 	out.Gateways = rows
 }
 

@@ -210,6 +210,21 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 		sender.SourceID = src
 	}
 
+	// **One call at a time across the P25 side.** While a Motorola repeater
+	// has the floor this gateway's frames are counted and not carried: two
+	// calls interleaved reach a listener as neither. A terminator gives the
+	// floor back, and is carried only if this call had it.
+	carried := l.floor.Take(GatewayFloor, now)
+	if carried && frame.EndsTransmission() {
+		l.floor.Release(GatewayFloor)
+	}
+	if !carried {
+		l.publish()
+		l.mu.Unlock()
+		l.held.Add(1)
+		return
+	}
+
 	targets := make([]*Gateway, 0, len(l.gateways))
 	for _, g := range l.gateways {
 		if g != sender && g.Address != nil {

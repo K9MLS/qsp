@@ -153,6 +153,14 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.307 carries a repeater's calls out** to every P25 gateway and every
+other repeater, one call at a time (`p25link.Floor`, shared by both
+listeners). Tunnels are per connection now, so one router can link several
+repeaters. **To confirm on air**: key through the repeater with a P25 hotspot
+linked to port 41000 and hear it there; the Overview's repeater line should
+count "carried" alongside "heard". **Not built**: a gateway's call to the
+repeater. **Never run**: repeater to repeater.
+
 **0.1.306 reads a repeater's calls and renames the link**: Motorola P25
 repeaters, `p25_repeaters`, `internal/v24link`; the old `quantar` section
 still loads. The Overview's P25 row and the health page show the repeater.
@@ -265,7 +273,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.306 | `cat VERSION` |
+| **Fedora working tree** | 0.1.307 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -353,10 +361,9 @@ learned to run it as a service.
    capture reads talkgroup **1** and radio **8080303**; he was asked what the
    radio was set to and had not answered when this was written.
 
-   **Phase 4, relay**, in the order to build it: (a) a repeater's voice to
-   every registered P25 gateway, which is `p25link`'s own frames with the
-   wrapper removed and a terminator added; (b) a gateway's voice to the
-   repeater, which needs the start marker, header and end marker QSP has only
+   **Phase 4, relay**: (a) a repeater's voice to every registered P25 gateway
+   and every other repeater — **built in 0.1.307**; (b) a gateway's voice to
+   the repeater, which needs the start marker, header and end marker QSP has only
    ever received — reuse the captured forms, and expect one round of the
    repeater refusing them. **The IMBE crosses untouched both ways.** Talkgroup
    contention between the two is item 4 below.

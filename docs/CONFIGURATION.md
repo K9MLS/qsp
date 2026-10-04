@@ -149,9 +149,16 @@ Set from the console's **Network** page; this is the block it writes. **Off by
 default.** A Motorola P25 repeater's V.24 card connects to a Cisco router's
 serial port, and the router carries its frames to QSP over TCP (`stun route all
 tcp` and this server's address). **QSP opens the repeater's link, keeps it
-alive, and reads each call as far as who is talking and on which talkgroup; it
-does not carry those calls anywhere yet.** The Overview's P25 row counts the
-voice frames and names the repeater, its link and the last radio heard.
+alive, and carries each call it hears to every linked P25 gateway and every
+other linked repeater, audio untouched. It does not yet send a gateway's call
+to a repeater.** One call at a time is carried between gateways and repeaters:
+a station that keys while another is talking is counted and not carried. The
+Overview's P25 row says how many repeaters are linked and, for each, its link,
+the last radio heard, and how many frames were heard and carried.
+
+**One tunnel is one repeater.** A router with two serial ports links two
+repeaters, each on its own `stun group`; a router that restarts and dials again
+replaces its old tunnel once the repeater has said which site it is.
 
 **Proven on a Quantar.** A GTR 8000 has the same V.24 interface and is expected
 to work; none has been tried.

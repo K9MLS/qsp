@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/protocol/p25"
 )
 
 // A P25 listener: gateways register by polling, and voice is relayed verbatim.
@@ -65,6 +66,10 @@ type Config struct {
 	AllowedCallsigns []string
 	// Now is the clock, for tests. Nil selects time.Now.
 	Now func() time.Time
+	// Floor, when set, is shared with the Motorola repeater link so that one
+	// call at a time crosses between the two. Nil is a listener with nothing
+	// to take turns with, which behaves as it always has.
+	Floor *Floor
 }
 
 // Gateway is a P25 gateway that has polled.
@@ -131,6 +136,73 @@ type Listener struct {
 	// unparsed counts datagrams this build does not recognise. Expected to be
 	// non-zero over time: three captures are not the whole protocol.
 	unparsed atomic.Uint64
+
+	// floor is Config.Floor: shared with the Motorola repeater link when
+	// there is one, and nil otherwise. held counts voice frames not carried
+	// because a repeater had it.
+	floor *Floor
+	held  atomic.Uint64
+}
+
+// Held counts voice frames from gateways not carried because a Motorola
+// repeater was talking.
+func (l *Listener) Held() uint64 { return l.held.Load() }
+
+// terminator is the frame that ends a transmission on this protocol: its type
+// byte and sixteen zeroes, in all seven transmissions captured.
+var terminator = append([]byte{byte(p25.KindTerminator)}, make([]byte, 16)...)
+
+// FromRepeater sends one voice frame heard from a Motorola repeater to every
+// registered gateway, and reports how many it reached.
+//
+// **The frame is the repeater's own bytes.** A repeater's voice record and
+// this protocol's voice frame are the same thing — this protocol was made by
+// putting those records in datagrams — so nothing is converted and nothing is
+// decoded (ADR-0034). Anything that is not a voice frame is refused: a
+// gateway has no use for a repeater's header or markers.
+func (l *Listener) FromRepeater(raw []byte) int {
+	frame, err := p25.Parse(raw)
+	if err != nil || !frame.Voice() {
+		return 0
+	}
+	return l.toGateways(raw)
+}
+
+// EndFromRepeater tells every gateway the repeater's transmission is over.
+// A repeater closes a call with a marker of its own, which a gateway would
+// not recognise, so the gateway is sent the terminator it expects.
+func (l *Listener) EndFromRepeater() int { return l.toGateways(terminator) }
+
+func (l *Listener) toGateways(raw []byte) int {
+	if l.conn == nil {
+		return 0
+	}
+	l.mu.Lock()
+	targets := make([]*Gateway, 0, len(l.gateways))
+	for _, g := range l.gateways {
+		if g.Address != nil {
+			targets = append(targets, g)
+		}
+	}
+	l.mu.Unlock()
+
+	sent := 0
+	for _, g := range targets {
+		if _, err := l.conn.WriteToUDP(raw, g.Address); err != nil {
+			l.log.Warn("cannot relay a repeater's frame", "to", g.Callsign, "error", err.Error())
+			continue
+		}
+		sent++
+		l.mu.Lock()
+		g.Sent++
+		l.mu.Unlock()
+	}
+	if sent > 0 {
+		l.mu.Lock()
+		l.publish()
+		l.mu.Unlock()
+	}
+	return sent
 }
 
 // Validate reports whether a configuration can be served.
@@ -159,6 +231,7 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 		log:      logging.Subsystem(log, "p25"),
 		now:      now,
 		gateways: make(map[string]*Gateway),
+		floor:    cfg.Floor,
 	}
 	l.SetAllowedCallsigns(cfg.AllowedCallsigns)
 	empty := []Gateway{}

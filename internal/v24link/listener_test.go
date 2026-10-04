@@ -240,23 +240,79 @@ func TestOnlyAllowedRoutersAreServed(t *testing.T) {
 	}
 }
 
-// A router that restarts dials again without closing what it had.
+// introduction is a repeater's introduction for a site, as the Quantar's was
+// for site 1.
+func introduction(site byte) []byte {
+	return tunnel([]byte{0xFD, 0xBF, 0x01, site*2 + 1, 0xC2, 0, 0, 0, 0, 0xFF})
+}
+
+// link opens a tunnel and brings its repeater's link up as the given site.
+func link(t *testing.T, l *Listener, site byte) net.Conn {
+	t.Helper()
+	c := dial(t, l)
+	_, _ = c.Write(join(linkRequest, theirAcceptance, introduction(site), tunnel([]byte{0xFD, 0x01})))
+	expect(t, c, join(linkAnswer, ourRequest, ourIntroduction))
+	return c
+}
+
+// waitFor polls until ok, and fails with what if it never is.
+func waitFor(t *testing.T, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for !ok() {
+		if time.Now().After(deadline) {
+			t.Fatalf("never happened: %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// A router that restarts dials again without closing what it had, and a
+// router with two serial ports dials twice on purpose.
 //
-// Break it: keep the first connection, and it is never closed.
-func TestANewTunnelFromTheSameRouterReplacesTheOld(t *testing.T) {
-	l, _ := start(t, Config{})
-	first := dial(t, l)
-	_, _ = first.Write(linkRequest)
-	expect(t, first, join(linkAnswer, ourRequest))
+// Break it: keep one tunnel per router address, and the second repeater on a
+// router closes the first; never close the older tunnel, and a restarted
+// router's repeater is listed twice.
+func TestWhichTunnelsFromOneRouterAreTheSameRepeater(t *testing.T) {
+	tests := []struct {
+		name        string
+		second      []byte
+		firstCloses bool
+		repeaters   int
+	}{
+		{"the same site again is the same repeater, reconnected",
+			join(linkRequest, theirAcceptance, introduction(1)), true, 1},
+		{"another site is another repeater",
+			join(linkRequest, theirAcceptance, introduction(3)), false, 2},
+		{"a tunnel that has not said which it is closes nothing",
+			join(linkRequest, theirAcceptance), false, 2},
+		{"the same site in another group is another serial port",
+			join([]byte{0x08, 0x31, 0, 0, 0, 2, 2, 0xFD, 0x3F},
+				[]byte{0x08, 0x31, 0, 0, 0, 2, 2, 0xFD, 0x73},
+				Frame{Op: OpData, Group: 2, Payload: []byte{0xFD, 0xBF, 0x01, 0x03, 0xC2, 0, 0, 0, 0, 0xFF}}.Append(nil)),
+			false, 2},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			l, _ := start(t, Config{Keepalive: time.Hour})
+			first := link(t, l, 1)
+			second := dial(t, l)
+			go func() { _, _ = io.Copy(io.Discard, second) }()
+			_, _ = second.Write(tc.second)
 
-	second := dial(t, l)
-	_, _ = second.Write(linkRequest)
-	expect(t, second, linkAnswer)
-
-	_ = first.SetReadDeadline(time.Now().Add(2 * time.Second))
-	var b [1]byte
-	if n, err := first.Read(b[:]); n != 0 || err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
-		t.Fatalf("the first tunnel was left open: %d bytes and %v", n, err)
+			waitFor(t, "the repeater count settling", func() bool { return len(l.Repeaters()) == tc.repeaters })
+			_ = first.SetReadDeadline(time.Now().Add(300 * time.Millisecond))
+			var b [1]byte
+			_, err := first.Read(b[:])
+			closed := err != nil && !errors.Is(err, os.ErrDeadlineExceeded)
+			if closed != tc.firstCloses {
+				t.Errorf("the first tunnel closed: %v (%v)", closed, err)
+			}
+			time.Sleep(50 * time.Millisecond)
+			if n := len(l.Repeaters()); n != tc.repeaters {
+				t.Errorf("%d repeaters listed", n)
+			}
+		})
 	}
 }
 

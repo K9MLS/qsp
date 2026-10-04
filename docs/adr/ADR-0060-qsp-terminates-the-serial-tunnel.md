@@ -171,6 +171,20 @@ package is `internal/v24link`, the setting `p25_repeaters`, and the console
 says Motorola P25 repeaters. Only a Quantar has been on the far end. The
 fixtures stay under `testdata/quantar` because a Quantar is what they are of.
 
+**Phase 4, first half, built in 0.1.307: a repeater's calls go out.** To the
+gateways, the voice records from their type byte on — which are that
+protocol's frames already — and the terminator it expects when the call ends.
+To other repeaters, every record as received. Nothing is converted. **One call
+at a time**: `p25link.Floor` is shared by the two listeners, the first talker
+keeps it until its call ends or it has been silent a second, and anybody else
+is counted and not carried. Gateways are one holder among themselves, so what
+two gateways do together is unchanged. **Repeater to repeater is built and has
+never run**: there is one repeater here.
+
+**Not built: a gateway's call to a repeater.** It needs QSP to send a start
+marker, voice and an end marker, and perhaps the two-part header, which
+encodes the talkgroup with error correction and has only ever been received.
+
 **Not in Last heard, deliberately.** A repeater's calls are counted and named
 on the Overview and in the log. Last heard is ADR-0059's question and that
 decision is the operator's; this does not make it by the back door.

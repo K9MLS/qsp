@@ -6,6 +6,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A Motorola repeater's calls are carried out.** Each call a linked repeater
+  hears goes to every linked P25 gateway and hotspot, and to every other
+  linked repeater, with the audio bytes untouched. **A gateway's call is not
+  yet sent to a repeater.** One call at a time is carried between gateways and
+  repeaters: a station that keys while another is talking is counted on the
+  Overview and not carried. Repeater to repeater has not been run: there is
+  one repeater to test with.
+- **Several repeaters, and a count of them.** One router can now link more
+  than one repeater, one per serial port; before, a second tunnel from the
+  same router closed the first. The Overview says "N of M Motorola repeaters
+  linked" ahead of the line for each.
+- The Overview's note about DMR voice frames sits under the DMR row and says
+  DMR. Below the P25 lines it read as contradicting them.
 - **Motorola P25 repeaters: the link is up, and its calls are read.** With
   0.1.305 the Quantar accepted QSP's link request, introduced itself, and the
   link stayed open. QSP now reads each transmission — start, header, voice

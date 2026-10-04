@@ -211,6 +211,12 @@ type P25Traffic struct {
 	RepeaterFrames uint64 `json:"repeater_frames,omitempty"`
 	// Repeaters is one row per Motorola P25 repeater with a tunnel open.
 	Repeaters []P25RepeaterView `json:"repeaters,omitempty"`
+	// HeldCalls is repeater transmissions, and HeldFrames gateway voice
+	// frames, heard and not carried because another station was talking. One
+	// call at a time crosses between gateways and repeaters; these are the
+	// ones that lost.
+	HeldCalls  uint64 `json:"held_calls,omitempty"`
+	HeldFrames uint64 `json:"held_frames,omitempty"`
 }
 
 // P25RepeaterView is one Motorola P25 repeater, linked over V.24 through a
@@ -232,6 +238,11 @@ type P25RepeaterView struct {
 	// Frames is voice frames heard and Calls transmissions finished.
 	Frames uint64 `json:"frames"`
 	Calls  uint64 `json:"calls"`
+	// Relayed is voice frames carried onward, to gateways and to other
+	// repeaters. Held is transmissions not carried because another station
+	// was talking.
+	Relayed uint64 `json:"relayed"`
+	Held    uint64 `json:"held,omitempty"`
 	// Talkgroup and SourceID are the last transmission that said who it was.
 	// Zero until one has; zero is not a talkgroup.
 	Talkgroup uint16 `json:"talkgroup,omitempty"`

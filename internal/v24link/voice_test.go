@@ -279,3 +279,12 @@ func TestATransmissionThatGoesQuietIsStale(t *testing.T) {
 		})
 	}
 }
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading %s: %v", path, err)
+	}
+	return raw
+}
