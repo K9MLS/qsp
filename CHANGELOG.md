@@ -6,6 +6,13 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Calls from P25 hotspots and gateways go to Motorola repeaters.** A
+  gateway's call is sent to every linked repeater to transmit, audio
+  untouched, and ended there even if the gateway stops without saying so.
+  With 0.1.307 that is both directions. **Unproven until a repeater transmits
+  one**: QSP has only ever listened on this link. **Send a call header to
+  repeaters**, on the Network panel and off by default, is for a repeater that
+  will not transmit without one; the header it sends names talkgroup 1.
 - **A Motorola repeater's calls are carried out.** Each call a linked repeater
   hears goes to every linked P25 gateway and hotspot, and to every other
   linked repeater, with the audio bytes untouched. **A gateway's call is not

@@ -52,3 +52,25 @@ func TestTheP25RowReportsWhicheverListenersRun(t *testing.T) {
 		})
 	}
 }
+
+// Break it: store a nil listener in the interface, and the gateway listener
+// calls into a repeater link that does not exist.
+func TestNoRepeaterLinkIsNoSink(t *testing.T) {
+	if repeaterSink(nil) != nil {
+		t.Error("a nil repeater link became a sink")
+	}
+	l, err := v24link.New(logging.Discard(), v24link.Config{ListenAddress: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("v24link: %v", err)
+	}
+	if repeaterSink(l) == nil {
+		t.Error("a repeater link is not a sink")
+	}
+
+	// And the other way: the gateways are looked up when a call arrives, so
+	// before there are any a repeater's frame goes nowhere and breaks nothing.
+	late := gatewaysWhenBuilt{&app{}}
+	if late.FromRepeater([]byte{0x63}) != 0 || late.EndFromRepeater() != 0 {
+		t.Error("a frame was carried to gateways that do not exist")
+	}
+}

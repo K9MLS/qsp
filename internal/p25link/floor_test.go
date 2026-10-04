@@ -195,3 +195,81 @@ func TestGatewaysDoNotContendWithEachOther(t *testing.T) {
 		t.Fatalf("B's frame did not reach A while A had talked: % x", got)
 	}
 }
+
+// repeaters records what the gateway listener sends the repeater link.
+type repeaters struct {
+	frames chan []byte
+	ends   chan struct{}
+}
+
+func newRepeaters() *repeaters {
+	return &repeaters{frames: make(chan []byte, 16), ends: make(chan struct{}, 16)}
+}
+
+func (r *repeaters) FromGateway(frame []byte) int {
+	r.frames <- append([]byte{}, frame...)
+	return 1
+}
+
+func (r *repeaters) EndFromGateway() int {
+	r.ends <- struct{}{}
+	return 1
+}
+
+// Break it: send the repeaters a poll, a frame from a gateway that never
+// registered, or a call that was held, and a row fails; drop the terminator,
+// and a repeater is left keyed.
+func TestWhatAGatewaySendsTheRepeaters(t *testing.T) {
+	voice := voiceFrame(t)
+	terminator := append([]byte{0x80}, make([]byte, 16)...)
+	tests := []struct {
+		name       string
+		registered bool
+		held       bool
+		send       []byte
+		frame      bool
+		end        bool
+	}{
+		{"a voice frame, as it came", true, false, voice, true, false},
+		{"the end of the call", true, false, terminator, false, true},
+		{"voice from a gateway that has not registered", false, false, voice, false, false},
+		{"voice while a repeater is talking", true, true, voice, false, false},
+		{"a terminator while a repeater is talking", true, true, terminator, false, false},
+		{"a poll", true, false, p25.NewPoll("GWA").Marshal(), false, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			sink := newRepeaters()
+			floor := &p25link.Floor{}
+			_, addr, stop := serve(t, p25link.Config{Floor: floor, Repeaters: sink})
+			defer stop()
+			var c *net.UDPConn
+			if tc.registered {
+				c = registered(t, addr, "GWA")
+			} else {
+				c = dial(t, addr)
+			}
+			if tc.held {
+				floor.Take("repeater 1", time.Now())
+			}
+			if _, err := c.Write(tc.send); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+
+			var gotFrame, gotEnd bool
+			select {
+			case f := <-sink.frames:
+				gotFrame = true
+				if string(f) != string(tc.send) {
+					t.Errorf("the frame changed: % x", f)
+				}
+			case <-sink.ends:
+				gotEnd = true
+			case <-time.After(300 * time.Millisecond):
+			}
+			if gotFrame != tc.frame || gotEnd != tc.end {
+				t.Errorf("the repeaters got a frame: %v, an end: %v", gotFrame, gotEnd)
+			}
+		})
+	}
+}

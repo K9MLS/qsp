@@ -63,6 +63,8 @@
   var repeatersRecord = document.getElementById("p25_repeaters-record");
   var repeatersSite = document.getElementById("p25_repeaters-site");
   var repeatersPresent = document.getElementById("p25_repeaters-present");
+  var repeatersHeader = document.getElementById("p25_repeaters-header");
+  var repeatersHeaderState = document.getElementById("p25_repeaters-header-state");
   var repeatersAllowed = document.getElementById("p25_repeaters-allowed");
   var repeatersEnabledState = document.getElementById("p25_repeaters-enabled-state");
   var repeatersState = document.getElementById("p25_repeaters-state");
@@ -168,6 +170,7 @@
 
   function refreshRepeatersState() {
     repeatersEnabledState.textContent = repeatersEnabled.checked ? "On" : "Off";
+    repeatersHeaderState.textContent = repeatersHeader.checked ? "On" : "Off";
     var routers = repeatersRouters();
     if (!repeatersEnabled.checked) {
       repeatersState.textContent = "off";
@@ -319,6 +322,7 @@
     repeatersRecord.value = repeaters.record_dir || "";
     repeatersSite.value = repeaters.site ? String(repeaters.site) : "";
     repeatersPresent.value = repeaters.present_as === "console" ? "console" : "";
+    repeatersHeader.checked = !!repeaters.send_header;
     repeatersAllowed.value = (repeaters.allowed_routers || []).join("\n");
     refreshRepeatersState();
 
@@ -440,6 +444,7 @@
     next.p25_repeaters.record_dir = repeatersRecord.value.trim();
     next.p25_repeaters.site = parseInt(repeatersSite.value, 10) || 0;
     next.p25_repeaters.present_as = repeatersPresent.value;
+    next.p25_repeaters.send_header = repeatersHeader.checked;
     next.p25_repeaters.allowed_routers = repeatersRouters();
     /* Supplied for the same reason as the P25 port above. */
     if (next.p25_repeaters.enabled && !next.p25_repeaters.listen_address) {
@@ -618,6 +623,7 @@
   p25Enabled.addEventListener("change", refreshP25State);
   p25Allowed.addEventListener("input", refreshP25State);
   repeatersEnabled.addEventListener("change", refreshRepeatersState);
+  repeatersHeader.addEventListener("change", refreshRepeatersState);
   repeatersAllowed.addEventListener("input", refreshRepeatersState);
   parrotEnabled.addEventListener("change", refreshParrotState);
   parrotTalkgroup.addEventListener("input", refreshParrotState);

@@ -74,6 +74,7 @@ func TestP25RepeatersAreAListenerAndNeedARestart(t *testing.T) {
 		{"a router named", func(c *Config) { c.P25Repeaters.AllowedRouters = []string{"192.0.2.4"} }, "p25_repeaters.allowed_routers"},
 		{"another site", func(c *Config) { c.P25Repeaters.Site = 9 }, "p25_repeaters.site"},
 		{"another form", func(c *Config) { c.P25Repeaters.PresentAs = "console" }, "p25_repeaters.present_as"},
+		{"the header turned on", func(c *Config) { c.P25Repeaters.SendHeader = true }, "p25_repeaters.send_header"},
 		{"recording turned on", func(c *Config) { c.P25Repeaters.RecordDir = "/tmp/q" }, "p25_repeaters.record_dir"},
 	}
 	for _, tc := range cases {

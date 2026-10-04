@@ -153,6 +153,21 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.308 sends a gateway's call to the repeaters**: start marker, the
+gateway's frames behind `07 03`, end marker twice; ended after a second of
+silence if no terminator comes. **Never accepted by a repeater yet.** To
+confirm on air: key a P25 radio into a hotspot linked to port 41000 and hear
+it from the Quantar; the Overview's repeater line counts "sent to it". If the
+Quantar stays silent, turn on **Send a call header to repeaters** and restart;
+if it then transmits, the header is required and a true one must be computed
+(it names talkgroup 1 today). **Pacing is not built**: fine on a LAN, expected
+to matter across the internet.
+
+**The network this is for**: repeaters in Idaho, Wisconsin and Texas on one
+QSP, linked like IPSC. Needs, in order: this patch proven; pacing; a second
+repeater for the first repeater-to-repeater call; the tunnel inside a VPN,
+because STUN has no authentication or encryption; a site guide.
+
 **0.1.307 carries a repeater's calls out** to every P25 gateway and every
 other repeater, one call at a time (`p25link.Floor`, shared by both
 listeners). Tunnels are per connection now, so one router can link several
@@ -273,7 +288,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.307 | `cat VERSION` |
+| **Fedora working tree** | 0.1.308 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

@@ -234,6 +234,17 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 	l.publish()
 	l.mu.Unlock()
 
+	// The repeaters get what the gateways get: the frame as it arrived, and
+	// the end of the call. They have their own way of saying each, and that
+	// is the repeater link's business.
+	if l.cfg.Repeaters != nil {
+		if frame.EndsTransmission() {
+			l.cfg.Repeaters.EndFromGateway()
+		} else {
+			l.cfg.Repeaters.FromGateway(raw)
+		}
+	}
+
 	for _, g := range targets {
 		if _, err := l.conn.WriteToUDP(raw, g.Address); err != nil {
 			l.log.Warn("cannot relay a p25 frame", "to", g.Callsign, "error", err.Error())

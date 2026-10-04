@@ -149,9 +149,9 @@ Set from the console's **Network** page; this is the block it writes. **Off by
 default.** A Motorola P25 repeater's V.24 card connects to a Cisco router's
 serial port, and the router carries its frames to QSP over TCP (`stun route all
 tcp` and this server's address). **QSP opens the repeater's link, keeps it
-alive, and carries each call it hears to every linked P25 gateway and every
-other linked repeater, audio untouched. It does not yet send a gateway's call
-to a repeater.** One call at a time is carried between gateways and repeaters:
+alive, carries each call it hears to every linked P25 gateway and every other
+linked repeater, and sends each gateway's call to every linked repeater to
+transmit, audio untouched.** One call at a time is carried between gateways and repeaters:
 a station that keys while another is talking is counted and not carried. The
 Overview's P25 row says how many repeaters are linked and, for each, its link,
 the last radio heard, and how many frames were heard and carried.
@@ -170,7 +170,8 @@ to work; none has been tried.
   "allowed_routers": ["192.0.2.4"],
   "record_dir":      "/var/lib/qsp/repeaters",
   "site":            2,
-  "present_as":      "repeater"
+  "present_as":      "repeater",
+  "send_header":     false
 }
 ```
 
@@ -182,7 +183,10 @@ number QSP introduces itself with, 1 to 127, and it must not be the repeater's
 own. `present_as` is what QSP tells the repeater it is: `"repeater"` (the
 default, a second repeater, site 2 unless set) or `"console"` (a Motorola
 console interface, site 13 unless set). A repeater set for repeater-to-repeater
-linking expects a repeater, and that is what the Quantar here took. A
+linking expects a repeater, and that is what the Quantar here took. `send_header` sends a call header ahead of each gateway's call; leave it off
+unless a repeater will not transmit calls from hotspots, because **the header
+sent is the one a repeater was heard to send and names talkgroup 1 whatever the
+call is on**. A
 connection silent for 30 seconds is closed, and a new connection from the same
 router replaces the old. Changing any of these needs a restart.
 

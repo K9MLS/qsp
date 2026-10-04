@@ -69,6 +69,10 @@ type Config struct {
 	// Gateways, when set, receives every voice frame a repeater's call
 	// carries, and the end of the call. Nil relays between repeaters only.
 	Gateways Sink
+	// SendHeader sends the captured call header, which says talkgroup 1,
+	// ahead of a gateway's call. Off, a call is sent with a start marker and
+	// no header.
+	SendHeader bool
 	// Floor is shared with the gateway listener so that one call at a time
 	// crosses between the two. Nil is a floor of this listener's own, so
 	// repeaters still take turns among themselves.
@@ -127,16 +131,23 @@ type Listener struct {
 	stations map[uint64]*station
 	floor    *p25link.Floor
 
-	running  atomic.Bool
-	up       atomic.Int64
-	voice    atomic.Uint64
-	calls    atomic.Uint64
-	relayed  atomic.Uint64
-	held     atomic.Uint64
-	answered atomic.Uint64
-	unknown  atomic.Uint64
-	refused  atomic.Uint64
-	done     sync.WaitGroup
+	running atomic.Bool
+	up      atomic.Int64
+	voice   atomic.Uint64
+	calls   atomic.Uint64
+	relayed atomic.Uint64
+	held    atomic.Uint64
+	sent    atomic.Uint64
+
+	// inbound serialises a gateway's call on its way to the repeaters, so a
+	// start, the voice and an end cannot interleave. inboundLast is when its
+	// last frame came, and zero when no call is open.
+	inbound     sync.Mutex
+	inboundLast time.Time
+	answered    atomic.Uint64
+	unknown     atomic.Uint64
+	refused     atomic.Uint64
+	done        sync.WaitGroup
 }
 
 // New builds a listener. It binds nothing until Start.
@@ -201,6 +212,8 @@ type Repeater struct {
 	// was talking when they began.
 	Relayed uint64
 	Held    uint64
+	// Sent is voice frames from gateways sent to this repeater to transmit.
+	Sent uint64
 	// Transmitting reports a transmission in progress.
 	Transmitting bool
 	// Talkgroup, SourceID and LastHeard are the last transmission that said
@@ -241,6 +254,9 @@ type station struct {
 	// relaying reports that the transmission in progress has the floor and
 	// is being carried onward.
 	relaying bool
+	// receiving reports that this repeater has been sent the start of a
+	// gateway's call and is owed its end.
+	receiving bool
 }
 
 // Repeaters is every repeater with a tunnel open, ordered by router.
@@ -266,6 +282,10 @@ func (l *Listener) Relayed() uint64 { return l.relayed.Load() }
 
 // Held is transmissions not carried because another station was talking.
 func (l *Listener) Held() uint64 { return l.held.Load() }
+
+// Sent is voice frames from gateways sent to repeaters since start, counted
+// once for each repeater reached.
+func (l *Listener) Sent() uint64 { return l.sent.Load() }
 
 // VoiceFrames is voice frames heard from every repeater since start.
 func (l *Listener) VoiceFrames() uint64 { return l.voice.Load() }
@@ -318,7 +338,8 @@ func (l *Listener) Start(ctx context.Context) error {
 		slog.Int("site", int(l.cfg.Site)),
 		slog.Bool("recording", l.cfg.RecordDir != ""))
 
-	l.done.Add(2)
+	l.done.Add(3)
+	go l.watchInbound(ctx)
 	go func() {
 		defer l.done.Done()
 		<-ctx.Done()

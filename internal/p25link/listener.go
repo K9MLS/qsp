@@ -66,6 +66,9 @@ type Config struct {
 	AllowedCallsigns []string
 	// Now is the clock, for tests. Nil selects time.Now.
 	Now func() time.Time
+	// Repeaters, when set, is sent every voice frame of a gateway's call that
+	// is carried, and its end, for the Motorola repeaters to transmit.
+	Repeaters RepeaterSink
 	// Floor, when set, is shared with the Motorola repeater link so that one
 	// call at a time crosses between the two. Nil is a listener with nothing
 	// to take turns with, which behaves as it always has.
@@ -142,6 +145,15 @@ type Listener struct {
 	// because a repeater had it.
 	floor *Floor
 	held  atomic.Uint64
+}
+
+// RepeaterSink is where a gateway's call goes besides other gateways: the
+// Motorola repeater link.
+type RepeaterSink interface {
+	// FromGateway carries one voice frame, as it arrived.
+	FromGateway(frame []byte) int
+	// EndFromGateway says the transmission is over.
+	EndFromGateway() int
 }
 
 // Held counts voice frames from gateways not carried because a Motorola

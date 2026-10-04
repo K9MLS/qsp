@@ -98,6 +98,11 @@ type P25Repeaters struct {
 	// "repeater". Two forms because which one a station takes is for the
 	// station to say; see internal/v24link.
 	PresentAs string `json:"present_as,omitempty"`
+	// SendHeader sends a call header ahead of a gateway's call. **The header
+	// is the one captured, and says talkgroup 1**: QSP does not compute the
+	// error correction a header for another talkgroup needs. Off by default,
+	// and for a repeater that will not transmit a call arriving without one.
+	SendHeader bool `json:"send_header,omitempty"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.

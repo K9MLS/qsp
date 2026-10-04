@@ -924,7 +924,7 @@
         }
         bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
         bits.push(r.frames + (r.frames === 1 ? " frame" : " frames") +
-          " heard, " + (r.relayed || 0) + " carried");
+          " heard, " + (r.relayed || 0) + " carried, " + (r.sent || 0) + " sent to it");
         /* Withheld from a public view, so printed only when carried. */
         if (r.router) bits.push("through " + escapeText(r.router));
         p25Lines.push(bits.join(", "));

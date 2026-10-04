@@ -599,6 +599,35 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	if cfg.P25Repeaters.Enabled {
 		p25Floor = &p25link.Floor{}
 	}
+	if cfg.P25Repeaters.Enabled {
+		// **Calls cross both ways between repeaters and gateways.** ADR-0060
+		// phase 4: a repeater's voice goes to every registered P25 gateway and
+		// every other linked repeater, and a gateway's voice goes to every
+		// linked repeater, each as the bytes it arrived as.
+		//
+		// **Built before the gateway listener, which is handed it.** Each
+		// needs the other, so this one reaches the gateways through a.p25 at
+		// the moment of use, by which time build has finished and the field
+		// is set or it is not.
+		repeaterCfg := v24link.Config{
+			ListenAddress:  cfg.P25Repeaters.ListenAddress,
+			AllowedRouters: cfg.P25Repeaters.AllowedRouters,
+			RecordDir:      cfg.P25Repeaters.RecordDir,
+			Site:           cfg.P25Repeaters.Site,
+			PresentAs:      cfg.P25Repeaters.PresentAs,
+			SendHeader:     cfg.P25Repeaters.SendHeader,
+			Floor:          p25Floor,
+		}
+		if cfg.P25.Enabled {
+			repeaterCfg.Gateways = gatewaysWhenBuilt{a}
+		}
+		ql, qerr := v24link.New(logging.Subsystem(log, "p25-repeaters"), repeaterCfg)
+		if qerr != nil {
+			return nil, qerr
+		}
+		a.repeaters = ql
+	}
+
 	if cfg.P25.Enabled {
 		// **A P25 reflector, and it does not touch DMR.** ADR-0034: P25
 		// carries IMBE and DMR carries AMBE+2, so routing one through the
@@ -610,38 +639,12 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Callsign:         cfg.P25.Callsign,
 			AllowedCallsigns: cfg.P25.AllowedCallsigns,
 			Floor:            p25Floor,
+			Repeaters:        repeaterSink(a.repeaters),
 		})
 		if perr != nil {
 			return nil, perr
 		}
 		a.p25 = pl
-	}
-
-	if cfg.P25Repeaters.Enabled {
-		// **A repeater's calls go out; nothing comes back to it yet.** ADR-0060
-		// phase 4, first half: its voice is carried to every registered P25
-		// gateway and to every other linked repeater, as the bytes it arrived
-		// as. The other direction needs a frame QSP has never sent — voice to
-		// a repeater — and is the second half.
-		repeaterCfg := v24link.Config{
-			ListenAddress:  cfg.P25Repeaters.ListenAddress,
-			AllowedRouters: cfg.P25Repeaters.AllowedRouters,
-			RecordDir:      cfg.P25Repeaters.RecordDir,
-			Site:           cfg.P25Repeaters.Site,
-			PresentAs:      cfg.P25Repeaters.PresentAs,
-			Floor:          p25Floor,
-		}
-		// Assigned only when there is one. A nil *p25link.Listener stored in
-		// the interface would not be a nil interface, and the repeater link
-		// would call into it.
-		if a.p25 != nil {
-			repeaterCfg.Gateways = a.p25
-		}
-		ql, qerr := v24link.New(logging.Subsystem(log, "p25-repeaters"), repeaterCfg)
-		if qerr != nil {
-			return nil, qerr
-		}
-		a.repeaters = ql
 	}
 
 	if cfg.IPSC.Enabled {
@@ -1659,6 +1662,37 @@ type p25GatewaySource struct {
 	repeaters *v24link.Listener
 }
 
+// gatewaysWhenBuilt is the gateway listener as the repeater link sees it,
+// looked up when a call arrives rather than when the link is built: the two
+// listeners each carry the other's calls, and one of them has to be made
+// first.
+type gatewaysWhenBuilt struct{ a *app }
+
+func (g gatewaysWhenBuilt) FromRepeater(frame []byte) int {
+	if g.a.p25 == nil {
+		return 0
+	}
+	return g.a.p25.FromRepeater(frame)
+}
+
+func (g gatewaysWhenBuilt) EndFromRepeater() int {
+	if g.a.p25 == nil {
+		return 0
+	}
+	return g.a.p25.EndFromRepeater()
+}
+
+// repeaterSink returns nil when no repeater link is running. **A nil
+// interface, not a nil pointer**: a nil *v24link.Listener stored in the
+// interface would not compare equal to nil, and the gateway listener would
+// call into it.
+func repeaterSink(l *v24link.Listener) p25link.RepeaterSink {
+	if l == nil {
+		return nil
+	}
+	return l
+}
+
 // p25Source returns nil when no P25 listener is running, so the payload omits
 // the object entirely rather than carrying zeroes. **A nil interface, not a nil
 // pointer**: a typed nil inside an interface is non-nil at the call site, which
@@ -1704,6 +1738,7 @@ func (p p25GatewaySource) repeaterRows(out *server.P25Traffic, now time.Time) {
 			Calls:        r.Calls,
 			Relayed:      r.Relayed,
 			Held:         r.Held,
+			Sent:         r.Sent,
 			Talkgroup:    r.Talkgroup,
 			SourceID:     r.SourceID,
 		}

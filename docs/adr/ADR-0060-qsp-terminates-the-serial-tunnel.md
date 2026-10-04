@@ -181,9 +181,25 @@ is counted and not carried. Gateways are one holder among themselves, so what
 two gateways do together is unchanged. **Repeater to repeater is built and has
 never run**: there is one repeater here.
 
-**Not built: a gateway's call to a repeater.** It needs QSP to send a start
-marker, voice and an end marker, and perhaps the two-part header, which
-encodes the talkgroup with error correction and has only ever been received.
+**Phase 4, second half, built in 0.1.308: a gateway's call goes to the
+repeaters.** A gateway's frame is the repeater's voice record already, so it is
+given the address and control byte a repeater's own carried, `07 03`, and sent
+between the captured start marker and the captured end marker, twice. A call
+that stops without a terminator is ended at the repeaters after a second, so
+none is left keyed. **This is the direction nobody has captured**: what a
+repeater accepts is inferred from what it sends.
+
+**The header is the open question.** A repeater's own call carries one, in two
+records, and the second encodes the talkgroup with error correction QSP does
+not compute. By default none is sent, on the reasoning that every voice unit
+repeats the talkgroup. `send_header` sends the captured one, which says
+talkgroup 1, for a repeater that will not transmit without it. If that proves
+necessary, computing a true header is the work that follows.
+
+**Timing is not handled.** Frames are sent to a repeater as they arrive. On a
+LAN that is every twenty milliseconds; across the internet it will not be, and
+a buffer to pace them is expected to be needed and should be built from a
+measurement.
 
 **Not in Last heard, deliberately.** A repeater's calls are counted and named
 on the Overview and in the log. Last heard is ADR-0059's question and that
