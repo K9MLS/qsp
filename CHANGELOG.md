@@ -6,6 +6,12 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **QSP opens a Quantar's link.** Accepted, the station introduced itself and
+  waited; unanswered, it started again every 1.55 seconds. QSP now answers
+  the introduction with its own, as a repeater at another site (`quantar.site`,
+  2 unless set, and a field on the Network panel), and sends the keepalive the
+  station expects every two seconds. The log says when the link is up and when
+  it drops. Voice is still recorded and not carried.
 - **QSP answers a Motorola Quantar** (ADR-0060 phase 2). A Quantar's V.24 card
   connects to a Cisco router's serial port and the router carries its frames
   over TCP. The station asks to open its link twice a second until something

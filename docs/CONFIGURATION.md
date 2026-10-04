@@ -148,21 +148,25 @@ syllable.
 Set from the console's **Network** page; this is the block it writes. **Off by
 default.** A Quantar's V.24 card connects to a Cisco router's serial port, and
 the router carries its frames to QSP over TCP (`stun route all tcp` and this
-server's address). **QSP accepts the station's link request and records what it
-sends; it does not carry the station's calls yet.**
+server's address). **QSP opens the station's link — accepts its request,
+answers its introduction, and keeps the link alive — and records what it sends;
+it does not carry the station's calls yet.**
 
 ```json
 "quantar": {
   "enabled":         true,
   "listen_address":  "0.0.0.0:1994",
   "allowed_routers": ["192.0.2.4"],
-  "record_dir":      "/var/lib/qsp/quantar"
+  "record_dir":      "/var/lib/qsp/quantar",
+  "site":            2
 }
 ```
 
 `allowed_routers` are router addresses; empty accepts any router that can reach
 the port. `record_dir` is optional: when set, every frame in both directions is
-written there as text, one file per connection. A connection silent for 30
+written there as text, one file per connection. `site` is the site number QSP
+introduces itself with, 1 to 127; empty uses 2, and it must not be the
+station's own. A connection silent for 30
 seconds is closed, and a new connection from the same router replaces the old.
 Changing any of these needs a restart.
 

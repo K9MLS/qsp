@@ -65,10 +65,11 @@ type Config struct {
 
 // Quantar configures the listener a Cisco router's serial tunnel dials.
 //
-// **It answers the station's link request and carries no voice yet.** A
-// Quantar asks to open its V.24 link twice a second until something accepts;
-// this accepts, and records what the station sends next. What comes next is
-// built from that record, the way the IPSC listener was (ADR-0029).
+// **It opens the station's link and carries no voice yet.** A Quantar asks to
+// open its V.24 link twice a second until something accepts, then introduces
+// itself and expects keepalives; this does all three, and records what the
+// station sends on the open link. Voice is built from that record, the way
+// the IPSC listener was (ADR-0029).
 type Quantar struct {
 	// Enabled turns the listener on.
 	Enabled bool `json:"enabled"`
@@ -81,6 +82,10 @@ type Quantar struct {
 	// RecordDir, when set, receives one text file per connection holding
 	// every frame in both directions.
 	RecordDir string `json:"record_dir,omitempty"`
+	// Site is the site number QSP introduces itself to the station with.
+	// Zero uses 2. It must differ from the station's own, which is 1 unless
+	// its codeplug says otherwise.
+	Site uint8 `json:"site,omitempty"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -1559,6 +1564,10 @@ func (c Config) Validate() error {
 			v.add("quantar.listen_address",
 				fmt.Sprintf("%q is not a host:port address", c.Quantar.ListenAddress),
 				"include a port, for example \"0.0.0.0:1994\"")
+		}
+		if c.Quantar.Site > 127 {
+			v.add("quantar.site", fmt.Sprintf("%d is beyond 127", c.Quantar.Site),
+				"use a site number from 1 to 127 that is not the station's own; empty uses 2")
 		}
 		for i, r := range c.Quantar.AllowedRouters {
 			if net.ParseIP(strings.TrimSpace(r)) == nil {

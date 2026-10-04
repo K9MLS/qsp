@@ -67,7 +67,8 @@ somebody else a decade earlier.
 - The link is established with SABM frames, answered by UA, followed by an XID
   exchange in both directions. **Seen here on 2026-10-04**: this station sends
   `FD 3F` every 0.51 seconds until accepted (`testdata/quantar`), and QSP
-  0.1.303 accepts it. The XID exchange has not been seen here yet.
+  0.1.303 accepts it. The station's XID was then seen, exactly as published;
+  0.1.304 answers it and sends Receive Ready.
 - Both ends then send Receive Ready frames as keepalives. A Quantar that hears
   none for about five seconds reverts to sending SABM.
 - Conventional P25 speech travels in unnumbered information frames carrying the

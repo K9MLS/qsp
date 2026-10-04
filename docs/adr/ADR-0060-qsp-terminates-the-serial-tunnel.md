@@ -119,6 +119,23 @@ back. The control values are ISO/IEC 13239's, a published standard, which is
 what lets the reply be written without a capture of one. Everything else is
 recorded and not answered. The station's reaction is not yet known.
 
+**Phase 2, finished in 0.1.304.** The station took the acceptance and, 23
+milliseconds later, introduced itself: `FD BF 01 03 C2 00 00 00 00 FF` — message
+type 1, twice its site number plus one, and `C2` for a Quantar, which is the
+published account of this frame confirmed to the byte. Unanswered, it repeated
+that three times and started again from the link request, every 1.55 seconds,
+97 times (`testdata/quantar/stun-introduction-unanswered.bin`). QSP now
+answers with its own introduction in the same shape, as a Quantar at another
+site, because the station is set for a repeater on the far end; and then sends
+Receive Ready every two seconds. **The reply and the interval are both
+reasoned, not captured**: the published reply is from a console interface and
+uses another address and type, and the published limit is five seconds with no
+interval given. Whether the station accepts either is the next thing to read.
+
+**Audio is king, and nothing here touches it.** Voice frames are recorded whole
+and answered with nothing. When they are carried, the IMBE inside them is
+copied, never decoded (ADR-0034).
+
 ## Alternatives considered
 
 **Keep the bridge host permanently.** Refused. Four processes to reach a

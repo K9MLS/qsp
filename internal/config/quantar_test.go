@@ -24,6 +24,8 @@ func TestQuantarValidation(t *testing.T) {
 		{"off with nothing set", func(c *Config) { c.Quantar = Quantar{} }, ""},
 		{"off keeps a half-finished address", func(c *Config) { c.Quantar = Quantar{ListenAddress: "nonsense"} }, ""},
 		{"a router by address", func(c *Config) { c.Quantar.AllowedRouters = []string{"192.0.2.4"} }, ""},
+		{"the largest site", func(c *Config) { c.Quantar.Site = 127 }, ""},
+		{"a site an introduction cannot carry", func(c *Config) { c.Quantar.Site = 128 }, "quantar.site"},
 		{"no address", func(c *Config) { c.Quantar.ListenAddress = " " }, "quantar.listen_address"},
 		{"no port", func(c *Config) { c.Quantar.ListenAddress = "0.0.0.0" }, "quantar.listen_address"},
 		{"a router by name", func(c *Config) { c.Quantar.AllowedRouters = []string{"192.0.2.4", "router1"} }, "quantar.allowed_routers[1]"},
@@ -67,6 +69,7 @@ func TestQuantarIsAListenerAndNeedsARestart(t *testing.T) {
 		{"turned off", func(c *Config) { c.Quantar.Enabled = false }, "quantar.enabled"},
 		{"another port", func(c *Config) { c.Quantar.ListenAddress = "0.0.0.0:1995" }, "quantar.listen_address"},
 		{"a router named", func(c *Config) { c.Quantar.AllowedRouters = []string{"192.0.2.4"} }, "quantar.allowed_routers"},
+		{"another site", func(c *Config) { c.Quantar.Site = 9 }, "quantar.site"},
 		{"recording turned on", func(c *Config) { c.Quantar.RecordDir = "/tmp/q" }, "quantar.record_dir"},
 	}
 	for _, tc := range cases {

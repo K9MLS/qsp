@@ -152,6 +152,11 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.304 opens the Quantar's link**: the station's introduction is answered
+(`quantar.site`, 2 unless set) and Receive Ready goes out every two seconds.
+**Both are reasoned and unproven on the station**; the log line "the Quantar's
+link is up" is the proof, and "the link dropped" the disproof.
+
 **0.1.303 answers a Quantar** (ADR-0060 phase 2): `internal/quantar` listens
 for a router's serial tunnel on TCP, accepts the station's link request and
 records every frame. Off by default; the **Network** page has the switch.
@@ -246,7 +251,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.303 | `cat VERSION` |
+| **Fedora working tree** | 0.1.304 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.301** from 2026-10-03, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -324,14 +329,15 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **The Quantar link, ADR-0060: phase 2 is built and unproven on the station.**
-   QSP 0.1.303 accepts the station's link request. **Not yet seen: the station's
-   reaction.** Three outcomes, each visible in QSP's log and the record file:
-   it keeps sending `FD 3F` (the answer was not accepted, or did not reach it —
-   check `rx_pkts` in `show stun`); it sends something new, logged once per kind
-   as "a frame QSP does not answer yet" (expected: an XID exchange, then Receive
-   Ready keepalives, per the published reverse engineering); or it goes quiet
-   and the tunnel is closed after 30 seconds.
+3. **The Quantar link, ADR-0060: phase 2 is built; its last step is unproven.**
+   0.1.303 accepted the link request and the station answered with its
+   introduction, `FD BF 01 03 C2 00 00 00 00 FF`, then started again every 1.55
+   seconds because nothing replied. 0.1.304 replies as a Quantar at site 2 and
+   sends Receive Ready every two seconds. **Not yet seen: whether the station
+   takes that.** In QSP's log: "the Quantar's link is up" means it did; "the
+   station introduced itself" repeating with no "up" means the introduction
+   was refused, and the published alternative is the console form, address
+   `0B`, type `00`; "the link dropped" means the keepalive is wrong or late.
 
    What 2026-10-04 proved, each with its instrument:
 

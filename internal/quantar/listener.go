@@ -26,6 +26,12 @@ const IdleTimeout = 30 * time.Second
 // this long is not going to.
 const writeTimeout = 5 * time.Second
 
+// KeepaliveInterval is how often QSP sends Receive Ready on an open link. The
+// published account of this interface gives the limit — a station that hears
+// none for about five seconds starts again — and not the interval, so this is
+// chosen to fit twice inside it with room to spare.
+const KeepaliveInterval = 2 * time.Second
+
 // maxLoggedBytes bounds how much of one frame a log line carries. The record
 // file keeps all of it.
 const maxLoggedBytes = 64
@@ -40,6 +46,12 @@ type Config struct {
 	// RecordDir, when set, receives one text file per connection holding
 	// every frame in both directions. Empty records nothing.
 	RecordDir string
+	// Site is the site number QSP introduces itself with. Zero is
+	// DefaultSite.
+	Site uint8
+	// Keepalive is how often Receive Ready is sent on an open link. Zero is
+	// KeepaliveInterval.
+	Keepalive time.Duration
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
 }
@@ -53,6 +65,10 @@ func (c Config) Validate() error {
 		if net.ParseIP(strings.TrimSpace(r)) == nil {
 			return fmt.Errorf("quantar: allowed router %q is not an address", r)
 		}
+	}
+	if c.Site > MaxSite {
+		return fmt.Errorf("quantar: site %d is beyond %d, the most an introduction can carry",
+			c.Site, MaxSite)
 	}
 	return nil
 }
@@ -70,6 +86,7 @@ type Listener struct {
 	conns map[string]net.Conn // by router address; one tunnel per router
 
 	running  atomic.Bool
+	up       atomic.Int64
 	answered atomic.Uint64
 	unknown  atomic.Uint64
 	refused  atomic.Uint64
@@ -91,6 +108,12 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	if l.now == nil {
 		l.now = time.Now
 	}
+	if l.cfg.Site == 0 {
+		l.cfg.Site = DefaultSite
+	}
+	if l.cfg.Keepalive <= 0 {
+		l.cfg.Keepalive = KeepaliveInterval
+	}
 	for _, r := range cfg.AllowedRouters {
 		l.allowed[net.ParseIP(strings.TrimSpace(r)).String()] = true
 	}
@@ -100,7 +123,10 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 // Running reports whether the listener is accepting.
 func (l *Listener) Running() bool { return l.running.Load() }
 
-// Answered counts link requests accepted.
+// LinksUp is how many stations have an open link now.
+func (l *Listener) LinksUp() int { return int(l.up.Load()) }
+
+// Answered counts frames answered.
 func (l *Listener) Answered() uint64 { return l.answered.Load() }
 
 // Unknown counts frames recorded and not answered.
@@ -138,6 +164,7 @@ func (l *Listener) Start(ctx context.Context) error {
 	l.log.Info("listening for a router's serial tunnel",
 		slog.String("address", ln.Addr().String()),
 		slog.Int("allowed_routers", len(l.allowed)),
+		slog.Int("site", int(l.cfg.Site)),
 		slog.Bool("recording", l.cfg.RecordDir != ""))
 
 	l.done.Add(2)
@@ -218,6 +245,9 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 	}()
 	log.Info("a router's tunnel connected")
 
+	// One lock for the socket and the record, because two things write: this
+	// loop answering, and the keepalive below.
+	var mu sync.Mutex
 	record := func(direction string, f Frame) {
 		if rec == nil {
 			return
@@ -232,8 +262,70 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			rec = nil
 		}
 	}
+	send := func(group byte, payload []byte) error {
+		out := Frame{Op: OpData, Group: group, Payload: payload}
+		mu.Lock()
+		defer mu.Unlock()
+		err := conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+		if err == nil {
+			_, err = conn.Write(out.Append(nil))
+		}
+		if err == nil {
+			record("tx", out)
+		}
+		return err
+	}
 
-	var linked bool
+	// The link's state, as the station's own frames report it.
+	var (
+		state   = linkNone
+		address byte
+		group   byte
+	)
+	setState := func(next linkState) {
+		mu.Lock()
+		was := state
+		state = next
+		mu.Unlock()
+		if (was == linkUp) != (next == linkUp) {
+			if next == linkUp {
+				l.up.Add(1)
+			} else {
+				l.up.Add(-1)
+			}
+		}
+	}
+	defer setState(linkNone)
+
+	// The keepalive. It speaks only on a link the station has introduced
+	// itself on, and stops the moment the station asks again.
+	stop := make(chan struct{})
+	defer close(stop)
+	l.done.Add(1)
+	go func() {
+		defer l.done.Done()
+		tick := time.NewTicker(l.cfg.Keepalive)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+			}
+			mu.Lock()
+			open, a, g := state >= linkIntroduced, address, group
+			mu.Unlock()
+			if !open {
+				continue
+			}
+			if err := send(g, Keepalive(a)); err != nil {
+				return // the read loop reports the closed tunnel
+			}
+		}
+	}()
+
 	seen := make(map[string]bool) // one line per kind of frame, not per frame
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(IdleTimeout)); err != nil {
@@ -255,7 +347,9 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			}
 			return
 		}
+		mu.Lock()
 		record("rx", f)
+		mu.Unlock()
 
 		if f.Op != OpData {
 			if key := fmt.Sprintf("op %04x", uint16(f.Op)); !seen[key] {
@@ -268,8 +362,8 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			continue
 		}
 
-		reply, kind := Answer(f.Payload)
-		if reply == nil {
+		reply, kind := Answer(f.Payload, l.cfg.Site)
+		if kind == KindUnknown {
 			l.unknown.Add(1)
 			key := "len 0"
 			if len(f.Payload) >= 2 {
@@ -284,26 +378,60 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			continue
 		}
 
-		out := Frame{Op: OpData, Group: f.Group, Payload: reply}
-		err = conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-		if err == nil {
-			_, err = conn.Write(out.Append(nil))
+		// The state moves before the answer goes out, so a keepalive cannot
+		// follow a link request the station has just restarted with.
+		mu.Lock()
+		was := state
+		address, group = f.Payload[0], f.Group
+		mu.Unlock()
+		switch kind {
+		case KindLinkRequest:
+			setState(linkAccepted)
+			switch {
+			case was == linkUp:
+				log.Warn("the link dropped: the station is asking to open it again")
+			case was == linkNone:
+				log.Info("the station asked for a link and was answered",
+					slog.String("request", clip(f.Payload)),
+					slog.String("answer", clip(reply)))
+			}
+		case KindIntroduction:
+			if was < linkIntroduced {
+				setState(linkIntroduced)
+				log.Info("the station introduced itself and was answered",
+					slog.Int("station_site", int(f.Payload[3]>>1)),
+					slog.String("station_type", fmt.Sprintf("%02x", f.Payload[4])),
+					slog.String("introduction", clip(f.Payload)),
+					slog.String("answer", clip(reply)))
+			}
+		case KindReceiveReady:
+			if was == linkIntroduced {
+				setState(linkUp)
+				log.Info("the Quantar's link is up",
+					slog.String("keepalive", clip(f.Payload)))
+			}
 		}
-		if err != nil {
+
+		if reply == nil {
+			continue
+		}
+		if err := send(f.Group, reply); err != nil {
 			log.Warn("the answer could not be sent", slog.String("error", err.Error()))
 			return
 		}
-		record("tx", out)
 		l.answered.Add(1)
-		if !linked {
-			linked = true
-			log.Info("the station asked for a link and was answered",
-				slog.String("kind", string(kind)),
-				slog.String("request", clip(f.Payload)),
-				slog.String("answer", clip(reply)))
-		}
 	}
 }
+
+// linkState is how far a station has come in opening its link.
+type linkState int
+
+const (
+	linkNone       linkState = iota // nothing heard, or the tunnel just opened
+	linkAccepted                    // its link request was accepted
+	linkIntroduced                  // it introduced itself and was answered
+	linkUp                          // its keepalive has been heard since
+)
 
 func clip(b []byte) string {
 	if len(b) > maxLoggedBytes {

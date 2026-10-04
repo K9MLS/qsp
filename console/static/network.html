@@ -553,7 +553,7 @@
           <span class="panel__count" id="quantar-state">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-quantar">
-          <p class="hint__text"><strong>The link is answered; voice is not carried yet.</strong> A Quantar's V.24 card speaks to a Cisco router's serial port, and the router carries those frames here over TCP. The station asks to open its link twice a second until something accepts. Turning this on makes QSP accept, and record what the station sends next. Carrying its calls is the next step and is written from that record.</p>
+          <p class="hint__text"><strong>The link is opened; voice is not carried yet.</strong> A Quantar's V.24 card speaks to a Cisco router's serial port, and the router carries those frames here over TCP. The station asks to open its link twice a second until something accepts, then introduces itself and expects to hear a keepalive every few seconds. Turning this on makes QSP do all three, and record what the station sends on the open link. Carrying its calls is the next step and is written from that record.</p>
         </div>
         <div class="panel__body">
           <p class="panel__lede">
@@ -585,6 +585,17 @@
               <p class="field__note">A folder on this server. Every frame in
                 both directions is written there, one file per connection.
                 Empty records nothing.</p>
+            </label>
+          </div>
+
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Site number</span>
+              <input class="picker__input" id="quantar-site" type="number"
+                     min="1" max="127" step="1" placeholder="2">
+              <p class="field__note">What this server calls itself to the
+                station. It must not be the station's own site number, which
+                is 1 unless its codeplug says otherwise. Empty uses 2.</p>
             </label>
           </div>
 

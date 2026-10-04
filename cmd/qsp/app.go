@@ -609,14 +609,16 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	}
 
 	if cfg.Quantar.Enabled {
-		// **The link is answered and nothing is carried.** ADR-0060 phase 2:
-		// the station's request to open its V.24 link is accepted, and what it
-		// sends next is recorded. It has no sink into DMR or P25 because there
+		// **The link is opened and nothing is carried.** ADR-0060 phase 2:
+		// the station's request to open its V.24 link is accepted, its
+		// introduction answered and the link kept alive, and what it sends on
+		// the open link is recorded. It has no sink into DMR or P25 because there
 		// is no voice to deliver yet.
 		ql, qerr := quantar.New(logging.Subsystem(log, "quantar"), quantar.Config{
 			ListenAddress:  cfg.Quantar.ListenAddress,
 			AllowedRouters: cfg.Quantar.AllowedRouters,
 			RecordDir:      cfg.Quantar.RecordDir,
+			Site:           cfg.Quantar.Site,
 		})
 		if qerr != nil {
 			return nil, qerr

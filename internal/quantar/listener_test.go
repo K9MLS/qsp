@@ -20,6 +20,11 @@ var (
 	linkAnswer  = []byte{0x08, 0x31, 0x00, 0x00, 0x00, 0x02, 0x01, 0xFD, 0x73}
 )
 
+// tunnel wraps a station's frame as the router sends it.
+func tunnel(payload []byte) []byte {
+	return Frame{Op: OpData, Group: 1, Payload: payload}.Append(nil)
+}
+
 func start(t *testing.T, cfg Config) (*Listener, context.CancelFunc) {
 	t.Helper()
 	cfg.ListenAddress = "127.0.0.1:0"
@@ -98,8 +103,16 @@ func TestTheStationIsAnsweredAndNothingElseIs(t *testing.T) {
 			append(append([]byte{}, linkAnswer...), linkAnswer...)},
 		{"the opening and a request together",
 			[][]byte{append(opening(t), linkRequest...)}, linkAnswer},
-		{"a frame QSP cannot name is not answered",
+		{"a keepalive that asks nothing is not answered",
 			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x01}}, nil},
+		{"a keepalive that demands an answer gets one",
+			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x11}},
+			[]byte{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x11}},
+		{"an introduction is answered with QSP's own",
+			[][]byte{tunnel(stationIntroduction)},
+			tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF})},
+		{"an acceptance sent to us is not answered",
+			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x73}}, nil},
 		{"a longer frame is not answered",
 			[][]byte{{0x08, 0x31, 0, 0, 0, 4, 1, 0xFD, 0x03, 0xAA, 0xBB}}, nil},
 		{"the group byte is carried back",
@@ -221,7 +234,7 @@ func TestTheRecordHoldsBothDirections(t *testing.T) {
 	dir := t.TempDir()
 	l, cancel := start(t, Config{RecordDir: dir})
 	c := dial(t, l)
-	_, _ = c.Write(append(linkRequest, 0x08, 0x31, 0, 0, 0, 3, 1, 0xFD, 0xBF, 0x01))
+	_, _ = c.Write(append(linkRequest, 0x08, 0x31, 0, 0, 0, 3, 1, 0xFD, 0x03, 0x01))
 	expect(t, c, linkAnswer)
 	silent(t, c)
 	cancel()
@@ -235,13 +248,87 @@ func TestTheRecordHoldsBothDirections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the record: %v", err)
 	}
-	for _, want := range []string{"\trx\t0000\t01\tfd3f\n", "\ttx\t0000\t01\tfd73\n", "\trx\t0000\t01\tfdbf01\n"} {
+	for _, want := range []string{"\trx\t0000\t01\tfd3f\n", "\ttx\t0000\t01\tfd73\n", "\trx\t0000\t01\tfd0301\n"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the record lacks %q:\n%s", want, body)
 		}
 	}
 	if l.Answered() != 1 || l.Unknown() != 1 {
 		t.Errorf("answered %d and unknown %d", l.Answered(), l.Unknown())
+	}
+}
+
+// The link, step by step, as the station's own frames drive it.
+//
+// Break it: send keepalives before the station has introduced itself, keep
+// sending them after it has started again, or count a link up before its
+// keepalive is heard, and this fails.
+func TestKeepalivesFollowTheLinkAndStopWithIt(t *testing.T) {
+	const beat = 40 * time.Millisecond
+	l, _ := start(t, Config{Keepalive: beat})
+	c := dial(t, l)
+	keepalive := tunnel([]byte{0xFD, 0x01})
+
+	// Accepted, and not yet introduced: nothing is sent unasked.
+	_, _ = c.Write(linkRequest)
+	expect(t, c, linkAnswer)
+	silent(t, c)
+	if l.LinksUp() != 0 {
+		t.Fatalf("%d links up before any introduction", l.LinksUp())
+	}
+
+	// Introduced: keepalives begin, and the link is not up until the
+	// station's own is heard.
+	_, _ = c.Write(tunnel(stationIntroduction))
+	expect(t, c, tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}))
+	expect(t, c, keepalive)
+	expect(t, c, keepalive)
+	if l.LinksUp() != 0 {
+		t.Fatalf("%d links up before the station's keepalive", l.LinksUp())
+	}
+	_, _ = c.Write(keepalive)
+	deadline := time.Now().Add(2 * time.Second)
+	for l.LinksUp() != 1 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if l.LinksUp() != 1 {
+		t.Fatalf("%d links up after the station's keepalive", l.LinksUp())
+	}
+
+	// The station starts again: accepted, the link is down, and the
+	// keepalives stop. One already on its way may arrive first.
+	_, _ = c.Write(linkRequest)
+	got := make([]byte, 9)
+	for {
+		_ = c.SetReadDeadline(time.Now().Add(2 * time.Second))
+		if _, err := io.ReadFull(c, got); err != nil {
+			t.Fatalf("waiting for the acceptance: %v", err)
+		}
+		if bytes.Equal(got, linkAnswer) {
+			break
+		}
+		if !bytes.Equal(got, keepalive) {
+			t.Fatalf("got % x", got)
+		}
+	}
+	if l.LinksUp() != 0 {
+		t.Fatalf("%d links up after the station started again", l.LinksUp())
+	}
+	silent(t, c)
+
+	// And a tunnel that closes takes its link with it.
+	_, _ = c.Write(tunnel(stationIntroduction))
+	expect(t, c, tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}))
+	_, _ = c.Write(keepalive)
+	for deadline = time.Now().Add(2 * time.Second); l.LinksUp() != 1 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	_ = c.Close()
+	for deadline = time.Now().Add(2 * time.Second); l.LinksUp() != 0 && time.Now().Before(deadline); {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if l.LinksUp() != 0 {
+		t.Fatalf("%d links up after the tunnel closed", l.LinksUp())
 	}
 }
 
@@ -258,6 +345,8 @@ func TestAConfigurationThatCannotWorkIsRefused(t *testing.T) {
 		{"empty", Config{}, false},
 		{"a router by address", Config{ListenAddress: ":1994", AllowedRouters: []string{" 192.0.2.4 "}}, true},
 		{"a router by name", Config{ListenAddress: ":1994", AllowedRouters: []string{"router1"}}, false},
+		{"the largest site", Config{ListenAddress: ":1994", Site: 127}, true},
+		{"a site an introduction cannot carry", Config{ListenAddress: ":1994", Site: 128}, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
