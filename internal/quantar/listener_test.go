@@ -18,7 +18,16 @@ import (
 var (
 	linkRequest = []byte{0x08, 0x31, 0x00, 0x00, 0x00, 0x02, 0x01, 0xFD, 0x3F}
 	linkAnswer  = []byte{0x08, 0x31, 0x00, 0x00, 0x00, 0x02, 0x01, 0xFD, 0x73}
+	// As a repeater QSP's own request is the station's, byte for byte.
+	ourRequest = linkRequest
+	// The station accepting it is the same bytes as QSP accepting the
+	// station's.
+	theirAcceptance = linkAnswer
+	ourIntroduction = Frame{Op: OpData, Group: 1,
+		Payload: []byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}}.Append(nil)
 )
+
+func join(parts ...[]byte) []byte { return bytes.Join(parts, nil) }
 
 // tunnel wraps a station's frame as the router sends it.
 func tunnel(payload []byte) []byte {
@@ -28,6 +37,9 @@ func tunnel(payload []byte) []byte {
 func start(t *testing.T, cfg Config) (*Listener, context.CancelFunc) {
 	t.Helper()
 	cfg.ListenAddress = "127.0.0.1:0"
+	if cfg.Request == 0 {
+		cfg.Request = time.Hour // only the tests of the timer want it
+	}
 	l, err := New(logging.Discard(), cfg)
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -87,37 +99,47 @@ func opening(t *testing.T) []byte {
 // What the router sent, in the pieces a network might deliver it in, and what
 // comes back for each.
 //
-// Break it: answer the opening message, echo what is not understood, or read
-// one frame per network read, and a row here fails.
-func TestTheStationIsAnsweredAndNothingElseIs(t *testing.T) {
+// Break it: answer the opening message, echo what is not understood, read one
+// frame per network read, or introduce on a link the station alone has
+// opened, and a row here fails.
+func TestWhatComesBackForWhatArrives(t *testing.T) {
 	tests := []struct {
 		name   string
 		writes [][]byte
 		want   []byte // nil is silence
 	}{
 		{"the opening message is not answered", [][]byte{opening(t)}, nil},
-		{"a link request is accepted", [][]byte{linkRequest}, linkAnswer},
-		{"a request split across two reads", [][]byte{linkRequest[:4], linkRequest[4:]}, linkAnswer},
-		{"two requests in one read",
-			[][]byte{append(append([]byte{}, linkRequest...), linkRequest...)},
-			append(append([]byte{}, linkAnswer...), linkAnswer...)},
+		{"a link request is accepted, and QSP asks in turn",
+			[][]byte{linkRequest}, join(linkAnswer, ourRequest)},
+		{"a request split across two reads",
+			[][]byte{linkRequest[:4], linkRequest[4:]}, join(linkAnswer, ourRequest)},
+		{"two requests in one read", [][]byte{join(linkRequest, linkRequest)},
+			join(linkAnswer, ourRequest, linkAnswer, ourRequest)},
 		{"the opening and a request together",
-			[][]byte{append(opening(t), linkRequest...)}, linkAnswer},
+			[][]byte{join(opening(t), linkRequest)}, join(linkAnswer, ourRequest)},
 		{"a keepalive that asks nothing is not answered",
-			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x01}}, nil},
+			[][]byte{tunnel([]byte{0xFD, 0x01})}, nil},
 		{"a keepalive that demands an answer gets one",
-			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x11}},
-			[]byte{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x11}},
-		{"an introduction is answered with QSP's own",
-			[][]byte{tunnel(stationIntroduction)},
-			tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF})},
-		{"an acceptance sent to us is not answered",
-			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 1, 0xFD, 0x73}}, nil},
-		{"a longer frame is not answered",
-			[][]byte{{0x08, 0x31, 0, 0, 0, 4, 1, 0xFD, 0x03, 0xAA, 0xBB}}, nil},
+			[][]byte{tunnel([]byte{0xFD, 0x11})}, tunnel([]byte{0xFD, 0x11})},
+		{"an introduction on a link nobody has opened is not answered",
+			[][]byte{tunnel(stationIntroduction)}, nil},
+		{"an introduction on a link only the station has opened is held",
+			[][]byte{linkRequest, tunnel(stationIntroduction)}, join(linkAnswer, ourRequest)},
+		{"and answered once the station accepts QSP's request",
+			[][]byte{linkRequest, tunnel(stationIntroduction), theirAcceptance},
+			join(linkAnswer, ourRequest, ourIntroduction)},
+		{"the expected order: request, acceptance, introduction",
+			[][]byte{linkRequest, theirAcceptance, tunnel(stationIntroduction)},
+			join(linkAnswer, ourRequest, ourIntroduction)},
+		{"a repeated introduction is answered again",
+			[][]byte{linkRequest, theirAcceptance, tunnel(stationIntroduction), tunnel(stationIntroduction)},
+			join(linkAnswer, ourRequest, ourIntroduction, ourIntroduction)},
+		{"an acceptance QSP never asked for is not answered", [][]byte{theirAcceptance}, nil},
+		{"voice is not answered",
+			[][]byte{tunnel([]byte{0x07, 0x03, 0x60, 0x02, 0x04, 0x0C, 0x0B})}, nil},
 		{"the group byte is carried back",
 			[][]byte{{0x08, 0x31, 0, 0, 0, 2, 7, 0xFD, 0x3F}},
-			[]byte{0x08, 0x31, 0, 0, 0, 2, 7, 0xFD, 0x73}},
+			[]byte{0x08, 0x31, 0, 0, 0, 2, 7, 0xFD, 0x73, 0x08, 0x31, 0, 0, 0, 2, 7, 0xFD, 0x3F}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -135,6 +157,40 @@ func TestTheStationIsAnsweredAndNothingElseIs(t *testing.T) {
 			silent(t, c)
 		})
 	}
+}
+
+// Break it: present the console with the repeater's address, or leave its
+// site at the repeater's default, and this fails.
+func TestTheConsoleFormIsThePublishedOne(t *testing.T) {
+	l, _ := start(t, Config{PresentAs: "console"})
+	c := dial(t, l)
+	_, _ = c.Write(join(linkRequest, theirAcceptance, tunnel(stationIntroduction)))
+	expect(t, c, join(linkAnswer,
+		tunnel([]byte{0x0B, 0x3F}),
+		tunnel([]byte{0x0B, 0xBF, 0x01, 0x1B, 0x00, 0, 0, 0, 0, 0xFF})))
+	silent(t, c)
+}
+
+// QSP asks until the station accepts, and not before the router has sent a
+// frame to copy the group byte from.
+//
+// Break it: keep asking after the acceptance, or ask before anything has
+// arrived, and this fails.
+func TestQSPAsksUntilItIsAccepted(t *testing.T) {
+	l, _ := start(t, Config{Request: 40 * time.Millisecond})
+	c := dial(t, l)
+	silent(t, c)
+
+	_, _ = c.Write(tunnel([]byte{0xFD, 0x01}))
+	expect(t, c, join(ourRequest, ourRequest, ourRequest))
+
+	_, _ = c.Write(theirAcceptance)
+	// One already on its way may arrive; after that, nothing.
+	time.Sleep(60 * time.Millisecond)
+	_ = c.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+	var drain [64]byte
+	_, _ = c.Read(drain[:])
+	silent(t, c)
 }
 
 // Break it: keep reading after a bad marker, and the request that follows is
@@ -191,7 +247,7 @@ func TestANewTunnelFromTheSameRouterReplacesTheOld(t *testing.T) {
 	l, _ := start(t, Config{})
 	first := dial(t, l)
 	_, _ = first.Write(linkRequest)
-	expect(t, first, linkAnswer)
+	expect(t, first, join(linkAnswer, ourRequest))
 
 	second := dial(t, l)
 	_, _ = second.Write(linkRequest)
@@ -235,7 +291,7 @@ func TestTheRecordHoldsBothDirections(t *testing.T) {
 	l, cancel := start(t, Config{RecordDir: dir})
 	c := dial(t, l)
 	_, _ = c.Write(append(linkRequest, 0x08, 0x31, 0, 0, 0, 3, 1, 0xFD, 0x03, 0x01))
-	expect(t, c, linkAnswer)
+	expect(t, c, join(linkAnswer, ourRequest))
 	silent(t, c)
 	cancel()
 	l.Wait()
@@ -248,55 +304,53 @@ func TestTheRecordHoldsBothDirections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading the record: %v", err)
 	}
-	for _, want := range []string{"\trx\t0000\t01\tfd3f\n", "\ttx\t0000\t01\tfd73\n", "\trx\t0000\t01\tfd0301\n"} {
+	for _, want := range []string{"\trx\t0000\t01\tfd3f\n", "\ttx\t0000\t01\tfd73\n", "\ttx\t0000\t01\tfd3f\n", "\trx\t0000\t01\tfd0301\n"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("the record lacks %q:\n%s", want, body)
 		}
 	}
-	if l.Answered() != 1 || l.Unknown() != 1 {
+	if l.Answered() != 2 || l.Unknown() != 1 {
 		t.Errorf("answered %d and unknown %d", l.Answered(), l.Unknown())
 	}
 }
 
 // The link, step by step, as the station's own frames drive it.
 //
-// Break it: send keepalives before the station has introduced itself, keep
-// sending them after it has started again, or count a link up before its
-// keepalive is heard, and this fails.
+// Break it: send keepalives before both ends have introduced themselves, keep
+// sending them after the station has started again, or count a link up before
+// its keepalive is heard, and this fails.
 func TestKeepalivesFollowTheLinkAndStopWithIt(t *testing.T) {
 	const beat = 40 * time.Millisecond
 	l, _ := start(t, Config{Keepalive: beat})
 	c := dial(t, l)
 	keepalive := tunnel([]byte{0xFD, 0x01})
-
-	// Accepted, and not yet introduced: nothing is sent unasked.
-	_, _ = c.Write(linkRequest)
-	expect(t, c, linkAnswer)
-	silent(t, c)
-	if l.LinksUp() != 0 {
-		t.Fatalf("%d links up before any introduction", l.LinksUp())
+	waitUp := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for l.LinksUp() != want && time.Now().Before(deadline) {
+			time.Sleep(5 * time.Millisecond)
+		}
+		if l.LinksUp() != want {
+			t.Fatalf("%d links up, want %d", l.LinksUp(), want)
+		}
 	}
+
+	// Open from both ends and not yet introduced: nothing is sent unasked.
+	_, _ = c.Write(join(linkRequest, theirAcceptance))
+	expect(t, c, join(linkAnswer, ourRequest))
+	silent(t, c)
+	waitUp(0)
 
 	// Introduced: keepalives begin, and the link is not up until the
 	// station's own is heard.
 	_, _ = c.Write(tunnel(stationIntroduction))
-	expect(t, c, tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}))
-	expect(t, c, keepalive)
-	expect(t, c, keepalive)
-	if l.LinksUp() != 0 {
-		t.Fatalf("%d links up before the station's keepalive", l.LinksUp())
-	}
+	expect(t, c, join(ourIntroduction, keepalive, keepalive))
+	waitUp(0)
 	_, _ = c.Write(keepalive)
-	deadline := time.Now().Add(2 * time.Second)
-	for l.LinksUp() != 1 && time.Now().Before(deadline) {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if l.LinksUp() != 1 {
-		t.Fatalf("%d links up after the station's keepalive", l.LinksUp())
-	}
+	waitUp(1)
 
-	// The station starts again: accepted, the link is down, and the
-	// keepalives stop. One already on its way may arrive first.
+	// The station starts again: the link is down and the keepalives stop.
+	// One already on its way may arrive first.
 	_, _ = c.Write(linkRequest)
 	got := make([]byte, 9)
 	for {
@@ -311,25 +365,17 @@ func TestKeepalivesFollowTheLinkAndStopWithIt(t *testing.T) {
 			t.Fatalf("got % x", got)
 		}
 	}
-	if l.LinksUp() != 0 {
-		t.Fatalf("%d links up after the station started again", l.LinksUp())
-	}
+	expect(t, c, ourRequest)
+	waitUp(0)
 	silent(t, c)
 
-	// And a tunnel that closes takes its link with it.
-	_, _ = c.Write(tunnel(stationIntroduction))
-	expect(t, c, tunnel([]byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}))
+	// It comes back, and a tunnel that closes takes its link with it.
+	_, _ = c.Write(join(theirAcceptance, tunnel(stationIntroduction)))
+	expect(t, c, ourIntroduction)
 	_, _ = c.Write(keepalive)
-	for deadline = time.Now().Add(2 * time.Second); l.LinksUp() != 1 && time.Now().Before(deadline); {
-		time.Sleep(5 * time.Millisecond)
-	}
+	waitUp(1)
 	_ = c.Close()
-	for deadline = time.Now().Add(2 * time.Second); l.LinksUp() != 0 && time.Now().Before(deadline); {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if l.LinksUp() != 0 {
-		t.Fatalf("%d links up after the tunnel closed", l.LinksUp())
-	}
+	waitUp(0)
 }
 
 // Break it: accept any string, and a mistyped address serves nobody without
@@ -345,6 +391,8 @@ func TestAConfigurationThatCannotWorkIsRefused(t *testing.T) {
 		{"empty", Config{}, false},
 		{"a router by address", Config{ListenAddress: ":1994", AllowedRouters: []string{" 192.0.2.4 "}}, true},
 		{"a router by name", Config{ListenAddress: ":1994", AllowedRouters: []string{"router1"}}, false},
+		{"presented as a console", Config{ListenAddress: ":1994", PresentAs: "console"}, true},
+		{"presented as something else", Config{ListenAddress: ":1994", PresentAs: "diu"}, false},
 		{"the largest site", Config{ListenAddress: ":1994", Site: 127}, true},
 		{"a site an introduction cannot carry", Config{ListenAddress: ":1994", Site: 128}, false},
 	}

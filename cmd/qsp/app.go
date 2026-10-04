@@ -610,7 +610,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 	if cfg.Quantar.Enabled {
 		// **The link is opened and nothing is carried.** ADR-0060 phase 2:
-		// the station's request to open its V.24 link is accepted, its
+		// the link is opened from both ends, the station's
 		// introduction answered and the link kept alive, and what it sends on
 		// the open link is recorded. It has no sink into DMR or P25 because there
 		// is no voice to deliver yet.
@@ -619,6 +619,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			AllowedRouters: cfg.Quantar.AllowedRouters,
 			RecordDir:      cfg.Quantar.RecordDir,
 			Site:           cfg.Quantar.Site,
+			PresentAs:      cfg.Quantar.PresentAs,
 		})
 		if qerr != nil {
 			return nil, qerr

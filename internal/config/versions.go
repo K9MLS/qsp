@@ -222,6 +222,7 @@ func NeedsRestart(before, after Config) []string {
 	add("quantar.allowed_routers",
 		!slices.Equal(before.Quantar.AllowedRouters, after.Quantar.AllowedRouters))
 	add("quantar.site", before.Quantar.Site != after.Quantar.Site)
+	add("quantar.present_as", before.Quantar.PresentAs != after.Quantar.PresentAs)
 	add("quantar.record_dir", before.Quantar.RecordDir != after.Quantar.RecordDir)
 
 	add("dmr.upstreams", !sameUpstreams(before.DMR.Upstreams, after.DMR.Upstreams))

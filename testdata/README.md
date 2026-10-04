@@ -18,6 +18,7 @@ that actually matters. See Constitution §3 and
 | `p25/p25-gateway-idle.pcap` | P25Gateway polling only — **no voice**, insufficient for a parser |
 | `quantar/stun-link-request.bin` | A Quantar asking to open its V.24 link, as a router's serial tunnel delivers it |
 | `quantar/stun-introduction-unanswered.bin` | The same station, accepted and then left unanswered: its introduction, three times, and round again |
+| `quantar/stun-introduction-ignored.bin` | The same station ignoring an introduction sent before QSP had asked for the link itself |
 | `ipsc/*.pcap` | Registration, voice, private calls and text over IP Site Connect |
 
 **IPSC is implemented entirely from these captures.** See

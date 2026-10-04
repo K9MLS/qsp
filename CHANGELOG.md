@@ -6,6 +6,12 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Quantar's link is opened from both ends.** The station ignored
+  0.1.304's introduction: its own request had been accepted and QSP had made
+  none in return, so the link was open one way. QSP now asks until the
+  station accepts, and introduces itself only then. Each step is logged once.
+  **Present as** on the Network panel (`quantar.present_as`) changes what QSP
+  says it is, a repeater or a console, without a new build.
 - **QSP opens a Quantar's link.** Accepted, the station introduced itself and
   waited; unanswered, it started again every 1.55 seconds. QSP now answers
   the introduction with its own, as a repeater at another site (`quantar.site`,

@@ -83,9 +83,15 @@ type Quantar struct {
 	// every frame in both directions.
 	RecordDir string `json:"record_dir,omitempty"`
 	// Site is the site number QSP introduces itself to the station with.
-	// Zero uses 2. It must differ from the station's own, which is 1 unless
-	// its codeplug says otherwise.
+	// Zero uses the form's own default: 2 as a repeater, 13 as a console. It
+	// must differ from the station's own, which is 1 unless its codeplug
+	// says otherwise.
 	Site uint8 `json:"site,omitempty"`
+	// PresentAs is what QSP tells the station it is: "repeater", a second
+	// Quantar, or "console", a Motorola console interface. Empty is
+	// "repeater". Two forms because which one a station takes is for the
+	// station to say; see internal/quantar.
+	PresentAs string `json:"present_as,omitempty"`
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -1568,6 +1574,10 @@ func (c Config) Validate() error {
 		if c.Quantar.Site > 127 {
 			v.add("quantar.site", fmt.Sprintf("%d is beyond 127", c.Quantar.Site),
 				"use a site number from 1 to 127 that is not the station's own; empty uses 2")
+		}
+		if p := c.Quantar.PresentAs; p != "" && p != "repeater" && p != "console" {
+			v.add("quantar.present_as", fmt.Sprintf("%q is not a form QSP can present", p),
+				"use \"repeater\" or \"console\"; empty is \"repeater\"")
 		}
 		for i, r := range c.Quantar.AllowedRouters {
 			if net.ParseIP(strings.TrimSpace(r)) == nil {

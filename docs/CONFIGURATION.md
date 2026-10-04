@@ -149,7 +149,7 @@ Set from the console's **Network** page; this is the block it writes. **Off by
 default.** A Quantar's V.24 card connects to a Cisco router's serial port, and
 the router carries its frames to QSP over TCP (`stun route all tcp` and this
 server's address). **QSP opens the station's link — accepts its request,
-answers its introduction, and keeps the link alive — and records what it sends;
+asks in turn, answers its introduction, and keeps the link alive — and records what it sends;
 it does not carry the station's calls yet.**
 
 ```json
@@ -158,15 +158,19 @@ it does not carry the station's calls yet.**
   "listen_address":  "0.0.0.0:1994",
   "allowed_routers": ["192.0.2.4"],
   "record_dir":      "/var/lib/qsp/quantar",
-  "site":            2
+  "site":            2,
+  "present_as":      "repeater"
 }
 ```
 
 `allowed_routers` are router addresses; empty accepts any router that can reach
 the port. `record_dir` is optional: when set, every frame in both directions is
 written there as text, one file per connection. `site` is the site number QSP
-introduces itself with, 1 to 127; empty uses 2, and it must not be the
-station's own. A connection silent for 30
+introduces itself with, 1 to 127, and it must not be the station's own.
+`present_as` is what QSP tells the station it is: `"repeater"` (the default, a
+second Quantar, site 2 unless set) or `"console"` (a Motorola console
+interface, site 13 unless set). A station set for repeater-to-repeater linking
+expects a repeater; try the other if the link does not come up. A connection silent for 30
 seconds is closed, and a new connection from the same router replaces the old.
 Changing any of these needs a restart.
 

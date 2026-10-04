@@ -62,6 +62,7 @@
   var quantarListen = document.getElementById("quantar-listen");
   var quantarRecord = document.getElementById("quantar-record");
   var quantarSite = document.getElementById("quantar-site");
+  var quantarPresent = document.getElementById("quantar-present");
   var quantarAllowed = document.getElementById("quantar-allowed");
   var quantarEnabledState = document.getElementById("quantar-enabled-state");
   var quantarState = document.getElementById("quantar-state");
@@ -317,6 +318,7 @@
     quantarListen.value = quantar.listen_address || "";
     quantarRecord.value = quantar.record_dir || "";
     quantarSite.value = quantar.site ? String(quantar.site) : "";
+    quantarPresent.value = quantar.present_as === "console" ? "console" : "";
     quantarAllowed.value = (quantar.allowed_routers || []).join("\n");
     refreshQuantarState();
 
@@ -437,6 +439,7 @@
     next.quantar.listen_address = quantarListen.value.trim();
     next.quantar.record_dir = quantarRecord.value.trim();
     next.quantar.site = parseInt(quantarSite.value, 10) || 0;
+    next.quantar.present_as = quantarPresent.value;
     next.quantar.allowed_routers = quantarRouters();
     /* Supplied for the same reason as the P25 port above. */
     if (next.quantar.enabled && !next.quantar.listen_address) {

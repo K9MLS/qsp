@@ -152,6 +152,14 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.305 opens the link from both ends**: QSP sends its own link request
+until the station accepts it, and introduces itself only then; 0.1.304's
+introduction, sent on a link open one way, was ignored 65 times. **Present
+as** (`quantar.present_as`) switches QSP between the repeater form and the
+published console form without a build. **Unproven on the station.** The log
+lines to read, in order: "the station accepted QSP's link request", "QSP
+introduced itself", "the Quantar's link is up".
+
 **0.1.304 opens the Quantar's link**: the station's introduction is answered
 (`quantar.site`, 2 unless set) and Receive Ready goes out every two seconds.
 **Both are reasoned and unproven on the station**; the log line "the Quantar's
@@ -251,7 +259,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.304 | `cat VERSION` |
+| **Fedora working tree** | 0.1.305 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.301** from 2026-10-03, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

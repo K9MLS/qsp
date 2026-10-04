@@ -32,6 +32,10 @@ const writeTimeout = 5 * time.Second
 // chosen to fit twice inside it with room to spare.
 const KeepaliveInterval = 2 * time.Second
 
+// RequestInterval is how often QSP asks the station to open the link until it
+// does. It is the station's own interval, measured at 0.51 seconds.
+const RequestInterval = 500 * time.Millisecond
+
 // maxLoggedBytes bounds how much of one frame a log line carries. The record
 // file keeps all of it.
 const maxLoggedBytes = 64
@@ -46,9 +50,15 @@ type Config struct {
 	// RecordDir, when set, receives one text file per connection holding
 	// every frame in both directions. Empty records nothing.
 	RecordDir string
-	// Site is the site number QSP introduces itself with. Zero is
-	// DefaultSite.
+	// PresentAs names the Identity QSP presents: "repeater" or "console".
+	// Empty is "repeater".
+	PresentAs string
+	// Site is the site number QSP introduces itself with. Zero is the
+	// identity's own default.
 	Site uint8
+	// Request is how often QSP asks the station to open the link until it
+	// does. Zero is RequestInterval.
+	Request time.Duration
 	// Keepalive is how often Receive Ready is sent on an open link. Zero is
 	// KeepaliveInterval.
 	Keepalive time.Duration
@@ -66,6 +76,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("quantar: allowed router %q is not an address", r)
 		}
 	}
+	if _, ok := IdentityNamed(c.PresentAs); !ok {
+		return fmt.Errorf("quantar: %q is not \"repeater\" or \"console\"", c.PresentAs)
+	}
 	if c.Site > MaxSite {
 		return fmt.Errorf("quantar: site %d is beyond %d, the most an introduction can carry",
 			c.Site, MaxSite)
@@ -77,6 +90,7 @@ func (c Config) Validate() error {
 type Listener struct {
 	log *slog.Logger
 	cfg Config
+	id  Identity
 	now func() time.Time
 
 	allowed map[string]bool
@@ -108,8 +122,12 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	if l.now == nil {
 		l.now = time.Now
 	}
+	l.id, _ = IdentityNamed(cfg.PresentAs)
 	if l.cfg.Site == 0 {
-		l.cfg.Site = DefaultSite
+		l.cfg.Site = l.id.DefaultSite
+	}
+	if l.cfg.Request <= 0 {
+		l.cfg.Request = RequestInterval
 	}
 	if l.cfg.Keepalive <= 0 {
 		l.cfg.Keepalive = KeepaliveInterval
@@ -164,6 +182,7 @@ func (l *Listener) Start(ctx context.Context) error {
 	l.log.Info("listening for a router's serial tunnel",
 		slog.String("address", ln.Addr().String()),
 		slog.Int("allowed_routers", len(l.allowed)),
+		slog.String("present_as", l.id.Name),
 		slog.Int("site", int(l.cfg.Site)),
 		slog.Bool("recording", l.cfg.RecordDir != ""))
 
@@ -276,57 +295,78 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 		return err
 	}
 
-	// The link's state, as the station's own frames report it.
+	// The link, as the station's own frames report it. Guarded by mu, because
+	// the timers below read it.
 	var (
-		state   = linkNone
-		address byte
-		group   byte
+		link     linkState
+		group    byte
+		groupSet bool // the group byte is copied from the router, never set
 	)
-	setState := func(next linkState) {
-		mu.Lock()
-		was := state
-		state = next
-		mu.Unlock()
-		if (was == linkUp) != (next == linkUp) {
-			if next == linkUp {
-				l.up.Add(1)
-			} else {
-				l.up.Add(-1)
-			}
+	countUp := func(was, is bool) {
+		switch {
+		case is && !was:
+			l.up.Add(1)
+		case was && !is:
+			l.up.Add(-1)
 		}
 	}
-	defer setState(linkNone)
+	defer func() {
+		mu.Lock()
+		was := link.up
+		link = linkState{}
+		mu.Unlock()
+		countUp(was, false)
+	}()
 
-	// The keepalive. It speaks only on a link the station has introduced
-	// itself on, and stops the moment the station asks again.
+	// Two timers: QSP's own link request until the station accepts it, and
+	// the keepalive once both ends have introduced themselves.
 	stop := make(chan struct{})
 	defer close(stop)
 	l.done.Add(1)
 	go func() {
 		defer l.done.Done()
-		tick := time.NewTicker(l.cfg.Keepalive)
-		defer tick.Stop()
+		request := time.NewTicker(l.cfg.Request)
+		defer request.Stop()
+		keepalive := time.NewTicker(l.cfg.Keepalive)
+		defer keepalive.Stop()
 		for {
 			select {
 			case <-stop:
 				return
 			case <-ctx.Done():
 				return
-			case <-tick.C:
-			}
-			mu.Lock()
-			open, a, g := state >= linkIntroduced, address, group
-			mu.Unlock()
-			if !open {
-				continue
-			}
-			if err := send(g, Keepalive(a)); err != nil {
-				return // the read loop reports the closed tunnel
+			case <-request.C:
+				mu.Lock()
+				due, g := groupSet && !link.ours, group
+				mu.Unlock()
+				if !due {
+					continue
+				}
+				if err := send(g, l.id.LinkRequest()); err != nil {
+					return // the read loop reports the closed tunnel
+				}
+			case <-keepalive.C:
+				mu.Lock()
+				due, g := link.introduced(), group
+				mu.Unlock()
+				if !due {
+					continue
+				}
+				if err := send(g, l.id.Keepalive()); err != nil {
+					return
+				}
 			}
 		}
 	}()
 
-	seen := make(map[string]bool) // one line per kind of frame, not per frame
+	said := make(map[string]bool) // each step of the link is logged once
+	once := func(key string) bool {
+		if said[key] {
+			return false
+		}
+		said[key] = true
+		return true
+	}
 	for {
 		if err := conn.SetReadDeadline(time.Now().Add(IdleTimeout)); err != nil {
 			log.Warn("the tunnel closed", slog.String("error", err.Error()))
@@ -352,8 +392,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 		mu.Unlock()
 
 		if f.Op != OpData {
-			if key := fmt.Sprintf("op %04x", uint16(f.Op)); !seen[key] {
-				seen[key] = true
+			if once(fmt.Sprintf("op %04x", uint16(f.Op))) {
 				log.Info("the router sent a tunnel message that is not serial data",
 					slog.String("type", fmt.Sprintf("%04x", uint16(f.Op))),
 					slog.Int("bytes", len(f.Payload)),
@@ -362,15 +401,14 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			continue
 		}
 
-		reply, kind := Answer(f.Payload, l.cfg.Site)
+		reply, kind := Answer(f.Payload)
 		if kind == KindUnknown {
 			l.unknown.Add(1)
 			key := "len 0"
 			if len(f.Payload) >= 2 {
 				key = fmt.Sprintf("control %02x len %d", f.Payload[1], len(f.Payload))
 			}
-			if !seen[key] {
-				seen[key] = true
+			if once(key) {
 				log.Info("the station sent a frame QSP does not answer yet",
 					slog.Int("bytes", len(f.Payload)),
 					slog.String("payload", clip(f.Payload)))
@@ -378,60 +416,112 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string) {
 			continue
 		}
 
-		// The state moves before the answer goes out, so a keepalive cannot
-		// follow a link request the station has just restarted with.
+		// The state moves before anything is sent, so a timer cannot speak
+		// for a link the station has just restarted.
 		mu.Lock()
-		was := state
-		address, group = f.Payload[0], f.Group
+		was := link
+		group, groupSet = f.Group, true
+		next, introduce := link.after(kind)
+		link = next
 		mu.Unlock()
-		switch kind {
-		case KindLinkRequest:
-			setState(linkAccepted)
-			switch {
-			case was == linkUp:
-				log.Warn("the link dropped: the station is asking to open it again")
-			case was == linkNone:
-				log.Info("the station asked for a link and was answered",
-					slog.String("request", clip(f.Payload)),
-					slog.String("answer", clip(reply)))
-			}
-		case KindIntroduction:
-			if was < linkIntroduced {
-				setState(linkIntroduced)
-				log.Info("the station introduced itself and was answered",
-					slog.Int("station_site", int(f.Payload[3]>>1)),
-					slog.String("station_type", fmt.Sprintf("%02x", f.Payload[4])),
-					slog.String("introduction", clip(f.Payload)),
-					slog.String("answer", clip(reply)))
-			}
-		case KindReceiveReady:
-			if was == linkIntroduced {
-				setState(linkUp)
-				log.Info("the Quantar's link is up",
-					slog.String("keepalive", clip(f.Payload)))
-			}
+		countUp(was.up, next.up)
+
+		switch {
+		case kind == KindLinkRequest && was.up:
+			log.Warn("the link dropped: the station is asking to open it again")
+		case kind == KindLinkRequest && once("request"):
+			log.Info("the station asked for a link and was answered",
+				slog.String("request", clip(f.Payload)),
+				slog.String("answer", clip(reply)))
+		case kind == KindAcceptance && !was.ours && once("acceptance"):
+			log.Info("the station accepted QSP's link request",
+				slog.String("acceptance", clip(f.Payload)))
+		case kind == KindIntroduction && once("introduction"):
+			log.Info("the station introduced itself",
+				slog.Int("station_site", int(f.Payload[3]>>1)),
+				slog.String("station_type", fmt.Sprintf("%02x", f.Payload[4])),
+				slog.String("introduction", clip(f.Payload)))
+		case next.up && !was.up:
+			log.Info("the Quantar's link is up", slog.String("keepalive", clip(f.Payload)))
 		}
 
-		if reply == nil {
-			continue
+		var out [][]byte
+		if reply != nil {
+			out = append(out, reply)
 		}
-		if err := send(f.Group, reply); err != nil {
-			log.Warn("the answer could not be sent", slog.String("error", err.Error()))
-			return
+		if kind == KindLinkRequest {
+			// Asked at once rather than on the next tick: the station gives
+			// an introduction a second and a half before starting again.
+			out = append(out, l.id.LinkRequest())
 		}
-		l.answered.Add(1)
+		if introduce {
+			intro := l.id.Introduction(l.cfg.Site)
+			out = append(out, intro)
+			if once("introduced") {
+				log.Info("QSP introduced itself", slog.String("introduction", clip(intro)))
+			}
+		}
+		for _, payload := range out {
+			if err := send(f.Group, payload); err != nil {
+				log.Warn("the answer could not be sent", slog.String("error", err.Error()))
+				return
+			}
+			l.answered.Add(1)
+		}
 	}
 }
 
-// linkState is how far a station has come in opening its link.
-type linkState int
+// linkState is how far the link has come. The link is opened from both ends,
+// so there is a flag for each end's request and each end's introduction.
+type linkState struct {
+	theirs bool // QSP accepted the station's request
+	ours   bool // the station accepted QSP's
+	heard  bool // the station has introduced itself
+	said   bool // QSP has introduced itself
+	up     bool // and the station's keepalive has been heard since
+}
 
-const (
-	linkNone       linkState = iota // nothing heard, or the tunnel just opened
-	linkAccepted                    // its link request was accepted
-	linkIntroduced                  // it introduced itself and was answered
-	linkUp                          // its keepalive has been heard since
-)
+// introduced reports a link on which both ends have said what they are, which
+// is when keepalives are owed.
+func (s linkState) introduced() bool { return s.heard && s.said }
+
+// after returns the state a station's frame leaves the link in, and whether
+// QSP owes its introduction now.
+//
+// **QSP introduces itself only on a link open from both ends**, in answer to
+// the station's introduction — whichever of the two arrives last. An
+// introduction sent on a half-open link is what the station ignored.
+func (s linkState) after(kind Kind) (linkState, bool) {
+	switch kind {
+	case KindLinkRequest:
+		// The station has started again, and so does everything.
+		return linkState{theirs: true}, false
+	case KindAcceptance:
+		if s.ours {
+			return s, false
+		}
+		s.ours = true
+		// Its introduction came first and was held; it is owed now.
+		if s.theirs && s.heard && !s.said {
+			s.said = true
+			return s, true
+		}
+	case KindIntroduction:
+		s.heard = true
+		// Answered every time it is sent: a station repeating itself did not
+		// take the last answer, and saying nothing would be a third way to
+		// be ignored.
+		if s.theirs && s.ours {
+			s.said = true
+			return s, true
+		}
+	case KindReceiveReady:
+		if s.introduced() {
+			s.up = true
+		}
+	}
+	return s, false
+}
 
 func clip(b []byte) string {
 	if len(b) > maxLoggedBytes {

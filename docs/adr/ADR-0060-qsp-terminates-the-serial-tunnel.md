@@ -132,6 +132,18 @@ reasoned, not captured**: the published reply is from a console interface and
 uses another address and type, and the published limit is five seconds with no
 interval given. Whether the station accepts either is the next thing to read.
 
+**0.1.304 was ignored, and 0.1.305 opens the link from both ends.** The
+station repeated its introduction as though QSP's had not arrived, 65 times
+(`testdata/quantar/stun-introduction-ignored.bin`). The published account says
+a station whose request is accepted "sends a single UA frame back"; this
+station never has, and a UA answers only a request — so the far end in that
+account was asking too. QSP now sends its own link request, in the station's
+form, until the station accepts it, and introduces itself only once both ends
+are open. **This is an inference from one sentence and one silence.** The
+alternative it leaves is that the introduction's form was wrong, so the other
+form on record — a console interface: address `0B`, type `00`, site 13 — is a
+setting, `quantar.present_as`, and not a build.
+
 **Audio is king, and nothing here touches it.** Voice frames are recorded whole
 and answered with nothing. When they are carried, the IMBE inside them is
 copied, never decoded (ADR-0034).
