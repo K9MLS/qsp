@@ -116,6 +116,9 @@ type Call struct {
 	// Marked reports that the repeater closed the transmission itself. False
 	// is a transmission that went quiet and was closed by CallTimeout.
 	Marked bool
+	// Carried reports that the transmission had the floor and was relayed.
+	// False is one heard while another station was talking.
+	Carried bool
 
 	last time.Time
 	lc   linkControl

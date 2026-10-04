@@ -73,8 +73,14 @@
       rows +=
         '<tr><td>' + escapeText(when(c.started)) + "</td>" +
         "<td>" + who + "</td>" +
-        "<td>" + (c.group ? "TG " : "to ") + c.target + "</td>" +
-        "<td>TS" + c.timeslot + "</td>" +
+        "<td>" + (c.group ? "TG " : "to ") + c.target +
+          /* Where a P25 call came into QSP, and that it was heard and not
+           * relayed when another station had the turn. */
+          (c.via ? ' <span class="record__id">via ' + escapeText(c.via) + "</span>" : "") +
+          (c.not_carried ? ' <span class="record__id">(not carried)</span>' : "") + "</td>" +
+        /* P25 has no timeslots, so its rows say the mode where a DMR row
+         * says the slot. */
+        "<td>" + (c.timeslot ? "TS" + c.timeslot : escapeText(c.mode || "\u2014")) + "</td>" +
         "<td>" + (c.voice ? seconds(c.seconds) : "text") + "</td>" +
         "<td>" + escapeText(c.end_reason || "") + "</td></tr>";
     }

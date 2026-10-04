@@ -17,6 +17,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/k9mls/qsp/internal/p25calls"
 	"github.com/k9mls/qsp/internal/p25link"
 )
 
@@ -73,6 +74,9 @@ type Config struct {
 	// ahead of a gateway's call. Off, a call is sent with a start marker and
 	// no header.
 	SendHeader bool
+	// Calls, when set, is told of every transmission a repeater makes, for
+	// Last heard and the record. Nil keeps none.
+	Calls *p25calls.Tracker
 	// Floor is shared with the gateway listener so that one call at a time
 	// crosses between the two. Nil is a floor of this listener's own, so
 	// repeaters still take turns among themselves.
@@ -420,9 +424,31 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 	}()
 	log.Info("a router's tunnel connected")
 
+	// asRecord is the transmission as Last heard and the record keep it.
+	asRecord := func(c *Call) p25calls.Call {
+		st.mu.Lock()
+		via := "Motorola repeater"
+		if st.view.Introduced {
+			via = fmt.Sprintf("%s, site %d", StationTypeName(st.view.StationType), st.view.Site)
+		}
+		st.mu.Unlock()
+		return p25calls.Call{
+			Started:   c.Started,
+			Ended:     c.Ended,
+			Source:    c.SourceID,
+			Talkgroup: c.Talkgroup,
+			Frames:    int(c.Frames),
+			ViaKind:   p25calls.ViaRepeater,
+			Via:       via,
+			Carried:   c.Carried,
+		}
+	}
 	// finish records a transmission that is over.
-	finish := func(c *Call) {
+	finish := func(c *Call, reason p25calls.EndReason) {
 		l.calls.Add(1)
+		done := asRecord(c)
+		done.EndReason = reason
+		l.cfg.Calls.Finished(st.holder, done, c.Ended)
 		closed := "by the repeater"
 		if !c.Marked {
 			closed = "it went quiet"
@@ -448,7 +474,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		st.view.Calls++
 		st.mu.Unlock()
 		l.endRelay(st)
-		finish(c)
+		finish(c, p25calls.EndQuiet)
 	}
 	defer func() {
 		// The tunnel is gone and so is whatever was being said through it.
@@ -459,7 +485,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		l.endRelay(st)
 		if c != nil {
 			c.Ended = c.last
-			finish(c)
+			finish(c, p25calls.EndLinkClosed)
 		}
 	}()
 
@@ -649,7 +675,24 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 				log.Debug("a transmission began")
 			}
 			if finished != nil {
-				finish(finished)
+				reason := p25calls.EndMarked
+				if !finished.Marked {
+					// A start interrupted it; its own end never came.
+					reason = p25calls.EndQuiet
+				}
+				finish(finished, reason)
+			}
+			// After the relay has decided whether it is carried, so the row
+			// Last heard draws says so from its first frame.
+			st.mu.Lock()
+			var live *Call
+			if st.call != nil {
+				copied := *st.call
+				live = &copied
+			}
+			st.mu.Unlock()
+			if live != nil {
+				l.cfg.Calls.Heard(st.holder, asRecord(live))
 			}
 			continue
 		}

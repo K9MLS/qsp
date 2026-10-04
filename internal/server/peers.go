@@ -297,7 +297,22 @@ type CallView struct {
 	// Group reports a group call rather than a private one.
 	Group bool `json:"group"`
 	// Timeslot is 1 or 2.
-	Timeslot int `json:"timeslot"`
+	//
+	// **Absent for a P25 call, which has none.** P25 is one channel, not two
+	// slots, and printing TS0 or TS1 for it would be a statement about a
+	// thing that does not exist. A DMR timeslot is 1 or 2 and never zero, so
+	// zero is free to mean "no timeslot" and is left out of the payload.
+	Timeslot int `json:"timeslot,omitempty"`
+	// Mode is "DMR" or "P25", **and is set only on a server running both**.
+	// A network with one mode has nothing to tell apart, and a column saying
+	// the same word on every row is noise.
+	Mode string `json:"mode,omitempty"`
+	// Via is where a P25 call came into QSP: a Motorola repeater by type and
+	// site, or a gateway by the callsign it announced.
+	Via string `json:"via,omitempty"`
+	// NotCarried reports a P25 call that was heard and not relayed, because
+	// another station was talking when it began.
+	NotCarried bool `json:"not_carried,omitempty"`
 	// Duration is how long the call ran, or has been running.
 	Duration string `json:"duration"`
 	// Ago is how long since it ended. Empty while in progress.
@@ -467,6 +482,31 @@ type MapSettings struct {
 	MaxZoom int `json:"max_zoom,omitempty"`
 }
 
+// tagModes names the mode of every call when the server runs more than one,
+// and of none when it runs one.
+//
+// It is called with the DMR calls already in body and the P25 calls about to
+// be added. A server with only P25 has no DMR listener and so nothing in body
+// to tell P25 apart from; a server with only DMR never reaches here.
+func tagModes(body *peersResponse, dmr bool, p25Active, p25Recent []CallView) {
+	mode := ""
+	if dmr {
+		mode = "P25"
+		for i := range body.Active {
+			body.Active[i].Mode = "DMR"
+		}
+		for i := range body.Recent {
+			body.Recent[i].Mode = "DMR"
+		}
+	}
+	for i := range p25Active {
+		p25Active[i].Mode = mode
+	}
+	for i := range p25Recent {
+		p25Recent[i].Mode = mode
+	}
+}
+
 // handlePeers serves the current peer list.
 //
 // It is read-only. QSP exposes no endpoint that changes state until
@@ -487,56 +527,67 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		body.Refused = r.LoginFailures(now)
 	}
 
+	// **A server without DMR is not a server with nothing to show.** This
+	// returned here when the DMR listener was off, before P25 was ever
+	// looked at, so a network running only P25 had an Overview that said
+	// "the DMR listener is not enabled" and nothing else.
+	_, signedIn := s.session(r)
 	if s.opts.Peers == nil {
 		body.Reason = s.opts.PeersDisabledReason
 		if body.Reason == "" {
 			body.Reason = "the DMR listener is not enabled"
 		}
-		writeJSON(w, s.log, http.StatusOK, body)
-		return
+	} else {
+		body.Enabled = true
+		// **An address is not something a peer announced.** /api/peers is
+		// deliberately unauthenticated: it describes stations that chose to
+		// announce themselves on a network their operators joined, which is what
+		// makes the callsign, the location and the talkgroups fair to publish. The
+		// address is not that. It is an artefact of the connection, observed by
+		// this server, and it is a member's home internet connection together with
+		// the fact that they are online right now.
+		//
+		// A callsign already leads to a name through the licence database. What an
+		// address adds is precise and actionable: where to aim traffic to put one
+		// member off the air during a net. An operator diagnosing a peer is signed
+		// in anyway.
+		body.Forwarding = s.Forwarding()
+		body.Map = s.MapSettings()
+		body.Peers = append(body.Peers, s.opts.Peers.PeerViews(now)...)
+		body.Traffic = s.opts.Peers.Traffic()
+		active, recent := s.opts.Peers.CallViews(now)
+		body.Active = append(body.Active, active...)
+		body.Recent = append(body.Recent, recent...)
+
+		// Motorola repeaters, when that listener is running. They are appended
+		// rather than replacing anything, and Traffic is deliberately left as the
+		// DMR listener's: it is a documented set of counters for one socket, and
+		// summing two sockets into it would change what an existing number means
+		// without saying so. The IPSC listener's counters are in /healthz.
+		if s.opts.IPSCPeers != nil {
+			// The Motorola listener's own figures, kept beside the DMR listener's
+			// rather than folded into them.
+			body.Traffic.IPSC = s.opts.IPSCPeers.Traffic().IPSC
+			body.Peers = append(body.Peers, s.opts.IPSCPeers.PeerViews(now)...)
+			a, r := s.opts.IPSCPeers.CallViews(now)
+			body.Active = append(body.Active, a...)
+			body.Recent = append(body.Recent, r...)
+		}
+
+		// The P25 gateways, on the same terms as IPSC: kept beside the DMR
+		// listener's counters rather than folded into them.
 	}
 
-	body.Enabled = true
-	// **An address is not something a peer announced.** /api/peers is
-	// deliberately unauthenticated: it describes stations that chose to
-	// announce themselves on a network their operators joined, which is what
-	// makes the callsign, the location and the talkgroups fair to publish. The
-	// address is not that. It is an artefact of the connection, observed by
-	// this server, and it is a member's home internet connection together with
-	// the fact that they are online right now.
-	//
-	// A callsign already leads to a name through the licence database. What an
-	// address adds is precise and actionable: where to aim traffic to put one
-	// member off the air during a net. An operator diagnosing a peer is signed
-	// in anyway.
-	_, signedIn := s.session(r)
-	body.Forwarding = s.Forwarding()
-	body.Map = s.MapSettings()
-	body.Peers = append(body.Peers, s.opts.Peers.PeerViews(now)...)
-	body.Traffic = s.opts.Peers.Traffic()
-	active, recent := s.opts.Peers.CallViews(now)
-	body.Active = append(body.Active, active...)
-	body.Recent = append(body.Recent, recent...)
-
-	// Motorola repeaters, when that listener is running. They are appended
-	// rather than replacing anything, and Traffic is deliberately left as the
-	// DMR listener's: it is a documented set of counters for one socket, and
-	// summing two sockets into it would change what an existing number means
-	// without saying so. The IPSC listener's counters are in /healthz.
-	if s.opts.IPSCPeers != nil {
-		// The Motorola listener's own figures, kept beside the DMR listener's
-		// rather than folded into them.
-		body.Traffic.IPSC = s.opts.IPSCPeers.Traffic().IPSC
-		body.Peers = append(body.Peers, s.opts.IPSCPeers.PeerViews(now)...)
-		a, r := s.opts.IPSCPeers.CallViews(now)
-		body.Active = append(body.Active, a...)
-		body.Recent = append(body.Recent, r...)
-	}
-
-	// The P25 gateways, on the same terms as IPSC: kept beside the DMR
-	// listener's counters rather than folded into them.
 	if s.opts.P25Gateways != nil {
 		body.Traffic.P25 = s.opts.P25Gateways.Traffic().P25
+		// **Appended, and this is not the duplication the IPSC adapter was
+		// told off for.** That adapter's calls were already in the DMR
+		// tracker, so appending them drew each one twice. A P25 call is in no
+		// other tracker: one event, one record, from one source (ADR-0059).
+		a, r := s.opts.P25Gateways.CallViews(now)
+		tagModes(&body, s.opts.Peers != nil, a, r)
+		body.Active = append(body.Active, a...)
+		body.Recent = append(body.Recent, r...)
 	}
 
 	if !signedIn {

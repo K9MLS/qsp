@@ -33,6 +33,7 @@ import (
 	"github.com/k9mls/qsp/internal/ipscbridge"
 	"github.com/k9mls/qsp/internal/ipsclink"
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/p25calls"
 	"github.com/k9mls/qsp/internal/p25link"
 	"github.com/k9mls/qsp/internal/parrot"
 	"github.com/k9mls/qsp/internal/peers"
@@ -63,10 +64,15 @@ type app struct {
 	audit     audit.Recorder
 	secrets   *secrets.Store
 	callStore *calls.Store
-	srv       *server.Server
-	dmr       *peers.Listener
-	ipsc      *ipsclink.Listener
-	p25       *p25link.Listener
+	// p25Calls is the record of P25 transmissions, kept beside the DMR one
+	// (ADR-0059). p25Store is nil without a database; the tracker is always
+	// there, so Last heard works with nothing persisted.
+	p25Calls *p25calls.Tracker
+	p25Store *p25calls.Store
+	srv      *server.Server
+	dmr      *peers.Listener
+	ipsc     *ipsclink.Listener
+	p25      *p25link.Listener
 	// repeaters links Motorola P25 repeaters over V.24, through a router's
 	// serial tunnel (ADR-0060). Nil when off.
 	repeaters *v24link.Listener
@@ -189,7 +195,16 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		} else {
 			log.Info("call history is not kept; set dmr.calls.retain to keep one")
 		}
+
+		// **One retention setting for both records.** A club that keeps a
+		// month of who was on the network means a month of it, whichever mode
+		// they keyed up in; a second setting would be a second thing to get
+		// out of step.
+		a.p25Store = p25calls.NewStore(db.SQL(), cfg.DMR.Calls.Retain.AsDuration())
+		pruneCallsAtStart(ctx, a.p25Store, log, time.Now().UTC())
 	}
+
+	a.p25Calls = newP25Calls(ctx, a.p25Store, a.bus, log)
 
 	// **Before anything that reads it.** This was built after the console's
 	// view source captured a.names, so the view held nil, no radio ID was ever
@@ -616,6 +631,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Site:           cfg.P25Repeaters.Site,
 			PresentAs:      cfg.P25Repeaters.PresentAs,
 			SendHeader:     cfg.P25Repeaters.SendHeader,
+			Calls:          a.p25Calls,
 			Floor:          p25Floor,
 		}
 		if cfg.P25.Enabled {
@@ -638,6 +654,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			ListenAddress:    cfg.P25.ListenAddress,
 			Callsign:         cfg.P25.Callsign,
 			AllowedCallsigns: cfg.P25.AllowedCallsigns,
+			Calls:            a.p25Calls,
 			Floor:            p25Floor,
 			Repeaters:        repeaterSink(a.repeaters),
 		})
@@ -899,7 +916,8 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		Peers:               peerSource,
 		PeersDisabledReason: dmrDisabledReason,
 		IPSCPeers:           ipscPeerSource(a.ipsc, a.names),
-		P25Gateways:         p25Source(a.p25, a.repeaters),
+		P25Gateways:         p25Source(a.p25, a.repeaters, a.p25Calls, func(id uint32) string { return resolve(id, gateways, a.names) }),
+		P25Calls:            p25History(a.p25Store),
 		Forwarding:          cfg.DMR.Enabled && cfg.DMR.Forwarding,
 		Auth:                authService,
 		// The first administrator comes from the setup page (ADR-0056) and
@@ -1236,6 +1254,8 @@ func (a *app) pruneCalls(ctx context.Context) {
 	if a.callStore == nil || !a.callStore.Enabled() {
 		return
 	}
+	// The P25 record shares the DMR one's retention, so it is pruned on the
+	// same tick and exists whenever that one does.
 	ticker := time.NewTicker(callPruneInterval)
 	defer ticker.Stop()
 	for {
@@ -1250,6 +1270,11 @@ func (a *app) pruneCalls(ctx context.Context) {
 			}
 			if n > 0 {
 				a.log.Debug("pruned the call history", slog.Int64("removed", n))
+			}
+			if n, err := a.p25Store.Prune(ctx, time.Now().UTC()); err != nil {
+				a.log.Warn("cannot prune the P25 call history", slog.String("error", err.Error()))
+			} else if n > 0 {
+				a.log.Debug("pruned the P25 call history", slog.Int64("removed", n))
 			}
 		}
 	}
@@ -1660,6 +1685,10 @@ type p25GatewaySource struct {
 	// link. Either may be nil; both are P25, so both report in one place.
 	listener  *p25link.Listener
 	repeaters *v24link.Listener
+	// calls is the P25 record both report to, and name resolves a radio ID
+	// to a callsign. Either may be nil.
+	calls *p25calls.Tracker
+	name  func(uint32) string
 }
 
 // gatewaysWhenBuilt is the gateway listener as the repeater link sees it,
@@ -1698,17 +1727,118 @@ func repeaterSink(l *v24link.Listener) p25link.RepeaterSink {
 // pointer**: a typed nil inside an interface is non-nil at the call site, which
 // would make the console show an empty P25 panel on a server that is not
 // running P25 at all.
-func p25Source(l *p25link.Listener, r *v24link.Listener) server.PeerSource {
+func p25Source(l *p25link.Listener, r *v24link.Listener, calls *p25calls.Tracker, name func(uint32) string) server.PeerSource {
 	if l == nil && r == nil {
 		return nil
 	}
-	return p25GatewaySource{listener: l, repeaters: r}
+	return p25GatewaySource{listener: l, repeaters: r, calls: calls, name: name}
 }
 
 func (p p25GatewaySource) PeerViews(time.Time) []server.PeerView { return nil }
 
-func (p p25GatewaySource) CallViews(time.Time) (active, recent []server.CallView) {
-	return nil, nil
+// CallViews is the P25 calls for Last heard: the ones in progress and the
+// last few finished. **This is where ADR-0059 arrives.** The server appends
+// them to the DMR calls; nothing here is in the DMR tracker, so nothing is
+// drawn twice.
+func (p p25GatewaySource) CallViews(now time.Time) (active, recent []server.CallView) {
+	live, done := p.calls.Snapshot()
+	for _, c := range live {
+		active = append(active, p.callView(c, now))
+	}
+	for _, c := range done {
+		v := p.callView(c, now)
+		v.Ago = now.Sub(c.Ended).Truncate(time.Second).String()
+		v.EndedAt = c.Ended.UTC()
+		recent = append(recent, v)
+	}
+	return active, recent
+}
+
+// callView is one P25 call as the console draws it.
+//
+// **No timeslot is set, and that is the point**: the field is left at zero,
+// which the payload omits, because P25 has none. Always a group call and
+// always voice, because that is all a repeater or a gateway has been heard to
+// carry. The mode is left for the server to name, which knows whether there
+// is a second mode to tell it from.
+func (p p25GatewaySource) callView(c p25calls.Call, now time.Time) server.CallView {
+	v := server.CallView{
+		Source:     c.Source,
+		Target:     uint32(c.Talkgroup),
+		Group:      true,
+		Duration:   c.Duration(now).Truncate(10 * time.Millisecond).String(),
+		Frames:     c.Frames,
+		Voice:      true,
+		Lost:       c.EndReason == p25calls.EndQuiet,
+		Via:        c.Via,
+		NotCarried: !c.Carried,
+	}
+	if p.name != nil && c.Source != 0 {
+		v.SourceName = p.name(c.Source)
+	}
+	return v
+}
+
+// p25History returns nil when no P25 record is kept. A nil interface, not a
+// nil pointer, for the reason p25Source gives.
+func p25History(store *p25calls.Store) server.P25CallHistory {
+	if store == nil {
+		return nil
+	}
+	return store
+}
+
+// newP25Calls builds the P25 call tracker: seeded from the record so Last
+// heard is not empty after a restart, storing each finished call, and telling
+// the console when one begins and ends.
+//
+// The tracker exists whether or not there is a database. Without one, calls
+// are kept in memory and gone at the next restart, which is what Last heard
+// was for DMR before it had a record.
+func newP25Calls(ctx context.Context, store *p25calls.Store, bus *events.Bus, log *slog.Logger) *p25calls.Tracker {
+	publish := func(t events.Type, c p25calls.Call) {
+		if bus == nil {
+			return
+		}
+		bus.Publish(t, map[string]any{
+			"mode":       "p25",
+			"source":     c.Source,
+			"target":     c.Talkgroup,
+			"group":      true,
+			"via":        c.Via,
+			"frames":     c.Frames,
+			"end_reason": string(c.EndReason),
+		})
+	}
+	tracker := p25calls.NewTracker(p25calls.Options{
+		OnStart: func(c p25calls.Call) { publish(events.TypeCallStarted, c) },
+		OnEnd: func(c p25calls.Call) {
+			publish(events.TypeCallEnded, c)
+			if !store.Enabled() {
+				return
+			}
+			// Bounded, and on the listener's own goroutine, as the DMR record
+			// is written: a call is a few dozen bytes and a database that
+			// cannot take them in two seconds has a larger problem.
+			sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := store.Record(sctx, c); err != nil {
+				log.Warn("cannot record a P25 call in the history",
+					slog.Uint64("source", uint64(c.Source)), slog.String("error", err.Error()))
+			}
+		},
+	})
+	if store.Enabled() {
+		recent, err := store.Since(ctx, time.Now().UTC().Add(-24*time.Hour), p25calls.DefaultHistory)
+		switch {
+		case err != nil:
+			log.Warn("cannot seed P25 last heard from the record", slog.String("error", err.Error()))
+		case len(recent) > 0:
+			tracker.Seed(recent)
+			log.Info("P25 last heard seeded from the record", slog.Int("calls", len(recent)))
+		}
+	}
+	return tracker
 }
 
 func (p p25GatewaySource) Traffic() server.Traffic {

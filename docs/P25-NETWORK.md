@@ -50,9 +50,9 @@ network with zero audio processing, which nothing free offers today.
 | Deduplication | yes | no |
 | Server-to-server links | yes | **no** |
 | Bridges | yes | no |
-| Call tracker and Last heard | yes | **no** ([ADR-0059](adr/ADR-0059-p25-in-last-heard.md)) |
+| Call tracker and Last heard | yes | yes, a tracker of its own ([ADR-0059](adr/ADR-0059-p25-in-last-heard.md)) |
 | Contention | per timeslot | **undefined** |
-| History | yes | no |
+| History | yes | yes, `p25_calls`, on the DMR record's retention |
 | Parrot | yes | yes |
 
 The Quantar is one row of that table. Everything else is the network, and none
@@ -166,9 +166,10 @@ with evidence rather than in anticipation.
    hardware.** Worth doing whatever is decided about the rest.
 2. **Answer §4 on paper.** What identifies a P25 transmission, and what that
    identifier means at the far end of a link.
-3. **An ADR for the mode-agnostic key**, answering
-   [ADR-0059](adr/ADR-0059-p25-in-last-heard.md) and the link question
-   together, because they are the same problem and should not be decided
+3. **An ADR for the mode-agnostic key**, answering the link question.
+   [ADR-0059](adr/ADR-0059-p25-in-last-heard.md) was decided on its own in
+   0.1.309, by a second tracker, and no longer waits on this. It was once
+   proposed that the two be answered together, because they are the same problem and should not be decided
    twice. This is the change most likely to break something audible: it touches
    `calls.Key` and `routing.Endpoint`, including the contention and text-merge
    logic that has produced several of this project's worst defects, on a server

@@ -35,7 +35,7 @@ func TestTheP25RowReportsWhicheverListenersRun(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			src := p25Source(tc.gateways, tc.repeaters)
+			src := p25Source(tc.gateways, tc.repeaters, nil, nil)
 			if (src != nil) != tc.present {
 				t.Fatalf("source present is %v", src != nil)
 			}

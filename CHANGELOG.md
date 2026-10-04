@@ -6,6 +6,24 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **P25 calls are in Last heard, and in the record.** Calls through Motorola
+  repeaters and through P25 hotspots appear on the Overview beside DMR calls,
+  live while in progress: the radio, the talkgroup, and where the call came
+  in — "via Quantar, site 1" or a hotspot's callsign. They are kept in the
+  database for as long as the call record is kept (the **Keep for** setting
+  on the Network page), survive a restart, and are on the Record page. A call that lost its turn to another
+  station is marked **not carried**. **A network running one mode sees no
+  difference**: the mode is named on a row only when the server runs both DMR
+  and P25, and the Slot column is hidden when no call has a timeslot, which
+  P25 does not. ADR-0059, decided.
+- **A server running P25 without DMR shows its traffic.** The Overview said
+  only "the DMR listener is not enabled", with the P25 gateways, repeaters and
+  calls nowhere on it.
+- A hotspot's call is logged when it ends: frames, how many were sent to
+  repeaters, how many were not carried.
+- **Upgrading adds a database table, and that changes rollback.** The previous
+  version will not start against the upgraded database. Copy the database
+  aside before upgrading; to go back, restore it along with the old binary.
 - **Calls from P25 hotspots and gateways go to Motorola repeaters.** A
   gateway's call is sent to every linked repeater to transmit, audio
   untouched, and ended there even if the gateway stops without saying so.
@@ -32,8 +50,8 @@ All notable changes to QSP. Dates are UTC.
   and end — and the Overview's P25 row counts the voice frames and names the
   repeater, whether its link is open, and the last radio and talkgroup heard.
   Each call is logged when it ends, with its length. The health page gains
-  **p25-repeaters**. **Calls are not relayed yet, and are not in Last heard**,
-  which is ADR-0059's decision.
+  **p25-repeaters**. At that version calls were not relayed and were not in
+  Last heard; both came later, in the entries above this one.
 - **Renamed from Quantar to Motorola P25 repeaters.** The interface is V.24,
   which a GTR 8000 has too; only a Quantar has been tried. The Network panel,
   the log and the documents say so, and the setting is `p25_repeaters`. A

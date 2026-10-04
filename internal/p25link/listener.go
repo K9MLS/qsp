@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/logging"
+	"github.com/k9mls/qsp/internal/p25calls"
 	"github.com/k9mls/qsp/internal/protocol/p25"
 )
 
@@ -69,6 +70,9 @@ type Config struct {
 	// Repeaters, when set, is sent every voice frame of a gateway's call that
 	// is carried, and its end, for the Motorola repeaters to transmit.
 	Repeaters RepeaterSink
+	// Calls, when set, is told of every transmission a gateway makes, for
+	// Last heard and the record. Nil keeps none.
+	Calls *p25calls.Tracker
 	// Floor, when set, is shared with the Motorola repeater link so that one
 	// call at a time crosses between the two. Nil is a listener with nothing
 	// to take turns with, which behaves as it always has.
@@ -107,6 +111,21 @@ type Gateway struct {
 	Polls  uint64
 	Frames uint64
 	Sent   uint64
+
+	// call is the transmission this gateway is sending now, or nil. A
+	// gateway's own frames say when one begins and its terminator when it
+	// ends; nothing identifies it in between, so the gateway is the key.
+	call *gatewayCall
+}
+
+// gatewayCall is one transmission from a gateway, as it is being heard.
+type gatewayCall struct {
+	p25calls.Call
+	last time.Time
+	// toRepeaters is frames sent on to Motorola repeaters, counted once for
+	// each repeater reached, and held frames not carried at all.
+	toRepeaters int
+	held        int
 }
 
 // Listener serves P25 gateways.

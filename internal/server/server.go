@@ -54,6 +54,9 @@ type Options struct {
 	// Calls reads the record of completed transmissions. Nil means none is
 	// kept, which is different from a quiet network.
 	Calls CallHistory
+	// P25Calls reads the record of completed P25 transmissions, which is kept
+	// beside the DMR one and not in it (ADR-0059). Nil means none is kept.
+	P25Calls P25CallHistory
 	// Callsign resolves a radio ID to a display name. Nil leaves the record
 	// showing numbers, which is honest and less useful.
 	Callsign func(uint32) string

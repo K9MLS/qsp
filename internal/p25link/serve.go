@@ -7,6 +7,7 @@ import (
 	"net"
 	"time"
 
+	"github.com/k9mls/qsp/internal/p25calls"
 	"github.com/k9mls/qsp/internal/protocol/p25"
 )
 
@@ -81,7 +82,10 @@ func (l *Listener) serve(ctx context.Context) {
 
 // sweep forgets gateways that have stopped polling.
 func (l *Listener) sweep(ctx context.Context) {
-	t := time.NewTicker(PollInterval)
+	// Every second, not every poll interval: a call that stops without a
+	// terminator is closed here, and five seconds of a finished call drawn
+	// as live is five seconds of Last heard being wrong.
+	t := time.NewTicker(time.Second)
 	defer t.Stop()
 
 	for {
@@ -218,18 +222,54 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 	if carried && frame.EndsTransmission() {
 		l.floor.Release(GatewayFloor)
 	}
-	if !carried {
-		l.publish()
-		l.mu.Unlock()
-		l.held.Add(1)
-		return
+
+	// The call, for Last heard. A gateway's first voice frame begins one and
+	// its terminator ends it; what the tracker is told is collected here and
+	// said once the lock is released, because saying it can write to disk.
+	key := callKey(sender)
+	var heard, finished *gatewayCall
+	if frame.Voice() {
+		if sender.call == nil {
+			sender.call = &gatewayCall{Call: p25calls.Call{
+				Started: now,
+				ViaKind: p25calls.ViaGateway,
+				Via:     sender.Callsign,
+			}}
+		}
+		c := sender.call
+		c.last = now
+		c.Frames++
+		// **Read from this frame, not from the gateway's last known values**,
+		// which are the call before's until this one has said its own.
+		if tg, high, err := frame.Talkgroup(); err == nil && high == 0 {
+			c.Talkgroup = tg
+		}
+		if src, err := frame.SourceID(); err == nil {
+			c.Source = src
+		}
+		if carried {
+			c.Carried = true
+		} else {
+			c.held++
+		}
+		copied := *c
+		heard = &copied
+	} else if sender.call != nil {
+		finished = sender.call
+		finished.Ended, finished.EndReason = now, p25calls.EndMarked
+		sender.call = nil
 	}
 
-	targets := make([]*Gateway, 0, len(l.gateways))
-	for _, g := range l.gateways {
-		if g != sender && g.Address != nil {
-			targets = append(targets, g)
+	var targets []*Gateway
+	if carried {
+		targets = make([]*Gateway, 0, len(l.gateways))
+		for _, g := range l.gateways {
+			if g != sender && g.Address != nil {
+				targets = append(targets, g)
+			}
 		}
+	} else {
+		l.held.Add(1)
 	}
 	l.publish()
 	l.mu.Unlock()
@@ -237,11 +277,15 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 	// The repeaters get what the gateways get: the frame as it arrived, and
 	// the end of the call. They have their own way of saying each, and that
 	// is the repeater link's business.
-	if l.cfg.Repeaters != nil {
+	if carried && l.cfg.Repeaters != nil {
 		if frame.EndsTransmission() {
 			l.cfg.Repeaters.EndFromGateway()
-		} else {
-			l.cfg.Repeaters.FromGateway(raw)
+		} else if n := l.cfg.Repeaters.FromGateway(raw); n > 0 {
+			l.mu.Lock()
+			if sender.call != nil {
+				sender.call.toRepeaters += n
+			}
+			l.mu.Unlock()
 		}
 	}
 
@@ -254,16 +298,60 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 		g.Sent++
 		l.mu.Unlock()
 	}
+
+	if heard != nil {
+		l.cfg.Calls.Heard(key, heard.Call)
+	}
+	if finished != nil {
+		l.finishCall(key, finished)
+	}
+}
+
+// callKey names a gateway's call to the tracker. The address is in it because
+// the callsign is only what the gateway says it is, and two gateways may say
+// the same.
+func callKey(g *Gateway) string {
+	if g.Address == nil {
+		return "gateway " + g.Callsign
+	}
+	return "gateway " + g.Callsign + " " + g.Address.String()
+}
+
+// finishCall records a gateway's call that is over and says so in the log.
+// Called without the lock.
+func (l *Listener) finishCall(key string, c *gatewayCall) {
+	l.cfg.Calls.Finished(key, c.Call, c.Ended)
+	l.log.Info("a gateway's call ended",
+		"callsign", c.Via,
+		"talkgroup", c.Talkgroup,
+		"source", c.Source,
+		"seconds", c.Ended.Sub(c.Started).Round(100*time.Millisecond).Seconds(),
+		"voice_frames", c.Frames,
+		"sent_to_repeaters", c.toRepeaters,
+		"not_carried", c.held,
+		"closed", string(c.EndReason))
 }
 
 // expire forgets gateways that have stopped polling.
 func (l *Listener) expire(now time.Time) {
 	cutoff := PollInterval * MissedPollsBeforeGone
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	type ended struct {
+		key  string
+		call *gatewayCall
+	}
+	var done []ended
 
+	l.mu.Lock()
 	for key, g := range l.gateways {
+		// **A call that stopped without a terminator.** A lost datagram is
+		// all it takes, and without this the call is live in Last heard
+		// until the gateway keys again. It ended when it was last heard.
+		if c := g.call; c != nil && now.Sub(c.last) > FloorHold {
+			c.Ended, c.EndReason = c.last, p25calls.EndQuiet
+			done = append(done, ended{callKey(g), c})
+			g.call = nil
+		}
 		if now.Sub(g.LastPoll) <= cutoff {
 			continue
 		}
@@ -272,6 +360,11 @@ func (l *Listener) expire(now time.Time) {
 		delete(l.gateways, key)
 	}
 	l.publish()
+	l.mu.Unlock()
+
+	for _, e := range done {
+		l.finishCall(e.key, e.call)
+	}
 }
 
 // ExpireAt is expire, for the scheduler and for tests.

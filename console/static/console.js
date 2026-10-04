@@ -669,12 +669,136 @@
 
   var lastTraffic = null;
 
+  /* The P25 row and the lines under it, as markup.
+   *
+   * **Its own function since P25 could be the only mode.** It was drawn
+   * inside the DMR branch, so a server running P25 and no DMR showed "the
+   * DMR listener is not enabled" where its gateways and repeaters should
+   * have been. Both branches call this now. */
+  function p25Markup(p25) {
+    var html = "";
+    var p25In = (p25.polls || 0) + (p25.voice_frames || 0) + (p25.unparsed || 0);
+    html +=
+      '<div class="metrics-row">' +
+      '<div class="metrics-row__mode">P25</div>' +
+      metric(p25In, "datagrams in") +
+      metric(p25.voice_frames || 0, "voice frames",
+        (p25.voice_frames || 0) === 0 ? "metric--muted" : "") +
+      metric(p25.refused || 0, "refused",
+        (p25.refused || 0) > 0 ? "metric--warn" : "metric--muted") +
+      /* Unrecognised datagrams are expected in principle and are not a
+       * fault — three captures are not the whole protocol — so this is
+       * muted rather than amber, matching the health check's reasoning.
+       * Measured at zero against a live P25Gateway. */
+      metric(p25.unparsed || 0, "unparsed", "metric--muted") +
+      "</div>";
+
+    var gws = p25.gateways || [];
+    var p25Lines = [];
+
+    /* A refusal is named rather than counted: the IPSC listener reached
+     * 2,144 unnamed refusals before anybody could say which repeater. */
+    if ((p25.refused || 0) > 0 && p25.refused_last) {
+      p25Lines.push("Last refused: " + escapeText(p25.refused_last));
+    }
+
+    if (p25.gateways_off) {
+      /* The gateway listener is not running, so there is nothing to say
+       * about gateways: "none have linked yet" would describe a listener
+       * that is not there to be linked to. */
+    } else if (gws.length === 0) {
+      /* Not a fault, and the health check says the same: a reflector nobody
+       * has linked to is a working reflector waiting. */
+      p25Lines.push("No P25 gateways have linked yet");
+    } else {
+      gws.forEach(function (g) {
+        var bits = [escapeText(g.callsign || "an unnamed gateway")];
+        /* Talkgroup and source are omitted until traffic has been heard.
+         * Zero is not a talkgroup, and printing it would claim a decode
+         * that never happened. */
+        if (g.talkgroup) bits.push("TG " + g.talkgroup);
+        if (g.source_id) bits.push("last heard " + g.source_id);
+        bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
+        /* Withheld from a public view, so printed only when carried. */
+        if (g.address) bits.push(escapeText(g.address));
+        bits.push("polled " + g.last_poll_ago_seconds + "s ago");
+        return p25Lines.push(bits.join(", "));
+      });
+    }
+
+    /* Motorola repeaters, linked over V.24. One line each, built the way
+     * a gateway's is: what it is, whether its link is open, and the last
+     * radio heard through it once one has been. */
+    var reps = p25.repeaters || [];
+    if (reps.length > 0) {
+      /* The count first, because "is everything linked" is the question an
+       * administrator opens this page with, and with several repeaters it
+       * should not take reading every line to answer. */
+      var linked = reps.filter(function (r) { return r.up; }).length;
+      p25Lines.push(linked + " of " + reps.length + " Motorola " +
+        (reps.length === 1 ? "repeater" : "repeaters") + " linked");
+    }
+    reps.forEach(function (r) {
+      var bits = ["Motorola repeater" +
+        (r.type ? " (" + escapeText(r.type) + ")" : "") +
+        (r.site ? ", site " + r.site : "")];
+      bits.push(r.up ? "link up" : "link opening");
+      if (r.transmitting) bits.push("transmitting now");
+      /* Zero is not a talkgroup or a radio, so neither is printed until a
+       * transmission has said who it was. */
+      if (r.talkgroup) bits.push("TG " + r.talkgroup);
+      if (r.source_id) {
+        bits.push("last heard " + r.source_id +
+          (r.heard && !r.transmitting ? " " + r.last_heard_ago_seconds + "s ago" : ""));
+      }
+      bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
+      bits.push(r.frames + (r.frames === 1 ? " frame" : " frames") +
+        " heard, " + (r.relayed || 0) + " carried, " + (r.sent || 0) + " sent to it");
+      /* Withheld from a public view, so printed only when carried. */
+      if (r.router) bits.push("through " + escapeText(r.router));
+      p25Lines.push(bits.join(", "));
+    });
+
+    /* One call at a time crosses between gateways and repeaters. The ones
+     * that lost are said plainly and only when there are any: a count of
+     * zero is not news. */
+    if ((p25.held_calls || 0) > 0 || (p25.held_frames || 0) > 0) {
+      var lost = [];
+      if (p25.held_calls) {
+        lost.push(p25.held_calls + (p25.held_calls === 1 ? " repeater call" : " repeater calls"));
+      }
+      if (p25.held_frames) {
+        lost.push(p25.held_frames + (p25.held_frames === 1 ? " gateway frame" : " gateway frames"));
+      }
+      p25Lines.push("Not carried because another station was talking: " + lost.join(" and "));
+    }
+
+    /* **Neutral, not amber.** `.inline-note` alone is
+     * `var(--color-degraded)`, so the first version of this drew a gateway
+     * working perfectly in the warning colour. Every other amber thing on
+     * this page means something is wrong. */
+    if (p25Lines.length > 0) {
+      html +=
+        '<p class="inline-note inline-note--neutral">' +
+        p25Lines.join(". ") + ".</p>";
+    }
+    return html;
+  }
+
   function renderTraffic(payload) {
     if (!trafficBody) {
       return;
     }
     lastTraffic = payload;
     if (!payload.enabled) {
+      /* A server running P25 alone has traffic to show and no DMR row to
+       * show it under. */
+      var only = payload.traffic && payload.traffic.p25;
+      if (only) {
+        trafficNote.textContent = "since start";
+        trafficBody.innerHTML = p25Markup(only);
+        return;
+      }
       trafficNote.textContent = "disabled";
       trafficBody.innerHTML = emptyState(
         "The DMR listener is not enabled",
@@ -848,116 +972,14 @@
      * omits the object, so a server not running P25 says nothing about it
      * instead of showing zeroes. */
     if (p25) {
-      var p25In = (p25.polls || 0) + (p25.voice_frames || 0) + (p25.unparsed || 0);
-      trafficBody.innerHTML +=
-        '<div class="metrics-row">' +
-        '<div class="metrics-row__mode">P25</div>' +
-        metric(p25In, "datagrams in") +
-        metric(p25.voice_frames || 0, "voice frames",
-          (p25.voice_frames || 0) === 0 ? "metric--muted" : "") +
-        metric(p25.refused || 0, "refused",
-          (p25.refused || 0) > 0 ? "metric--warn" : "metric--muted") +
-        /* Unrecognised datagrams are expected in principle and are not a
-         * fault — three captures are not the whole protocol — so this is
-         * muted rather than amber, matching the health check's reasoning.
-         * Measured at zero against a live P25Gateway. */
-        metric(p25.unparsed || 0, "unparsed", "metric--muted") +
-        "</div>";
-
-      var gws = p25.gateways || [];
-      var p25Lines = [];
-
-      /* A refusal is named rather than counted: the IPSC listener reached
-       * 2,144 unnamed refusals before anybody could say which repeater. */
-      if ((p25.refused || 0) > 0 && p25.refused_last) {
-        p25Lines.push("Last refused: " + escapeText(p25.refused_last));
-      }
-
-      if (p25.gateways_off) {
-        /* The gateway listener is not running, so there is nothing to say
-         * about gateways: "none have linked yet" would describe a listener
-         * that is not there to be linked to. */
-      } else if (gws.length === 0) {
-        /* Not a fault, and the health check says the same: a reflector nobody
-         * has linked to is a working reflector waiting. */
-        p25Lines.push("No P25 gateways have linked yet");
-      } else {
-        gws.forEach(function (g) {
-          var bits = [escapeText(g.callsign || "an unnamed gateway")];
-          /* Talkgroup and source are omitted until traffic has been heard.
-           * Zero is not a talkgroup, and printing it would claim a decode
-           * that never happened. */
-          if (g.talkgroup) bits.push("TG " + g.talkgroup);
-          if (g.source_id) bits.push("last heard " + g.source_id);
-          bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
-          /* Withheld from a public view, so printed only when carried. */
-          if (g.address) bits.push(escapeText(g.address));
-          bits.push("polled " + g.last_poll_ago_seconds + "s ago");
-          return p25Lines.push(bits.join(", "));
-        });
-      }
-
-      /* Motorola repeaters, linked over V.24. One line each, built the way
-       * a gateway's is: what it is, whether its link is open, and the last
-       * radio heard through it once one has been. */
-      var reps = p25.repeaters || [];
-      if (reps.length > 0) {
-        /* The count first, because "is everything linked" is the question an
-         * administrator opens this page with, and with several repeaters it
-         * should not take reading every line to answer. */
-        var linked = reps.filter(function (r) { return r.up; }).length;
-        p25Lines.push(linked + " of " + reps.length + " Motorola " +
-          (reps.length === 1 ? "repeater" : "repeaters") + " linked");
-      }
-      reps.forEach(function (r) {
-        var bits = ["Motorola repeater" +
-          (r.type ? " (" + escapeText(r.type) + ")" : "") +
-          (r.site ? ", site " + r.site : "")];
-        bits.push(r.up ? "link up" : "link opening");
-        if (r.transmitting) bits.push("transmitting now");
-        /* Zero is not a talkgroup or a radio, so neither is printed until a
-         * transmission has said who it was. */
-        if (r.talkgroup) bits.push("TG " + r.talkgroup);
-        if (r.source_id) {
-          bits.push("last heard " + r.source_id +
-            (r.heard && !r.transmitting ? " " + r.last_heard_ago_seconds + "s ago" : ""));
-        }
-        bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
-        bits.push(r.frames + (r.frames === 1 ? " frame" : " frames") +
-          " heard, " + (r.relayed || 0) + " carried, " + (r.sent || 0) + " sent to it");
-        /* Withheld from a public view, so printed only when carried. */
-        if (r.router) bits.push("through " + escapeText(r.router));
-        p25Lines.push(bits.join(", "));
-      });
-
-      /* One call at a time crosses between gateways and repeaters. The ones
-       * that lost are said plainly and only when there are any: a count of
-       * zero is not news. */
-      if ((p25.held_calls || 0) > 0 || (p25.held_frames || 0) > 0) {
-        var lost = [];
-        if (p25.held_calls) {
-          lost.push(p25.held_calls + (p25.held_calls === 1 ? " repeater call" : " repeater calls"));
-        }
-        if (p25.held_frames) {
-          lost.push(p25.held_frames + (p25.held_frames === 1 ? " gateway frame" : " gateway frames"));
-        }
-        p25Lines.push("Not carried because another station was talking: " + lost.join(" and "));
-      }
-
-      /* **Neutral, not amber.** `.inline-note` alone is
-       * `var(--color-degraded)`, so the first version of this drew a gateway
-       * working perfectly in the warning colour. Every other amber thing on
-       * this page means something is wrong. */
-      if (p25Lines.length > 0) {
-        trafficBody.innerHTML +=
-          '<p class="inline-note inline-note--neutral">' +
-          p25Lines.join(". ") + ".</p>";
-      }
+      trafficBody.innerHTML += p25Markup(p25);
     }
 
   }
 
-  function callRow(call, live) {
+  /* showSlot is false when no call in the list has a timeslot, which is a
+   * network running P25 alone: the column would be a dash on every row. */
+  function callRow(call, live, showSlot) {
     /* The callsign when QSP knows it, with the number kept beside it: the
      * number is what somebody programmed into a radio and what they will search
      * for, and a callsign alone would make a list nobody can cross-reference. */
@@ -969,10 +991,21 @@
       ? '<span class="live-dot" aria-hidden="true"></span> ' + name
       : name;
 
+    /* A P25 call shorter than one voice unit ends before it has said who it
+     * is. Zero is "not said", and printing it as an ID would name nobody. */
+    if (!call.source) {
+      name = '<span class="muted">unknown</span>';
+      who = live ? '<span class="live-dot" aria-hidden="true"></span> ' + name : name;
+    }
+
     var kind = call.group
-      ? "TG " + escapeText(call.target)
+      ? (call.target ? "TG " + escapeText(call.target) : "\u2014")
       : "DM " + escapeText(call.target) +
         (call.target_name ? ' <span class="muted">' + escapeText(call.target_name) + "</span>" : "");
+    /* Where a P25 call came into QSP: which repeater, or which hotspot. */
+    if (call.via) {
+      kind += ' <span class="muted">via ' + escapeText(call.via) + "</span>";
+    }
 
     /* **A data burst is not a failed transmission.** A text message is a
      * handful of one-frame bursts, each with its own stream ID, and marking
@@ -989,11 +1022,24 @@
     } else if (call.lost) {
       flags = ' <span class="tag tag--lost" title="ended without a terminator">no terminator</span>';
     }
+    /* One call at a time is carried between P25 gateways and repeaters. This
+     * one was heard and lost the turn. */
+    if (call.not_carried) {
+      flags += ' <span class="tag tag--data" title="heard, and not relayed: ' +
+        'another station was talking">not carried</span>';
+    }
+    /* Named only on a server running both modes; the server leaves it out
+     * otherwise. */
+    var mode = call.mode
+      ? ' <span class="tag tag--data">' + escapeText(call.mode) + "</span>"
+      : "";
     return (
       "<tr>" +
-      "<td>" + who + "</td>" +
+      "<td>" + who + mode + "</td>" +
       '<td class="mono">' + kind + "</td>" +
-      '<td class="mono">TS' + escapeText(call.timeslot) + "</td>" +
+      (showSlot
+        ? '<td class="mono">' + (call.timeslot ? "TS" + escapeText(call.timeslot) : "\u2014") + "</td>"
+        : "") +
       '<td class="mono">' + escapeText(call.duration) + "</td>" +
       '<td class="mono">' + escapeText(call.frames) + "</td>" +
       '<td class="mono">' + escapeText(live ? "now" : call.ago || "—") + flags + "</td>" +
@@ -1032,7 +1078,13 @@
       return;
     }
     lastTraffic = payload;
-    if (!payload.enabled) {
+    var active = payload.active_calls || [];
+    var recent = payload.recent_calls || [];
+
+    /* Disabled means no listener at all. A server running P25 alone has no
+     * DMR listener and still has calls, so it is asked before this is said. */
+    var p25Running = !!(payload.traffic && payload.traffic.p25);
+    if (!payload.enabled && !p25Running) {
       callsCount.textContent = "disabled";
       callsBody.innerHTML = emptyState(
         "The DMR listener is not enabled",
@@ -1040,9 +1092,6 @@
       );
       return;
     }
-
-    var active = payload.active_calls || [];
-    var recent = payload.recent_calls || [];
 
     if (active.length === 0 && recent.length === 0) {
       callsCount.textContent = "quiet";
@@ -1062,11 +1111,12 @@
 
     var rows = "";
     var i;
+    var showSlot = active.concat(recent).some(function (c) { return !!c.timeslot; });
     for (i = 0; i < active.length; i++) {
-      rows += callRow(active[i], true);
+      rows += callRow(active[i], true, showSlot);
     }
     for (i = 0; i < recent.length; i++) {
-      rows += callRow(recent[i], false);
+      rows += callRow(recent[i], false, showSlot);
     }
 
     callsBody.innerHTML =
@@ -1074,7 +1124,7 @@
       "<caption>" + callsCaption(payload) + "</caption>" +
       "<thead><tr>" +
       '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
-      '<th scope="col">Slot</th><th scope="col">Duration</th>' +
+      (showSlot ? '<th scope="col">Slot</th>' : "") + '<th scope="col">Duration</th>' +
       '<th scope="col">Frames</th><th scope="col">When</th>' +
       "</tr></thead><tbody>" + rows + "</tbody></table></div>";
   }

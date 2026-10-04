@@ -3,10 +3,18 @@ package server
 import (
 	"context"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/k9mls/qsp/internal/calls"
+	"github.com/k9mls/qsp/internal/p25calls"
 )
+
+// P25CallHistory is the record of completed P25 transmissions.
+type P25CallHistory interface {
+	Since(ctx context.Context, from time.Time, limit int) ([]p25calls.Call, error)
+	Enabled() bool
+}
 
 // CallHistory reads completed calls back.
 //
@@ -31,8 +39,14 @@ type callView struct {
 	Target uint32 `json:"target"`
 	// Group distinguishes a talkgroup call from a private one.
 	Group bool `json:"group"`
-	// Timeslot is 1 or 2.
-	Timeslot int `json:"timeslot"`
+	// Timeslot is 1 or 2, and absent for a P25 call, which has none.
+	Timeslot int `json:"timeslot,omitempty"`
+	// Mode is "P25" for a P25 call and absent for a DMR one. Via is where a
+	// P25 call came into QSP, and NotCarried that it was heard and not
+	// relayed because another station was talking.
+	Mode       string `json:"mode,omitempty"`
+	Via        string `json:"via,omitempty"`
+	NotCarried bool   `json:"not_carried,omitempty"`
 	// Started is when the first frame arrived, in UTC.
 	Started time.Time `json:"started"`
 	// Seconds is how long it ran. Zero for a one-burst data message.
@@ -68,7 +82,9 @@ type callsResponse struct {
 func (s *Server) handleCalls(w http.ResponseWriter, r *http.Request) {
 	body := callsResponse{Calls: []callView{}}
 
-	if s.opts.Calls == nil || !s.opts.Calls.Enabled() {
+	dmr := s.opts.Calls != nil && s.opts.Calls.Enabled()
+	p25 := s.opts.P25Calls != nil && s.opts.P25Calls.Enabled()
+	if !dmr && !p25 {
 		body.Reason = "no call record is kept; set dmr.calls.retain to keep one"
 		body.Since = time.Now().UTC()
 		writeJSON(w, s.log, http.StatusOK, body)
@@ -92,34 +108,85 @@ func (s *Server) handleCalls(w http.ResponseWriter, r *http.Request) {
 	since := time.Now().UTC().Add(-time.Duration(hours) * time.Hour)
 	body.Since = since
 
-	found, err := s.opts.Calls.Since(r.Context(), since, limit)
-	if err != nil {
-		s.log.Warn("cannot read the call record", "error", err)
-		writeJSON(w, s.log, http.StatusInternalServerError,
-			map[string]string{"error": "cannot read the call record"})
-		return
+	if dmr {
+		found, err := s.opts.Calls.Since(r.Context(), since, limit)
+		if err != nil {
+			s.log.Warn("cannot read the call record", "error", err)
+			writeJSON(w, s.log, http.StatusInternalServerError,
+				map[string]string{"error": "cannot read the call record"})
+			return
+		}
+		for _, c := range found {
+			body.Calls = append(body.Calls, callView{
+				Source:    c.Source,
+				Target:    c.Target,
+				Group:     c.Group,
+				Timeslot:  int(c.Key.Timeslot),
+				Started:   c.Started.UTC(),
+				Seconds:   c.Ended.Sub(c.Started).Seconds(),
+				Voice:     c.Voice,
+				Frames:    c.Frames,
+				EndReason: string(c.EndReason),
+			})
+		}
+	}
+	if p25 {
+		found, err := s.opts.P25Calls.Since(r.Context(), since, limit)
+		if err != nil {
+			s.log.Warn("cannot read the P25 call record", "error", err)
+			writeJSON(w, s.log, http.StatusInternalServerError,
+				map[string]string{"error": "cannot read the call record"})
+			return
+		}
+		for _, c := range found {
+			body.Calls = append(body.Calls, p25Record(c))
+		}
 	}
 
-	for _, c := range found {
-		view := callView{
-			Source:    c.Source,
-			Target:    c.Target,
-			Group:     c.Group,
-			Timeslot:  int(c.Key.Timeslot),
-			Started:   c.Started.UTC(),
-			Seconds:   c.Ended.Sub(c.Started).Seconds(),
-			Voice:     c.Voice,
-			Frames:    c.Frames,
-			EndReason: string(c.EndReason),
+	// **One record, newest first, and cut to the limit after merging.** Each
+	// store was asked for up to limit rows, so the newest limit of both
+	// together are among what came back.
+	sort.SliceStable(body.Calls, func(i, j int) bool {
+		return body.Calls[i].Started.After(body.Calls[j].Started)
+	})
+	if len(body.Calls) > limit {
+		body.Calls = body.Calls[:limit]
+	}
+	if s.opts.Callsign != nil {
+		for i := range body.Calls {
+			if body.Calls[i].Source != 0 {
+				body.Calls[i].Callsign = s.opts.Callsign(body.Calls[i].Source)
+			}
 		}
-		if s.opts.Callsign != nil {
-			// **Resolved at read time, not stored.** A callsign can be wrong
-			// when a call happens and right a week later, and the record's job
-			// is to say which radio transmitted rather than to freeze a guess
-			// about whose it was.
-			view.Callsign = s.opts.Callsign(c.Source)
-		}
-		body.Calls = append(body.Calls, view)
 	}
 	writeJSON(w, s.log, http.StatusOK, body)
+}
+
+// p25Record is one P25 call as the record page shows it. **No timeslot**,
+// because the mode has none; a group call always, because that is all a
+// repeater or gateway has been heard to carry.
+func p25Record(c p25calls.Call) callView {
+	return callView{
+		Source:     c.Source,
+		Target:     uint32(c.Talkgroup),
+		Group:      true,
+		Mode:       "P25",
+		Via:        c.Via,
+		NotCarried: !c.Carried,
+		Started:    c.Started.UTC(),
+		Seconds:    c.Ended.Sub(c.Started).Seconds(),
+		Voice:      true,
+		Frames:     c.Frames,
+		EndReason:  p25EndReason(c.EndReason),
+	}
+}
+
+// p25EndReason is how a P25 call's end is written on the record page: empty
+// when its own station closed it, which is the ordinary case and needs no
+// remark, as on a DMR row.
+func p25EndReason(r p25calls.EndReason) string {
+	if r == p25calls.EndMarked {
+		return ""
+	}
+	return string(r)
 }

@@ -153,6 +153,36 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.309 puts P25 in Last heard** (ADR-0059, Accepted by the operator
+2026-10-04). `internal/p25calls` is a tracker and a store of their own; both
+P25 listeners report to it; migration 0007 adds `p25_calls` and alters nothing.
+The mode is named on a row only when the server runs both modes, and the slot
+column is hidden when no call has a timeslot. The record page merges both.
+
+**Migration 0007 changes how to roll back.** An older binary refuses a
+database that has a migration it does not know: it will not start. So the copy
+of the previous binary is no longer a complete rollback by itself — **copy the
+database aside before upgrading to 0.1.309**, and restore both together.
+
+**The store's tests have never run here.** They need SQLite and skip without
+it; the SQL was run against a real SQLite by hand, and Fedora's `check.sh` is
+their first real run. **The console was drawn in Chromium** against invented
+payloads for both modes, each alone, and neither.
+
+**Also fixed**: a server running P25 without DMR had an Overview that said
+only "the DMR listener is not enabled". It shows its P25 traffic and calls.
+
+**On air, 2026-10-04 21:38 UTC, with 0.1.308**: Quantar to hotspot, audio
+reported "great". Hotspot to Quantar keyed the repeater, with no header sent,
+so **the header is not needed** and `send_header` stays off. Its audio "missed
+some" — and the log shows why without blaming QSP: the hotspot and the Quantar
+were on the same frequency, so the Quantar's own receiver heard the hotspot's
+radio directly, with bit errors (radio IDs 7200311, 7200375, 7200433 — one
+radio, a bit or two apart; talkgroup mostly 10297), eight times before the
+gateway had even registered. The two copies raced for the floor. **Clean
+hotspot-to-Quantar audio is unconfirmed until the frequencies are separated**,
+which the operator will do another day.
+
 **0.1.308 sends a gateway's call to the repeaters**: start marker, the
 gateway's frames behind `07 03`, end marker twice; ended after a second of
 silence if no terminator comes. **Never accepted by a repeater yet.** To
@@ -288,7 +318,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.308 | `cat VERSION` |
+| **Fedora working tree** | 0.1.309 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -383,8 +413,8 @@ learned to run it as a service.
    repeater refusing them. **The IMBE crosses untouched both ways.** Talkgroup
    contention between the two is item 4 below.
 
-   **Not in Last heard**, and not by oversight: ADR-0059 is the operator's
-   decision.
+   **In Last heard since 0.1.309** (ADR-0059, Accepted): a tracker and a table
+   of their own, beside the DMR ones.
 
    What 2026-10-04 proved, each with its instrument:
 
@@ -454,7 +484,6 @@ learned to run it as a service.
 ## Waiting on the operator
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
-- **ADR-0059** — second tracker or mode-agnostic key, for P25 in Last heard.
 - **What the P25 radio was set to on 2026-10-04**, to confirm the talkgroup (1)
   and radio ID (8080303) QSP reads from the repeater. And **12 November** is
   when the router's evaluation licence ends; see `docs/P25-PLANNING.md`.

@@ -47,6 +47,9 @@ func (l *Listener) relay(st *station, payload []byte, rec Record, began, ended b
 		relaying = l.floor.Take(st.holder, now)
 		st.mu.Lock()
 		st.relaying = relaying
+		if st.call != nil {
+			st.call.Carried = relaying
+		}
 		if !relaying {
 			st.view.Held++
 		}

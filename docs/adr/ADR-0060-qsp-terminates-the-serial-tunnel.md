@@ -201,9 +201,16 @@ LAN that is every twenty milliseconds; across the internet it will not be, and
 a buffer to pace them is expected to be needed and should be built from a
 measurement.
 
-**Not in Last heard, deliberately.** A repeater's calls are counted and named
-on the Overview and in the log. Last heard is ADR-0059's question and that
-decision is the operator's; this does not make it by the back door.
+**Not in Last heard at 0.1.306, deliberately**: that was ADR-0059's question
+and the operator's to decide. He decided it the same day, and a repeater's
+calls have been in Last heard since 0.1.309.
+
+**On air with 0.1.308, 2026-10-04.** Quantar to hotspot: clean. Hotspot to
+Quantar: the repeater transmitted the call **with no header sent**, which
+answers the open question below in the cheap direction. The audio was
+incomplete, and the cause was outside QSP: the hotspot shared the Quantar's
+frequency, so the repeater heard the same radio twice, once through QSP and
+once, badly, through its own receiver.
 
 **Audio is king, and nothing here touches it.** Voice frames are read for who
 is talking and answered with nothing. When they are carried, the IMBE inside

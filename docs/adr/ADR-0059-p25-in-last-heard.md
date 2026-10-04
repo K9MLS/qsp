@@ -1,6 +1,6 @@
 # ADR-0059: A P25 transmission reaches Last heard through a tracker of its own
 
-**Status:** Proposed — the decision is the operator's
+**Status:** Accepted — decided by the operator, 2026-10-04; built in 0.1.309
 **Relates to:** [ADR-0033](ADR-0033-last-heard-is-a-record.md),
 [ADR-0034](ADR-0034-p25-is-native.md),
 [ADR-0057](ADR-0057-p25-is-a-full-network.md)
@@ -99,7 +99,43 @@ This is the honest status quo and it is not sufficient: the operator had to
 `curl /healthz` to find out whether his own radio had been heard, and Last
 heard is the page that answers that question for every other mode.
 
-## Why this is Proposed
+## What was built, 0.1.309
+
+The operator chose the second tracker on 2026-10-04, with one reason of his own
+added to the argument above: **most networks will run one mode.** A record
+built to keep the two apart costs a single-mode network nothing, and the
+console was made to match — the mode is named on a call only when the server
+runs both, and the timeslot column is not drawn when no call has one.
+
+- `internal/p25calls` is the tracker and its store. Both P25 listeners report
+  to it: the gateway listener, which gained call boundaries to do so (the
+  first voice frame begins a call; the terminator, or a second of silence,
+  ends it), and the Motorola repeater link, which already had them.
+- **A table of its own, `p25_calls`, in migration 0007**, for the reason the
+  tracker is its own: the DMR table is keyed on three things a P25 call does
+  not have. The migration only adds.
+- **One retention setting.** The cost named above — two retentions unless
+  deliberately shared — was settled by sharing `dmr.calls.retain`.
+- **The timeslot is absent, not zero**: `omitempty` on a field whose real
+  values are 1 and 2, so zero is free to mean "none".
+- **One event, one record**, tested across the join that could have broken
+  it: a call relayed between a repeater and a gateway is recorded by the
+  listener it came in through and by no other.
+- "Lost stream" has its reason string: `went quiet`.
+
+**And one thing this found.** `/api/peers` returned before looking at P25 when
+the DMR listener was off, so a network running P25 alone had an Overview that
+said only "the DMR listener is not enabled". The single-mode case the decision
+rests on had never been drawn. It is now, and it is drawn in a real browser by
+the test harness that this patch was checked with.
+
+**The warning below was heeded differently than it asks.** This was built at
+the end of a long session, on the operator's instruction. What stood in for a
+fresh start: the console change was rendered in Chromium against four invented
+payloads (both modes, each alone, neither) with page errors collected, before
+it was called done.
+
+## Why this was Proposed
 
 The scope is settled by [ADR-0057](ADR-0057-p25-is-a-full-network.md) — P25 is
 a full network, so its traffic belongs in the records a network keeps. What is
