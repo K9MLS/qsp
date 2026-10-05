@@ -1,4 +1,4 @@
-# Handover, 2026-09-27
+# Handover, 2026-10-04
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md` — how this project
 finds its defects, and the thing the last two days proved again. Then **§8s**,
@@ -8,18 +8,29 @@ transcoder, **ADR-0062** through **0066** and `docs/ZELLO.md`.
 
 ## The two live threads
 
-**1. A Quantar is linked, and QSP reads its calls (0.1.306).** On 2026-10-04
-the station's **wireline board was replaced** and frames reached the router for
-the first time: the Status Report screen had read `Station Wireline FW:
-NOT_PRESENT`, and a V.24 card on a board nobody is talking to sends nothing.
-**Read the Service screens first.** Four patches later the link is open and
-stays open, and three transmissions from a handheld were captured and are the
-fixture (`testdata/quantar/stun-voice-three-calls.bin`). `internal/v24link`
-opens the link from both ends, keeps it alive, and reads each call as far as
-talkgroup and radio; the Overview's P25 row shows it. **Nothing is relayed
-yet** — that is ADR-0060 phase 4, a repeater's call reaching P25 gateways and
-back, and it needs a frame QSP has never sent: voice *to* a repeater. See
-`docs/P25-PLANNING.md` and ADR-0060.
+**1. Motorola P25 repeaters are linked, relayed and in Last heard (0.1.311).**
+A Quantar is connected to **production** over V.24 through a Cisco router's
+serial tunnel, stays connected, and comes back by itself. `internal/v24link`
+opens the link from both ends, keeps it alive and reads each call; a
+repeater's call goes to every P25 hotspot and gateway and to every other
+repeater, and a hotspot's call keys the repeater, one call at a time through a
+floor shared with `internal/p25link`. **The IMBE is copied both ways and never
+decoded.** P25 calls are in Last heard and on the Record page, in a table of
+their own (migration 7, ADR-0059), and survive a restart. On air on
+2026-10-04: **repeater to hotspot sounded great; hotspot to repeater missed
+some audio, and the cause was not QSP** — the Quantar and the Pi-Star were on
+the same frequency, so the Quantar heard the hotspot's radio directly, with
+bit errors. The operator will move the Quantar; that check is open item 3.
+It began with a **wireline board that had to be replaced**: the Status Report
+screen read `Station Wireline FW: NOT_PRESENT`. **Read the Service screens
+first.** It is named "Motorola P25 repeaters" everywhere (`p25_repeaters` in
+the configuration; the old `quantar` key is carried over), because a GTR 8000
+connects the same way. See ADR-0060 and `docs/P25-PLANNING.md`.
+
+**And the day ended on a DMR fault found from Last heard**: a radio sending a
+Talker Alias through a Motorola DMR repeater had every over cut into three
+calls and lost a second and a half of it. Fixed in 0.1.311, confirmed on air;
+the paragraph on 0.1.311 below has the cause.
 
 **2. The text service can send, and waits on a radio's display.** An
 administrator composes a group text on the **Administration** page —
@@ -165,8 +176,15 @@ and a pause (`continues`, `Resolve`, `Forget`), and the listener asks the
 converter which call a frame belongs to. Fixture:
 `testdata/ipsc/ipsc-talker-alias.pcap`. 0.1.301's rule stays for hotspots.
 **To confirm on air:** one row in Last heard per key-up through the Motorola
-repeater with the alias on, no "5002016", no "without a terminator". **Not
-known:** whether an SLR5700 does the same.
+repeater with the alias on, no "5002016", no "without a terminator" —
+**confirmed on 2026-10-04**, on the test server and production, by ear and on
+the console. **Not known:** whether an SLR5700 does the same.
+
+**What that cost, and the lesson.** 0.1.301 fixed the place the wrong frame
+was seen and not the place it was made. The log named the peer it came from
+(3132913), and that peer was another QSP server, not a hotspot. **When a bad
+frame arrives from a linked server, capture where it entered the network
+before changing anything where it surfaced.**
 
 **0.1.310 changes no code a station runs**: one test in `internal/v24link`
 waited on a weaker condition than it asserted and failed once on Fedora, in
@@ -333,15 +351,20 @@ paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
 fills a stall Zello makes with silence rather than leaving the repeater to
 repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as of 2026-09-29** (check with `-version` before trusting these;
+**Versions, as of 2026-10-04** (check with `-version` before trusting these;
 they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.311 | `cat VERSION` |
-| **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
-| **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
+| **Fedora working tree** | 0.1.312, this handover and no code | `cat VERSION`, `git log --oneline -1` |
+| **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
+| **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
+
+**Going back on production.** `~/qsp-previous-0.1.310` is the binary before
+0.1.311 and needs nothing else. Anything older than 0.1.309 will not start
+against the database as it is now: `~/qsp-previous-0.1.308` goes with the
+database copy in `~/qsp-data-before-0.1.310`, restored to `/var/lib/qsp/`.
 
 **The compose files pin the working tree's version, enforced by
 `TestThePublishedImageIsPinnedToThisVersion`**, so between tags `main` names an
@@ -416,25 +439,23 @@ learned to run it as a service.
 2. **See the Talker Alias on a radio**, once the gateway has a registered DMR
    ID. A registered ID also names Zello calls on dashboards and in contact
    lists, which an alias cannot. Set both on the Zello page.
-3. **Motorola P25 repeaters, ADR-0060: phases 1 to 3 are done; phase 4 is
-   next.** The link opened on 0.1.305 at the first try of the both-ends
-   handshake: request and acceptance each way, an introduction each way, then
-   Receive Ready (the repeater's every 5.01 s, QSP's every 2 s). 0.1.306 reads
-   the calls. **To confirm on the console**: key a P25 radio and the Overview's
-   P25 row should count voice frames and say "Motorola repeater (Quantar), site
-   1, link up, TG …, last heard …". **To confirm with the operator**: the
-   capture reads talkgroup **1** and radio **8080303**; he was asked what the
-   radio was set to and had not answered when this was written.
+3. **Motorola P25 repeaters: built, and four things not yet seen.**
+   (a) **Hotspot to repeater audio, clean**, once the Quantar is off the
+   Pi-Star's frequency. (b) **Repeater to repeater relay** has never run:
+   there is one repeater. (c) **`send_header`** is off and was not needed; the
+   Quantar keyed from voice alone. (d) **Frames go to a repeater as they
+   arrive**, unpaced: fine across a room, unproven across the internet.
 
-   **Phase 4, relay**: (a) a repeater's voice to every registered P25 gateway
-   and every other repeater — **built in 0.1.307**; (b) a gateway's voice to
-   the repeater, which needs the start marker, header and end marker QSP has only
-   ever received — reuse the captured forms, and expect one round of the
-   repeater refusing them. **The IMBE crosses untouched both ways.** Talkgroup
-   contention between the two is item 4 below.
+   **For the network Pete, Paul and K9MLS want** — Motorola P25 repeaters in
+   Idaho, Wisconsin and Texas on one QSP, linked like IPSC, one room for now:
+   pacing or a small jitter buffer toward repeaters; the tunnel inside a VPN,
+   because the router's serial tunnel has no authentication and no encryption;
+   a site guide (router, card, cable, codeplug, the switch settings in the
+   table below); and a second repeater to prove (b). Hotspots stay as they
+   are: users move them, and they link by choosing a talkgroup.
 
-   **In Last heard since 0.1.309** (ADR-0059, Accepted): a tracker and a table
-   of their own, beside the DMR ones.
+   **The radio** K9MLS tested with has no talkgroup programmed, which is why
+   QSP reads talkgroup 1; its ID, 8080303, is right.
 
    What 2026-10-04 proved, each with its instrument:
 
@@ -450,13 +471,11 @@ learned to run it as a service.
    **The router** is `Router1`, a Cisco 2921, reached with `ssh router` from the
    test server as user `mike`. **Its address is from DHCP and has changed once**
    (now 192.168.1.44); `stun peer-name` must equal it, so give it a reservation.
-   Its running configuration has `stun peer-name 192.168.1.44` and
-   `stun route all tcp 192.168.1.247`, **not saved**: a reload returns it to a
-   peer name of .45 and the tunnel will not open. `write memory` once the link
-   is proven. Changing `encapsulation` on the serial interface drops the two
-   `stun` lines; re-enter them.
+   Its configuration has `stun peer-name 192.168.1.44` and
+   `stun route all tcp 192.168.1.247`, **saved with `write memory` on
+   2026-10-04**. Changing `encapsulation` on the serial interface drops the two
+   `stun` lines; re-enter them. Its evaluation licence ends **12 November**.
 
-   Next: phase 3, voice captured and parsed, from QSP's own record.
 4. **Talkgroup routing and contention in `internal/p25link`**: voice reads the
    talkgroup and relays to every registered gateway regardless. Waiting on a
    second gateway to demonstrate it. P25-NETWORK.md §2 and §6.
@@ -477,6 +496,11 @@ learned to run it as a service.
   **session lifetime** on Administration (0423); the **replug recovery** (0416)
   proven on hardware; the **0x81 byte** closed as unreproducible, none since
   2026-09-10.
+
+**One more, from 2026-10-04:**
+- **A deploy block holds the new patch and nothing else.** The operator applies
+  every patch as it is delivered. A block that named the previous patch again
+  stopped `git am` halfway and had to be cleared with `git am --skip`.
 
 **Three more, from 2026-09-26 and 27:**
 - **Never background a `sudo` command.** `sudo tcpdump ... &` prints a job
@@ -504,9 +528,11 @@ learned to run it as a service.
 ## Waiting on the operator
 
 - **ADR-0058** — TIA-102.BAHA-A permission. Gates DFSI only.
-- **What the P25 radio was set to on 2026-10-04**, to confirm the talkgroup (1)
-  and radio ID (8080303) QSP reads from the repeater. And **12 November** is
-  when the router's evaluation licence ends; see `docs/P25-PLANNING.md`.
+- **The Quantar moved off the Pi-Star's frequency**, for open item 3(a).
+- **12 November**, when the router's evaluation licence ends; and a DHCP
+  reservation for the router. See `docs/P25-PLANNING.md`.
+- **A key-up with a Talker Alias through an SLR5700**, to see 0.1.311 hold on
+  a second repeater model.
 - **Colour codes 1, 2 and 8** EMB captures — completeness, not confidence;
   method in `testdata/hbp/EMB-CAPTURE-REQUEST.md`.
 

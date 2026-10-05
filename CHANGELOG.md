@@ -6,6 +6,9 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- The handover and the new-session brief are brought up to 2026-10-04: what
+  runs where, how to go back, and what is still open for Motorola P25
+  repeaters. No change to what QSP does.
 - **A radio with a Talker Alias no longer loses audio through a Motorola
   repeater.** An over longer than about a second arrived as three calls: the
   first second with no end, a call from a station that does not exist

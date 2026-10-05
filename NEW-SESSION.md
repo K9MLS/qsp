@@ -46,10 +46,13 @@ redirects every page to a setup form, gated by a one-time token that is not
 required from loopback. `qsp adduser` survives only as the recovery procedure
 for having lost every administrator.
 
-**P25 over IP is built** (2026-09-11): QSP is a P25 reflector, from three
-captures and nothing else. **It is not a Motorola Quantar link** — a Quantar
-connects over a V.24 daughtercard running HDLC and nothing here opens a serial
-port. That distinction has already confused one conversation; keep it straight.
+**P25 is built two ways, and they are different things.** `internal/p25link`
+(2026-09-11) is a P25 reflector for hotspots and gateways, from three captures
+and nothing else. `internal/v24link` (2026-10-04) links **Motorola P25
+repeaters** — a Quantar or a GTR 8000 — over the V.24 card's HDLC, carried to
+QSP by a Cisco router's serial tunnel; QSP opens no serial port itself. Calls
+cross between the two, and the voice is copied, never decoded. Say "Motorola
+P25 repeaters", not "Quantar": the operator named it so.
 
 **The console has about 1,500 lines of JavaScript and four checks on it**, all
 written on 2026-09-09 and each reconstructing a defect that shipped.
@@ -92,15 +95,20 @@ machine.**
 
 | Label | Machine | Prompt | For |
 |---|---|---|---|
-| **FEDORA** | development machine | `mike@fedora:~/Documents/QSP/qsp$` | git, patches, the gates, `go build`, `scp` |
-| **QSP-SERVER** | production, 192.168.1.247 | `mike@qsp-server:~$` | install, systemctl, journalctl, curl, tcpdump |
+| **FEDORA** | development machine, 192.168.1.77 | `mike@fedora:~/Documents/QSP/qsp$` | git, patches, the gates, `go build`, `scp` |
+| **QSP SERVER** | production, 192.168.1.247 | `mike@qsp-server:~$` | install, systemctl, journalctl, curl, tcpdump |
+| **TEST SERVER** | Docker, 192.168.1.27 | `mike@test-server:~$` | `git pull` from a bundle, `docker compose`, and `ssh router` |
+| **ROUTER** | Cisco 2921, reached from the test server | `Router1#` | the serial tunnel. Commands only, with no prompt in the block |
 | **PI-STAR** | hotspot | | Pi-Star and MMDVMHost |
 | **MONITOR** | wherever the console is watched | | the dashboard, tailing logs |
 
 The rule: **anything touching the repository is FEDORA, anything touching the
-running service is QSP-SERVER.** `scp` ends a FEDORA block; the `install` and
-`restart` that follow are a separate QSP-SERVER block and are never chained on
-to it.
+running service is QSP SERVER.** `scp` ends a FEDORA block; the `install` and
+`restart` that follow are a separate QSP SERVER block and are never chained on
+to it. One block per machine.
+
+**A block applies the new patch and no other.** The operator applies every
+patch when it is delivered; naming an earlier one again stops `git am`.
 
 
 ## How we work
