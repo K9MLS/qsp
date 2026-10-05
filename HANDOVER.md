@@ -186,6 +186,18 @@ was seen and not the place it was made. The log named the peer it came from
 frame arrives from a linked server, capture where it entered the network
 before changing anything where it surfaced.**
 
+**0.1.314 makes the database tests run, and changes nothing QSP does** (0472).
+The SQLite driver is registered in `cmd/qsp` only, so every database test in
+another package — `internal/auth`, `internal/p25calls`, `internal/secrets`,
+`internal/server` — **skipped on Fedora and in CI as well as in the
+container**, and a skip prints `ok`. They import `internal/database/dbtest`
+now, which brings the driver to a test binary, and `check.sh` and CI set
+`QSP_REQUIRE_SQLITE=1`, which makes a missing driver a failure. **None of
+those tests has ever run**, the credential store's included; Fedora's
+`check.sh` on 0472 is their first run, and a failure there is a finding about
+the code and not about the patch. **Read a skip as a skip**: `go test -v`, or
+grep for `SKIP`.
+
 **0.1.313 makes a password reset work** (0471). Every reset from the
 console failed on a real database with "NOT NULL constraint failed:
 users.locked_until": `SetPassword` wrote NULL where the schema wants an empty
@@ -193,12 +205,14 @@ string. Found on 2026-10-05 by the operator resetting AD0MI's password. **Both
 servers and every other operator's server need it.** Until then, remove the
 account and create it again. **`TestAResetReachesARealDatabase` has never run
 here** — it needs SQLite and skips without it; the two statements were run
-against the real schema by hand, and Fedora's `check.sh` is its first real run.
+against the real schema by hand. **It skipped on Fedora too**, which is what
+found 0472.
 
 **0.1.310 changes no code a station runs**: one test in `internal/v24link`
 waited on a weaker condition than it asserted and failed once on Fedora, in
-the plain run and not the race run. **0.1.309's database tests passed there**,
-which was their first real run.
+the plain run and not the race run. **0.1.309's database test in `cmd/qsp`
+passed there; the store's own, in `internal/p25calls`, skipped** and were
+read as passing until 0472.
 
 **0.1.309 puts P25 in Last heard** (ADR-0059, Accepted by the operator
 2026-10-04). `internal/p25calls` is a tracker and a store of their own; both
@@ -212,8 +226,8 @@ of the previous binary is no longer a complete rollback by itself — **copy the
 database aside before upgrading to 0.1.309**, and restore both together.
 
 **The store's tests have never run here.** They need SQLite and skip without
-it; the SQL was run against a real SQLite by hand, and Fedora's `check.sh` is
-their first real run. **The console was drawn in Chromium** against invented
+it; the SQL was run against a real SQLite by hand. **They did not run on
+Fedora either until 0472** (0.1.314). **The console was drawn in Chromium** against invented
 payloads for both modes, each alone, and neither.
 
 **Also fixed**: a server running P25 without DMR had an Overview that said
@@ -365,7 +379,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.313, the password reset fix (0471); **deployed nowhere yet** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.314: the password reset fix (0471) and the database tests made to run (0472); **deployed nowhere yet** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

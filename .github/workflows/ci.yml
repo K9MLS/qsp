@@ -38,6 +38,9 @@ env:
   # An unpinned @latest lets an upstream release turn a green commit red without
   # a line of QSP changing. Bump deliberately, in its own commit.
   STATICCHECK_VERSION: "2026.2.1"
+  # A database test that cannot find SQLite fails rather than skips, because a
+  # skip is green. See internal/database/dbtest.
+  QSP_REQUIRE_SQLITE: "1"
 
 jobs:
   # **One job, not eight.** Every one of them checked out the repository and

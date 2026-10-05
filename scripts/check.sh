@@ -6,6 +6,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# A database test that cannot find SQLite fails here instead of skipping. A
+# skip prints "ok", and four packages' database tests skipped on every machine
+# behind that until 0.1.314. See internal/database/dbtest.
+export QSP_REQUIRE_SQLITE=1
+
 fail=0
 step() {
   printf '\n\033[1m==> %s\033[0m\n' "$1"

@@ -11,6 +11,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/database/dbtest"
 )
 
 // The SQL adapter cannot be executed in this container: it registers no driver,
@@ -203,16 +204,13 @@ func TestNoStatementWritesNULLToAColumnThatRefusesIt(t *testing.T) {
 	}
 }
 
-// TestAResetReachesARealDatabase runs the reset where a SQLite driver is built
-// in, which the project's own check script is. The service's reset test uses a
+// TestAResetReachesARealDatabase runs the reset on SQLite, which dbtest brings. The service's reset test uses a
 // repository with no schema, which is how this went unseen.
 //
 // Break it: write `locked_until = NULL` in SetPassword, or drop
 // `failed_count = 0` from it.
 func TestAResetReachesARealDatabase(t *testing.T) {
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; these tests run where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 	db, err := database.Open(ctx, nil, database.Options{
 		Driver: "sqlite",

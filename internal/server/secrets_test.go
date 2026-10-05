@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/database/dbtest"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
 	"github.com/k9mls/qsp/internal/secrets"
@@ -40,13 +41,11 @@ func newSecretServer(t *testing.T, store CredentialStore) (*Server, *stubAuth) {
 // secretStoreFor builds a store backed by a real database, or skips.
 //
 // The development container has no SQLite driver — the same reason seven
-// cmd/qsp tests cannot run there — so these skip rather than fail and run on a
-// machine with one.
+// cmd/qsp tests cannot run there — so these skip there. dbtest brings the
+// driver everywhere else; until 0.1.314 nothing did.
 func secretStoreFor(t *testing.T) *secrets.Store {
 	t.Helper()
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; these tests run where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 	db, err := database.Open(ctx, nil, database.Options{
 		Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "qsp.db"),

@@ -189,6 +189,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The database tests outside `cmd/qsp` run.** The tests of the credential
+  store, the P25 call store, the console's credential pages and the password
+  reset all skipped on every machine, because only `cmd/qsp` registers the
+  SQLite driver and each package's tests are a program of their own. A skip
+  prints "ok", so they read as passing. They get the driver from
+  `internal/database/dbtest` now, which only tests may import, and
+  `scripts/check.sh` and CI set `QSP_REQUIRE_SQLITE=1` so that a database
+  test which cannot run fails. No change to what QSP does.
 - **Resetting a password from the console works.** Every reset failed with
   "NOT NULL constraint failed: users.locked_until" and left the old password
   in place: the reset cleared the lockout by writing NULL to a column that

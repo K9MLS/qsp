@@ -9,24 +9,20 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/database/dbtest"
 )
 
 // The store's SQL.
 //
 // **These cannot run in the development container**, which has no SQLite
-// driver — the same reason seven cmd/qsp tests cannot. They are written to run
-// on the operator's machine, and the cryptography they sit on top of is tested
-// separately in crypto_test.go where no driver is needed.
-//
-// Skipping rather than failing when the driver is absent, because a package
-// that cannot be compiled against is worse than one whose tests are honest
-// about where they run.
+// driver — the same reason seven cmd/qsp tests cannot. dbtest brings the
+// driver everywhere else; until 0.1.314 nothing did, and these skipped on the
+// operator's machine and in CI as well. The cryptography they sit on top of
+// is tested separately in crypto_test.go where no driver is needed.
 
 func store(t *testing.T) (*Store, context.Context) {
 	t.Helper()
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; these tests run where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 
 	db, err := database.Open(ctx, nil, database.Options{
@@ -226,9 +222,7 @@ func TestDeletingSomethingThatIsNotThereIsNotAnError(t *testing.T) {
 // **the message has to say the credential must be entered again** rather than
 // reporting a missing secret — because those need entirely different actions.
 func TestAStoreWithAnotherKeyCannotReadWhatWasStored(t *testing.T) {
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; these tests run where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 	dsn := filepath.Join(t.TempDir(), "qsp.db")
 

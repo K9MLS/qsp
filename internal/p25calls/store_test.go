@@ -7,16 +7,15 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/database/dbtest"
 )
 
 // openStore returns a store on a freshly migrated database, and the database.
-// These tests run where a SQLite driver is built in, which the project's own
-// check script is.
+// dbtest brings the SQLite driver; until 0.1.314 nothing did, and these
+// skipped on every machine.
 func openStore(t *testing.T, retain time.Duration) (*Store, *database.DB, context.Context) {
 	t.Helper()
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; these tests run where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 	db, err := database.Open(ctx, nil, database.Options{
 		Driver: "sqlite",

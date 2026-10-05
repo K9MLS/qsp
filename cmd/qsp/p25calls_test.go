@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/k9mls/qsp/internal/database"
+	"github.com/k9mls/qsp/internal/database/dbtest"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/logging"
 	"github.com/k9mls/qsp/internal/p25calls"
@@ -19,9 +20,7 @@ import (
 // write to, and Last heard for P25 begins at nothing on every deploy — which
 // is what ADR-0033 was written to stop for DMR.
 func TestAP25CallSurvivesARestart(t *testing.T) {
-	if !database.DriverRegistered("sqlite") {
-		t.Skip("no sqlite driver in this build; this test runs where one is")
-	}
+	dbtest.NeedSQLite(t)
 	ctx := context.Background()
 	db, err := database.Open(ctx, nil, database.Options{
 		Driver: "sqlite",
