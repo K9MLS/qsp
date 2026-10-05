@@ -117,6 +117,17 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- **A guide to linking a Motorola P25 repeater**, `docs/P25-REPEATER-SITE.md`:
+  the parts, the checks to make at the station before touching a cable, the
+  codeplug and switch settings, the adapter and its jumper, the router's
+  configuration, three tests that prove the wiring, the Network page, a table
+  of faults, and what is and is not known about a site across the internet.
+  Every instruction says whether it was proven on the Quantar here, comes from
+  a published build, or is not known. **One person has built a site from it,
+  the one who wrote it down.** The GTR 8000 section says what is the same and
+  what has to come from its own manual; none has been tried. It recommends an
+  older router that needs no licence over the one used here. No change to what
+  QSP does.
 - **The README shows the Overview.** The picture is of the real console with
   invented stations: `scripts/overview-screenshot/run.sh` starts a server on
   the machine, logs four demonstration hotspots in (callsigns K9MLS and

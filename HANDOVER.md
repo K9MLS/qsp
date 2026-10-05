@@ -186,6 +186,17 @@ was seen and not the place it was made. The log named the peer it came from
 frame arrives from a linked server, capture where it entered the network
 before changing anything where it surfaced.**
 
+**0.1.316 is the site guide and changes no code** (0474):
+`docs/P25-REPEATER-SITE.md`, distilled from `docs/P25-PLANNING.md`, with every
+instruction marked proven here, published, or not known. **Nobody but the
+operator has followed it**; the first of the other operators to build a site
+is its review. Three things it leaves open on purpose: **which VPN** carries
+the tunnel (none chosen, none tested); the **GTR 8000's** pin-out and CSS
+settings (its manual has a "V.24 Port Pin-Outs" section; the page could not be
+fetched); and the **router** — it recommends the older licence-free class the
+published builds use, which has never been run against QSP, over the 2921
+that has.
+
 **0.1.315 holds and paces voice toward Motorola P25 repeaters** (0473,
 `internal/v24link/pacer.go`). Each repeater has a queue: the first voice record
 of a call waits `hold_ms` (60 unless set, 0 to 200, 0 is the old behaviour) and
@@ -398,7 +409,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.315: the hold toward Motorola P25 repeaters (0473), on top of 0471 and 0472; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.316: the repeater site guide (0474), on top of 0471 to 0473; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -492,9 +503,9 @@ learned to run it as a service.
    **For the network Pete, Paul and K9MLS want** — Motorola P25 repeaters in
    Idaho, Wisconsin and Texas on one QSP, linked like IPSC, one room for now:
    the jitter test for the leg the hold cannot cover; the tunnel inside a VPN,
-   because the router's serial tunnel has no authentication and no encryption;
-   a site guide (router, card, cable, codeplug, the switch settings in the
-   table below); and a second repeater to prove (b). Hotspots stay as they
+   because the router's serial tunnel has no authentication and no encryption,
+   and no VPN has been chosen; and a second repeater to prove (b). The site
+   guide is written: `docs/P25-REPEATER-SITE.md`. Hotspots stay as they
    are: users move them, and they link by choosing a talkgroup.
 
    **The radio** K9MLS tested with has no talkgroup programmed, which is why

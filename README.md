@@ -27,6 +27,12 @@ starts a server, logs four demonstration hotspots in and takes the picture.*
 - **P25 gateways and hotspots** connect to it as a reflector, as a flat one
   today: every linked gateway hears every transmission.
   [`docs/P25-GATEWAY.md`](docs/P25-GATEWAY.md) is how to point one at it.
+- **Motorola P25 repeaters** link to it full time through a Cisco router's
+  serial port, and their calls cross to P25 hotspots and back with the audio
+  untouched. Proven on a Quantar; a GTR 8000 has the same kind of port and has
+  not been tried.
+  [`docs/P25-REPEATER-SITE.md`](docs/P25-REPEATER-SITE.md) is how to build a
+  site.
 - **Zello channels** are linked to a talkgroup through an AMBE vocoder dongle,
   bought separately. See [`docs/ZELLO.md`](docs/ZELLO.md).
 - **Weather alerts** from the US National Weather Service go out as text

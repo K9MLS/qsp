@@ -156,6 +156,9 @@ a station that keys while another is talking is counted and not carried. The
 Overview's P25 row says how many repeaters are linked and, for each, its link,
 the last radio heard, and how many frames were heard and carried.
 
+[`P25-REPEATER-SITE.md`](P25-REPEATER-SITE.md) is how to build the site: the
+parts, the repeater's settings, the adapter, the router and the checks.
+
 **One tunnel is one repeater.** A router with two serial ports links two
 repeaters, each on its own `stun group`; a router that restarts and dials again
 replaces its old tunnel once the repeater has said which site it is.
