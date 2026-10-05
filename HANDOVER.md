@@ -186,6 +186,15 @@ was seen and not the place it was made. The log named the peer it came from
 frame arrives from a linked server, capture where it entered the network
 before changing anything where it surfaced.**
 
+**0.1.313 makes a password reset work** (0471). Every reset from the
+console failed on a real database with "NOT NULL constraint failed:
+users.locked_until": `SetPassword` wrote NULL where the schema wants an empty
+string. Found on 2026-10-05 by the operator resetting AD0MI's password. **Both
+servers and every other operator's server need it.** Until then, remove the
+account and create it again. **`TestAResetReachesARealDatabase` has never run
+here** — it needs SQLite and skips without it; the two statements were run
+against the real schema by hand, and Fedora's `check.sh` is its first real run.
+
 **0.1.310 changes no code a station runs**: one test in `internal/v24link`
 waited on a weaker condition than it asserted and failed once on Fedora, in
 the plain run and not the race run. **0.1.309's database tests passed there**,
@@ -356,7 +365,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.312, this handover and no code | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.313, the password reset fix (0471); **deployed nowhere yet** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

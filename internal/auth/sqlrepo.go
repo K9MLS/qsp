@@ -236,11 +236,15 @@ func (r *SQLRepository) Accounts(ctx context.Context) ([]Account, error) {
 
 // SetPassword implements Repository.
 func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash string) error {
-	const q = `UPDATE users SET password_hash = ?, failed_count = 0, locked_until = NULL WHERE id = ?`
+	const q = `UPDATE users SET password_hash = ?, failed_count = 0, locked_until = '' WHERE id = ?`
 
 	// **A reset clears the lockout too.** An operator resetting a password for
 	// somebody locked out has answered the question the lockout was asking, and
 	// leaving it in place would make the new password appear not to work.
+	//
+	// **Empty, not NULL.** The column is NOT NULL and empty is how the schema
+	// says "not locked". This wrote NULL until 0.1.313, which SQLite refused
+	// along with the new password, so no reset from the console ever worked.
 	if _, err := r.db.ExecContext(ctx, q, hash, id); err != nil {
 		return fmt.Errorf("auth: setting a password: %w", err)
 	}

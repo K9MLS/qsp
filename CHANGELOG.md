@@ -189,6 +189,16 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Resetting a password from the console works.** Every reset failed with
+  "NOT NULL constraint failed: users.locked_until" and left the old password
+  in place: the reset cleared the lockout by writing NULL to a column that
+  does not accept it. It has failed since resets were added; the test for it
+  ran against a stand-in with no schema. It now writes the empty value the
+  schema uses for "not locked", a check reads every statement for a NULL
+  written to a column that refuses one, and a reset is run against a real
+  database wherever a SQLite driver is built in. Removing an account and
+  creating it again was the way round it. No change to the database or the
+  configuration.
 - **The rest of an over was lost when a hotspot picked a radio up again
   mid-transmission** (K9MLS, from production's log). After an instant's
   dropout a hotspot restarts the transmission as a new stream with no voice
