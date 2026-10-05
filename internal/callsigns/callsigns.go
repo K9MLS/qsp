@@ -36,6 +36,22 @@ const (
 	// somebody who registers today is named tomorrow.
 	DefaultNegativeTTL = 24 * time.Hour
 
+	// DefaultRefreshAfter is how old a known registration is before the
+	// registry is asked about it again.
+	//
+	// **Until 0.1.318 a name once learned was kept for ever**, in the database
+	// too, so a callsign somebody upgraded, a name they corrected or an ID
+	// that changed hands went on being shown as it first was. A month is
+	// short enough to catch those and long enough that a club's members cost
+	// the registry one request each a month, and only if they are heard.
+	DefaultRefreshAfter = 30 * 24 * time.Hour
+
+	// DefaultRefreshRetry is how long a recheck that failed is left before it
+	// is tried again. The old answer is still shown, so there is no hurry,
+	// and a registry that is down should not be asked every two seconds about
+	// every radio that is talking.
+	DefaultRefreshRetry = time.Hour
+
 	// DefaultInterval is the minimum gap between requests.
 	//
 	// A club has a few dozen members and will resolve them once. Spacing the
@@ -126,6 +142,12 @@ type Options struct {
 	// NegativeTTL is how long an unknown ID stays unknown. Zero selects the
 	// default.
 	NegativeTTL time.Duration
+	// RefreshAfter is how old a known registration is before it is rechecked.
+	// Zero selects the default.
+	RefreshAfter time.Duration
+	// RefreshRetry is how long after asking a recheck is asked again, if it
+	// did not answer. Zero selects the default.
+	RefreshRetry time.Duration
 	// Interval is the minimum gap between requests. Zero selects the default.
 	Interval time.Duration
 	// QueueDepth bounds unresolved IDs held. Zero selects the default.
@@ -147,6 +169,9 @@ type Resolver struct {
 	// queued is membership in pending, so the same ID seen thirty times in a
 	// transmission is queued once.
 	queued map[uint32]bool
+	// rechecked is when the registry was last asked about an ID whose
+	// registration is already known, until it answers.
+	rechecked map[uint32]time.Time
 	// lastRequest is when the registry was last asked anything.
 	lastRequest time.Time
 }
@@ -160,6 +185,12 @@ func New(opts Options, store Store) (*Resolver, error) {
 	if opts.NegativeTTL <= 0 {
 		opts.NegativeTTL = DefaultNegativeTTL
 	}
+	if opts.RefreshAfter <= 0 {
+		opts.RefreshAfter = DefaultRefreshAfter
+	}
+	if opts.RefreshRetry <= 0 {
+		opts.RefreshRetry = DefaultRefreshRetry
+	}
 	if opts.Interval <= 0 {
 		opts.Interval = DefaultInterval
 	}
@@ -171,10 +202,11 @@ func New(opts Options, store Store) (*Resolver, error) {
 	}
 
 	r := &Resolver{
-		opts:   opts,
-		now:    opts.Now,
-		cache:  make(map[uint32]Entry),
-		queued: make(map[uint32]bool),
+		opts:      opts,
+		now:       opts.Now,
+		cache:     make(map[uint32]Entry),
+		queued:    make(map[uint32]bool),
+		rechecked: make(map[uint32]time.Time),
 	}
 
 	if store != nil {
@@ -203,6 +235,12 @@ func (r *Resolver) Lookup(id uint32) (Entry, bool) {
 	e, cached := r.cache[id]
 	if cached {
 		if e.Known {
+			// **A registration is rechecked once it is old, and shown
+			// meanwhile.** The answer in hand is better than none, so the
+			// name never blanks while the registry is asked.
+			if r.due(id, e) {
+				r.enqueue(id)
+			}
 			return e, true
 		}
 		// A remembered absence. Re-asked once it has aged out, so somebody who
@@ -214,6 +252,17 @@ func (r *Resolver) Lookup(id uint32) (Entry, bool) {
 
 	r.enqueue(id)
 	return Entry{}, false
+}
+
+// due reports whether a known registration should be asked about again: it is
+// old, and it has not been asked about within RefreshRetry.
+func (r *Resolver) due(id uint32, e Entry) bool {
+	now := r.now()
+	if now.Sub(e.FetchedAt) < r.opts.RefreshAfter {
+		return false
+	}
+	asked, waiting := r.rechecked[id]
+	return !waiting || now.Sub(asked) >= r.opts.RefreshRetry
 }
 
 // enqueue adds an ID to the queue if it is not already there.
@@ -252,6 +301,11 @@ func (r *Resolver) Next() (uint32, bool) {
 	r.pending = r.pending[1:]
 	delete(r.queued, id)
 	r.lastRequest = now
+	if r.cache[id].Known {
+		// A recheck. Noted when it is asked, so that one which fails, or is
+		// still on its way, is not asked again on the next transmission.
+		r.rechecked[id] = now
+	}
 	return id, true
 }
 
@@ -260,6 +314,11 @@ func (r *Resolver) Next() (uint32, bool) {
 // A failed request is not recorded at all: a registry that was briefly
 // unreachable has said nothing about the ID, and remembering that as an absence
 // would hide a real name for a day.
+//
+// **An answer replaces what was held, whatever it says.** A registration
+// rechecked and found gone is gone: the name is removed, and the ID is asked
+// about again after NegativeTTL like any other unknown. Keeping the old name
+// until a new one arrived would show a withdrawn ID as somebody for ever.
 func (r *Resolver) Record(id uint32, e Entry, err error) (Entry, bool) {
 	if err != nil {
 		return Entry{}, false
@@ -267,7 +326,15 @@ func (r *Resolver) Record(id uint32, e Entry, err error) (Entry, bool) {
 	e.ID = id
 	e.FetchedAt = r.now()
 	r.cache[id] = e
+	delete(r.rechecked, id)
 	return e, true
+}
+
+// Held returns what is cached for an ID, known or not, without queueing
+// anything.
+func (r *Resolver) Held(id uint32) (Entry, bool) {
+	e, ok := r.cache[id]
+	return e, ok
 }
 
 // Pending reports how many IDs are waiting, for the health report.

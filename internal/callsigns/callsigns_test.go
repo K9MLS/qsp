@@ -284,3 +284,121 @@ func TestIDZeroIsNeverLookedUp(t *testing.T) {
 		t.Error("ID 0 was queued")
 	}
 }
+
+// A registration already known, as time passes and the registry is asked
+// again. Each step is a wait, then the ID being heard, then what the registry
+// says if it is asked; the row says what is shown and whether it was asked.
+//
+// Break it: never recheck a known ID, and "a month old" is not asked; ask
+// again without waiting after a recheck that failed, and the rows after a
+// failure ask when they should not; keep the old name when the registry says
+// the ID is gone, and "no longer registered" still shows it.
+func TestAKnownRegistrationIsRecheckedWhenItIsOld(t *testing.T) {
+	const id = 3132910
+	day := 24 * time.Hour
+	old := callsigns.Entry{Callsign: "KD9OLD", Name: "Before", Known: true}
+	renamed := callsigns.Entry{Callsign: "K9NEW", Name: "After", Known: true}
+	gone := callsigns.Entry{Known: false}
+	failed := errors.New("the registry did not answer")
+
+	type step struct {
+		wait   time.Duration
+		answer *callsigns.Entry // what the registry says if asked; nil is a failure
+		asked  bool             // whether hearing the ID asked the registry
+		shown  string           // the callsign shown after, "" for none
+	}
+	tests := []struct {
+		name  string
+		steps []step
+	}{
+		{"a fresh name is not asked about", []step{
+			{wait: time.Minute, asked: false, shown: "KD9OLD"},
+			{wait: 29 * day, asked: false, shown: "KD9OLD"},
+		}},
+		{"a month old, it is asked about and still shown", []step{
+			{wait: 30 * day, answer: &old, asked: true, shown: "KD9OLD"},
+		}},
+		{"a recheck that answers the same starts the month again", []step{
+			{wait: 30 * day, answer: &old, asked: true, shown: "KD9OLD"},
+			{wait: 29 * day, asked: false, shown: "KD9OLD"},
+			{wait: day, answer: &old, asked: true, shown: "KD9OLD"},
+		}},
+		{"a new callsign replaces the old", []step{
+			{wait: 31 * day, answer: &renamed, asked: true, shown: "K9NEW"},
+			{wait: time.Minute, asked: false, shown: "K9NEW"},
+		}},
+		{"a recheck that fails keeps the name and waits an hour", []step{
+			{wait: 31 * day, answer: nil, asked: true, shown: "KD9OLD"},
+			{wait: time.Minute, asked: false, shown: "KD9OLD"},
+			{wait: 58 * time.Minute, asked: false, shown: "KD9OLD"},
+			{wait: time.Minute, answer: &renamed, asked: true, shown: "K9NEW"},
+		}},
+		{"no longer registered removes the name, and is asked again after a day", []step{
+			{wait: 31 * day, answer: &gone, asked: true, shown: ""},
+			{wait: 23 * time.Hour, asked: false, shown: ""},
+			{wait: time.Hour, answer: &renamed, asked: true, shown: "K9NEW"},
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, c := newResolver(t, nil)
+			r.Record(id, old, nil)
+
+			for i, s := range tc.steps {
+				c.advance(s.wait)
+				r.Lookup(id)
+				r.Lookup(id) // heard twice: thirty frames of one over ask once
+				if got := r.Pending(); got > 1 {
+					t.Fatalf("step %d: %d requests queued for one ID", i, got)
+				}
+				// Past the spacing between requests, which is not what this is about.
+				c.advance(callsigns.DefaultInterval)
+				asking, asked := r.Next()
+				if asked != s.asked {
+					t.Fatalf("step %d: asked the registry = %v, want %v", i, asked, s.asked)
+				}
+				if asked {
+					if asking != id {
+						t.Fatalf("step %d: asked about %d", i, asking)
+					}
+					if s.answer == nil {
+						r.Record(id, callsigns.Entry{}, failed)
+					} else {
+						r.Record(id, *s.answer, nil)
+					}
+				}
+				shown := ""
+				if e, ok := r.Held(id); ok && e.Known {
+					shown = e.Callsign
+				}
+				if shown != s.shown {
+					t.Fatalf("step %d: showing %q, want %q", i, shown, s.shown)
+				}
+			}
+		})
+	}
+}
+
+// A recheck still on its way is not asked a second time by the ID being heard
+// again, which it will be: the radio is talking.
+func TestARecheckInFlightIsNotAskedTwice(t *testing.T) {
+	const id = 3132910
+	r, c := newResolver(t, nil)
+	r.Record(id, callsigns.Entry{Callsign: "KD9OLD", Known: true}, nil)
+	c.advance(31 * 24 * time.Hour)
+
+	r.Lookup(id)
+	if _, ok := r.Next(); !ok {
+		t.Fatal("an old registration was not asked about")
+	}
+	// The request is out. The radio keeps talking for ten seconds.
+	for range 5 {
+		c.advance(callsigns.DefaultInterval)
+		if e, ok := r.Lookup(id); !ok || e.Callsign != "KD9OLD" {
+			t.Fatalf("the name stopped being shown while it was rechecked: %+v, %v", e, ok)
+		}
+		if _, again := r.Next(); again {
+			t.Fatal("the registry was asked again while the first recheck was still out")
+		}
+	}
+}

@@ -215,6 +215,16 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A callsign that changes is noticed.** QSP asked the registry who a radio
+  ID belonged to once and kept the answer for ever, in the database too, so
+  an upgraded callsign, a corrected name or an ID that changed hands went on
+  showing as it first was. A known registration is now asked about again once
+  it is 30 days old, the next time that radio is heard; the name in hand is
+  shown meanwhile. If the registry cannot be reached the old name stays and
+  that ID is left for an hour. If the registry says the ID is no longer
+  registered, the name is removed. The log says "a radio ID's registration
+  changed" with the old callsign and the new. No setting and no change to the
+  database.
 - **The Zello connector no longer loses the end of an over, or plays old
   audio.** Two faults in the queue between QSP and Zello, both in
   `qsp-zello`. When the connection to Zello stalled for five seconds the

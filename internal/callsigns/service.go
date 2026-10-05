@@ -117,8 +117,22 @@ func (s *Service) resolveOne(ctx context.Context) {
 	}
 
 	s.mu.Lock()
+	before, held := s.resolver.Held(id)
 	stored, worth := s.resolver.Record(id, entry, nil)
 	s.mu.Unlock()
+
+	if held && before.Known && (!stored.Known || stored.Callsign != before.Callsign) {
+		// Said because a name changing on Last heard with nothing in the log
+		// to say why looks like a fault.
+		now := stored.Callsign
+		if !stored.Known {
+			now = "(no longer registered)"
+		}
+		s.log.Info("a radio ID's registration changed",
+			slog.Uint64("radio_id", uint64(id)),
+			slog.String("was", before.Callsign),
+			slog.String("now", now))
+	}
 
 	if !worth || s.store == nil {
 		return

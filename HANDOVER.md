@@ -186,6 +186,17 @@ was seen and not the place it was made. The log named the peer it came from
 frame arrives from a linked server, capture where it entered the network
 before changing anything where it surfaced.**
 
+**0.1.318 rechecks a callsign** (0476, `internal/callsigns`). A known
+registration was kept for ever; it is asked about again once it is 30 days
+old, when the radio is next heard, and shown meanwhile. A recheck that fails
+is left for an hour, where an unknown ID that fails is still asked every two
+seconds while it is heard — **that older behaviour was left alone and is worth
+a look**. A registration the registry no longer has is removed (the operator
+chose this over keeping the old name, 2026-10-05). **Whatever in a server's cache is already older than
+30 days is rechecked the first time that radio is heard after the upgrade**,
+one request every two seconds at most. Expect "a radio ID's registration changed" for anybody who
+changed callsign since.
+
 **0.1.317 is the Zello connector's queue** (0475, `internal/audio/queue.go`
 and `cmd/qsp-zello`). A full queue from QSP refused what arrived, so a
 five-second stall toward Zello lost the newest audio and the release; it now
@@ -346,8 +357,7 @@ failed.
 
 **Still open from the hunt**: a hotspot can claim to be a linked QSP server
 and is then offered private calls for radios not yet located (needs linked
-servers to prove who they are — K9MLS to decide); a callsign is cached
-for ever once known; two administrators saving stale forms overwrite each
+servers to prove who they are — K9MLS to decide); two administrators saving stale forms overwrite each
 other silently; no console page calls full restore, so its new report of
 written and missing password files is API-only. The reviewers' full reports are in the 2026-10-03 session.
 For the record, 0.1.287 is the hotspot private-call fix and 0.1.286
@@ -425,7 +435,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.317: the Zello connector's queue (0475), on top of 0471 to 0474; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.318: callsigns rechecked (0476), on top of 0471 to 0475; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

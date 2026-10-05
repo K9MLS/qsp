@@ -298,3 +298,52 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 	t.Fatalf("timed out waiting for %s", what)
 }
+
+// TestAnOldRegistrationIsRecheckedAndSaved is the whole wiring for a recheck:
+// a name loaded from the database a long time ago, heard again, asked about,
+// replaced in memory and written back, so a restart does not bring the old
+// one home.
+//
+// Break it: have Lookup return a known entry without asking whether it is
+// due, and the old callsign is shown for ever.
+func TestAnOldRegistrationIsRecheckedAndSaved(t *testing.T) {
+	const id = 3132910
+	store := &memoryStore{entries: []callsigns.Entry{{
+		ID: id, Callsign: "KD9OLD", Name: "Before", Known: true,
+		FetchedAt: time.Now().Add(-45 * 24 * time.Hour),
+	}}}
+	r, err := callsigns.New(callsigns.Options{
+		Contact: "k9mls@example.org", Interval: time.Millisecond,
+	}, store)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	f := &stubFetcher{entries: map[uint32]callsigns.Entry{
+		id: {Callsign: "K9NEW", Name: "After", Known: true},
+	}}
+	svc := callsigns.NewService(logging.Discard(), r, f, store)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go svc.Run(ctx)
+
+	if e, ok := svc.Lookup(id); !ok || e.Callsign != "KD9OLD" {
+		t.Fatalf("the name held was not shown while it was rechecked: %+v, %v", e, ok)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if e, ok := svc.Lookup(id); ok && e.Callsign == "K9NEW" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the registration was never replaced")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if store.count() != 1 {
+		t.Errorf("%d entries written back, want the one that changed", store.count())
+	}
+	if f.count() != 1 {
+		t.Errorf("the registry was asked %d times, want once", f.count())
+	}
+}
