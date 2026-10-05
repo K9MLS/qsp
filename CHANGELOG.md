@@ -215,6 +215,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Zello connector no longer loses the end of an over, or plays old
+  audio.** Two faults in the queue between QSP and Zello, both in
+  `qsp-zello`. When the connection to Zello stalled for five seconds the
+  queue filled and refused whatever came next: the newest audio, and the
+  release that ends the over, so the Zello channel was held about two seconds
+  longer and the log blamed QSP ("audio from QSP stopped without a release").
+  A full queue now gives up its oldest audio and never a keyup or a release.
+  And audio QSP sent while the connector was logging on to Zello waited in
+  the queue and was played, up to five seconds late, the moment the session
+  opened; it is discarded, as audio during an outage already was. The
+  connector's health report gains `usrp_dropped_queue_full`, and the log says
+  once when it starts happening. **Needs the connector rebuilt and installed,
+  not only QSP.** Neither fault was ever reported on air.
 - **The database tests outside `cmd/qsp` run.** The tests of the credential
   store, the P25 call store, the console's credential pages and the password
   reset all skipped on every machine, because only `cmd/qsp` registers the

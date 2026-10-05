@@ -92,6 +92,9 @@ type connector struct {
 	since     time.Time
 	connected atomic.Uint64
 	discarded atomic.Uint64 // USRP frames that arrived with no Zello session
+	// lost reads how many frames the queue from QSP gave up because it was
+	// full, and is nil in a test that does not ask.
+	lost func() uint64
 }
 
 func run(ctx context.Context, cfg Config, log *slog.Logger) error {
@@ -128,29 +131,40 @@ func run(ctx context.Context, cfg Config, log *slog.Logger) error {
 		defer srv.Close()
 	}
 
-	frames := make(chan audio.Frame, 256)
-	go receive(ctx, conn, frames)
+	frames := audio.NewQueue(usrpQueue)
+	c.lost = frames.Lost
+	go receive(ctx, conn, frames, log)
 	return c.loop(ctx, frames, &usrpRadio{conn: conn})
 }
+
+// usrpQueue is how many frames from QSP wait for the pump: five seconds.
+const usrpQueue = 256
 
 // receive reads USRP for the connector's whole life, not per session, so a
 // reconnection never leaves the socket unread and its buffer full of stale
 // audio that would play the moment Zello came back.
-func receive(ctx context.Context, conn *audio.Conn, out chan<- audio.Frame) {
+//
+// **A full queue gives up its oldest audio and never a keyup or a release**
+// (audio.Queue). It fills only when the pump has been stuck for five seconds,
+// which is a stalled connection to Zello, and that is said once each time it
+// happens rather than once a frame.
+func receive(ctx context.Context, conn *audio.Conn, out *audio.Queue, log *slog.Logger) {
+	losing := false
 	for {
 		f, err := conn.Receive(ctx)
 		if err != nil {
 			return
 		}
-		select {
-		case out <- f:
-		default: // a full queue drops rather than blocks the socket
+		lost := out.Push(f)
+		if lost && !losing {
+			log.Warn("audio from QSP is arriving faster than it reaches Zello; the oldest is being dropped")
 		}
+		losing = lost
 	}
 }
 
 // loop connects, carries audio until the session ends, and connects again.
-func (c *connector) loop(ctx context.Context, frames <-chan audio.Frame, radio zellobridge.Radio) error {
+func (c *connector) loop(ctx context.Context, frames *audio.Queue, radio zellobridge.Radio) error {
 	failures := 0
 	for ctx.Err() == nil {
 		err := c.once(ctx, frames, radio)
@@ -181,7 +195,7 @@ func (c *connector) loop(ctx context.Context, frames <-chan audio.Frame, radio z
 
 // once is one logon and one session. A nil error is a session that connected
 // and later ended.
-func (c *connector) once(ctx context.Context, frames <-chan audio.Frame, radio zellobridge.Radio) error {
+func (c *connector) once(ctx context.Context, frames *audio.Queue, radio zellobridge.Radio) error {
 	logon, err := c.fetch(ctx)
 	if err != nil {
 		return err
@@ -207,13 +221,19 @@ func (c *connector) once(ctx context.Context, frames <-chan audio.Frame, radio z
 	c.mu.Unlock()
 	c.setState(stateConnected, "")
 	c.log.Info("connected to Zello", slog.String("channel", logon.Channel))
+	// **What QSP sent while the logon was in progress is not played.** Nothing
+	// empties the queue during the logon, so it would reach the channel the
+	// moment the session opened, as much as five seconds late. An over still
+	// in progress loses its keyup here and no more: the pump opens a stream
+	// on the first audio it is given.
+	c.discarded.Add(uint64(frames.Discard()))
 	c.pump(ctx, s, br, frames)
 	return nil
 }
 
 // pump carries audio for one session, on one goroutine, so the bridge's two
 // directions are never driven concurrently from here.
-func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-chan audio.Frame) {
+func (c *connector) pump(ctx context.Context, s session, br bridge, frames *audio.Queue) {
 	tick := time.NewTicker(pumpTick)
 	defer tick.Stop()
 
@@ -258,7 +278,13 @@ func (c *connector) pump(ctx context.Context, s session, br bridge, frames <-cha
 			return
 		case <-s.Done():
 			return
-		case f := <-frames:
+		case <-frames.Ready():
+			// One frame for each time round, so a backlog from QSP cannot
+			// keep Zello's own audio and events waiting behind it.
+			f, ok := frames.Pop()
+			if !ok {
+				continue
+			}
 			lastUSRP = time.Now()
 			switch {
 			case !f.PTT:
@@ -370,15 +396,15 @@ func logStreamStart(log *slog.Logger, ev zello.Event) {
 
 // drainFor waits between attempts while discarding USRP audio, so a keyup
 // during an outage does not play into the next session seconds late.
-func (c *connector) drainFor(ctx context.Context, frames <-chan audio.Frame, d time.Duration) error {
+func (c *connector) drainFor(ctx context.Context, frames *audio.Queue, d time.Duration) error {
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-frames:
-			c.discarded.Add(1)
+		case <-frames.Ready():
+			c.discarded.Add(uint64(frames.Discard()))
 		case <-timer.C:
 			return nil
 		}

@@ -162,6 +162,17 @@ curl -sL -o /tmp/sc.tgz https://github.com/dominikh/go-tools/releases/download/2
 tar -C /tmp -xzf /tmp/sc.tgz && cp /tmp/staticcheck/staticcheck /usr/local/bin/
 ```
 
+**The Zello connector is behind the `zello` build tag and needs libopus, which
+your container does not ship and can install:**
+
+```sh
+apt-get update && apt-get install -y libopus-dev pkg-config
+CGO_ENABLED=1 go test -race -tags zello ./cmd/qsp-zello/ ./internal/opus/ ./internal/zellobridge/
+```
+
+Until 2026-10-05 the handover said the connector could not be run there. Nobody
+had tried the package manager.
+
 `cmd/qsp` has **seven** known failures in your container, listed by name in §7,
 because no SQLite driver is registered there. **Do not move
 `cmd/qsp/driver_sqlite.go` aside** — four documents name that path and removing

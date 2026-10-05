@@ -25,6 +25,11 @@ func (c *connector) healthHandler() http.Handler {
 			"connections":            c.connected.Load(),
 			"usrp_discarded_offline": c.discarded.Load(),
 		}
+		if c.lost != nil {
+			// Audio given up because Zello was not taking it as fast as QSP
+			// sent it. Anything but zero is a connection to Zello that stalled.
+			body["usrp_dropped_queue_full"] = c.lost()
+		}
 		if c.detail != "" {
 			body["detail"] = c.detail
 		}

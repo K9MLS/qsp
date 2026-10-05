@@ -143,16 +143,16 @@ func TestAudioCrossesBothWays(t *testing.T) {
 	t.Run("QSP audio becomes a Zello stream", func(t *testing.T) {
 		s := newFakeSession()
 		c := testConnector(t, s)
-		frames := make(chan audio.Frame, 16)
+		frames := audio.NewQueue(16)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go c.pump(ctx, s, mustBridge(t, s, &radioLog{}), frames)
 
-		frames <- audio.Frame{PTT: true}
+		frames.Push(audio.Frame{PTT: true})
 		for range 6 {
-			frames <- pcmFrame()
+			frames.Push(pcmFrame())
 		}
-		frames <- audio.Frame{PTT: false}
+		frames.Push(audio.Frame{PTT: false})
 		waitFor(t, "the stream to close", func() bool { return strings.HasSuffix(s.shape(), "stop") })
 		if got := s.shape(); got != "start audio audio stop" {
 			t.Errorf("Zello saw %q, want two 60 ms packets between start and stop", got)
@@ -162,14 +162,14 @@ func TestAudioCrossesBothWays(t *testing.T) {
 	t.Run("audio with no keyup still opens the stream", func(t *testing.T) {
 		s := newFakeSession()
 		c := testConnector(t, s)
-		frames := make(chan audio.Frame, 16)
+		frames := audio.NewQueue(16)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		go c.pump(ctx, s, mustBridge(t, s, &radioLog{}), frames)
 		for range 3 {
-			frames <- pcmFrame()
+			frames.Push(pcmFrame())
 		}
-		frames <- audio.Frame{PTT: false}
+		frames.Push(audio.Frame{PTT: false})
 		waitFor(t, "the stream to close", func() bool { return strings.HasSuffix(s.shape(), "stop") })
 		if got := s.shape(); got != "start audio stop" {
 			t.Errorf("Zello saw %q", got)
@@ -188,7 +188,7 @@ func TestAudioCrossesBothWays(t *testing.T) {
 			s.audio <- zello.IncomingPacket{StreamID: 7, PacketID: 1, Opus: pkt}
 			s.audio <- zello.IncomingPacket{StreamID: 7, PacketID: 2, Opus: pkt}
 			s.events <- zello.Event{Command: zello.EventStreamStop, StreamID: 7}
-			go c.pump(ctx, s, mustBridge(t, s, radio), make(chan audio.Frame))
+			go c.pump(ctx, s, mustBridge(t, s, radio), audio.NewQueue(16))
 			waitFor(t, "the release toward QSP", func() bool { return strings.HasSuffix(radio.String(), "R") })
 			time.Sleep(10 * time.Millisecond)
 			cancel()
@@ -223,7 +223,7 @@ func TestAZelloStreamOfLongPacketsReachesQSP(t *testing.T) {
 	s.events <- zello.Event{Command: zello.EventStreamStop, StreamID: 11}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go c.pump(ctx, s, mustBridge(t, s, radio), make(chan audio.Frame))
+	go c.pump(ctx, s, mustBridge(t, s, radio), audio.NewQueue(16))
 
 	waitFor(t, "the release toward QSP", func() bool { return strings.HasSuffix(radio.String(), "R") })
 	want := "K" + strings.Repeat("A", 12) + "R"
@@ -251,12 +251,12 @@ func TestNothingIsLeftOpenWhenASessionEnds(t *testing.T) {
 	s := newFakeSession()
 	c := testConnector(t, s)
 	radio := &radioLog{}
-	frames := make(chan audio.Frame, 16)
+	frames := audio.NewQueue(16)
 	done := make(chan struct{})
 	go func() { c.pump(context.Background(), s, mustBridge(t, s, radio), frames); close(done) }()
 
-	frames <- audio.Frame{PTT: true}
-	frames <- pcmFrame()
+	frames.Push(audio.Frame{PTT: true})
+	frames.Push(pcmFrame())
 	s.audio <- zello.IncomingPacket{StreamID: 9, PacketID: 1, Opus: opusPacket(t)}
 	waitFor(t, "both directions to open", func() bool {
 		return strings.Contains(s.shape(), "start") && strings.HasPrefix(radio.String(), "K")
@@ -281,12 +281,12 @@ func TestNothingIsLeftOpenWhenASessionEnds(t *testing.T) {
 func TestAQSPTransmissionWithNoReleaseClosesTheZelloStream(t *testing.T) {
 	s := newFakeSession()
 	c := testConnector(t, s)
-	frames := make(chan audio.Frame, 16)
+	frames := audio.NewQueue(16)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go c.pump(ctx, s, mustBridge(t, s, &radioLog{}), frames)
-	frames <- audio.Frame{PTT: true}
-	frames <- pcmFrame()
+	frames.Push(audio.Frame{PTT: true})
+	frames.Push(pcmFrame())
 	waitFor(t, "the idle close", func() bool { return strings.HasSuffix(s.shape(), "stop") })
 }
 
@@ -333,7 +333,7 @@ func TestMissingCredentialsNeverReachZello(t *testing.T) {
 		dial:  func(context.Context, zello.Options) (session, error) { dialled = true; return nil, errors.New("x") },
 		newBr: realBridge,
 	}
-	err := c.once(context.Background(), make(chan audio.Frame), &radioLog{})
+	err := c.once(context.Background(), audio.NewQueue(16), &radioLog{})
 	state, _ := classify(err, 0)
 	if dialled {
 		t.Error("Zello was dialled with no credentials")
@@ -419,7 +419,7 @@ func TestAClosedAudioChannelIsNotAPacket(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			done := make(chan struct{})
-			go func() { c.pump(ctx, s, br, make(chan audio.Frame)); close(done) }()
+			go func() { c.pump(ctx, s, br, audio.NewQueue(16)); close(done) }()
 			select {
 			case <-done:
 			case <-time.After(3 * time.Second):
@@ -453,7 +453,7 @@ func TestAZelloStreamWithNoStopIsReleasedBeforeQSPGivesUp(t *testing.T) {
 	c := testConnector(t, s)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go c.pump(ctx, s, br, make(chan audio.Frame))
+	go c.pump(ctx, s, br, audio.NewQueue(16))
 
 	sent := time.Now()
 	s.audio <- zello.IncomingPacket{StreamID: 7, PacketID: 1, Opus: []byte{1}}
@@ -462,5 +462,88 @@ func TestAZelloStreamWithNoStopIsReleasedBeforeQSPGivesUp(t *testing.T) {
 	if took := stopped[0].Sub(sent); took >= routing.StreamTimeout {
 		t.Errorf("released %s after the last audio; QSP gives up at %s and blames a crash",
 			took.Round(10*time.Millisecond), routing.StreamTimeout)
+	}
+}
+
+// TestAnOverThatOverflowsTheQueueStillEnds: the pump stuck while QSP sent more
+// than the queue holds, then running again. The release is the last thing QSP
+// sent, and it must be what closes the Zello stream -- not the two-second
+// timer, which is what closed it when a full queue refused the release.
+//
+// To see it bite: in audio.Queue.Push, return without adding the frame when
+// the queue is full.
+func TestAnOverThatOverflowsTheQueueStillEnds(t *testing.T) {
+	tests := []struct {
+		name  string
+		audio int
+	}{
+		{"just over what it holds", 16},
+		{"several times what it holds", 80},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newFakeSession()
+			c := testConnector(t, s)
+			frames := audio.NewQueue(16)
+			frames.Push(audio.Frame{PTT: true})
+			for range tc.audio {
+				frames.Push(pcmFrame())
+			}
+			frames.Push(audio.Frame{PTT: false})
+			if frames.Lost() == 0 {
+				t.Fatal("the queue did not overflow, so this proves nothing")
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			began := time.Now()
+			go c.pump(ctx, s, mustBridge(t, s, &radioLog{}), frames)
+			waitFor(t, "the Zello stream to close", func() bool { return strings.HasSuffix(s.shape(), "stop") })
+			if took := time.Since(began); took > idle/2 {
+				t.Errorf("the stream closed after %s: by the timer, not by the release", took)
+			}
+			if got := s.shape(); !strings.HasPrefix(got, "start audio") || strings.Count(got, "start") != 1 {
+				t.Errorf("Zello was sent %q, want one stream with audio in it", got)
+			}
+		})
+	}
+}
+
+// TestWhatArrivedDuringTheLogonIsNotPlayed: nothing empties the queue while
+// the connector logs on, so without this an over QSP sent in those seconds
+// reaches the channel the moment the session opens.
+//
+// To see it bite: remove the Discard before pump in once.
+func TestWhatArrivedDuringTheLogonIsNotPlayed(t *testing.T) {
+	s := newFakeSession()
+	c := testConnector(t, s)
+	frames := audio.NewQueue(16)
+	logon := c.fetch
+	c.fetch = func(ctx context.Context) (zellologon.Logon, error) {
+		// QSP sends a whole over while the logon is in progress.
+		frames.Push(audio.Frame{PTT: true})
+		for range 6 {
+			frames.Push(pcmFrame())
+		}
+		frames.Push(audio.Frame{PTT: false})
+		return logon(ctx)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- c.once(context.Background(), frames, &radioLog{}) }()
+	waitFor(t, "the session to connect", func() bool { return c.connected.Load() == 1 })
+	time.Sleep(150 * time.Millisecond) // long enough for a pump to play eight frames
+	close(s.done)
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("once did not return when the session ended")
+	}
+
+	if got := s.shape(); got != "" {
+		t.Errorf("Zello was sent %q: audio from before the session opened was played", got)
+	}
+	if got := c.discarded.Load(); got != 8 {
+		t.Errorf("%d frames counted as discarded, want the 8 that arrived during the logon", got)
 	}
 }
