@@ -792,6 +792,31 @@ This is §8a's rule in its original form: when several changes in a row produce
 nothing visible, that is evidence about the feedback path, not a reason for a
 cleverer fix — make the system report its own state.
 
+### Voice toward a repeater is held and paced: 2026-10-05
+
+From 0.1.315 the first voice record of each call waits before it is sent to a
+repeater, 60 ms unless `p25_repeaters.hold_ms` says otherwise, and the rest
+leave 20 ms apart. It is in `internal/v24link/pacer.go`, with its reasons.
+
+Two measurements decided its shape, both from `testdata/p25/p25-voice.pcap`:
+
+- **A hotspot's voice reaches QSP one record every 20 ms**: median 20.5 ms, 99
+  in 100 under 27 ms, worst 43 ms, on a LAN.
+- **Voice nearly fills the serial line.** Eighteen records are 308 bytes every
+  360 ms; with an address, a control byte, a flag and a check sequence on each
+  that is about 8,800 bit/s of 9,600, before bit stuffing. So a queue can
+  never be emptied by sending faster, and the hold never drops or hurries
+  anything.
+
+**The hold covers one leg of two.** It evens out what arrives at QSP. A
+repeater a long way from its QSP has the internet between QSP and the router,
+which is after the hold, and there the only cushion is the repeater's own.
+**How a Quantar treats a late record is not known.** The instrument is to make
+records late on purpose and listen: delay and jitter added to the server's
+traffic to the router and to nothing else, a hotspot keyed, the repeater
+listened to at 20, 40 and 80 ms. The Quantar must be off the hotspot's
+frequency first, or what is heard is the two of them.
+
 ## What QSP replaces, and what the existing stack gets wrong
 
 The DVSwitch group's own wiki describes Quantar_Bridge as emulating **the far

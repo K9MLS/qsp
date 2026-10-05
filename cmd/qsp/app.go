@@ -631,6 +631,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			Site:           cfg.P25Repeaters.Site,
 			PresentAs:      cfg.P25Repeaters.PresentAs,
 			SendHeader:     cfg.P25Repeaters.SendHeader,
+			Hold:           cfg.P25Repeaters.Hold(),
 			Calls:          a.p25Calls,
 			Floor:          p25Floor,
 		}

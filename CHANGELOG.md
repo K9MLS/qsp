@@ -6,6 +6,21 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Calls to a Motorola P25 repeater are held a moment and sent evenly.**
+  QSP wrote each piece of voice to a repeater the instant it arrived, so
+  audio that reached QSP late went to the transmitter late. The start of each
+  call now waits 60 milliseconds, and the rest follows at the rate it is
+  spoken, so audio up to that late still goes out on time. Every call to a
+  repeater is delayed by the same amount. **Hold before transmitting**, on
+  the Network panel, sets it from 0 to 200; 0 is how QSP behaved before.
+  Nothing is dropped and nothing is hurried: the serial line has no room to
+  send voice faster than it is spoken. The log line "a call was sent to the
+  repeater" gives the longest gap in what arrived and how many times the
+  repeater was left with nothing to send. **It evens out what reaches QSP,
+  not what happens between QSP and the router**, which comes after it and
+  depends on the repeater. **Not yet heard on air.** Saving a hold on the
+  page adds `hold_ms` to the configuration, which a version before 0.1.315
+  will not start with; clear the box and save before going back.
 - The handover and the new-session brief are brought up to 2026-10-04: what
   runs where, how to go back, and what is still open for Motorola P25
   repeaters. No change to what QSP does.

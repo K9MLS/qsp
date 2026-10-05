@@ -224,6 +224,7 @@ func NeedsRestart(before, after Config) []string {
 	add("p25_repeaters.site", before.P25Repeaters.Site != after.P25Repeaters.Site)
 	add("p25_repeaters.send_header",
 		before.P25Repeaters.SendHeader != after.P25Repeaters.SendHeader)
+	add("p25_repeaters.hold_ms", before.P25Repeaters.Hold() != after.P25Repeaters.Hold())
 	add("p25_repeaters.present_as", before.P25Repeaters.PresentAs != after.P25Repeaters.PresentAs)
 	add("p25_repeaters.record_dir", before.P25Repeaters.RecordDir != after.P25Repeaters.RecordDir)
 

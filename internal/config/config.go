@@ -103,6 +103,28 @@ type P25Repeaters struct {
 	// error correction a header for another talkgroup needs. Off by default,
 	// and for a repeater that will not transmit a call arriving without one.
 	SendHeader bool `json:"send_header,omitempty"`
+	// HoldMS is how many milliseconds the first voice record of a call waits
+	// before it is sent to a repeater, so that a record arriving late still
+	// leaves on time; see internal/v24link/pacer.go. **Absent is
+	// DefaultRepeaterHoldMS, and zero is none**, which are different things,
+	// so it is a pointer: 0 sends every record the moment it arrives, as QSP
+	// did before 0.1.315.
+	HoldMS *int `json:"hold_ms,omitempty"`
+}
+
+// DefaultRepeaterHoldMS is the hold a configuration that does not name one
+// gets: three voice records.
+const DefaultRepeaterHoldMS = 60
+
+// MaxRepeaterHoldMS is the longest hold accepted.
+const MaxRepeaterHoldMS = 200
+
+// Hold is the hold in force: HoldMS, or the default when it is absent.
+func (p P25Repeaters) Hold() time.Duration {
+	if p.HoldMS == nil {
+		return DefaultRepeaterHoldMS * time.Millisecond
+	}
+	return time.Duration(*p.HoldMS) * time.Millisecond
 }
 
 // IPSC configures the Motorola IP Site Connect listener.
@@ -1585,6 +1607,11 @@ func (c Config) Validate() error {
 		if c.P25Repeaters.Site > 127 {
 			v.add("p25_repeaters.site", fmt.Sprintf("%d is beyond 127", c.P25Repeaters.Site),
 				"use a site number from 1 to 127 that is not the station's own; empty uses 2")
+		}
+		if h := c.P25Repeaters.HoldMS; h != nil && (*h < 0 || *h > MaxRepeaterHoldMS) {
+			v.add("p25_repeaters.hold_ms", fmt.Sprintf("%d is not between 0 and %d", *h, MaxRepeaterHoldMS),
+				fmt.Sprintf("use a number of milliseconds from 0 to %d; empty uses %d, and 0 holds nothing",
+					MaxRepeaterHoldMS, DefaultRepeaterHoldMS))
 		}
 		if p := c.P25Repeaters.PresentAs; p != "" && p != "repeater" && p != "console" {
 			v.add("p25_repeaters.present_as", fmt.Sprintf("%q is not a form QSP can present", p),

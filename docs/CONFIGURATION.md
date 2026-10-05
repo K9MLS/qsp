@@ -171,7 +171,8 @@ to work; none has been tried.
   "record_dir":      "/var/lib/qsp/repeaters",
   "site":            2,
   "present_as":      "repeater",
-  "send_header":     false
+  "send_header":     false,
+  "hold_ms":         60
 }
 ```
 
@@ -186,7 +187,11 @@ console interface, site 13 unless set). A repeater set for repeater-to-repeater
 linking expects a repeater, and that is what the Quantar here took. `send_header` sends a call header ahead of each gateway's call; leave it off
 unless a repeater will not transmit calls from hotspots, because **the header
 sent is the one a repeater was heard to send and names talkgroup 1 whatever the
-call is on**. A
+call is on**. `hold_ms` is how long the first voice of each call waits before
+it is sent to a repeater, 0 to 200; the rest follows at the rate it is spoken,
+so audio that reaches QSP up to that late still goes out evenly. Left out it is
+60, and 0 sends everything the moment it arrives. It does nothing for delay
+between QSP and the router, which comes after it. A
 connection silent for 30 seconds is closed, and a new connection from the same
 router replaces the old. Changing any of these needs a restart.
 

@@ -64,6 +64,7 @@
   var repeatersSite = document.getElementById("p25_repeaters-site");
   var repeatersPresent = document.getElementById("p25_repeaters-present");
   var repeatersHeader = document.getElementById("p25_repeaters-header");
+  var repeatersHold = document.getElementById("p25_repeaters-hold");
   var repeatersHeaderState = document.getElementById("p25_repeaters-header-state");
   var repeatersAllowed = document.getElementById("p25_repeaters-allowed");
   var repeatersEnabledState = document.getElementById("p25_repeaters-enabled-state");
@@ -323,6 +324,8 @@
     repeatersSite.value = repeaters.site ? String(repeaters.site) : "";
     repeatersPresent.value = repeaters.present_as === "console" ? "console" : "";
     repeatersHeader.checked = !!repeaters.send_header;
+    /* Absent and 0 are different: absent is the default, 0 is no hold. */
+    repeatersHold.value = repeaters.hold_ms == null ? "" : String(repeaters.hold_ms);
     repeatersAllowed.value = (repeaters.allowed_routers || []).join("\n");
     refreshRepeatersState();
 
@@ -445,6 +448,14 @@
     next.p25_repeaters.site = parseInt(repeatersSite.value, 10) || 0;
     next.p25_repeaters.present_as = repeatersPresent.value;
     next.p25_repeaters.send_header = repeatersHeader.checked;
+    /* Left out when empty, so the server's default applies and a
+       configuration nobody set a hold in stays as it was. */
+    var hold = parseInt(repeatersHold.value, 10);
+    if (repeatersHold.value.trim() === "" || isNaN(hold)) {
+      delete next.p25_repeaters.hold_ms;
+    } else {
+      next.p25_repeaters.hold_ms = hold;
+    }
     next.p25_repeaters.allowed_routers = repeatersRouters();
     /* Supplied for the same reason as the P25 port above. */
     if (next.p25_repeaters.enabled && !next.p25_repeaters.listen_address) {

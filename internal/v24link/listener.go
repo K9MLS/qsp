@@ -74,6 +74,11 @@ type Config struct {
 	// ahead of a gateway's call. Off, a call is sent with a start marker and
 	// no header.
 	SendHeader bool
+	// Hold is how long the first voice record of a call waits before it is
+	// sent to a repeater; the rest follow RecordInterval apart. It is what a
+	// late record has to spare. Zero sends every record as it arrives, which
+	// is all QSP did before 0.1.315. See pacer.go.
+	Hold time.Duration
 	// Calls, when set, is told of every transmission a repeater makes, for
 	// Last heard and the record. Nil keeps none.
 	Calls *p25calls.Tracker
@@ -106,6 +111,9 @@ func (c Config) Validate() error {
 	}
 	if _, ok := IdentityNamed(c.PresentAs); !ok {
 		return fmt.Errorf("v24link: %q is not \"repeater\" or \"console\"", c.PresentAs)
+	}
+	if c.Hold < 0 || c.Hold > MaxHold {
+		return fmt.Errorf("v24link: a hold of %s is not between nothing and %s", c.Hold, MaxHold)
 	}
 	if c.Site > MaxSite {
 		return fmt.Errorf("v24link: site %d is beyond %d, the most an introduction can carry",
@@ -520,13 +528,21 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		return err
 	}
 
-	st.mu.Lock()
-	st.send = func(payload []byte) error {
+	// A call's frames, to this repeater. Held and paced when Config.Hold
+	// asks; QSP's own answers and keepalives never wait behind voice.
+	toRepeater := func(payload []byte) error {
 		st.mu.Lock()
 		g := st.group
 		st.mu.Unlock()
 		return send(g, payload)
 	}
+	var paced *pacer
+	if l.cfg.Hold > 0 {
+		paced = newPacer(log, l.now, toRepeater)
+		toRepeater = paced.send
+	}
+	st.mu.Lock()
+	st.send = toRepeater
 	st.mu.Unlock()
 
 	// The link, as the station's own frames report it. Guarded by mu, because
@@ -564,6 +580,13 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 	// the keepalive once both ends have introduced themselves.
 	stop := make(chan struct{})
 	defer close(stop)
+	if paced != nil {
+		l.done.Add(1)
+		go func() {
+			defer l.done.Done()
+			paced.run(ctx, stop, l.cfg.Hold)
+		}()
+	}
 	l.done.Add(1)
 	go func() {
 		defer l.done.Done()

@@ -70,6 +70,10 @@ func (c Config) Clone() Config {
 	}
 
 	out.P25Repeaters.AllowedRouters = slices.Clone(c.P25Repeaters.AllowedRouters)
+	if h := c.P25Repeaters.HoldMS; h != nil {
+		held := *h
+		out.P25Repeaters.HoldMS = &held
+	}
 	out.Weather.Zones = slices.Clone(c.Weather.Zones)
 	out.Weather.Events = slices.Clone(c.Weather.Events)
 

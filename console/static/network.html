@@ -610,6 +610,19 @@
             </label>
           </div>
 
+          <div class="settings">
+            <label class="picker__field">
+              <span class="picker__label">Hold before transmitting (ms)</span>
+              <input class="picker__input" id="p25_repeaters-hold" type="number"
+                     min="0" max="200" step="20" placeholder="60">
+              <p class="field__note">How long the start of each call waits
+                before it is sent to a repeater, so that audio arriving late
+                still goes out evenly. Every call is delayed by this much.
+                Empty uses 60. Raise it if calls from far away break up on
+                the repeater; 0 sends everything the moment it arrives.</p>
+            </label>
+          </div>
+
           <label class="toggle">
             <input class="toggle__input" id="p25_repeaters-header" type="checkbox">
             <span class="toggle__track"></span>

@@ -186,6 +186,26 @@ was seen and not the place it was made. The log named the peer it came from
 frame arrives from a linked server, capture where it entered the network
 before changing anything where it surfaced.**
 
+**0.1.315 holds and paces voice toward Motorola P25 repeaters** (0473,
+`internal/v24link/pacer.go`). Each repeater has a queue: the first voice record
+of a call waits `hold_ms` (60 unless set, 0 to 200, 0 is the old behaviour) and
+the rest leave 20 ms apart on a schedule kept from that moment. Markers and
+headers keep their place; QSP's own answers and keepalives do not queue.
+**Measured first** (`testdata/p25/p25-voice.pcap`): a hotspot's voice reaches
+QSP every 20 ms, median 20.5, worst 43; and eighteen records are 308 bytes per
+360 ms before framing, so voice fills most of the 9600 bit/s line and nothing
+can be sent faster to catch up. So nothing is dropped and nothing hurried; a
+stall leaves that call behind by its length, under a second because
+`CallTimeout` ends it. **What it cannot do**: the internet between QSP and a
+distant router is after the queue. That leg depends on how the repeater treats
+a late record, **which nobody has measured** — the test is to add jitter on
+the server's traffic to the router only (`tc netem`), key a hotspot and listen
+at 20, 40 and 80 ms, once the Quantar is off the Pi-Star's frequency.
+**To confirm on air**: a hotspot's call still keys the Quantar and sounds as
+it did, and the log line "a call was sent to the repeater" shows
+`worst_gap_ms` and `ran_dry`. **Rollback**: a hold saved on the Network page
+writes `hold_ms`, which an older binary refuses; clear the box and save first.
+
 **0.1.314 makes the database tests run, and changes nothing QSP does** (0472).
 The SQLite driver is registered in `cmd/qsp` only, so every database test in
 another package — `internal/auth`, `internal/p25calls`, `internal/secrets`,
@@ -251,11 +271,10 @@ confirm on air: key a P25 radio into a hotspot linked to port 41000 and hear
 it from the Quantar; the Overview's repeater line counts "sent to it". If the
 Quantar stays silent, turn on **Send a call header to repeaters** and restart;
 if it then transmits, the header is required and a true one must be computed
-(it names talkgroup 1 today). **Pacing is not built**: fine on a LAN, expected
-to matter across the internet.
+(it names talkgroup 1 today). **Pacing was not built then; 0.1.315 built it.**
 
 **The network this is for**: repeaters in Idaho, Wisconsin and Texas on one
-QSP, linked like IPSC. Needs, in order: this patch proven; pacing; a second
+QSP, linked like IPSC. Needs, in order: this patch proven; the hold of 0.1.315 heard on air; a second
 repeater for the first repeater-to-repeater call; the tunnel inside a VPN,
 because STUN has no authentication or encryption; a site guide.
 
@@ -379,7 +398,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.314: the password reset fix (0471) and the database tests made to run (0472); **deployed nowhere yet** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.315: the hold toward Motorola P25 repeaters (0473), on top of 0471 and 0472; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -466,12 +485,13 @@ learned to run it as a service.
    (a) **Hotspot to repeater audio, clean**, once the Quantar is off the
    Pi-Star's frequency. (b) **Repeater to repeater relay** has never run:
    there is one repeater. (c) **`send_header`** is off and was not needed; the
-   Quantar keyed from voice alone. (d) **Frames go to a repeater as they
-   arrive**, unpaced: fine across a room, unproven across the internet.
+   Quantar keyed from voice alone. (d) **Frames are held and paced toward a
+   repeater since 0.1.315**, unheard on air; the leg from QSP to a distant
+   router is still unproven, and the jitter test above is how to prove it.
 
    **For the network Pete, Paul and K9MLS want** — Motorola P25 repeaters in
    Idaho, Wisconsin and Texas on one QSP, linked like IPSC, one room for now:
-   pacing or a small jitter buffer toward repeaters; the tunnel inside a VPN,
+   the jitter test for the leg the hold cannot cover; the tunnel inside a VPN,
    because the router's serial tunnel has no authentication and no encryption;
    a site guide (router, card, cable, codeplug, the switch settings in the
    table below); and a second repeater to prove (b). Hotspots stay as they
