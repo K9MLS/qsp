@@ -153,6 +153,21 @@ datagrams are accepted rather than counted as ignored. **To confirm on air:**
 the line "a transmission restarted without a header" should appear where
 "4929869" used to, and the overview's ignored count should stay at zero.
 
+**0.1.311 is the cause 0.1.301 treated a symptom of.** The call arriving as
+radio 5002016 on talkgroup 4929869 from peer 3132913 was never a hotspot's
+doing: 3132913 is the test server, and behind it the XPR8300 rewrites its own
+IPSC frame headers for the superframe carrying a Talker Alias header — stream
+ID, source and destination — and changes the stream ID again afterwards. QSP's
+IPSC intake read one over as three calls and sent each on with a header of its
+own, so 0.1.301's rule for a *headerless* restart never applied. From 0.1.311
+`ipscbridge` bounds a transmission by the repeater's header frames, its flags
+and a pause (`continues`, `Resolve`, `Forget`), and the listener asks the
+converter which call a frame belongs to. Fixture:
+`testdata/ipsc/ipsc-talker-alias.pcap`. 0.1.301's rule stays for hotspots.
+**To confirm on air:** one row in Last heard per key-up through the Motorola
+repeater with the alias on, no "5002016", no "without a terminator". **Not
+known:** whether an SLR5700 does the same.
+
 **0.1.310 changes no code a station runs**: one test in `internal/v24link`
 waited on a weaker condition than it asserted and failed once on Fedora, in
 the plain run and not the race run. **0.1.309's database tests passed there**,
@@ -323,7 +338,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.310 | `cat VERSION` |
+| **Fedora working tree** | 0.1.311 | `cat VERSION` |
 | **GitHub** `main` | 0.1.302, tagged `v0.1.302`, pushed 2026-10-03 | K9MLS's report; Actions green for v0.1.301, not confirmed for v0.1.302 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.305** from 2026-10-04, Motorola repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` over ssh; all three services active; Zello tested both ways |
 | **Test server** (Docker, 192.168.1.27) | 0.1.301 built from source, 2026-10-03, checkout at `~/qsp` reset to the bundle | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

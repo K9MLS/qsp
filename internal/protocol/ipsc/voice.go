@@ -47,7 +47,8 @@ func (k Kind) IsVoice() bool { return k == KindVoice || k == KindVoicePrivate }
 //
 // Every field here changed in a way that was watched, across four transmissions
 // from one repeater. Sequence and Timestamp advance by fixed amounts within a
-// call, StreamID differs between calls and holds within one, and CallCounter
+// call, StreamID differs between calls (and, it turned out later, can change
+// within one: see the field), and CallCounter
 // counted 1, 2, 3, 4 across four key-ups — including across a restart of the
 // probe, so the repeater is counting rather than the session.
 //
@@ -82,8 +83,14 @@ type Voice struct {
 	// avoid.
 	Private bool
 
-	// StreamID is bytes 15 and 16: constant for every frame of one
-	// transmission and different for each, so it identifies a call.
+	// StreamID is bytes 15 and 16, different for each transmission.
+	//
+	// **It does not hold for the whole of one, and neither do SourceID and
+	// Destination.** That was the reading until ipsc-talker-alias.pcap: a
+	// repeater passing on a Talker Alias changes all three for the superframe
+	// that carries the alias header, and changes the stream ID again
+	// afterwards. A transmission is bounded by its header frames and its
+	// flags; see ipscbridge.Converter.Resolve.
 	StreamID uint16
 
 	// Sequence is bytes 20 and 21, advancing by one per frame.

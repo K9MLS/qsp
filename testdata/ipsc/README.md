@@ -26,6 +26,7 @@ every reader reads and nobody re-reads. If the table and `ls` disagree, believe
 | [`ipsc-master-voice.pcap`](ipsc-master-voice.md) | **A real master sending voice**, against which the inferred transmit path was checked |
 | [`ipsc-text.pcap`](ipsc-text.md) | **One group text and several private ones.** 163 data bursts, and what named `0x83` and `0x84` |
 | [`ipsc-private-voice.pcap`](ipsc-private-voice.md) | **Two private calls in opposite directions, with group calls either side.** This is what named `0x81` |
+| [`ipsc-talker-alias.pcap`](ipsc-talker-alias.md) | **Two key-ups from a radio sending a Talker Alias.** The repeater changes its stream ID and the IDs in its header for one superframe; this is what showed a stream ID does not bound a transmission |
 
 Together they establish seven message types, an envelope of one type byte and a
 big-endian sender ID, a ten-second retry when unregistered and a fifteen-second

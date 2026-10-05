@@ -81,6 +81,10 @@ type slotState struct {
 	// distinguishes "no transmission yet" from "a transmission whose stream
 	// ID happens to be zero".
 	seen bool
+	// opened is the transmission as the repeater first described it: who is
+	// talking, to whom, and under which stream ID. Every later frame of the
+	// transmission is converted under it. See continues.
+	opened ipsc.Voice
 	// sentHeader reports whether this transmission's voice LC header has been
 	// emitted. It is sent immediately before the first voice burst rather than
 	// on the first frame received, because ETSI TS 102 361-1 clause 5.1.2.2
@@ -143,10 +147,14 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 	slot := c.Timeslot(m)
 	st := &c.slots[slotIndex(slot)]
 
+	if st.continues(m, v) {
+		v = st.under(v)
+	}
 	if v.StreamID != st.stream || !st.seen {
 		// A new transmission. Counters start again rather than carrying a
 		// previous call's numbering into a new one.
 		st.stream = v.StreamID
+		st.opened = v
 		st.seen = true
 		st.sequence = 0
 		st.started = false
@@ -264,6 +272,93 @@ func (c *Converter) Convert(m ipsc.Message, repeater hbp.RepeaterID) []hbp.Data 
 		st.seen = false
 	}
 	return out
+}
+
+// continues reports whether a frame that describes itself differently from the
+// transmission open on this slot is nonetheless part of it.
+//
+// # What a Motorola repeater does with a Talker Alias
+//
+// testdata/ipsc/ipsc-talker-alias.pcap is an XPR8300 passing on a radio that
+// sends the alias "K9MLS Portable". For the six frames of the superframe that
+// carries the first alias block, the repeater fills the header of its own
+// frames from that block as though it were a group call's Link Control: the
+// source reads 0x4C5320 and the destination 0x4B394D, which are the letters
+// "LS " and "K9M", the call counter goes up by one and the stream ID changes.
+// One superframe later the radio's own IDs come back, under a third stream ID
+// and a third call counter. Both key-ups in the capture do it, 1.08 seconds in.
+//
+// A converter that believed the stream ID cut every such over into three: a
+// second of audio with no end, a call from a station that does not exist, and
+// the rest as a new call that every destination refused until the first one's
+// hold ran out. That lost a second and a half of the over, on every key-up, for
+// any radio with an alias switched on.
+//
+// # What marks a transmission instead
+//
+// **The repeater marks a beginning, and it marked none of these.** A
+// transmission opens with header frames, the first of them flagged; it closes
+// on a flagged terminator. All 87 frames after the switch in the first key-up
+// carry the flags of the middle of a transmission, and none is a header. So a
+// frame is the open transmission's unless the repeater says otherwise, whatever
+// its header claims about who is talking.
+//
+// A transmission whose end was lost is still told from the next one: that one
+// arrives with its headers, and a slot that went quiet is forgotten by the
+// caller through Forget.
+func (st *slotState) continues(m ipsc.Message, v ipsc.Voice) bool {
+	if !st.seen || v.StreamID == st.stream {
+		return false
+	}
+	return !v.IsFirstFrame() && !isHeader(m)
+}
+
+// under returns a frame's header as the open transmission describes it, keeping
+// what belongs to the frame itself: its flags, its sequence and its timestamp.
+func (st *slotState) under(v ipsc.Voice) ipsc.Voice {
+	v.SourceID = st.opened.SourceID
+	v.Destination = st.opened.Destination
+	v.Private = st.opened.Private
+	v.StreamID = st.opened.StreamID
+	return v
+}
+
+// isHeader reports whether a voice message is one of the header frames that
+// open a transmission.
+func isHeader(m ipsc.Message) bool {
+	return len(m.Body) > 25 && ipsc.FrameKindOf(m.Body[25]) == ipsc.FrameHeader
+}
+
+// Resolve reads a voice message's header as Convert will convert it: under the
+// transmission open on its timeslot when the frame is part of one, and as the
+// repeater wrote it otherwise.
+//
+// It changes nothing. It is exported so that a caller keeping its own record of
+// calls asks the converter which call a frame belongs to instead of deciding a
+// second time from the stream ID, which is the reading this replaced.
+func (c *Converter) Resolve(m ipsc.Message) (ipsc.Voice, bool) {
+	v, ok := m.AsVoice()
+	if !ok {
+		return ipsc.Voice{}, false
+	}
+	st := &c.slots[slotIndex(c.Timeslot(m))]
+	if st.continues(m, v) {
+		v = st.under(v)
+	}
+	return v, true
+}
+
+// Forget drops the transmission open on a timeslot, so that the next frame
+// there starts a new one whatever it carries.
+//
+// The caller's clock decides when: a slot with no frame for longer than a
+// transmission can pause has no transmission on it, and a call that begins
+// there afterwards must not be read as the old one continuing.
+func (c *Converter) Forget(slot hbp.Timeslot) {
+	st := &c.slots[slotIndex(slot)]
+	st.seen = false
+	st.started = false
+	st.sentHeader = false
 }
 
 // dataFrame builds a voice header or terminator for the transmission in

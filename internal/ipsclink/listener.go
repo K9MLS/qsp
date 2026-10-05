@@ -330,6 +330,11 @@ func (l *Listener) ExpireCallsAt(now time.Time) int {
 		default:
 			continue
 		}
+		// A slot that went quiet holds no transmission, so the converter
+		// must not read the next call there as this one continuing.
+		if conv := l.bridges[p.RadioID]; conv != nil {
+			conv.Forget(c.Timeslot)
+		}
 		closed++
 	}
 	if closed > 0 {
@@ -1246,6 +1251,14 @@ func (l *Listener) recordVoice(p *Peer, msg ipsc.Message, now time.Time) ([]hbp.
 	slot := hbp.Timeslot1
 	if conv != nil {
 		slot = conv.Timeslot(msg)
+		// **The converter says which call a frame belongs to.** A Motorola
+		// repeater changes the stream ID and the IDs in its header for the
+		// superframe that carries a Talker Alias, and comparing stream IDs
+		// here as well recorded one over as three. See
+		// ipscbridge.Converter.Resolve.
+		if r, ok := conv.Resolve(msg); ok {
+			v = r
+		}
 	}
 
 	if p.LastCall == nil || p.LastCall.StreamID != v.StreamID || !p.LastCall.Ended.IsZero() {

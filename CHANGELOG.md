@@ -6,6 +6,20 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A radio with a Talker Alias no longer loses audio through a Motorola
+  repeater.** An over longer than about a second arrived as three calls: the
+  first second with no end, a call from a station that does not exist
+  ("5002016 to TG 4929869", which is the letters of the alias read as radio
+  IDs), and the rest as a new call. Every destination was still held by the
+  first, so about a second and a half of each over was refused, on every
+  key-up, on every linked server, on Zello and on other repeaters. The repeater
+  changes the stream ID and the IDs in its own frame headers for the
+  superframe that carries the alias, and QSP took a new stream ID to mean a
+  new call. **A call now begins where the repeater marks a beginning** — its
+  header frames — and ends on its terminator or after a pause; everything
+  between is one call, from the radio that opened it. Captured from an XPR8300
+  (`testdata/ipsc/ipsc-talker-alias.pcap`); not yet seen from an SLR5700. The
+  alias itself still crosses to radios on hotspots inside the voice, as before.
 - A test of the Motorola repeater link waited for a transmission to begin and
   then asserted its frames had been counted, so it failed when it looked in
   between. It waits for what it asserts. No change to what QSP does.
