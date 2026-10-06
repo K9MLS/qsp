@@ -57,6 +57,22 @@ type configResponse struct {
 type saveRequest struct {
 	Config  config.Config `json:"config"`
 	Summary string        `json:"summary"`
+	// Base is the configuration the page was given, when it sends one.
+	//
+	// **With it, only what the page changed is saved** (config.Merge):
+	// everything else keeps whatever it is now, so a page opened before a
+	// change made somewhere else does not undo it. Without it the document
+	// replaces the configuration whole, which is what restoring a version
+	// means and what a script posting a document expects.
+	Base *config.Config `json:"base,omitempty"`
+}
+
+// conflictResponse is a save refused because a setting it changes was also
+// changed somewhere else after the page was opened.
+type conflictResponse struct {
+	Error string `json:"error"`
+	// Conflicts are the settings, by the paths the history shows.
+	Conflicts []string `json:"conflicts"`
 }
 
 // saveResponse reports what happened.
@@ -156,6 +172,33 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	before := s.opts.Config.Current()
+	if req.Base != nil {
+		merged, kept, conflicts, err := config.Merge(*req.Base, req.Config, before)
+		if err != nil {
+			writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+				"error": "the configuration could not be compared with the running one",
+			})
+			return
+		}
+		if len(conflicts) > 0 {
+			// Nothing is saved, and it is not a failure worth an audit line:
+			// nothing was attempted. The page says which settings and why.
+			s.log.Info("a configuration save was refused: settings it changes were changed elsewhere",
+				"author", session.Username, "settings", strings.Join(conflicts, ", "))
+			writeJSON(w, s.log, http.StatusConflict, conflictResponse{
+				Error: "Nothing was saved. Since this page was opened, somebody or something " +
+					"else changed settings this save changes too: " + strings.Join(conflicts, ", ") +
+					". Reload the page to see what they are now, then make your change again.",
+				Conflicts: conflicts,
+			})
+			return
+		}
+		if len(kept) > 0 {
+			s.log.Info("a configuration save kept changes made elsewhere since its page was opened",
+				"author", session.Username, "settings", strings.Join(kept, ", "))
+		}
+		req.Config = merged
+	}
 	// **A document with no identifier does not take this server's away.** The
 	// identifier is written once and never rewritten (ADR-0053), and a version
 	// recorded before the server had one carries none — so reverting to it

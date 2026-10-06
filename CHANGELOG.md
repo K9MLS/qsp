@@ -215,6 +215,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Saving a page no longer undoes what changed somewhere else.** The Access,
+  Bridges, Network, Weather and Zello pages each load the whole configuration
+  and saved the whole of it back, so a page opened before another change put
+  that change back: a save in another tab, another administrator's, or the
+  server's own, as when a link was accepted. A link agreed from the console
+  could vanish when a Network page that had been open was saved. A page now
+  says what it was given, and **only the settings changed on that page are
+  saved**; everything else keeps what it is now. When the same setting was
+  changed in both places nothing is saved and the page names the setting. A
+  list (bridges, allowed routers) counts as one setting. Restoring a version
+  on the History page still replaces everything, which is what it is for,
+  and so does a script that posts a configuration without the new `base`
+  field. The log says when a save kept changes made elsewhere.
 - **A callsign that changes is noticed.** QSP asked the registry who a radio
   ID belonged to once and kept the answer for ever, in the database too, so
   an upgraded callsign, a corrected name or an ID that changed hands went on

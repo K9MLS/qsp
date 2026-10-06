@@ -322,7 +322,9 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ config: next, summary: "zello" })
+      /* base is what this page was given, so the server saves only what
+         was changed here and keeps what was changed anywhere else. */
+      body: JSON.stringify({ config: next, base: loaded, summary: "zello" })
     })
       .then(function (r) {
         return r.json().then(function (body) { return { status: r.status, body: body }; });
