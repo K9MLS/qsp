@@ -372,6 +372,168 @@
     });
   }
 
+  /* The full backup (ADR-0065): the settings, every stored credential and the
+   * password files, encrypted with a passphrase.
+   *
+   * **Both halves were built on the server and on no page** until 0.1.320, so
+   * the backup that rebuilds a server could be made and restored only by
+   * somebody writing the requests by hand.
+   *
+   * **The passphrase goes in the body of a POST and nowhere else**: not in an
+   * address, which proxies log and browsers remember, and not kept in this
+   * page a moment longer than the request needs it. */
+  var fullBackup = el("full-backup");
+  if (fullBackup) {
+    fullBackup.addEventListener("click", function () {
+      var first = el("full-backup-passphrase");
+      var again = el("full-backup-passphrase-again");
+      hide(el("full-backup-error"));
+      hide(el("full-backup-warning"));
+      if (!first.value) {
+        say(el("full-backup-error"), "Choose a passphrase first.");
+        return;
+      }
+      /* Refused here, before anything is made: a backup locked with a typing
+         mistake is a backup nobody can open, and looks like any other. */
+      if (first.value !== again.value) {
+        say(el("full-backup-error"), "The two passphrases are not the same. Nothing was made.");
+        return;
+      }
+      fullBackup.disabled = true;
+      fetch("/api/admin/full-backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ passphrase: first.value })
+      }).then(function (r) {
+        if (!r.ok) {
+          return r.json().then(function (b) { throw new Error(b.error || "That backup could not be made."); });
+        }
+        var named = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "");
+        var warning = r.headers.get("X-QSP-Passphrase-Warning") || "";
+        return r.blob().then(function (file) {
+          var link = document.createElement("a");
+          link.href = URL.createObjectURL(file);
+          link.download = named ? named[1] : "qsp.qspfull";
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(link.href);
+          first.value = "";
+          again.value = "";
+          say(el("full-backup-warning"), "Downloaded " + link.download + ". " + warning);
+        });
+      }).catch(function (e) {
+        say(el("full-backup-error"), e.message);
+      }).then(function () {
+        fullBackup.disabled = false;
+      });
+    });
+  }
+
+  /* What was read from the chosen file, kept between the two presses so the
+   * second restores exactly what the first described. */
+  var fullPending = null;
+
+  var fullRead = el("full-restore");
+  if (fullRead) {
+    fullRead.addEventListener("click", function () {
+      hide(el("full-restore-error"));
+      hide(el("full-restore-done"));
+      hide(el("full-restore-result"));
+      hide(el("full-restore-confirm"));
+      fullPending = null;
+
+      var chosen = el("full-restore-file").files[0];
+      var passphrase = el("full-restore-passphrase").value;
+      if (!chosen) {
+        say(el("full-restore-error"), "Choose the backup file first.");
+        return;
+      }
+      if (!passphrase) {
+        say(el("full-restore-error"), "Type the passphrase this backup was made with.");
+        return;
+      }
+      /* Read as a data URL because the file is binary and travels as base64;
+         the browser does the encoding, at any size the server accepts. */
+      var reader = new FileReader();
+      reader.onerror = function () {
+        say(el("full-restore-error"), "That file could not be read.");
+      };
+      reader.onload = function () {
+        var encoded = String(reader.result);
+        fullPending = { document: encoded.slice(encoded.indexOf(",") + 1), passphrase: passphrase };
+        fullRestore(false);
+      };
+      reader.readAsDataURL(chosen);
+    });
+  }
+
+  var fullConfirmed = el("full-restore-confirmed");
+  if (fullConfirmed) {
+    fullConfirmed.addEventListener("click", function () { fullRestore(true); });
+  }
+
+  function listed(heading, items) {
+    if (!items || !items.length) { return ""; }
+    return "<li>" + escapeText(heading) + ": " + items.map(escapeText).join(", ") + "</li>";
+  }
+
+  /* **Asked twice, as the other restore is.** The first answer is what the
+   * server would do with this file, in its own words; nothing changes until
+   * the second press. */
+  function fullRestore(confirm) {
+    if (!fullPending) { return; }
+    fetch("/api/admin/full-restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        document: fullPending.document, passphrase: fullPending.passphrase, confirm: confirm
+      })
+    }).then(function (r) {
+      return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+    }).then(function (res) {
+      if (!res.ok && res.status === 428) {
+        say(el("full-restore-summary"), res.body.summary);
+        say(el("full-restore-identity"), res.body.identity);
+        say(el("full-restore-credentials"), res.body.credentials);
+        say(el("full-restore-kept"), res.body.kept);
+        el("full-restore-contents").innerHTML =
+          listed("Credentials in this backup", res.body.credential_names) +
+          listed("Password files in this backup", res.body.password_files) +
+          listed("Password files it does not have, and this machine does not either",
+            res.body.missing_password_files);
+        show(el("full-restore-confirm"));
+        return;
+      }
+      if (!res.ok) { throw new Error(res.body.error || "That backup could not be restored."); }
+
+      hide(el("full-restore-confirm"));
+      fullPending = null;
+      el("full-restore-passphrase").value = "";
+      el("full-restore-file").value = "";
+      var restart = (res.body.needs_restart || []).length;
+      say(el("full-restore-done"),
+        "Restored, as version " + res.body.version + " of this server's settings." +
+        (restart ? " QSP has to restart before all of it takes effect." : ""));
+      var failed = (res.body.password_files_failed || []).map(function (f) {
+        return f.path + " (" + f.error + ")";
+      });
+      var result = el("full-restore-result");
+      result.innerHTML =
+        listed("Credentials restored", res.body.credentials) +
+        listed("Password files written", res.body.password_files) +
+        listed("Password files that could not be written", failed) +
+        listed("Password files still missing; what needs them is refused until they are reissued",
+          res.body.missing_password_files);
+      result.hidden = !result.innerHTML;
+      load();
+    }).catch(function (e) {
+      say(el("full-restore-error"), e.message);
+    });
+  }
+
   /* **Arming a destructive button**, which this page needs three times over:
    * restarting, resetting somebody's password, and removing an account. The
    * same shape as the Links page and deliberately a copy rather than shared —

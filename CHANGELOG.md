@@ -6,6 +6,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The full backup can be made and restored from the console.** QSP has had
+  an encrypted backup that carries the settings, every stored credential and
+  the password files since ADR-0065, and no page offered it: the
+  Administration page had only the backup with no passwords in it, so the one
+  that rebuilds a server could be used only by writing the requests by hand.
+  **Backup and restore** on the Administration page now has both. Making one
+  asks for a passphrase twice, because a backup locked with a typing mistake
+  cannot be opened, and shows the warning that the passphrase is yours to
+  keep. Restoring one takes the file and its passphrase, shows what it would
+  do before anything changes, and afterwards lists the credentials and
+  password files that came back, any that could not be written, and any
+  still missing. The page says plainly which backup is safe to send to
+  somebody and which is not. No change to the server.
 - **Calls to a Motorola P25 repeater are held a moment and sent evenly.**
   QSP wrote each piece of voice to a repeater the instant it arrived, so
   audio that reached QSP late went to the transmitter late. The start of each

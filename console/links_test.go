@@ -858,6 +858,7 @@ func TestEveryFunctionAConsoleScriptCallsIsDefined(t *testing.T) {
 		"Set": true, "console": true, "EventSource": true, "ResizeObserver": true,
 		"isFinite": true, "WebSocket": true, "URL": true, "URLSearchParams": true,
 		"AbortController": true, "IntersectionObserver": true, "MutationObserver": true,
+		"FileReader": true,
 	}
 
 	defined := regexp.MustCompile(`function\s+([A-Za-z_$][\w$]*)\s*\(`)
