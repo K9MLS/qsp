@@ -244,6 +244,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A registry that is down is no longer asked every two seconds.** When a
+  lookup of a radio ID failed, nothing was remembered, so the next
+  transmission from that radio queued it again: for as long as RadioID.net
+  was unreachable and somebody was talking, QSP asked about them every two
+  seconds. An ID with no answer is now left for five minutes after it is
+  asked about. The wait is per radio, so one failure does not hold up
+  another's name, and an ID whose lookup is still on its way is no longer
+  asked about twice.
 - **A new or reset console password is one a person can type.** Adding an
   administrator or resetting a password handed over 43 characters of
   mixed-case random text, which was made for a link between two servers and

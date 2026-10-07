@@ -52,6 +52,24 @@ const (
 	// every radio that is talking.
 	DefaultRefreshRetry = time.Hour
 
+	// DefaultFailRetry is how long an ID the registry has never answered for
+	// is left alone after it is asked about, if no answer comes.
+	//
+	// **Until 0.1.324 there was no wait at all.** A lookup that failed was
+	// not recorded, so the next transmission queued the ID again, and for as
+	// long as a radio kept talking while the registry was down QSP asked
+	// about it every DefaultInterval. That is the excessive use the registry
+	// asks people to avoid, at the moment it can least afford it. Five
+	// minutes, and not the hour a recheck waits, because here there is no
+	// name to show meanwhile: somebody is on the air unnamed until this is
+	// tried again.
+	DefaultFailRetry = 5 * time.Minute
+
+	// maxAsked bounds how many unanswered IDs are remembered as asked.
+	// Anybody can transmit any ID, and a registry outage must not become
+	// memory that is never returned.
+	maxAsked = 4096
+
 	// DefaultInterval is the minimum gap between requests.
 	//
 	// A club has a few dozen members and will resolve them once. Spacing the
@@ -148,6 +166,9 @@ type Options struct {
 	// RefreshRetry is how long after asking a recheck is asked again, if it
 	// did not answer. Zero selects the default.
 	RefreshRetry time.Duration
+	// FailRetry is how long after asking an ID with no answer on file is
+	// asked about again, if it did not answer. Zero selects the default.
+	FailRetry time.Duration
 	// Interval is the minimum gap between requests. Zero selects the default.
 	Interval time.Duration
 	// QueueDepth bounds unresolved IDs held. Zero selects the default.
@@ -169,9 +190,10 @@ type Resolver struct {
 	// queued is membership in pending, so the same ID seen thirty times in a
 	// transmission is queued once.
 	queued map[uint32]bool
-	// rechecked is when the registry was last asked about an ID whose
-	// registration is already known, until it answers.
-	rechecked map[uint32]time.Time
+	// asked is when the registry was last asked about an ID, until it
+	// answers. An ID in here is waiting for an answer or for its turn to be
+	// asked again.
+	asked map[uint32]time.Time
 	// lastRequest is when the registry was last asked anything.
 	lastRequest time.Time
 }
@@ -191,6 +213,9 @@ func New(opts Options, store Store) (*Resolver, error) {
 	if opts.RefreshRetry <= 0 {
 		opts.RefreshRetry = DefaultRefreshRetry
 	}
+	if opts.FailRetry <= 0 {
+		opts.FailRetry = DefaultFailRetry
+	}
 	if opts.Interval <= 0 {
 		opts.Interval = DefaultInterval
 	}
@@ -202,11 +227,11 @@ func New(opts Options, store Store) (*Resolver, error) {
 	}
 
 	r := &Resolver{
-		opts:      opts,
-		now:       opts.Now,
-		cache:     make(map[uint32]Entry),
-		queued:    make(map[uint32]bool),
-		rechecked: make(map[uint32]time.Time),
+		opts:   opts,
+		now:    opts.Now,
+		cache:  make(map[uint32]Entry),
+		queued: make(map[uint32]bool),
+		asked:  make(map[uint32]time.Time),
 	}
 
 	if store != nil {
@@ -250,6 +275,12 @@ func (r *Resolver) Lookup(id uint32) (Entry, bool) {
 		}
 	}
 
+	// Nothing usable on file. Asked, unless it was asked a moment ago and
+	// has not answered: a request still on its way, or a registry that is
+	// not answering anybody.
+	if asked, waiting := r.asked[id]; waiting && r.now().Sub(asked) < r.opts.FailRetry {
+		return Entry{}, false
+	}
 	r.enqueue(id)
 	return Entry{}, false
 }
@@ -261,7 +292,7 @@ func (r *Resolver) due(id uint32, e Entry) bool {
 	if now.Sub(e.FetchedAt) < r.opts.RefreshAfter {
 		return false
 	}
-	asked, waiting := r.rechecked[id]
+	asked, waiting := r.asked[id]
 	return !waiting || now.Sub(asked) >= r.opts.RefreshRetry
 }
 
@@ -301,11 +332,10 @@ func (r *Resolver) Next() (uint32, bool) {
 	r.pending = r.pending[1:]
 	delete(r.queued, id)
 	r.lastRequest = now
-	if r.cache[id].Known {
-		// A recheck. Noted when it is asked, so that one which fails, or is
-		// still on its way, is not asked again on the next transmission.
-		r.rechecked[id] = now
-	}
+	// Noted when it is asked, so that a request which fails, or is still on
+	// its way, is not made again on the next transmission. Record clears it.
+	r.forget(now)
+	r.asked[id] = now
 	return id, true
 }
 
@@ -326,8 +356,22 @@ func (r *Resolver) Record(id uint32, e Entry, err error) (Entry, bool) {
 	e.ID = id
 	e.FetchedAt = r.now()
 	r.cache[id] = e
-	delete(r.rechecked, id)
+	delete(r.asked, id)
 	return e, true
+}
+
+// forget drops IDs asked about so long ago that either wait has passed, once
+// there are enough of them to be worth the walk.
+func (r *Resolver) forget(now time.Time) {
+	if len(r.asked) < maxAsked {
+		return
+	}
+	longest := max(r.opts.RefreshRetry, r.opts.FailRetry)
+	for id, at := range r.asked {
+		if now.Sub(at) >= longest {
+			delete(r.asked, id)
+		}
+	}
 }
 
 // Held returns what is cached for an ID, known or not, without queueing

@@ -151,18 +151,27 @@ func TestAnAbsenceIsRemembered(t *testing.T) {
 // TestAFailedRequestIsNotAnAbsence. A registry that was briefly unreachable has
 // said nothing about the ID, and remembering that as an absence would hide a
 // real name for a day.
+//
+// **It is asked again in minutes, where an absence waits a day.** Until
+// 0.1.324 this asserted it was queued again at once, which is what made a
+// registry outage a request every two seconds for every radio on the air.
 func TestAFailedRequestIsNotAnAbsence(t *testing.T) {
-	r, _ := newResolver(t, nil)
+	r, c := newResolver(t, nil)
 
 	r.Lookup(3155408)
 	id, _ := r.Next()
 	if _, saved := r.Record(id, callsigns.Entry{}, errors.New("connection refused")); saved {
 		t.Error("a failed request was recorded")
 	}
+	if _, held := r.Held(3155408); held {
+		t.Error("a failed request left something on file for the ID")
+	}
 
+	c.advance(callsigns.DefaultFailRetry)
 	r.Lookup(3155408)
 	if r.Pending() != 1 {
-		t.Error("a failed request was remembered as an absence")
+		t.Error("a failed request was remembered as an absence: it was not asked again " +
+			"after the few minutes a failure waits")
 	}
 }
 
@@ -400,5 +409,114 @@ func TestARecheckInFlightIsNotAskedTwice(t *testing.T) {
 		if _, again := r.Next(); again {
 			t.Fatal("the registry was asked again while the first recheck was still out")
 		}
+	}
+}
+
+// An ID the registry has never answered for, heard again and again while the
+// registry answers or does not. Each step is a wait, then the ID being heard,
+// then what the registry says if it is asked.
+//
+// Break it: queue the ID on every lookup while nothing is on file, as it was
+// until 0.1.324, and every row after a failure asks when it should not.
+func TestAnUnansweredIDIsNotAskedAboutOnEveryTransmission(t *testing.T) {
+	const id = 3132911
+	named := callsigns.Entry{Callsign: "K9NEW", Known: true}
+	unknown := callsigns.Entry{Known: false}
+	failed := errors.New("the registry did not answer")
+
+	type step struct {
+		wait   time.Duration
+		answer *callsigns.Entry // nil is a failure
+		asked  bool
+		shown  string
+	}
+	tests := []struct {
+		name  string
+		steps []step
+	}{
+		{"asked the first time it is heard", []step{
+			{wait: 0, answer: &named, asked: true, shown: "K9NEW"},
+			{wait: time.Minute, asked: false, shown: "K9NEW"},
+		}},
+		{"a failure is left for five minutes, however much the radio talks", []step{
+			{wait: 0, answer: nil, asked: true},
+			{wait: 2 * time.Second, asked: false},
+			{wait: time.Minute, asked: false},
+			{wait: 3 * time.Minute, asked: false},
+			{wait: time.Minute, answer: &named, asked: true, shown: "K9NEW"},
+		}},
+		{"a registry down for a quarter of an hour is asked three times, not four hundred", []step{
+			{wait: 0, answer: nil, asked: true},
+			{wait: 5 * time.Minute, answer: nil, asked: true},
+			{wait: 4 * time.Minute, asked: false},
+			{wait: time.Minute, answer: nil, asked: true},
+			{wait: 4 * time.Minute, asked: false},
+		}},
+		{"an answer of unknown still waits its day, not five minutes", []step{
+			{wait: 0, answer: &unknown, asked: true},
+			{wait: 6 * time.Minute, asked: false},
+			{wait: 23 * time.Hour, asked: false},
+			{wait: time.Hour, answer: &named, asked: true, shown: "K9NEW"},
+		}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			r, c := newResolver(t, nil)
+			for i, s := range tc.steps {
+				c.advance(s.wait)
+				r.Lookup(id)
+				r.Lookup(id)
+				if got := r.Pending(); got > 1 {
+					t.Fatalf("step %d: %d requests queued for one ID", i, got)
+				}
+				// Past the spacing between requests, which is not what this is about.
+				c.advance(callsigns.DefaultInterval)
+				_, asked := r.Next()
+				if asked != s.asked {
+					t.Fatalf("step %d: asked the registry = %v, want %v", i, asked, s.asked)
+				}
+				if asked {
+					if s.answer == nil {
+						r.Record(id, callsigns.Entry{}, failed)
+					} else {
+						r.Record(id, *s.answer, nil)
+					}
+				}
+				shown := ""
+				if e, ok := r.Lookup(id); ok {
+					shown = e.Callsign
+				}
+				// The lookup above may have queued it; that is the next step's
+				// business, and Next there will say.
+				for r.Pending() > 0 && !s.asked {
+					t.Fatalf("step %d: showing nothing queued the ID again", i)
+				}
+				if shown != s.shown {
+					t.Fatalf("step %d: showing %q, want %q", i, shown, s.shown)
+				}
+			}
+		})
+	}
+}
+
+// One radio's failed lookup does not hold up another's: the wait is per ID.
+func TestAFailureForOneIDDoesNotDelayAnother(t *testing.T) {
+	r, c := newResolver(t, nil)
+	r.Lookup(1111111)
+	c.advance(callsigns.DefaultInterval)
+	if id, ok := r.Next(); !ok || id != 1111111 {
+		t.Fatalf("asked %d, %v", id, ok)
+	}
+	r.Record(1111111, callsigns.Entry{}, errors.New("no answer"))
+
+	r.Lookup(1111111)
+	r.Lookup(2222222)
+	c.advance(callsigns.DefaultInterval)
+	id, ok := r.Next()
+	if !ok || id != 2222222 {
+		t.Fatalf("asked about %d (%v), want the ID that has not been tried", id, ok)
+	}
+	if r.Pending() != 0 {
+		t.Error("the ID that just failed was queued again")
 	}
 }

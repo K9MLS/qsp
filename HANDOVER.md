@@ -9,7 +9,8 @@ and 07): DMR as before; an administrator's password reset, which is the fault
 that started the day; Zello one over each way through the new connector; and a
 hotspot's call to the Quantar with the 60 ms hold, "good and working".
 
-**0.1.322 and 0.1.323 came after the deploy and are on no server yet.**
+**0.1.322 to 0.1.324 came after the deploy and are on no server yet.**
+0.1.324 (0482) is the callsign wait described under 0.1.318 below.
 0.1.322 (0480) makes a new or reset console password sixteen characters in
 four groups in place of 43 of base64. 0.1.323 (0481) draws servers on the
 Overview's map: this one from `dmr.identity`'s position, a server it dialled
@@ -259,9 +260,9 @@ the same setting elsewhere.
 **0.1.318 rechecks a callsign** (0476, `internal/callsigns`). A known
 registration was kept for ever; it is asked about again once it is 30 days
 old, when the radio is next heard, and shown meanwhile. A recheck that fails
-is left for an hour, where an unknown ID that fails is still asked every two
-seconds while it is heard — **that older behaviour was left alone and is worth
-a look**. A registration the registry no longer has is removed (the operator
+is left for an hour. An ID with nothing on file that fails was still asked
+every two seconds while it was heard; **0.1.324 (0482) leaves it five
+minutes**, per ID, and the resolver now notes every request when it is made. A registration the registry no longer has is removed (the operator
 chose this over keeping the old name, 2026-10-05). **Whatever in a server's cache is already older than
 30 days is rechecked the first time that radio is heard after the upgrade**,
 one request every two seconds at most. Expect "a radio ID's registration changed" for anybody who
@@ -504,7 +505,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.323: servers on the map (0481), on top of 0479 and 0480; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.324: an unanswered callsign lookup waits (0482), on top of 0479 to 0481; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
 | **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
