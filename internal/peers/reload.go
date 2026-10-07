@@ -78,6 +78,7 @@ func (l *Listener) applyPending() {
 		l.cfg.Routing.SetAccess(r.Access)
 	}
 
+	l.schedMu.Lock()
 	if r.Triggers != nil {
 		l.cfg.Triggers = r.Triggers
 	}
@@ -87,6 +88,11 @@ func (l *Listener) applyPending() {
 	if r.Rebuild != nil {
 		l.cfg.Rebuild = r.Rebuild
 	}
+	// The schedule is reset rather than merged, so that a bridge removed from
+	// the configuration stops being tracked instead of lingering as a name the
+	// next sweep tries to enable.
+	l.scheduleState = nil
+	l.schedMu.Unlock()
 	if l.cfg.Master != nil {
 		l.cfg.Master.SetSubscription(r.Subscription)
 		// The registration and subscriber lists, which used to be read once
@@ -95,11 +101,6 @@ func (l *Listener) applyPending() {
 		// setting rather than the absence of one.
 		l.cfg.Master.SetAccess(r.Access)
 	}
-
-	// The schedule is reset rather than merged, so that a bridge removed from
-	// the configuration stops being tracked instead of lingering as a name the
-	// next sweep tries to enable.
-	l.scheduleState = nil
 
 	l.log.Info("configuration applied",
 		slog.String("author", r.Author),

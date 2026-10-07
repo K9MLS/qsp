@@ -2,6 +2,7 @@ package routing_test
 
 import (
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -250,4 +251,38 @@ func TestEndpointOfBuildsFromAFrame(t *testing.T) {
 	if got := routing.EndpointOf(peerA, frame); got != ep(peerA, 3148, hbp.Timeslot1) {
 		t.Errorf("EndpointOf = %s", got)
 	}
+}
+
+// TestTriggersAreSharedByTwoListeners. Observe is reached from the DMR
+// listener's goroutine and from the IPSC listener's, Expire and ActiveAt
+// from the sweep, and OpenFor from the console.
+//
+// To see it fail: delete the lock from any one of the four. The race
+// detector names this test.
+func TestTriggersAreSharedByTwoListeners(t *testing.T) {
+	a := routing.Endpoint{Peer: 312345, Talkgroup: 2, Timeslot: hbp.Timeslot2}
+	b := routing.Endpoint{Peer: 312346, Talkgroup: 2, Timeslot: hbp.Timeslot2}
+	tr, err := routing.NewTriggers([]routing.Trigger{
+		{Bridge: "one", Enabled: true, HangTime: time.Millisecond, On: []routing.Endpoint{a}},
+		{Bridge: "two", Enabled: true, HangTime: time.Millisecond, On: []routing.Endpoint{b}},
+	})
+	if err != nil {
+		t.Fatalf("NewTriggers: %v", err)
+	}
+	start := time.Now()
+	var wg sync.WaitGroup
+	for _, work := range []func(now time.Time){
+		func(now time.Time) { tr.Observe(a, now) },
+		func(now time.Time) { tr.Observe(b, now) },
+		func(now time.Time) { tr.Expire(now) },
+		func(now time.Time) { tr.ActiveAt(now) },
+		func(now time.Time) { tr.OpenFor("one", now) },
+	} {
+		wg.Go(func() {
+			for i := range 5000 {
+				work(start.Add(time.Duration(i) * 100 * time.Microsecond))
+			}
+		})
+	}
+	wg.Wait()
 }

@@ -14,6 +14,7 @@ package parrot
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/k9mls/qsp/internal/calls"
@@ -94,11 +95,18 @@ type recording struct {
 
 // Recorder captures transmissions on the parrot talkgroup.
 //
-// It is not safe for concurrent use and is owned by the goroutine that reads
-// the socket, in the single-writer style of ADR-0002.
+// **Safe for concurrent use, since 0.1.326.** It was written to be owned by
+// the goroutine that reads the socket, and the Motorola listener gave it two:
+// its read loop calls Observe and Cancel, and its half-second ticker calls
+// Expire. Both write active, which on a machine with more than one core is
+// Go's "concurrent map writes" and stops the whole server (found 2026-10-07,
+// B2). The health report reads Active from a third.
 type Recorder struct {
 	cfg Config
 	now func() time.Time
+
+	// mu guards active and the counter behind nextStream.
+	mu sync.Mutex
 	// active is one in-progress recording per peer. Two hotspots may test at
 	// once; the same hotspot testing twice replaces its own.
 	active map[hbp.RepeaterID]*recording
@@ -209,6 +217,8 @@ func (r *Recorder) Handles(frame hbp.Data) bool {
 // It returns nil while a transmission is in progress, and a Recording when the
 // terminator arrives or the limit is reached.
 func (r *Recorder) Observe(peer hbp.RepeaterID, frame hbp.Data) *Recording {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	now := r.now()
 	current := r.active[peer]
 
@@ -252,10 +262,12 @@ func (r *Recorder) Observe(peer hbp.RepeaterID, frame hbp.Data) *Recording {
 
 // Expire completes recordings whose transmissions have stopped.
 //
-// Called from the sweep, on the goroutine that owns this Recorder. A
+// Called from the sweep. A
 // transmission ends in silence rather than in a distinguishable frame, so this
 // is where most recordings finish.
 func (r *Recorder) Expire(now time.Time) []Recording {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	var done []Recording
 	for peer, rec := range r.active {
 		if now.Sub(rec.lastFrame) < r.cfg.Silence {
@@ -268,7 +280,7 @@ func (r *Recorder) Expire(now time.Time) []Recording {
 	return done
 }
 
-// finish completes a recording.
+// finish completes a recording. The caller holds mu.
 func (r *Recorder) finish(peer hbp.RepeaterID, rec *recording, now time.Time) *Recording {
 	delete(r.active, peer)
 
@@ -318,11 +330,17 @@ func (r *Recorder) finish(peer hbp.RepeaterID, rec *recording, now time.Time) *R
 // Called when a member keys up on something else: a recording that was never
 // finished should not be waiting to surprise them later.
 func (r *Recorder) Cancel(peer hbp.RepeaterID) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	delete(r.active, peer)
 }
 
 // Active reports how many recordings are in progress, for the health report.
-func (r *Recorder) Active() int { return len(r.active) }
+func (r *Recorder) Active() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.active)
+}
 
 // String describes the configuration, for logs.
 func (r *Recorder) String() string {

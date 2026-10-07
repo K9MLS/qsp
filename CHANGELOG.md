@@ -271,6 +271,21 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Two faults that could stop the whole server are closed.** Both were a
+  table written from two places at once with no lock, which on a machine with
+  more than one core Go ends with a fatal error, not something QSP can catch
+  and carry on from. It is the fault fixed in 0.1.286, found again in the
+  next two tables along (2026-10-07 hunt, B1 and B2).
+  - *On-demand bridges.* A hotspot and a Motorola repeater keying a talkgroup
+    that opens a bridge on demand each recorded it, from their own listener.
+    Needed `dmr.triggers` configured and a Motorola repeater in use.
+  - *The parrot for Motorola repeaters.* The listener's read loop and its
+    half-second timer both wrote the table of recordings in progress. Needed
+    the parrot on and a Motorola repeater keying it.
+
+  The triggers and the parrot recorder now each hold their own lock, and the
+  listener holds one over its note of which bridges are open, which the same
+  two listeners and a saved configuration all replace.
 - **A registry that is down is no longer asked every two seconds.** When a
   lookup of a radio ID failed, nothing was remembered, so the next
   transmission from that radio queued it again: for as long as RadioID.net

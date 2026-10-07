@@ -3,6 +3,7 @@ package routing
 import (
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/k9mls/qsp/internal/protocol/hbp"
@@ -98,9 +99,19 @@ func (t Trigger) matches(from Endpoint) bool {
 // it does keep — when each bridge was last used — is the minimum a hang timer
 // requires, and it is derived only from traffic that actually arrived.
 //
-// Not safe for concurrent use; owned by the goroutine that reads the socket.
+// **Safe for concurrent use, since 0.1.326.** It used to say it was owned by
+// the goroutine that reads the socket, and there are two of those: a Motorola
+// repeater's audio arrives on the IPSC listener's goroutine and reaches
+// Observe from there, while the hotspots' arrives on the DMR listener's. Both
+// wrote lastUsed. On a machine with more than one core that is Go's
+// "concurrent map writes", which is not an error to recover from: the whole
+// server stops (found 2026-10-07, B1; the fault of 0.1.286 again, in the next
+// map along).
 type Triggers struct {
+	// triggers is not changed after NewTriggers.
 	triggers []Trigger
+
+	mu sync.Mutex
 	// lastUsed maps a bridge to the time of the most recent transmission that
 	// triggered it.
 	lastUsed map[string]time.Time
@@ -130,6 +141,8 @@ func (t *Triggers) Observe(from Endpoint, now time.Time) []string {
 	if t == nil {
 		return nil
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var opened []string
 	for _, trig := range t.triggers {
 		if !trig.Enabled || !trig.matches(from) {
@@ -154,6 +167,8 @@ func (t *Triggers) ActiveAt(now time.Time) map[string]bool {
 	if t == nil {
 		return active
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, trig := range t.triggers {
 		if !trig.Enabled {
 			continue
@@ -179,6 +194,8 @@ func (t *Triggers) Expire(now time.Time) []string {
 		hang[trig.Bridge] = trig.hangTime()
 	}
 
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	var closed []string
 	for bridge, last := range t.lastUsed {
 		limit, known := hang[bridge]
@@ -214,6 +231,8 @@ func (t *Triggers) OpenFor(bridge string, now time.Time) time.Duration {
 	if t == nil {
 		return 0
 	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	for _, trig := range t.triggers {
 		if trig.Bridge != bridge || !trig.Enabled {
 			continue

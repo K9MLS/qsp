@@ -184,6 +184,17 @@ type Listener struct {
 	// locks because one goroutine owns them, so observers must be handed an
 	// immutable copy rather than reaching in.
 	enabledBridges atomic.Pointer[[]string]
+	// schedMu guards which bridges are open: cfg.Triggers, cfg.ScheduleState
+	// and cfg.Rebuild once the listener has started, and scheduleState.
+	//
+	// **Two goroutines open bridges.** A hotspot's transmission reaches
+	// trigger on this listener's own goroutine and a Motorola repeater's
+	// reaches it on the IPSC listener's, through DeliverFromIPSC. Each then
+	// compared and replaced scheduleState, and read the three cfg fields
+	// that a saved configuration replaces from the sweep (found 2026-10-07,
+	// B1).
+	schedMu sync.Mutex
+
 	// pending holds a configuration change waiting to be applied, at most one.
 	// See reload.go.
 	pending atomic.Pointer[Reload]
@@ -478,6 +489,8 @@ func (l *Listener) handle(datagram []byte, from netip.AddrPort) {
 // on-demand transmission, which is exactly the complaint operators report about
 // systems that get this wrong.
 func (l *Listener) trigger(from hbp.RepeaterID, frame hbp.Data) {
+	l.schedMu.Lock()
+	defer l.schedMu.Unlock()
 	if l.cfg.Triggers == nil {
 		return
 	}
@@ -494,7 +507,7 @@ func (l *Listener) trigger(from hbp.RepeaterID, frame hbp.Data) {
 	}
 	// Apply immediately rather than waiting for the next sweep, so the opening
 	// transmission is carried.
-	l.applySchedule()
+	l.applyScheduleLocked()
 }
 
 // A frame that is refused is counted and logged rather than silently dropped:
@@ -1131,6 +1144,8 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 
 // expireTriggers closes bridges whose hang time has elapsed.
 func (l *Listener) expireTriggers() {
+	l.schedMu.Lock()
+	defer l.schedMu.Unlock()
 	if l.cfg.Triggers == nil {
 		return
 	}
@@ -1148,6 +1163,13 @@ func (l *Listener) expireTriggers() {
 // The table is rebuilt only when the answer changes, so the common case costs
 // one map comparison per second.
 func (l *Listener) applySchedule() {
+	l.schedMu.Lock()
+	defer l.schedMu.Unlock()
+	l.applyScheduleLocked()
+}
+
+// applyScheduleLocked is applySchedule for a caller that holds schedMu.
+func (l *Listener) applyScheduleLocked() {
 	if l.cfg.ScheduleState == nil || l.cfg.Rebuild == nil || l.cfg.Routing == nil {
 		return
 	}
