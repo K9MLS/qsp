@@ -46,6 +46,11 @@ const (
 	// password. **Not the password**, obviously, and not who it was given to;
 	// the audit trail records that it happened and by whom.
 	ActionUserPasswordReset Action = "user.password.reset"
+	// ActionUserPasswordChanged records an administrator changing their own
+	// password, having given the current one. A refused attempt is recorded
+	// too: a wrong current password at a signed-in console is somebody at a
+	// browser that is not theirs.
+	ActionUserPasswordChanged Action = "user.password.changed"
 	// ActionUserDeleted records an administrator being removed, along with
 	// every session they held.
 	ActionUserDeleted Action = "user.deleted"
@@ -119,18 +124,19 @@ const (
 )
 
 var knownActions = map[Action]bool{
-	ActionConfigChanged:     true,
-	ActionConfigRolledBack:  true,
-	ActionUserLogin:         true,
-	ActionUserLogout:        true,
-	ActionUserCreated:       true,
-	ActionUserPasswordReset: true,
-	ActionUserDeleted:       true,
-	ActionServiceStarted:    true,
-	ActionServiceStopped:    true,
-	ActionPeeringOffered:    true,
-	ActionPeeringAccepted:   true,
-	ActionPeeringRemoved:    true,
+	ActionConfigChanged:       true,
+	ActionConfigRolledBack:    true,
+	ActionUserLogin:           true,
+	ActionUserLogout:          true,
+	ActionUserCreated:         true,
+	ActionUserPasswordReset:   true,
+	ActionUserPasswordChanged: true,
+	ActionUserDeleted:         true,
+	ActionServiceStarted:      true,
+	ActionServiceStopped:      true,
+	ActionPeeringOffered:      true,
+	ActionPeeringAccepted:     true,
+	ActionPeeringRemoved:      true,
 
 	ActionSecretSet:             true,
 	ActionSecretRemoved:         true,

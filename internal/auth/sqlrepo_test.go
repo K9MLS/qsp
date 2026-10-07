@@ -250,7 +250,7 @@ func TestAResetReachesARealDatabase(t *testing.T) {
 				t.Fatalf("UpdateAttempts: %v", err)
 			}
 
-			if err := repo.SetPassword(ctx, made.ID, "the-new-hash"); err != nil {
+			if err := repo.SetPassword(ctx, made.ID, "the-new-hash", ""); err != nil {
 				t.Fatalf("SetPassword: %v", err)
 			}
 

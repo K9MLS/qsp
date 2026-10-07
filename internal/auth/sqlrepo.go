@@ -235,8 +235,17 @@ func (r *SQLRepository) Accounts(ctx context.Context) ([]Account, error) {
 }
 
 // SetPassword implements Repository.
-func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash string) error {
+//
+// **In one transaction**, so a password cannot be replaced while the sessions
+// opened with the old one survive.
+func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash, keep string) error {
 	const q = `UPDATE users SET password_hash = ?, failed_count = 0, locked_until = '' WHERE id = ?`
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("auth: setting a password: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
 
 	// **A reset clears the lockout too.** An operator resetting a password for
 	// somebody locked out has answered the question the lockout was asking, and
@@ -245,7 +254,16 @@ func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash string) 
 	// **Empty, not NULL.** The column is NOT NULL and empty is how the schema
 	// says "not locked". This wrote NULL until 0.1.313, which SQLite refused
 	// along with the new password, so no reset from the console ever worked.
-	if _, err := r.db.ExecContext(ctx, q, hash, id); err != nil {
+	if _, err := tx.ExecContext(ctx, q, hash, id); err != nil {
+		return fmt.Errorf("auth: setting a password: %w", err)
+	}
+	// keep is compared as a value, so an empty one matches no session and
+	// they all go.
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM sessions WHERE user_id = ? AND token <> ?`, id, keep); err != nil {
+		return fmt.Errorf("auth: ending the account's sessions: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("auth: setting a password: %w", err)
 	}
 	return nil

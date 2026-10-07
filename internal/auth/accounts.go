@@ -138,8 +138,15 @@ type Repository interface {
 	CountSessions(ctx context.Context, now time.Time) (int, error)
 	// Accounts returns every account, oldest first.
 	Accounts(ctx context.Context) ([]Account, error)
-	// SetPassword replaces one account's hash.
-	SetPassword(ctx context.Context, id int64, hash string) error
+	// SetPassword replaces one account's hash and ends that account's
+	// sessions, except the one whose token is keep. An empty keep ends them
+	// all.
+	//
+	// **One call, for the reason DeleteAccount is one.** A password is
+	// replaced because the old one is forgotten or is no longer trusted, and
+	// in the second case whoever had it is signed in. Until 0.1.327 their
+	// session went on working until it expired, which by default is days.
+	SetPassword(ctx context.Context, id int64, hash, keep string) error
 	// DeleteAccount removes an account and every session it holds.
 	//
 	// **One call, not two.** An account removed while its sessions survive is
@@ -525,12 +532,76 @@ func (s *Service) AnyAccount(ctx context.Context) (bool, error) {
 	return len(accounts) > 0, nil
 }
 
-// ResetPassword sets a new password for an account and returns nothing.
+// ErrSamePassword is returned when a new password is the one already in use.
+var ErrSamePassword = errors.New("auth: the new password is the same as the current one")
+
+// ChangePassword replaces the password of the account a session belongs to,
+// given the current one.
+//
+// **The current password is asked for although the caller is signed in.** A
+// session is a browser left open, and without this anybody who sat down at
+// one could make the account theirs.
+//
+// **A wrong current password is counted exactly as a failed sign-in is**, on
+// the same table and against the same address, and an address already being
+// refused is refused here. Otherwise this would be a second place to guess a
+// password, one the sign-in limit did not reach.
+//
+// The session that asked is kept and every other one the account holds is
+// ended.
+func (s *Service) ChangePassword(ctx context.Context, token, current, next, ip string) error {
+	session, err := s.Session(ctx, token)
+	if err != nil {
+		return err
+	}
+	account, found, err := s.repo.AccountByUsername(ctx, NormaliseUsername(session.Username))
+	if err != nil {
+		return fmt.Errorf("auth: cannot look up the account: %w", err)
+	}
+	if !found {
+		return ErrNoSession
+	}
+
+	now := s.now().UTC()
+	source := throttleKey(ip)
+	if until, _, refused := s.throttle.refused(source, now); refused {
+		return &Lockout{Until: until}
+	}
+
+	verr, err := s.verify(ctx, current, account.PasswordHash)
+	if err != nil {
+		return err
+	}
+	if verr != nil {
+		s.throttle.fail(source, now)
+		return ErrInvalidCredentials
+	}
+
+	// Checked before the comparison below, so a new password that is too
+	// short is told so and not told it is the same.
+	if err := ValidatePassword(next); err != nil {
+		return err
+	}
+	if next == current {
+		return ErrSamePassword
+	}
+	hash, err := Hash(next, s.policy.Hash)
+	if err != nil {
+		return err
+	}
+	return s.repo.SetPassword(ctx, account.ID, hash, token)
+}
+
+// ResetPassword sets a new password for an account and ends its sessions,
+// except the one whose token is keep.
 //
 // **The caller generates the password and shows it once.** One administrator
 // choosing another's password means one administrator knowing another's
 // password, which the peer credentials page already declines to do.
-func (s *Service) ResetPassword(ctx context.Context, username, password string) error {
+//
+// keep is for an administrator resetting their own: without it the answer
+// carrying the new password would be the last thing their session did.
+func (s *Service) ResetPassword(ctx context.Context, username, password, keep string) error {
 	account, ok, err := s.repo.AccountByUsername(ctx, NormaliseUsername(username))
 	if err != nil {
 		return err
@@ -545,7 +616,10 @@ func (s *Service) ResetPassword(ctx context.Context, username, password string) 
 	if err != nil {
 		return err
 	}
-	return s.repo.SetPassword(ctx, account.ID, hash)
+	// keep is not checked to be this account's. SetPassword ends this
+	// account's sessions other than keep, so a token that is somebody
+	// else's, or nobody's, keeps nothing.
+	return s.repo.SetPassword(ctx, account.ID, hash, keep)
 }
 
 // RemoveAccount deletes an account and every session it holds.

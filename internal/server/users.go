@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,7 +23,12 @@ import (
 type AccountAdmin interface {
 	Accounts(ctx context.Context) ([]auth.Account, error)
 	CreateAccount(ctx context.Context, username, password string) (auth.Account, error)
-	ResetPassword(ctx context.Context, username, password string) error
+	// ResetPassword ends the account's sessions except the one whose token
+	// is keep.
+	ResetPassword(ctx context.Context, username, password, keep string) error
+	// ChangePassword replaces the password of the account the session
+	// belongs to, given the current one, and ends its other sessions.
+	ChangePassword(ctx context.Context, token, current, next, ip string) error
 	RemoveAccount(ctx context.Context, username string) error
 }
 
@@ -145,7 +151,16 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.opts.Accounts.ResetPassword(r.Context(), name, password); err != nil {
+	// An administrator resetting their own keeps the session they are doing
+	// it from, or the answer carrying the new password is the last thing
+	// that session does and the page showing it is replaced by the sign-in.
+	var keep string
+	if sess, ok := SessionFrom(r.Context()); ok &&
+		auth.NormaliseUsername(sess.Username) == auth.NormaliseUsername(name) {
+		keep = sess.Token
+	}
+
+	if err := s.opts.Accounts.ResetPassword(r.Context(), name, password, keep); err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, auth.ErrNoSuchAccount) {
 			status = http.StatusNotFound
@@ -160,8 +175,89 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		"username": name,
 		"password": password,
 		"note": "Give this to " + name + " now. Any lockout on the account is cleared, " +
-			"and their existing sessions still work until they expire.",
+			"and anywhere they were signed in they have been signed out.",
 	})
+}
+
+// changePasswordRequest is an administrator changing their own password.
+type changePasswordRequest struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// handleChangePassword replaces the signed-in administrator's password.
+//
+// **Their own, and no name is read from the request.** The account is the
+// one the session belongs to, so there is nothing here to point at somebody
+// else's.
+func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Accounts == nil {
+		writeJSON(w, s.log, http.StatusServiceUnavailable,
+			map[string]string{"error": "this instance has no account store"})
+		return
+	}
+	var req changePasswordRequest
+	if !decodeJSON(w, s.log, r, &req) {
+		return
+	}
+	sess, ok := SessionFrom(r.Context())
+	if !ok {
+		writeJSON(w, s.log, http.StatusUnauthorized, map[string]string{"error": "sign in first"})
+		return
+	}
+
+	err := s.opts.Accounts.ChangePassword(r.Context(), sess.Token, req.Current, req.New,
+		clientIP(r, s.opts.BehindProxy))
+	if err == nil {
+		s.recordAccount(r, audit.ActionUserPasswordChanged, sess.Username, audit.OutcomeSuccess, "")
+		writeJSON(w, s.log, http.StatusOK, map[string]string{
+			"note": "Your password is changed. You are still signed in here, and " +
+				"anywhere else you were signed in you have been signed out.",
+		})
+		return
+	}
+
+	// **Never 401.** That is the answer that means "you are not signed in",
+	// and the page would act on it; a wrong current password is a refusal of
+	// this request by somebody who is.
+	status, reason := http.StatusBadRequest, err.Error()
+	var message string
+	var lockout *auth.Lockout
+	switch {
+	case errors.As(err, &lockout), errors.Is(err, auth.ErrLockedOut):
+		status = http.StatusTooManyRequests
+		message = "too many wrong passwords from your address; wait a few minutes and try again"
+		reason = "locked out"
+		if lockout != nil {
+			if left := time.Until(lockout.Until); left > 0 {
+				w.Header().Set("Retry-After", strconv.Itoa(int(left/time.Second)+1))
+			}
+		}
+	case errors.Is(err, auth.ErrInvalidCredentials):
+		status = http.StatusForbidden
+		message = "the current password is not right; nothing was changed"
+		reason = "wrong current password"
+	case errors.Is(err, auth.ErrPasswordTooShort):
+		message = "the new password is too short: use at least " +
+			strconv.Itoa(auth.MinPasswordLength) + " characters. A few words together work well"
+		reason = "new password too short"
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		message = "the new password is too long"
+		reason = "new password too long"
+	case errors.Is(err, auth.ErrSamePassword):
+		message = "the new password is the one you have now; choose a different one"
+		reason = "new password unchanged"
+	case errors.Is(err, auth.ErrNoSession):
+		status = http.StatusUnauthorized
+		message = "sign in first"
+		reason = "no session"
+	default:
+		status = http.StatusInternalServerError
+		message = "the password could not be changed; the server's log says why"
+		s.log.Error("cannot change a password", "username", sess.Username, "error", err)
+	}
+	s.recordAccount(r, audit.ActionUserPasswordChanged, sess.Username, audit.OutcomeFailure, reason)
+	writeJSON(w, s.log, status, map[string]string{"error": message})
 }
 
 // handleRemoveUser deletes an administrator and ends their sessions.

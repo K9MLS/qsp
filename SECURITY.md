@@ -474,7 +474,15 @@ which amends ADR-0026.
 rather than a token: an administrator adding another is already authenticated.
 On POST it creates an account and returns a generated password **once** — one
 administrator never chooses or learns another's password. `/api/users/{name}/password`, on POST,
-resets one the same way and clears any lockout. `/api/users/{name}`, on DELETE,
+resets one the same way, clears any lockout and **ends that account's sessions**
+(since 0.1.327; they used to run on until they expired, so a reset did not put
+out whoever had the old password). An administrator resetting their own keeps
+the one session they did it from. `/api/account/password`, on POST, is an
+administrator changing their **own** password: it reads no username, takes the
+current password as well as the new one because a session is a browser left
+open, counts a wrong current password against the sender's address on the same
+table as a failed sign-in, and ends the account's other sessions.
+`/api/users/{name}`, on DELETE,
 removes an account
 and every session it holds in one transaction, and **refuses to remove the last
 administrator** with a 409, because a console able to lock an operator out of

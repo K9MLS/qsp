@@ -25,7 +25,11 @@ func (stubAccounts) CreateAccount(_ context.Context, username, _ string) (auth.A
 	return auth.Account{Username: username}, nil
 }
 
-func (stubAccounts) ResetPassword(_ context.Context, username, _ string) error {
+func (stubAccounts) ChangePassword(context.Context, string, string, string, string) error {
+	return nil
+}
+
+func (stubAccounts) ResetPassword(_ context.Context, username, _, _ string) error {
 	if username != "W9XYZ" {
 		return auth.ErrNoSuchAccount
 	}

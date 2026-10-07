@@ -604,9 +604,15 @@ func (r *memoryRepo) Accounts(ctx context.Context) ([]auth.Account, error) {
 }
 
 // SetPassword implements auth.Repository.
-func (r *memoryRepo) SetPassword(ctx context.Context, id int64, hash string) error {
+func (r *memoryRepo) SetPassword(ctx context.Context, id int64, hash, keep string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	for token, s := range r.sessions {
+		if s.UserID == id && token != keep {
+			delete(r.sessions, token)
+		}
+	}
 
 	for fold, a := range r.accounts {
 		if a.ID == id {

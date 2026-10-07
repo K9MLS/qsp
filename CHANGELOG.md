@@ -6,6 +6,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **An administrator can change their own password.** Administration,
+  under Administrators, has "Change my password": the current password and
+  the new one twice. Until now the only way to a new password was Reset,
+  which makes one up. The current password is asked for because a console
+  left open would otherwise be an account given away, and a wrong one is
+  counted against your address exactly as a failed sign-in is. The new one
+  needs at least 12 characters. You stay signed in where you changed it and
+  are signed out everywhere else.
 - **Servers are on the map.** The Overview's map drew the stations registered
   with a server and nothing else. It now draws the server itself, from the
   latitude and longitude in the Identity panel on the Network page, and the
@@ -172,6 +180,12 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **A new password signs the account out.** Resetting a password left every
+  session opened with the old one working until it expired, so a reset did
+  not put out whoever had the old password. A reset now ends that account's
+  sessions, and changing your own ends all but the one you did it from. An
+  administrator resetting their own from the list stays signed in where they
+  are reading the new one.
 - **Guessing at a console password could go on without limit.** Four wrong
   passwords for a real account and then one for a name nobody holds, repeated,
   was never refused: the address was locked out with nothing written on the

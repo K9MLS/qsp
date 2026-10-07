@@ -80,7 +80,7 @@ func TestAResetReplacesThePasswordAndClearsTheLockout(t *testing.T) {
 	if _, err := s.CreateAccount(ctx, "K9MLS", "the-old-password"); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	if err := s.ResetPassword(ctx, "K9MLS", "the-new-password"); err != nil {
+	if err := s.ResetPassword(ctx, "K9MLS", "the-new-password", ""); err != nil {
 		t.Fatalf("ResetPassword: %v", err)
 	}
 
@@ -95,14 +95,14 @@ func TestAResetReplacesThePasswordAndClearsTheLockout(t *testing.T) {
 	// becomes the way round the policy. Enforced by `Hash` rather than by this
 	// method — an explicit check here was removed after it turned out removing
 	// it changed nothing, which is a safeguard that cannot fail.
-	if err := s.ResetPassword(ctx, "K9MLS", "short"); err == nil {
+	if err := s.ResetPassword(ctx, "K9MLS", "short", ""); err == nil {
 		t.Error("a reset accepted a password creation would refuse")
 	}
 	if err := auth.ValidatePassword("short"); err == nil {
 		t.Fatal("the policy accepts a short password, so the assertion above " +
 			"proves nothing about resets")
 	}
-	if err := s.ResetPassword(ctx, "NOBODY", "a-long-enough-password"); !errors.Is(err, auth.ErrNoSuchAccount) {
+	if err := s.ResetPassword(ctx, "NOBODY", "a-long-enough-password", ""); !errors.Is(err, auth.ErrNoSuchAccount) {
 		t.Errorf("resetting an unknown account gave %v, want ErrNoSuchAccount", err)
 	}
 }

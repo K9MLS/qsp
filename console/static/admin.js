@@ -653,6 +653,78 @@
     });
   }
 
+  /* Change my password. The three boxes are checked here first so that a
+   * slip is caught before anything is sent, and the server checks again:
+   * this is a convenience and that is the rule.
+   *
+   * **The boxes are emptied whatever happens**, so a password is not left
+   * sitting in a page, and the answer is written beside the button and not
+   * in the Administrators messages a screen above it. */
+  var passwordForm = el("password-form");
+  if (passwordForm) {
+    passwordForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var err = el("password-error");
+      var done = el("password-done");
+      var button = el("password-save");
+      hide(err);
+      hide(done);
+
+      var current = el("password-current").value;
+      var next = el("password-new").value;
+      var again = el("password-again").value;
+      if (!current) { say(err, "Type your current password."); return; }
+      if (next.length < 12) {
+        say(err, "The new password needs at least 12 characters.");
+        return;
+      }
+      if (next !== again) {
+        say(err, "The two new passwords are not the same. Type them again.");
+        el("password-new").value = "";
+        el("password-again").value = "";
+        el("password-new").focus();
+        return;
+      }
+      if (next === current) {
+        say(err, "The new password is the one you have now. Choose a different one.");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Changing";
+      fetch("/api/account/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ current: current, "new": next })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (b) {
+          if (!r.ok) { throw new Error(sentence(b.error) || "The password was not changed."); }
+          return b;
+        });
+      }).then(function (b) {
+        passwordForm.reset();
+        say(done, b.note || "Your password is changed.");
+      }).catch(function (e) {
+        el("password-current").value = "";
+        say(err, e.message || "The server did not answer. The password was not changed.");
+        el("password-current").focus();
+      }).then(function () {
+        button.disabled = false;
+        button.textContent = "Change password";
+      });
+    });
+  }
+
+  /* The server's messages start in lower case, as its log lines do. On their
+   * own beside a button they are a sentence. */
+  function sentence(text) {
+    text = String(text || "").trim();
+    if (!text) { return ""; }
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+    return /[.!?]$/.test(text) ? text : text + ".";
+  }
+
   function send(method, path, body, then) {
     hide(el("users-error"));
     fetch(path, {

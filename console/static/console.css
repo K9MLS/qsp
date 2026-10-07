@@ -1815,6 +1815,26 @@ label.picker__label {
   display: block;
 }
 
+/* A short form read top to bottom: one field under another with room between
+   them, and no wider than what is typed into it. Without the gap a label sits
+   against the box above and reads as belonging to it; without the width a
+   password box runs the whole panel. */
+.form-stack {
+  display: grid;
+  gap: var(--space-4);
+  max-width: 28rem;
+  justify-items: start;
+}
+
+.form-stack > .picker__field {
+  width: 100%;
+}
+
+.form-stack > .field__note,
+.form-stack > .link__advice {
+  margin: 0;
+}
+
 .picker__label {
   font-size: var(--text-xs);
   letter-spacing: var(--tracking-wide);

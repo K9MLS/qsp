@@ -174,6 +174,35 @@
         <p class="link__advice" id="users-error" hidden></p>
         <p class="field__note" id="users-secret" hidden></p>
 
+        <!-- An administrator's own password. Reset password above makes a new
+             one up; this is for choosing one, and it asks for the current one
+             because a console left open is otherwise an account given away. -->
+        <h3 class="panel__heading">Change my password</h3>
+        <form class="form-stack" id="password-form" autocomplete="on">
+          <label class="picker__field">
+            <span class="picker__label">Current password</span>
+            <input class="picker__input" id="password-current" type="password"
+                   autocomplete="current-password" required>
+          </label>
+          <label class="picker__field">
+            <span class="picker__label">New password</span>
+            <input class="picker__input" id="password-new" type="password"
+                   autocomplete="new-password" minlength="12" required>
+            <p class="field__note">
+              At least 12 characters. A few words together are easier to type
+              and harder to guess than a short jumble.
+            </p>
+          </label>
+          <label class="picker__field">
+            <span class="picker__label">New password again</span>
+            <input class="picker__input" id="password-again" type="password"
+                   autocomplete="new-password" minlength="12" required>
+          </label>
+          <button class="button" id="password-save" type="submit">Change password</button>
+          <p class="link__advice" id="password-error" role="alert" hidden></p>
+          <p class="field__note" id="password-done" role="status" hidden></p>
+        </form>
+
         <!-- Sessions: the live half of "who can get into this console", which
              is why it is here rather than in a panel of its own. -->
         <h3 class="panel__heading">Sessions</h3>

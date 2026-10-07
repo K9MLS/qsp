@@ -272,6 +272,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		{"POST /api/users", s.requireSession(s.handleAddUser)},
 		{"POST /api/users/{name}/password", s.requireSession(s.handleResetPassword)},
 		{"DELETE /api/users/{name}", s.requireSession(s.handleRemoveUser)},
+		{"POST /api/account/password", s.requireSession(s.handleChangePassword)},
 		{"GET /api/admin", s.requireSession(s.handleAdmin)},
 		{"GET /api/admin/backup", s.requireSession(s.handleBackup)},
 		{"POST /api/admin/restore", s.requireSession(s.handleRestore)},
