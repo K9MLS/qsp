@@ -40,7 +40,11 @@ func TestWhenEachVoiceRecordLeaves(t *testing.T) {
 			t0 := time.Date(2026, 10, 5, 19, 0, 0, 0, time.UTC)
 			s := schedule{hold: hold * time.Millisecond}
 			for i, a := range tc.arrive {
-				got := s.due(t0.Add(time.Duration(a) * time.Millisecond)).Sub(t0).Milliseconds()
+				// Taken off the queue the moment it arrives: a tunnel that is
+				// keeping up. TestAStalledTunnelIsNotCaughtUpInABurst is the
+				// other case.
+				arrived := t0.Add(time.Duration(a) * time.Millisecond)
+				got := s.due(arrived, arrived).Sub(t0).Milliseconds()
 				if got != int64(tc.leave[i]) {
 					t.Errorf("record %d, arriving at %d ms, leaves at %d ms, want %d", i, a, got, tc.leave[i])
 				}
@@ -63,11 +67,80 @@ func TestNothingIsSentFasterThanItIsSpoken(t *testing.T) {
 	s := schedule{hold: 40 * time.Millisecond}
 	var last time.Time
 	for i, a := range arrivals {
-		at := s.due(t0.Add(time.Duration(a) * time.Millisecond))
+		arrived := t0.Add(time.Duration(a) * time.Millisecond)
+		at := s.due(arrived, arrived)
 		if i > 0 && at.Sub(last) < RecordInterval {
 			t.Errorf("record %d leaves %s after the one before, closer than %s", i, at.Sub(last), RecordInterval)
 		}
 		last = at
+	}
+}
+
+// A tunnel that stops taking anything for a while, and what leaves when it
+// starts again. Times are milliseconds; stalled is until when the tunnel
+// took nothing, and every record is sent as soon after that as its schedule
+// allows.
+//
+// The schedule was kept from arrivals alone, so when the tunnel came back
+// every record whose moment had passed was due at once and a call left in
+// one burst: forty records in the time of one, down a line with room for
+// one.
+//
+// Break it: delete the `if at.Before(now)` lines from schedule.due, and
+// every row but the first fails. Drop `after: s.after` from reset, and the
+// last one does.
+func TestAStalledTunnelIsNotCaughtUpInABurst(t *testing.T) {
+	const hold = 60
+	steady := func(from, n int) []int {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = from + i*20
+		}
+		return out
+	}
+	tests := []struct {
+		name    string
+		arrive  []int
+		stalled int
+		// ends marks records that are the last of a call: the schedule is
+		// reset after them, as run does on an end marker.
+		ends  map[int]bool
+		leave []int
+	}{
+		{"a tunnel that keeps up is as before", steady(0, 4), 0, nil, []int{60, 80, 100, 120}},
+		{"a call that arrived during a stall leaves a record at a time",
+			steady(0, 5), 500, nil, []int{500, 520, 540, 560, 580}},
+		{"the stall is not made up later in the call",
+			[]int{0, 20, 40, 600, 620}, 300, nil, []int{300, 320, 340, 600, 620}},
+		{"a second call queued behind the first does not leave at once either",
+			append(steady(0, 3), steady(100, 3)...), 500, map[int]bool{2: true},
+			[]int{500, 520, 540, 560, 580, 600}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t0 := time.Date(2026, 10, 7, 9, 0, 0, 0, time.UTC)
+			ms := func(n int) time.Time { return t0.Add(time.Duration(n) * time.Millisecond) }
+			s := schedule{hold: hold * time.Millisecond}
+			now := ms(tc.stalled)
+			var last time.Time
+			for i, a := range tc.arrive {
+				if arrived := ms(a); arrived.After(now) {
+					now = arrived // nothing to send until it arrives
+				}
+				at := s.due(ms(a), now)
+				now = at // the sender waits for it, and sends
+				if got := at.Sub(t0).Milliseconds(); got != int64(tc.leave[i]) {
+					t.Errorf("record %d, arriving at %d ms, leaves at %d ms, want %d", i, a, got, tc.leave[i])
+				}
+				if i > 0 && at.Sub(last) < RecordInterval {
+					t.Errorf("record %d leaves %s after the one before", i, at.Sub(last))
+				}
+				last = at
+				if tc.ends[i] {
+					s.reset()
+				}
+			}
+		})
 	}
 }
 

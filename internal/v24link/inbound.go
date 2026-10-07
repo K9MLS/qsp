@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/k9mls/qsp/internal/p25link"
 	"github.com/k9mls/qsp/internal/protocol/p25"
 )
 
@@ -39,10 +40,14 @@ var (
 		0x39, 0x2A, 0x22, 0x04, 0x23, 0x12, 0x11, 0x0A, 0x00, 0x03, 0x0C, 0x02}
 )
 
+// gatewayTalker is the gateways' name as the talker of a call sent to the
+// repeaters. It is the name they hold the floor under.
+const gatewayTalker = p25link.GatewayFloor
+
 // FromGateway sends one voice frame from a gateway's call to every linked
-// repeater, and reports how many it reached. A repeater hearing the call's
-// first frame is sent the start marker before it, whenever in the call that
-// is, so a repeater whose link opens part-way still gets a beginning.
+// repeater, and reports how many it was sent to. A repeater hearing the
+// call's first frame is sent the start marker before it, whenever in the call
+// that is, so a repeater whose link opens part-way still gets a beginning.
 //
 // Anything that is not a voice frame is refused.
 func (l *Listener) FromGateway(frame []byte) int {
@@ -54,64 +59,29 @@ func (l *Listener) FromGateway(frame []byte) int {
 	payload = append(payload, uiAddress, controlUI)
 	payload = append(payload, frame...)
 
-	l.inbound.Lock()
-	defer l.inbound.Unlock()
+	l.callMu.Lock()
+	defer l.callMu.Unlock()
 	l.inboundLast = l.now()
 
-	reached := 0
-	for _, st := range l.linked() {
-		st.mu.Lock()
-		opened, send := st.receiving, st.send
-		st.receiving = true
-		st.mu.Unlock()
-
-		if !opened {
-			if send(startMarker) != nil {
-				continue
-			}
-			if l.cfg.SendHeader {
-				_ = send(capturedHeader1)
-				_ = send(capturedHeader2)
-			}
-		}
-		if send(payload) != nil {
-			continue // a repeater that cannot be written to is closed by its own tunnel
-		}
-		reached++
+	// Counted when it is written and not when it is queued: "sent to it" on
+	// the console is frames that left, and a tunnel that takes nothing would
+	// otherwise count up all the same (D8).
+	return l.toRepeaters(gatewayTalker, nil, payload, false, l.cfg.SendHeader, func(st *station) {
+		l.sent.Add(1)
 		st.mu.Lock()
 		st.view.Sent++
 		st.mu.Unlock()
-	}
-	l.sent.Add(uint64(reached))
-	return reached
+	})
 }
 
-// EndFromGateway closes the gateway's call at every repeater that was sent
-// any of it, with the end marker twice as a repeater sends it. It reports how
+// EndFromGateway closes the gateway's call at every repeater still listening
+// to it, with the end marker twice as a repeater sends it. It reports how
 // many repeaters that was.
 func (l *Listener) EndFromGateway() int {
-	l.inbound.Lock()
-	defer l.inbound.Unlock()
-	return l.endInbound()
-}
-
-// endInbound is EndFromGateway with l.inbound already held.
-func (l *Listener) endInbound() int {
+	l.callMu.Lock()
+	defer l.callMu.Unlock()
 	l.inboundLast = time.Time{}
-	ended := 0
-	for _, st := range l.linked() {
-		st.mu.Lock()
-		opened, send := st.receiving, st.send
-		st.receiving = false
-		st.mu.Unlock()
-		if !opened {
-			continue
-		}
-		_ = send(endMarker)
-		_ = send(endMarker)
-		ended++
-	}
-	return ended
+	return l.endAtRepeaters(gatewayTalker)
 }
 
 // watchInbound ends a gateway's call that stopped without a terminator.
@@ -120,6 +90,9 @@ func (l *Listener) endInbound() int {
 // gives up, which on a transmitter is a carrier with nothing on it. A lost
 // datagram is all it takes, so the end is sent here when voice has stopped
 // arriving for CallTimeout.
+//
+// A repeater that has since been given somebody else's call was sent this
+// one's end then, and is not sent it again in the middle of theirs (D4).
 func (l *Listener) watchInbound(ctx context.Context) {
 	defer l.done.Done()
 	tick := time.NewTicker(CallTimeout / 4)
@@ -130,13 +103,14 @@ func (l *Listener) watchInbound(ctx context.Context) {
 			return
 		case <-tick.C:
 		}
-		l.inbound.Lock()
+		l.callMu.Lock()
 		if !l.inboundLast.IsZero() && l.now().Sub(l.inboundLast) > CallTimeout {
-			if n := l.endInbound(); n > 0 {
+			l.inboundLast = time.Time{}
+			if n := l.endAtRepeaters(gatewayTalker); n > 0 {
 				l.log.Info("a gateway's call stopped without ending and was closed at the repeaters")
 			}
 		}
-		l.inbound.Unlock()
+		l.callMu.Unlock()
 	}
 }
 

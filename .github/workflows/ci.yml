@@ -103,6 +103,9 @@ jobs:
       - name: Test with race detector
         run: go test -race ./...
 
+      - name: Repeater link with no hold
+        run: QSP_V24_NO_HOLD=1 go test -race -count=1 ./internal/v24link/
+
       # ADR-0009 keeps Opus behind the zello build tag, so every step above
       # compiles none of qsp-zello, internal/opus or internal/zellobridge. A
       # tag nothing builds is code nothing checks.

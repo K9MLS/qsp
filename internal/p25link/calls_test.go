@@ -174,3 +174,56 @@ func TestWhetherAGatewaysCallWasCarried(t *testing.T) {
 		})
 	}
 }
+
+// TestAGatewayThatMovesMidCallLeavesNoCallBehind. A gateway behind a home
+// router can come from a new port between two polls. Its call was named to
+// Last heard by callsign and address, worked out afresh at the end, so a
+// call begun from one port and ended from another was ended under a name
+// nothing was listed under, and the row stayed "in progress" until QSP was
+// restarted.
+//
+// Break it: in Listener.voice, name the call to Heard by callKey(sender) in
+// place of heard.key.
+func TestAGatewayThatMovesMidCallLeavesNoCallBehind(t *testing.T) {
+	tests := []struct {
+		name string
+		// end is how the call finishes once the gateway has moved.
+		end func(l *p25link.Listener, moved interface{ Write([]byte) (int, error) })
+		why p25calls.EndReason
+	}{
+		{"it sends a terminator from where it is now",
+			func(_ *p25link.Listener, moved interface{ Write([]byte) (int, error) }) {
+				_, _ = moved.Write(frame(0x80))
+			}, p25calls.EndMarked},
+		{"it goes quiet and is given up on",
+			func(l *p25link.Listener, _ interface{ Write([]byte) (int, error) }) {
+				l.ExpireAt(time.Now().Add(10 * time.Second))
+			}, p25calls.EndQuiet},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tr := p25calls.NewTracker(p25calls.Options{})
+			l, addr, stop := serve(t, p25link.Config{Calls: tr})
+			defer stop()
+
+			first := registered(t, addr, "N0CALL")
+			_, _ = first.Write(frame(0x63))
+			waitCalls(t, tr, 1, 0)
+
+			// The same gateway, from another port, part-way through.
+			moved := registered(t, addr, "N0CALL")
+			_, _ = moved.Write(frame(0x63))
+			time.Sleep(20 * time.Millisecond)
+			live, _ := waitCalls(t, tr, 1, 0)
+			if live[0].Frames != 2 {
+				t.Errorf("the call in progress has %d frames, want both", live[0].Frames)
+			}
+
+			tc.end(l, moved)
+			_, done := waitCalls(t, tr, 0, 1)
+			if done[0].EndReason != tc.why || done[0].Frames != 2 {
+				t.Errorf("recorded as %+v", done[0])
+			}
+		})
+	}
+}

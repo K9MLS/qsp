@@ -32,6 +32,18 @@ import (
 // faster than it is spoken. A stall leaves the rest of that call behind by the
 // length of the stall; CallTimeout ends a call that stalls for longer, so that
 // is under a second, and the next call starts level.
+//
+// **That paragraph was not true until 0.1.328.** The schedule was kept from
+// when each record arrived and never looked at when it was being sent, so
+// after a stall every record whose moment had passed was written at once: a
+// call queued behind a slow tunnel left in a single burst, which is the thing
+// the paragraph says does not happen. A record sent late now moves the
+// schedule with it, and the one after follows a full interval behind.
+//
+// **With no hold the queue is still there and the schedule is not.** Records
+// are written as they are taken off it, which is what QSP did before it had a
+// hold, on a goroutine of the tunnel's own so that nothing deciding what to
+// carry waits for a tunnel to take it.
 
 // RecordInterval is how far apart a repeater's voice records are.
 const RecordInterval = 20 * time.Millisecond
@@ -50,6 +62,10 @@ type schedule struct {
 	next time.Time
 	// last is when the last voice record arrived.
 	last time.Time
+	// after is the earliest the next voice record may leave, whichever call
+	// it belongs to. It is the one thing a call hands to the next: two calls
+	// queued together still share one line.
+	after time.Time
 
 	// The call in progress, for its log line.
 	records  int
@@ -57,14 +73,19 @@ type schedule struct {
 	worstGap time.Duration
 }
 
-// due reports when a voice record that arrived at arrived should leave.
+// due reports when a voice record that arrived at arrived, and is being sent
+// at now, should leave. It is never before now.
 //
-// The first of a call leaves Hold later. Each one after leaves a
+// The first of a call leaves Hold after it arrived. Each one after leaves a
 // RecordInterval after the one before, unless it arrived after that moment:
 // then the repeater has already run dry, the record leaves as it arrived, and
 // the schedule starts again from there with no hold, because a second wait
 // would only lengthen the silence.
-func (s *schedule) due(arrived time.Time) time.Time {
+//
+// A record whose moment has passed by the time it is sent leaves now, and
+// the schedule moves to now with it. Otherwise everything queued behind a
+// stall is due at once.
+func (s *schedule) due(arrived, now time.Time) time.Time {
 	if !s.next.IsZero() && arrived.Sub(s.last) > CallTimeout {
 		// The end of the last call never came through here. This is a new one.
 		s.reset()
@@ -77,23 +98,32 @@ func (s *schedule) due(arrived time.Time) time.Time {
 		s.dry++
 		at = arrived
 	}
+	if at.Before(now) {
+		at = now
+	}
+	if at.Before(s.after) {
+		at = s.after
+	}
 	if s.records > 0 {
 		s.worstGap = max(s.worstGap, arrived.Sub(s.last))
 	}
 	s.records++
 	s.last = arrived
 	s.next = at.Add(RecordInterval)
+	s.after = s.next
 	return at
 }
 
 // reset is the end of a call.
-func (s *schedule) reset() { *s = schedule{hold: s.hold} }
+func (s *schedule) reset() { *s = schedule{hold: s.hold, after: s.after} }
 
 // queued is one frame waiting to be written.
 type queued struct {
 	payload []byte
 	kind    RecordKind
 	arrived time.Time
+	// wrote, when not nil, is called once the frame has been written.
+	wrote func()
 }
 
 // pacer is one repeater's way out: a queue, and the goroutine that empties it
@@ -114,16 +144,21 @@ func newPacer(log *slog.Logger, now func() time.Time, write func([]byte) error) 
 
 // send queues one frame of a call. It never blocks and never fails: a tunnel
 // that cannot be written to is found by run, and closed by its own reader.
-func (p *pacer) send(payload []byte) error {
+// wrote, when not nil, is called once the frame has been written, and not at
+// all for a frame that never is.
+//
+// The queue has no limit of its own and does not need one. A tunnel that
+// takes nothing fails a write after writeTimeout and everything queued for
+// it is discarded, so it holds at most what arrives in that time.
+func (p *pacer) send(payload []byte, wrote func()) {
 	rec, _ := ReadRecord(payload)
 	p.mu.Lock()
-	p.queue = append(p.queue, queued{payload: payload, kind: rec.Kind, arrived: p.now()})
+	p.queue = append(p.queue, queued{payload: payload, kind: rec.Kind, arrived: p.now(), wrote: wrote})
 	p.mu.Unlock()
 	select {
 	case p.wake <- struct{}{}:
 	default:
 	}
-	return nil
 }
 
 // take removes the frame at the head of the queue.
@@ -148,7 +183,8 @@ func (p *pacer) discard() {
 
 // run writes the queue to the tunnel until ctx ends or stop closes. Voice
 // waits for its moment; markers and headers go as soon as they reach the head
-// of the queue, which keeps them in their place among the voice.
+// of the queue, which keeps them in their place among the voice. With no
+// hold nothing waits.
 func (p *pacer) run(ctx context.Context, stop <-chan struct{}, hold time.Duration) {
 	s := schedule{hold: hold}
 	timer := time.NewTimer(time.Hour)
@@ -165,8 +201,9 @@ func (p *pacer) run(ctx context.Context, stop <-chan struct{}, hold time.Duratio
 			}
 			continue
 		}
-		if q.kind == RecordVoice {
-			if wait := s.due(q.arrived).Sub(p.now()); wait > 0 {
+		if q.kind == RecordVoice && hold > 0 {
+			now := p.now()
+			if wait := s.due(q.arrived, now).Sub(now); wait > 0 {
 				timer.Reset(wait)
 				select {
 				case <-ctx.Done():
@@ -182,6 +219,9 @@ func (p *pacer) run(ctx context.Context, stop <-chan struct{}, hold time.Duratio
 			p.discard()
 			s.reset()
 			continue
+		}
+		if q.wrote != nil {
+			q.wrote()
 		}
 		if q.kind == RecordEnd {
 			if s.records > 0 {

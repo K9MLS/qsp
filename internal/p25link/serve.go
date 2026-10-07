@@ -226,11 +226,10 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 	// The call, for Last heard. A gateway's first voice frame begins one and
 	// its terminator ends it; what the tracker is told is collected here and
 	// said once the lock is released, because saying it can write to disk.
-	key := callKey(sender)
 	var heard, finished *gatewayCall
 	if frame.Voice() {
 		if sender.call == nil {
-			sender.call = &gatewayCall{Call: p25calls.Call{
+			sender.call = &gatewayCall{key: callKey(sender), Call: p25calls.Call{
 				Started: now,
 				ViaKind: p25calls.ViaGateway,
 				Via:     sender.Callsign,
@@ -300,10 +299,10 @@ func (l *Listener) voice(frame p25.Frame, raw []byte, from *net.UDPAddr) {
 	}
 
 	if heard != nil {
-		l.cfg.Calls.Heard(key, heard.Call)
+		l.cfg.Calls.Heard(heard.key, heard.Call)
 	}
 	if finished != nil {
-		l.finishCall(key, finished)
+		l.finishCall(finished)
 	}
 }
 
@@ -319,8 +318,8 @@ func callKey(g *Gateway) string {
 
 // finishCall records a gateway's call that is over and says so in the log.
 // Called without the lock.
-func (l *Listener) finishCall(key string, c *gatewayCall) {
-	l.cfg.Calls.Finished(key, c.Call, c.Ended)
+func (l *Listener) finishCall(c *gatewayCall) {
+	l.cfg.Calls.Finished(c.key, c.Call, c.Ended)
 	l.log.Info("a gateway's call ended",
 		"callsign", c.Via,
 		"talkgroup", c.Talkgroup,
@@ -336,11 +335,7 @@ func (l *Listener) finishCall(key string, c *gatewayCall) {
 func (l *Listener) expire(now time.Time) {
 	cutoff := PollInterval * MissedPollsBeforeGone
 
-	type ended struct {
-		key  string
-		call *gatewayCall
-	}
-	var done []ended
+	var done []*gatewayCall
 
 	l.mu.Lock()
 	for key, g := range l.gateways {
@@ -349,7 +344,7 @@ func (l *Listener) expire(now time.Time) {
 		// until the gateway keys again. It ended when it was last heard.
 		if c := g.call; c != nil && now.Sub(c.last) > FloorHold {
 			c.Ended, c.EndReason = c.last, p25calls.EndQuiet
-			done = append(done, ended{callKey(g), c})
+			done = append(done, c)
 			g.call = nil
 		}
 		if now.Sub(g.LastPoll) <= cutoff {
@@ -362,8 +357,8 @@ func (l *Listener) expire(now time.Time) {
 	l.publish()
 	l.mu.Unlock()
 
-	for _, e := range done {
-		l.finishCall(e.key, e.call)
+	for _, c := range done {
+		l.finishCall(c)
 	}
 }
 

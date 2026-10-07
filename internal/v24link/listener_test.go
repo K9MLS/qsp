@@ -27,6 +27,20 @@ var (
 		Payload: []byte{0xFD, 0xBF, 0x01, 0x05, 0xC2, 0, 0, 0, 0, 0xFF}}.Append(nil)
 )
 
+// holdInTests is the hold a listener under test runs with unless the test
+// says otherwise. **It is what production runs with.** Until 0.1.328 it was
+// none, so nearly every test here drove a path production does not take, and
+// a fault in the hold went through all of them (D9). TestMain runs the
+// package's tests a second time with no hold when QSP_V24_NO_HOLD is set,
+// which scripts/check.sh does.
+var holdInTests = 60 * time.Millisecond
+
+func init() {
+	if os.Getenv("QSP_V24_NO_HOLD") != "" {
+		holdInTests = 0
+	}
+}
+
 func join(parts ...[]byte) []byte { return bytes.Join(parts, nil) }
 
 // tunnel wraps a station's frame as the router sends it.
@@ -39,6 +53,9 @@ func start(t *testing.T, cfg Config) (*Listener, context.CancelFunc) {
 	cfg.ListenAddress = "127.0.0.1:0"
 	if cfg.Request == 0 {
 		cfg.Request = time.Hour // only the tests of the timer want it
+	}
+	if cfg.Hold == 0 {
+		cfg.Hold = holdInTests
 	}
 	l, err := New(logging.Discard(), cfg)
 	if err != nil {

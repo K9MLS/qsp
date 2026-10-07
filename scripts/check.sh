@@ -39,6 +39,11 @@ go test ./... || fail=1
 step "go test -race ./..."
 go test -race ./... || fail=1
 
+# The repeater link is tested with the hold production runs with. Once more
+# with none, which is a configuration an operator can choose.
+step "repeater link with no hold"
+QSP_V24_NO_HOLD=1 go test -race -count=1 ./internal/v24link/ || fail=1
+
 step "documentation accuracy"
 go test ./cmd/qsp/ -run 'TestDocumented|TestEmptiness|TestNothingClaims|TestUnbuilt' || fail=1
 

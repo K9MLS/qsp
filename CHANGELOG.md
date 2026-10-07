@@ -285,6 +285,36 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Calls through Motorola P25 repeaters: one at a time, and each ended
+  once.** Seven faults from the 2026-10-07 hunt (D1 to D8), most of them one
+  cause: each repeater kept its own note of "I am being carried" and "I have
+  been sent a start", and nothing tied a note to the call it was about.
+  - *Two calls at once.* A repeater that faded for a little over a second
+    came back still marked as carried, alongside whoever had begun talking
+    meanwhile, and listeners were sent both a frame at a time. A call that
+    has lost its turn is no longer carried, and the log says so.
+  - *An end in the middle of somebody else's call.* When the faded call was
+    given up on, its end went to every repeater and to the gateways, who
+    were by then listening to the next one. An end now goes only to a
+    listener still on that call; a listener moved to a new call is sent the
+    old one's end as it moves.
+  - *A gateway's call given up on* could do the same to a repeater's call
+    that began just after.
+  - *A call with no start.* A repeater whose link dropped during a call
+    stayed marked as part-way through it, and the next call reached it with
+    no start marker. A link that drops is owed nothing and starts afresh.
+  - *A transmission wrongly dropped.* The timer that closes a quiet
+    transmission could close the one that began at that moment.
+  - *The hold sent a burst.* After a tunnel stalled, everything queued
+    behind it left at once, which is what the hold said it never does. A
+    record sent late now moves the schedule with it, across the end of a
+    call as well.
+  - *Stopping could wait half a minute* behind a tunnel accepted at the
+    moment QSP was told to stop.
+  - *"Sent to it"* counted frames queued for a repeater. It counts frames
+    written.
+- **A P25 gateway whose address changes during a call** no longer leaves a
+  row "in progress" in Last heard until a restart (D7).
 - **Two faults that could stop the whole server are closed.** Both were a
   table written from two places at once with no lock, which on a machine with
   more than one core Go ends with a fatal error, not something QSP can catch

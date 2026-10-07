@@ -151,10 +151,17 @@ type Listener struct {
 	held    atomic.Uint64
 	sent    atomic.Uint64
 
-	// inbound serialises a gateway's call on its way to the repeaters, so a
-	// start, the voice and an end cannot interleave. inboundLast is when its
-	// last frame came, and zero when no call is open.
-	inbound     sync.Mutex
+	// callMu serialises every decision about which call is carried and who
+	// is owed its end: a record from any repeater, the timer that closes a
+	// transmission gone quiet, a gateway's frame, and a tunnel closing. See
+	// relay.go. Nothing that can block is done with it held: a write to a
+	// repeater is queued (pacer.go) and a write to a gateway is a datagram.
+	callMu sync.Mutex
+	// toGateways is the repeater whose call the gateways have been sent
+	// voice from and are owed the end of, by its name on the floor.
+	toGateways string
+	// inboundLast is when the last frame of a gateway's call came, and zero
+	// when none is open.
 	inboundLast time.Time
 	answered    atomic.Uint64
 	unknown     atomic.Uint64
@@ -254,9 +261,11 @@ type station struct {
 	// holder is this repeater's name on the floor.
 	holder string
 	mu     sync.Mutex
-	// send writes one frame to this repeater, and is nil until its tunnel is
-	// being served. Safe to call from any goroutine, without mu held.
-	send func(payload []byte) error
+	// send queues one frame of a call for this repeater, and is nil until
+	// its tunnel is being served. It never blocks. wrote, when not nil, is
+	// called once the frame has been written to the tunnel. Safe to call
+	// from any goroutine, without mu held.
+	send func(payload []byte, wrote func())
 
 	view Repeater
 	call *Call
@@ -266,9 +275,10 @@ type station struct {
 	// relaying reports that the transmission in progress has the floor and
 	// is being carried onward.
 	relaying bool
-	// receiving reports that this repeater has been sent the start of a
-	// gateway's call and is owed its end.
-	receiving bool
+	// receiving is the talker whose call this repeater has been sent the
+	// start of and is owed the end of, by its name on the floor, and empty
+	// when there is none. See relay.go.
+	receiving string
 }
 
 // Repeaters is every repeater with a tunnel open, ordered by router.
@@ -396,7 +406,15 @@ func (l *Listener) accept(ctx context.Context, ln net.Listener) {
 		}
 		l.conns[st.id] = conn
 		l.stations[st.id] = st
+		// **A tunnel accepted as QSP is stopping.** Whatever closes the
+		// tunnels at shutdown goes through conns once, under this lock, and
+		// one accepted just after it had been through was never closed:
+		// stopping then waited half a minute for it to go quiet (D6).
+		stopping := ctx.Err() != nil
 		l.mu.Unlock()
+		if stopping {
+			_ = conn.Close()
+		}
 
 		l.done.Add(1)
 		go l.serve(ctx, conn, router, st)
@@ -469,11 +487,17 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			slog.String("closed", closed))
 	}
 	// expire closes a transmission whose end marker never came.
+	//
+	// **With callMu held from the check to the close.** It was not, and a
+	// record arriving between the two began a new transmission that this
+	// then stopped carrying.
 	expire := func(now time.Time) {
+		l.callMu.Lock()
 		st.mu.Lock()
 		c := st.call
 		if !c.stale(now) {
 			st.mu.Unlock()
+			l.callMu.Unlock()
 			return
 		}
 		c.Ended = c.last
@@ -482,15 +506,18 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		st.view.Calls++
 		st.mu.Unlock()
 		l.endRelay(st)
+		l.callMu.Unlock()
 		finish(c, p25calls.EndQuiet)
 	}
 	defer func() {
 		// The tunnel is gone and so is whatever was being said through it.
+		l.callMu.Lock()
 		st.mu.Lock()
 		c := st.call
 		st.call = nil
 		st.mu.Unlock()
 		l.endRelay(st)
+		l.callMu.Unlock()
 		if c != nil {
 			c.Ended = c.last
 			finish(c, p25calls.EndLinkClosed)
@@ -528,21 +555,19 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		return err
 	}
 
-	// A call's frames, to this repeater. Held and paced when Config.Hold
-	// asks; QSP's own answers and keepalives never wait behind voice.
-	toRepeater := func(payload []byte) error {
+	// A call's frames, to this repeater. **Always through the queue**, held
+	// and paced when Config.Hold asks and written as they come when it does
+	// not, so whoever is deciding what is carried never waits on a tunnel
+	// that has stopped taking anything. QSP's own answers and keepalives do
+	// not go this way and never wait behind voice.
+	paced := newPacer(log, l.now, func(payload []byte) error {
 		st.mu.Lock()
 		g := st.group
 		st.mu.Unlock()
 		return send(g, payload)
-	}
-	var paced *pacer
-	if l.cfg.Hold > 0 {
-		paced = newPacer(log, l.now, toRepeater)
-		toRepeater = paced.send
-	}
+	})
 	st.mu.Lock()
-	st.send = toRepeater
+	st.send = paced.send
 	st.mu.Unlock()
 
 	// The link, as the station's own frames report it. Guarded by mu, because
@@ -566,6 +591,12 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		if is {
 			st.view.UpSince = l.now()
 		}
+		// A link that has dropped or just opened is part-way through
+		// nothing: whatever comes next is sent to it from a start, and no
+		// end is owed to it. Until 0.1.328 a repeater whose link dropped
+		// during a call stayed marked as part-way through it, and the next
+		// call reached it with no start (D3).
+		st.receiving = ""
 		st.mu.Unlock()
 	}
 	defer func() {
@@ -580,13 +611,11 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 	// the keepalive once both ends have introduced themselves.
 	stop := make(chan struct{})
 	defer close(stop)
-	if paced != nil {
-		l.done.Add(1)
-		go func() {
-			defer l.done.Done()
-			paced.run(ctx, stop, l.cfg.Hold)
-		}()
-	}
+	l.done.Add(1)
+	go func() {
+		defer l.done.Done()
+		paced.run(ctx, stop, l.cfg.Hold)
+	}()
 	l.done.Add(1)
 	go func() {
 		defer l.done.Done()
@@ -669,6 +698,7 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 
 		// Voice first: on an open link it is nearly every frame.
 		if rec, isRecord := ReadRecord(f.Payload); isRecord && rec.Kind != RecordUnknown {
+			l.callMu.Lock()
 			now := l.now()
 			st.mu.Lock()
 			current, finished, began := heard(st.call, rec, now)
@@ -690,9 +720,17 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			if rec.Kind == RecordVoice {
 				l.voice.Add(1)
 			}
-			if !l.relay(st, f.Payload, rec, began, finished != nil, now) && began {
+			carried, lost := l.relay(st, f.Payload, rec, began, finished != nil, now)
+			talking := l.floor.Holder(now)
+			l.callMu.Unlock()
+			switch {
+			case lost:
+				log.Info("a transmission stopped being carried: it went quiet "+
+					"and another station began talking",
+					slog.String("talking", talking))
+			case !carried && began:
 				log.Info("a transmission was not carried: another station was talking",
-					slog.String("talking", l.floor.Holder(now)))
+					slog.String("talking", talking))
 			}
 			if began {
 				log.Debug("a transmission began")

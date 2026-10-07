@@ -121,6 +121,15 @@ type Gateway struct {
 // gatewayCall is one transmission from a gateway, as it is being heard.
 type gatewayCall struct {
 	p25calls.Call
+	// key names the call to the tracker, and is fixed when the call begins.
+	//
+	// **Not worked out again when it ends.** It has the gateway's address
+	// in it, and a gateway behind a home router can come from a new port
+	// between two polls. A call begun under one address and finished under
+	// another was finished under a name the tracker had never heard, and
+	// the row it did have stayed "in progress" in Last heard until QSP was
+	// restarted (found 2026-10-07, D7).
+	key  string
 	last time.Time
 	// toRepeaters is frames sent on to Motorola repeaters, counted once for
 	// each repeater reached, and held frames not carried at all.
