@@ -222,24 +222,18 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version, err := s.opts.Config.Save(r.Context(), req.Config, session.Username, req.Summary)
-	needsRestart := config.NeedsRestart(before, req.Config)
-	switch {
-	case errors.Is(err, config.ErrSavedNotApplied):
-		// **Saved is saved.** The version is recorded and the file written;
-		// answering "could not be saved" here, with no version number and a
-		// failure in the audit trail, told the operator the opposite of what
-		// had happened, and the next restart then surprised them with it
-		// (found 2026-10-03). It is reported as the save it was, with the
-		// reason it is not live yet where the page shows what needs a restart.
-		s.log.Warn("configuration saved but not applied to the running instance",
-			"author", session.Username, "version", version.Number, "error", err)
-		needsRestart = append(needsRestart, "everything in this save: it could not be applied "+
-			"while running ("+unwrapApply(err)+")")
-	case err != nil:
+	// **Saved is saved.** A save that was written and could not be applied
+	// used to be answered "could not be saved", with no version number and a
+	// failure in the audit trail, which told the operator the opposite of
+	// what had happened; the next restart then surprised them with it (found
+	// 2026-10-03). It is reported as the save it was, with the reason it is
+	// not live yet where the page shows what needs a restart. See save.
+	version, late, err := s.save(r.Context(), req.Config, session.Username, req.Summary)
+	if err != nil {
 		s.writeSaveError(w, r, session.Username, err)
 		return
 	}
+	needsRestart := notApplied(config.NeedsRestart(before, req.Config), late)
 
 	s.recordConfigChange(r, session.Username, req.Summary, version.Number, audit.OutcomeSuccess)
 	s.log.Info("configuration saved",

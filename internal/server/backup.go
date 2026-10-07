@@ -166,7 +166,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	summary := fmt.Sprintf("restored from a backup taken %s",
 		backup.ExportedAt.Format("2006-01-02"))
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	if err != nil {
 		s.recordBackup(r, audit.ActionConfigRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -179,7 +179,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		Identifier:   config.ShortIdentifier(cfg.Server.Identifier),
 		Replaced:     replaced,
 		Missing:      config.MissingCredentials(cfg),
-		NeedsRestart: config.NeedsRestart(before, cfg),
+		NeedsRestart: notApplied(config.NeedsRestart(before, cfg), late),
 	})
 }
 

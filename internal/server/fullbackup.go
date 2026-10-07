@@ -334,7 +334,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		s.log.Warn("cannot restore a password file", "path", f.Path, "error", f.Error)
 	}
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, actor,
+	version, late, err := s.save(r.Context(), cfg, actor,
 		fmt.Sprintf("restored from a full backup of %s",
 			full.Backup.ExportedAt.Format("2006-01-02")))
 	if err != nil {
@@ -361,7 +361,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		"password_files":         written,
 		"password_files_failed":  failed,
 		"missing_password_files": absentPasswordFiles(cfg, nil),
-		"needs_restart":          config.NeedsRestart(before, cfg),
+		"needs_restart":          notApplied(config.NeedsRestart(before, cfg), late),
 	})
 }
 

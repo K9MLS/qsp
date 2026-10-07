@@ -91,7 +91,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := SessionFrom(r.Context()); ok {
 		author = sess.Username
 	}
-	version, err := s.opts.Config.Save(r.Context(), cfg, author,
+	version, late, err := s.save(r.Context(), cfg, author,
 		fmt.Sprintf("removed the link %q", removed.Name))
 	if err != nil {
 		s.recordPeering(r, audit.ActionPeeringRemoved, removed.Name, removed.Address, audit.OutcomeFailure)
@@ -124,7 +124,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 		// startup, so the link stays bound and pointed at the far end until a
 		// restart. Two removed links went on being listed as healthy for three
 		// hours, and nothing anywhere said why.
-		"needs_restart": config.NeedsRestart(before, cfg),
+		"needs_restart": notApplied(config.NeedsRestart(before, cfg), late),
 		// Bridges that referred to this upstream and were written by somebody
 		// rather than by accept. Named so the operator can decide.
 		"orphaned_bridges": orphaned,

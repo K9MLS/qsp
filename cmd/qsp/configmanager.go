@@ -10,6 +10,7 @@ import (
 
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/ipsclink"
+	"github.com/k9mls/qsp/internal/p25link"
 	"github.com/k9mls/qsp/internal/peers"
 	"github.com/k9mls/qsp/internal/routing"
 )
@@ -166,14 +167,25 @@ func (m *configManager) Version(ctx context.Context, number int64) (config.Versi
 // owned by the socket goroutine; the IPSC allow list is behind an atomic
 // pointer and has no such owner, so routing it through another listener's queue
 // would add a hop and a dependency to buy nothing.
-func applyToListener(listener *peers.Listener, ipsc *ipsclink.Listener) func(config.Config, string, string) error {
+//
+// Any of the three may be nil: a server runs the listeners it was told to.
+func applyToListener(listener *peers.Listener, ipsc *ipsclink.Listener, p25 *p25link.Listener) func(config.Config, string, string) error {
 	return func(cfg config.Config, author, summary string) error {
+		// The same promptness for a P25 gateway: taken off the list, it is
+		// refused at its next poll. Everything under `p25` was read once, so
+		// a callsign removed here was still admitted (G1).
+		if p25 != nil {
+			p25.SetAllowedCallsigns(cfg.P25.AllowedCallsigns)
+		}
 		// Applied before the rest: a repeater removed from the list should
 		// stop being answered as promptly as the save reports success, and
 		// nothing below can fail in a way that should leave it answered.
 		if ipsc != nil {
 			ipsc.SetAllowedPeers(cfg.IPSC.AllowedPeers)
 			ipsc.SetPeerNames(cfg.IPSC.PeerNames)
+		}
+		if listener == nil {
+			return nil
 		}
 		sched, err := buildSchedule(cfg)
 		if err != nil {

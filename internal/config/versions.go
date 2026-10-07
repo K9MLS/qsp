@@ -2,13 +2,11 @@ package config
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 )
 
 // VersionStore keeps the configuration history.
@@ -156,113 +154,4 @@ func (w *Writer) Save(cfg Config) error {
 		return fmt.Errorf("%w: cannot replace %s: %v", ErrNotWritable, w.path, err)
 	}
 	return nil
-}
-
-// NeedsRestart lists the settings that changed and cannot take effect until the
-// process is restarted.
-//
-// **It returns fields rather than a boolean**, because "restart required" tells
-// an operator to interrupt their network without saying what for, and they will
-// reasonably want to know whether it can wait until the net is over.
-func NeedsRestart(before, after Config) []string {
-	var fields []string
-
-	add := func(name string, changed bool) {
-		if changed {
-			fields = append(fields, name)
-		}
-	}
-
-	add("server.listen_address", before.Server.ListenAddress != after.Server.ListenAddress)
-	add("server.behind_proxy", before.Server.BehindProxy != after.Server.BehindProxy)
-	add("database.driver", before.Database.Driver != after.Database.Driver)
-	add("database.dsn", before.Database.DSN != after.Database.DSN)
-	add("logging.level", before.Logging.Level != after.Logging.Level)
-	add("logging.format", before.Logging.Format != after.Logging.Format)
-	add("dmr.enabled", before.DMR.Enabled != after.DMR.Enabled)
-	add("dmr.listen_address", before.DMR.ListenAddress != after.DMR.ListenAddress)
-	add("dmr.password_file", before.DMR.PasswordFile != after.DMR.PasswordFile)
-
-	// **Parrot is read when the listener is built.** The recorder is
-	// constructed once at startup and handed to the listener, so a change here
-	// is saved and does nothing until a restart — and a save that implied
-	// otherwise is exactly the kind of quiet lie NeedsRestart exists to
-	// prevent. Found by enabling parrot on a running instance and watching
-	// nothing happen.
-	add("dmr.parrot", before.DMR.Parrot != after.DMR.Parrot)
-
-	// **The access lists are not here, and that is now true rather than
-	// forgotten.** Talkgroup lists reach the routing core through SetAccess on
-	// reload, and the registration and subscriber lists reach the master
-	// through Master.SetAccess. Before the second of those existed, two of the
-	// four lists were saved from the console and did nothing until a restart,
-	// with nothing here to say so — an operator banning a radio got a
-	// successful save and a ban that was not in force.
-
-	// **IPSC settings that a running listener cannot adopt.** The socket, the
-	// master's own radio ID and the conversion settings are all read when the
-	// listener is built. `ipsc.allowed_peers` is deliberately absent: it is
-	// applied live by applyToListener, which is the whole point of an operator
-	// being able to add a repeater from the console.
-	add("ipsc.enabled", before.IPSC.Enabled != after.IPSC.Enabled)
-	add("ipsc.listen_address", before.IPSC.ListenAddress != after.IPSC.ListenAddress)
-	add("ipsc.master_id", before.IPSC.MasterID != after.IPSC.MasterID)
-	add("ipsc.peer_timeout_seconds",
-		before.IPSC.PeerTimeoutSeconds != after.IPSC.PeerTimeoutSeconds)
-	add("ipsc.colour_code", !sameColourCode(before.IPSC.ColourCode, after.IPSC.ColourCode))
-	add("ipsc.slot_bit_is_timeslot2",
-		before.IPSC.SlotBitIsTimeslot2 != after.IPSC.SlotBitIsTimeslot2)
-
-	// Links hold sockets and a handshake, so any change to them is a restart.
-	// Comparing the whole list rather than field by field is deliberate: a new
-	// upstream field added later would otherwise be silently applied live,
-	// which is the failure this function exists to prevent.
-	add("p25_repeaters.enabled", before.P25Repeaters.Enabled != after.P25Repeaters.Enabled)
-	add("p25_repeaters.listen_address", before.P25Repeaters.ListenAddress != after.P25Repeaters.ListenAddress)
-	add("p25_repeaters.allowed_routers",
-		!slices.Equal(before.P25Repeaters.AllowedRouters, after.P25Repeaters.AllowedRouters))
-	add("p25_repeaters.site", before.P25Repeaters.Site != after.P25Repeaters.Site)
-	add("p25_repeaters.send_header",
-		before.P25Repeaters.SendHeader != after.P25Repeaters.SendHeader)
-	add("p25_repeaters.hold_ms", before.P25Repeaters.Hold() != after.P25Repeaters.Hold())
-	add("p25_repeaters.present_as", before.P25Repeaters.PresentAs != after.P25Repeaters.PresentAs)
-	add("p25_repeaters.record_dir", before.P25Repeaters.RecordDir != after.P25Repeaters.RecordDir)
-
-	add("dmr.upstreams", !sameUpstreams(before.DMR.Upstreams, after.DMR.Upstreams))
-
-	return fields
-}
-
-func sameUpstreams(a, b []Upstream) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		// Encoded rather than compared field by field, so that a field added
-		// to Upstream is included without anybody remembering to add it here.
-		x, errX := marshalUpstream(a[i])
-		y, errY := marshalUpstream(b[i])
-		if errX != nil || errY != nil || x != y {
-			return false
-		}
-	}
-	return true
-}
-
-// marshalUpstream renders a link for comparison.
-func marshalUpstream(u Upstream) (string, error) {
-	b, err := json.Marshal(u)
-	return string(b), err
-}
-
-// sameColourCode compares two optional colour codes.
-//
-// It is a pointer because 0 is a legal colour code and "not set" had to be
-// distinguishable from it — the distinction that made an unset colour code
-// refuse to start rather than silently build every burst wrong.
-func sameColourCode(a, b *uint8) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }

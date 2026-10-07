@@ -277,7 +277,8 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg := s.opts.Config.Current()
+	before := s.opts.Config.Current()
+	cfg := before.Clone()
 	cfg.DMR.Callsigns.Enabled = req.Enabled
 	cfg.DMR.Callsigns.Contact = contact
 
@@ -290,7 +291,7 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 		summary = "callsign lookup on"
 	}
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	s.recordSettingSave(r, author, summary, version.Number, err)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -298,9 +299,13 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
-		"callsigns":     callsignState(cfg.DMR.Callsigns),
-		"version":       version.Number,
-		"needs_restart": config.NeedsRestart(s.opts.Config.Current(), cfg),
+		"callsigns": callsignState(cfg.DMR.Callsigns),
+		"version":   version.Number,
+		// **Against what it was, taken before the save.** This compared the
+		// saved configuration with the saved configuration, so it was always
+		// empty: the lookup is built at startup, the page said "Saved", and
+		// nothing changed until a restart nobody was told about (G5).
+		"needs_restart": notApplied(config.NeedsRestart(before, cfg), late),
 	})
 }
 
@@ -393,7 +398,7 @@ func (s *Server) handleSessionLifetime(w http.ResponseWriter, r *http.Request) {
 	// places that disagree later. The bounds and their reasons come back as
 	// the error the page shows.
 	summary := fmt.Sprintf("session lifetime %s", time.Duration(req.Seconds)*time.Second)
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	s.recordSettingSave(r, author, summary, version.Number, err)
 	if err != nil {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -401,7 +406,8 @@ func (s *Server) handleSessionLifetime(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
-		"sessions": s.sessionState(r),
-		"version":  version.Number,
+		"sessions":      s.sessionState(r),
+		"version":       version.Number,
+		"needs_restart": notApplied(nil, late),
 	})
 }

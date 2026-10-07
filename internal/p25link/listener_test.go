@@ -378,3 +378,48 @@ func TestAPortAlreadyInUseIsAnErrorAtStartup(t *testing.T) {
 		t.Errorf("the error does not name the address: %v", err)
 	}
 }
+
+// TestAGatewayTakenOffTheListGoesAtOnce. The allow list was read once, at
+// startup, so a callsign removed from the Network page was still admitted
+// (2026-10-07, G1). Applied on save, its polls stop being answered; and it is
+// removed, so that it is not sent voice for the fifteen seconds a silent
+// gateway is kept.
+//
+// To see it fail: remove the allow-list test from Listener.expire.
+func TestAGatewayTakenOffTheListGoesAtOnce(t *testing.T) {
+	l, addr, stop := serve(t, p25link.Config{AllowedCallsigns: []string{"K9MLS", "KD9EJA"}})
+	defer stop()
+
+	staying := registered(t, addr, "K9MLS")
+	going := registered(t, addr, "KD9EJA")
+	if len(l.Gateways()) != 2 {
+		t.Fatalf("%d gateways registered, want both", len(l.Gateways()))
+	}
+
+	l.SetAllowedCallsigns([]string{"K9MLS"})
+	l.ExpireAt(time.Now())
+
+	got := l.Gateways()
+	if len(got) != 1 || got[0].Callsign != "K9MLS" {
+		t.Fatalf("after the list was saved the gateways are %+v, want K9MLS alone", got)
+	}
+	if _, err := going.Write(p25.NewPoll("KD9EJA").Marshal()); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if answer := read(going, 300*time.Millisecond); answer != nil {
+		t.Errorf("a gateway taken off the list was answered with %d bytes", len(answer))
+	}
+	if _, err := staying.Write(p25.NewPoll("K9MLS").Marshal()); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if answer := read(staying, time.Second); answer == nil {
+		t.Error("the gateway still on the list was not answered")
+	}
+
+	// An empty list admits everybody, so emptying it removes nobody.
+	l.SetAllowedCallsigns(nil)
+	l.ExpireAt(time.Now())
+	if len(l.Gateways()) != 1 {
+		t.Errorf("emptying the list left %d gateways, want the one there was", len(l.Gateways()))
+	}
+}

@@ -210,3 +210,28 @@ def check_a_restore_is_sent_once_however_often_it_is_pressed():
         assert len(confirmed) == 1, "the restore was sent %d times" % len(confirmed)
     finally:
         p.close()
+
+
+def check_a_callsign_save_says_when_it_takes_effect():
+    """The lookup is built when QSP starts. The page said callsigns would
+    fill in as radios were heard, on a server that would look none up until
+    it was restarted.
+
+    Break it: ignore needs_restart in the callsign save in admin.js."""
+    p = open_page()
+    try:
+        answer = {"callsigns": {"enabled": True, "contact": "op@example.org", "usable": True},
+                  "version": 8, "needs_restart": ["dmr.callsigns.enabled"]}
+        p.api[("PUT", "/api/admin/callsigns")] = lambda rq: (200, answer)
+        p.page.click("#callsigns-save")
+        p.page.wait_for_timeout(300)
+        said = p.page.inner_text("#callsigns-done")
+        assert "restarted" in said and "fill in" not in said, said
+
+        answer["needs_restart"] = []
+        p.page.click("#callsigns-save")
+        p.page.wait_for_timeout(300)
+        said = p.page.inner_text("#callsigns-done")
+        assert "fill in" in said and "restarted" not in said, said
+    finally:
+        p.close()

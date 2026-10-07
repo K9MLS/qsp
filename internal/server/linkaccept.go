@@ -124,7 +124,7 @@ func (s *Server) acceptLink(w http.ResponseWriter, r *http.Request, req acceptRe
 	}
 	summary := fmt.Sprintf("link to %s (%s)", inv.Callsign, inv.Network)
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	if err != nil {
 		if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
 			s.log.Warn("could not remove the password for a link that was not written",
@@ -147,7 +147,7 @@ func (s *Server) acceptLink(w http.ResponseWriter, r *http.Request, req acceptRe
 		Network: inv.Network,
 		// No reciprocal, and nothing further to send.
 		Complete:     true,
-		NeedsRestart: config.NeedsRestart(before, cfg),
+		NeedsRestart: notApplied(config.NeedsRestart(before, cfg), late),
 	})
 }
 

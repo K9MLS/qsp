@@ -341,6 +341,49 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A save says so when it needs a restart, for every setting.** The list of
+  settings that need one was written by hand, and a setting nobody had
+  written was reported as in force the moment it was saved. Ten were: the P25
+  gateway port, callsign and limit, Forwarding, everything on the Zello
+  page, the transcoders, the unlink talkgroup, how long calls are kept, the
+  directory of per-station passwords, the callsign lookup. Every setting is
+  now in one of two lists, applied on save or read at startup, and a test
+  fails when one is added to the configuration and to neither. A restart is
+  named by the setting itself, `p25.callsign` and not `p25` (2026-10-07
+  hunt, section G).
+- **The P25 allow list applies when it is saved.** A callsign taken off the
+  Network page was still admitted until a restart. It is now refused at its
+  next poll and dropped within a second, with whatever call it had (G1).
+- **How long a login lasts applies to the next login.** It was saved, shown
+  as in force, and given to nobody. Logins already made keep the end they
+  were given (G4).
+- **The Overview says Forwarding is on only when it is.** Ticking the box
+  turned the Overview's line on at once, and nothing was relayed until a
+  restart. The health line now says "turned on and has not started" or
+  "turned off and is still running" for the time in between (G2).
+- **A server with no DMR listener applies what it is saved.** One running
+  Motorola repeaters or P25 gateways and no hotspots applied nothing: a
+  repeater added from the console was not answered until a restart (G7).
+- **A server renamed or moved tells its links.** The name, callsign and
+  position a server gives one that links to it were fixed at startup. A link
+  this server dials is still told at its next restart, and the save now says
+  so, only when there is such a link (G8).
+- **The health lines count bridges and schedule windows as they are now**,
+  not as they were at startup, and no longer say stations hear each other on
+  a server with the DMR listener off (G9).
+- **A save that was written and could not be applied is a save, on every
+  page.** One page said so. Eleven others answered that nothing was saved
+  and recorded a failure, and two then deleted the password file the saved
+  configuration named, leaving a link a restart would bring up with no
+  password (G10).
+- **Saving the callsign lookup says when it takes effect.** Its answer
+  compared the saved configuration with itself, so it never named a
+  restart, and the page said callsigns would fill in as radios were heard
+  (G5).
+- **The first link a server offers names the restart it needs.** It creates
+  the directory of per-station passwords, which the running server was built
+  without, so the far end was refused with the password it had just been
+  given (G6).
 - **The Administration page's refresh no longer undoes what you are
   editing.** The page refreshes every ten seconds, and it held off only while
   a box had the cursor in it. Choose "off" for the callsign lookup, or type a

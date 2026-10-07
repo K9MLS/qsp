@@ -200,7 +200,7 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 		if sess, ok := SessionFrom(r.Context()); ok {
 			author = sess.Username
 		}
-		if _, err := s.opts.Config.Save(r.Context(), saved,
+		if _, _, err := s.save(r.Context(), saved,
 			author, "instance callsign, set while offering a peering"); err != nil {
 			s.log.Warn("could not save the instance callsign", "error", err)
 		} else {
@@ -447,7 +447,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 	}
 	summary := fmt.Sprintf("peering with %s (%s)", inv.Callsign, inv.Network)
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	if err != nil {
 		s.recordPeering(r, audit.ActionPeeringAccepted, inv.Callsign, inv.Address, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -466,7 +466,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		Network:      inv.Network,
 		Reciprocal:   reply,
 		Complete:     closingOurOffer,
-		NeedsRestart: config.NeedsRestart(before, cfg),
+		NeedsRestart: notApplied(config.NeedsRestart(before, cfg), late),
 	})
 }
 

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 )
@@ -194,7 +195,12 @@ func (p Policy) withDefaults() Policy {
 type Service struct {
 	repo   Repository
 	policy Policy
-	now    func() time.Time
+	// lifetime is how long a session issued from now on lasts, in
+	// nanoseconds. Apart from policy because it is the one part of the
+	// policy an administrator changes from the console while logins are
+	// being checked on other goroutines.
+	lifetime atomic.Int64
+	now      func() time.Time
 	// decoy is a valid hash of a password nobody holds.
 	//
 	// **It is what makes an unknown username cost the same as a wrong one.**
@@ -225,14 +231,34 @@ func NewService(repo Repository, policy Policy, now func() time.Time) (*Service,
 	if err != nil {
 		return nil, fmt.Errorf("auth: cannot prepare the login flow: %w", err)
 	}
-	return &Service{
+	s := &Service{
 		repo:      repo,
 		policy:    policy,
 		now:       now,
 		decoy:     decoy,
 		throttle:  newSourceThrottle(policy.MaxFailures, policy.Lockout),
 		verifying: make(chan struct{}, maxConcurrentVerifies),
-	}, nil
+	}
+	s.SetSessionLifetime(policy.SessionLifetime)
+	return s, nil
+}
+
+// SessionLifetime is how long a session issued now would last.
+func (s *Service) SessionLifetime() time.Duration {
+	return time.Duration(s.lifetime.Load())
+}
+
+// SetSessionLifetime changes how long sessions issued from now on last. Zero
+// or less selects the default, as it does in a Policy.
+//
+// **Sessions already issued keep the end they were given.** A change that
+// logged everybody out would make adjusting a setting an outage, and the
+// administrator making it would be the first one out.
+func (s *Service) SetSessionLifetime(d time.Duration) {
+	if d <= 0 {
+		d = DefaultSessionLifetime
+	}
+	s.lifetime.Store(int64(d))
 }
 
 // NormaliseUsername folds a username for comparison.
@@ -396,7 +422,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 		UserID:    account.ID,
 		Username:  account.Username,
 		CreatedAt: now,
-		ExpiresAt: now.Add(s.policy.SessionLifetime),
+		ExpiresAt: now.Add(s.SessionLifetime()),
 		SourceIP:  ip,
 		UserAgent: agent,
 	}

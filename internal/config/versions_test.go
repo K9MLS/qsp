@@ -266,7 +266,9 @@ func TestLiveChangesNeedNoRestart(t *testing.T) {
 		{"the map", func(c *config.Config) {
 			c.Server.Map.TileURL = ""
 		}},
-		{"forwarding", func(c *config.Config) { c.DMR.Forwarding = true }},
+		// Forwarding was here until 0.1.335, asserted to need no restart. The
+		// routing core is built only when it is on at startup, so the
+		// Overview changed and the routing did not (2026-10-07, G2).
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			after := base
@@ -400,7 +402,7 @@ func TestParrotNeedsARestart(t *testing.T) {
 	fields := config.NeedsRestart(base, after)
 	var found bool
 	for _, f := range fields {
-		if f == "dmr.parrot" {
+		if f == "dmr.parrot.enabled" {
 			found = true
 		}
 	}

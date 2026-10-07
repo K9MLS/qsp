@@ -176,7 +176,7 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 	}
 	summary := fmt.Sprintf("link offered to %s, DMR ID %d", callsign, req.RepeaterID)
 
-	version, err := s.opts.Config.Save(r.Context(), cfg, author, summary)
+	version, late, err := s.save(r.Context(), cfg, author, summary)
 	if err != nil {
 		if rmErr := os.Remove(path); rmErr != nil && !os.IsNotExist(rmErr) {
 			s.log.Warn("could not remove the password for a link that was not offered",
@@ -195,7 +195,7 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 		Fingerprint:  inv.Fingerprint,
 		Allowed:      true,
 		RepeaterID:   req.RepeaterID,
-		NeedsRestart: config.NeedsRestart(before, cfg),
+		NeedsRestart: notApplied(config.NeedsRestart(before, cfg), late),
 		Version:      version.Number,
 	}
 	if changedDir {

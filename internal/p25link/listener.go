@@ -291,6 +291,13 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	return l, nil
 }
 
+// Admits reports whether a gateway with this callsign would be answered: on
+// the allow list, or any callsign at all when the list is empty.
+func (l *Listener) Admits(callsign string) bool {
+	allowed := *l.allowed.Load()
+	return len(allowed) == 0 || allowed[normalise(callsign)]
+}
+
 // SetAllowedCallsigns replaces the allow list.
 func (l *Listener) SetAllowedCallsigns(list []string) {
 	set := make(map[string]bool, len(list))

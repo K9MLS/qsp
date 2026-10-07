@@ -110,7 +110,7 @@ func (s *Server) handleLinkAddress(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := SessionFrom(r.Context()); ok {
 		author = sess.Username
 	}
-	version, err := s.opts.Config.Save(r.Context(), cfg, author,
+	version, late, err := s.save(r.Context(), cfg, author,
 		fmt.Sprintf("far-end address for the link %q", name))
 	if err != nil {
 		s.recordPeering(r, audit.ActionPeeringAccepted, name, address, audit.OutcomeFailure)
@@ -122,7 +122,7 @@ func (s *Server) handleLinkAddress(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.log, http.StatusOK, addressResponse{
 		Name:         name,
 		Address:      address,
-		NeedsRestart: config.NeedsRestart(before, cfg),
+		NeedsRestart: notApplied(config.NeedsRestart(before, cfg), late),
 		Version:      version.Number,
 	})
 }

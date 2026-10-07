@@ -648,3 +648,49 @@ func (r *memoryRepo) DeleteAccount(ctx context.Context, id int64) error {
 	}
 	return auth.ErrNoSuchAccount
 }
+
+// TestALoginLengthChangedAppliesToTheNextLogin. The length was read once,
+// when the service was built: a new one was saved, shown on the
+// Administration page as in force, and given to nobody (2026-10-07, G4).
+//
+// To see it fail: have Authenticate use s.policy.SessionLifetime.
+func TestALoginLengthChangedAppliesToTheNextLogin(t *testing.T) {
+	repo := newRepo()
+	svc, clk := newService(t, repo, auth.Policy{SessionLifetime: time.Hour})
+	ctx := context.Background()
+	if _, err := svc.CreateAccount(ctx, "K9MLS", goodPassword); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	earlier, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", "")
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	for _, tc := range []struct {
+		set, want time.Duration
+	}{
+		{4 * time.Hour, 4 * time.Hour},
+		{10 * time.Minute, 10 * time.Minute},
+		// Nought is "the default", as it is in a Policy.
+		{0, auth.DefaultSessionLifetime},
+	} {
+		svc.SetSessionLifetime(tc.set)
+		s, err := svc.Authenticate(ctx, "K9MLS", goodPassword, "", "")
+		if err != nil {
+			t.Fatalf("Authenticate: %v", err)
+		}
+		if got := s.ExpiresAt.Sub(s.CreatedAt); got != tc.want {
+			t.Errorf("set to %s, a login then lasts %s, want %s", tc.set, got, tc.want)
+		}
+	}
+
+	// The login from before keeps the hour it was given: a change that
+	// logged everybody out would log out whoever made it.
+	if got := earlier.ExpiresAt.Sub(earlier.CreatedAt); got != time.Hour {
+		t.Errorf("the earlier login lasts %s, want its hour", got)
+	}
+	clk.advance(50 * time.Minute)
+	if _, err := svc.Session(ctx, earlier.Token); err != nil {
+		t.Errorf("the earlier login ended early: %v", err)
+	}
+}

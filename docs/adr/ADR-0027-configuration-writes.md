@@ -112,3 +112,24 @@ Every save is an audit event naming the administrator, which is what
 - Nothing here needs the configuration file to be the only input. An operator
   who prefers the text editor keeps it, and their edits survive a restart
   exactly as they do now.
+
+## Amended in 0.1.335: every setting says when it takes effect
+
+Section 3 was implemented as a list of comparisons written by hand, one for
+each setting somebody remembered. A setting nobody remembered was reported as
+in force the moment it was saved, and ten were found that way on 2026-10-07.
+
+The list is now two, in `internal/config/restart.go`: settings a running
+server takes up when they are saved, each beside the name of what carries it
+there, and settings read once at startup. Every setting in the file is in one
+of them, and `TestEverySettingSaysWhenItTakesEffect` fails when a setting is
+added to the configuration and to neither. One in neither is treated as
+needing a restart, because being told to restart for nothing is an annoyance
+and being told a change is live when it is not is the fault.
+
+A setting is named by its own path, `p25.callsign` and not `p25`.
+
+What this server says about itself (its name, callsign and position) is the
+one case that depends on the rest of the configuration: it is applied on
+save, except to a link this server dials, which announced it when it logged
+in. With such a link running a restart is named; with none it is not.

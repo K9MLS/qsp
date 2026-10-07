@@ -878,10 +878,18 @@
       }).then(function (b) {
         saved(["callsigns-enabled", "callsigns-contact"]);
         var c = b.callsigns || {};
-        say(el("callsigns-done"), c.usable
-          ? "Saved. Callsigns will fill in as radios are heard; the first fetch " +
-            "takes a moment."
-          : "Saved.");
+        /* **The lookup is started when QSP starts.** This said callsigns
+         * would fill in as radios were heard, on a server that would not
+         * look one up until it was restarted, and said nothing when the
+         * lookup was turned off and went on running. */
+        var waiting = (b.needs_restart || []).length > 0;
+        say(el("callsigns-done"), waiting
+          ? "Saved. It takes effect when QSP is restarted, which the Restart " +
+            "button on this page does; until then the lookup is as it was."
+          : (c.usable
+            ? "Saved. Callsigns will fill in as radios are heard; the first fetch " +
+              "takes a moment."
+            : "Saved."));
         load();
       }).catch(function (e) {
         say(el("callsigns-error"), e.message);

@@ -102,7 +102,7 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := SessionFrom(r.Context()); ok {
 		author = sess.Username
 	}
-	version, err := s.opts.Config.Save(r.Context(), cfg,
+	version, late, err := s.save(r.Context(), cfg,
 		author, fmt.Sprintf("stopped accepting DMR ID %d", id))
 	if err != nil {
 		s.recordCredential(r, audit.ActionPeerCredentialRevoked, id, audit.OutcomeFailure)
@@ -126,7 +126,7 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 		PasswordRevoked: revoked,
 		Refused:         refused,
 		Reason:          strings.TrimSpace(why),
-		NeedsRestart:    config.NeedsRestart(before, cfg),
+		NeedsRestart:    notApplied(config.NeedsRestart(before, cfg), late),
 		Version:         version.Number,
 	})
 }

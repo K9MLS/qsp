@@ -140,7 +140,7 @@ func (l *Listener) poll(raw []byte, from *net.UDPAddr) {
 		return
 	}
 
-	if allowed := *l.allowed.Load(); len(allowed) > 0 && !allowed[callsign] {
+	if !l.Admits(callsign) {
 		l.refused.Add(1)
 		who := poll.Callsign
 		l.refusedCallsign.Store(&who)
@@ -366,8 +366,24 @@ func (l *Listener) expire(now time.Time) {
 
 	var done []*gatewayCall
 
+	allowed := *l.allowed.Load()
+
 	l.mu.Lock()
 	for key, g := range l.gateways {
+		// **A gateway taken off the allow list goes now**, with whatever call
+		// it had. Its polls stopped being answered the moment the list was
+		// saved, and that alone left it registered, sent every voice frame
+		// and carried from, for the fifteen seconds it takes to go quiet.
+		if len(allowed) > 0 && !allowed[key] {
+			if c := g.call; c != nil {
+				c.Ended, c.EndReason = now, p25calls.EndQuiet
+				done = append(done, c)
+				g.call = nil
+			}
+			l.log.Info("p25 gateway removed: it is no longer on the allow list", "callsign", g.Callsign)
+			delete(l.gateways, key)
+			continue
+		}
 		// **A call that stopped without a terminator.** A lost datagram is
 		// all it takes, and without this the call is live in Last heard
 		// until the gateway keys again. It ended when it was last heard.

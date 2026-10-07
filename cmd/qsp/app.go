@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"os"
@@ -57,6 +58,9 @@ import (
 // top to bottom, and keeping it that way is a design goal rather than an
 // accident.
 type app struct {
+	// identity is what this server says it is to a server that links to it,
+	// replaced when the configuration is saved.
+	identity  atomic.Pointer[hbp.Identity]
 	cfg       config.Config
 	log       *slog.Logger
 	bus       *events.Bus
@@ -282,7 +286,8 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		)
 	}
 
-	master, dmrDisabledReason, err := buildDMR(cfg, log, a.bus)
+	a.identity.Store(new(serverIdentity(cfg)))
+	master, dmrDisabledReason, err := buildDMR(cfg, log, a.bus, func() hbp.Identity { return *a.identity.Load() })
 	if err != nil {
 		return nil, err
 	}
@@ -775,8 +780,27 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 	registry.MustRegister(peers.HealthCheck{Listener: a.dmr, DisabledReason: dmrDisabledReason})
 	registry.MustRegister(peers.PeersHealthCheck{Listener: a.dmr, Master: master, DisabledReason: dmrDisabledReason})
-	registry.MustRegister(routingCheck{enabled: cfg.DMR.Forwarding, bridges: len(cfg.DMR.Bridges)})
-	registry.MustRegister(schedulerCheck{windows: len(cfg.DMR.Schedule), forwarding: cfg.DMR.Forwarding})
+	// **What is running from the configuration this process started with, and
+	// what is counted from the one in force now.** Both were read here once:
+	// a bridge added from the console left this saying there were none until
+	// a restart, and a server with forwarding set and the DMR listener off
+	// was told its stations could hear each other (2026-10-07, G9).
+	saved := func() config.Config {
+		if a.configManager != nil {
+			return a.configManager.Current()
+		}
+		return cfg
+	}
+	registry.MustRegister(routingCheck{
+		listening:  cfg.DMR.Enabled,
+		forwarding: cfg.DMR.Forwarding,
+		bridges:    func() int { return len(saved().DMR.Bridges) },
+		wanted:     func() bool { return saved().DMR.Forwarding },
+	})
+	registry.MustRegister(schedulerCheck{
+		windows:    func() int { return len(saved().DMR.Schedule) },
+		forwarding: cfg.DMR.Enabled && cfg.DMR.Forwarding,
+	})
 	if a.upstreams != nil {
 		// Before the checks are built, so each link knows whether anything can
 		// reach it. A link opens regardless of dmr.forwarding and then reports
@@ -961,7 +985,18 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 	// to any of them applied to nothing while NeedsRestart reported that no
 	// restart was needed.
 	manager.applyServer = func(c config.Config) {
-		srv.ApplyConfig(joinSettings(c), mapSettings(c), c.DMR.Enabled && c.DMR.Forwarding)
+		// **Forwarding is what is running, not what was saved.** The routing
+		// core is built at startup or not at all, and until 0.1.335 this
+		// passed the saved setting, so the Overview said traffic was relayed
+		// the moment the box was ticked and none was until a restart (G2).
+		srv.ApplyConfig(joinSettings(c), mapSettings(c), cfg.DMR.Enabled && cfg.DMR.Forwarding)
+		// What this server says it is, to a server that links to it.
+		a.identity.Store(new(serverIdentity(c)))
+		// How long a login lasts, for logins from now on. It was saved, shown
+		// as in force, and given to nobody (G4).
+		if a.auth != nil {
+			a.auth.SetSessionLifetime(time.Duration(c.Server.SessionLifetime))
+		}
 		// Weather is live too: turning it on or changing its area from the
 		// Weather page takes effect on save, and config.NeedsRestart rightly
 		// does not name it.
@@ -986,7 +1021,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 // listener but cannot supply a password is a fatal error rather than a silent
 // downgrade, because running a master that authenticates nobody would be worse
 // than not running one.
-func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Master, string, error) {
+func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus, identity func() hbp.Identity) (*peers.Master, string, error) {
 	if !cfg.DMR.Enabled {
 		return nil, "Hotspots and repeaters are not accepted. Turn it on in Network settings.", nil
 	}
@@ -1053,7 +1088,12 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus) (*peers.Mast
 		// announced a callsign, a network and a version, and got four bytes
 		// back. Sent only to a peer whose package ID marks it a QSP link, so a
 		// hotspot never receives one.
-		Identity:  func() hbp.Identity { return serverIdentity(cfg) },
+		//
+		// **As it is now, not as it was at startup.** This closed over the
+		// startup configuration, so a server renamed or moved from the
+		// console went on telling every link that registered the old name
+		// and the old place (G8).
+		Identity:  identity,
 		IsQSPLink: func(c hbp.Config) bool { _, ok := LinkNameFromPackageID(c.PackageID); return ok },
 	})
 	if err != nil {
@@ -1150,11 +1190,17 @@ func (a *app) run(ctx context.Context) error {
 	// The listener exists by now, so a save can reach the goroutine that owns
 	// the routing core. Wired here rather than in build because the listener
 	// is constructed after the server that will call it.
-	if a.dmr != nil && a.configManager != nil {
+	//
+	// **Whether or not there is a DMR listener.** This was wired only when
+	// there was one, so a server running Motorola repeaters or P25 gateways
+	// and no hotspots applied nothing it was saved: a repeater added from
+	// the console was not answered until a restart, and the save said it
+	// was (2026-10-07, G7).
+	if a.configManager != nil {
 		// The author travels with the change, so the line the listener logs
 		// names the administrator rather than "console" — the version row
 		// could attribute a live change and the log could not.
-		a.configManager.apply = applyToListener(a.dmr, a.ipsc)
+		a.configManager.apply = applyToListener(a.dmr, a.ipsc, a.p25)
 	}
 
 	// Resolving names is background work by design: nothing waits on it, and a
@@ -2107,17 +2153,40 @@ func (p processCheck) Check(context.Context) health.Result {
 // running instance is the same failure as fake data, just slower: it was true
 // when written and nobody checked it again.
 type routingCheck struct {
-	enabled bool
-	bridges int
+	// listening and forwarding are what this process was started with, which
+	// is what it is doing: neither can change under a running server.
+	listening  bool
+	forwarding bool
+	// bridges and wanted are read from the saved configuration each time,
+	// since bridges are applied as they are saved and Forwarding is not.
+	bridges func() int
+	wanted  func() bool
 }
 
 func (routingCheck) Name() string { return "routing" }
 
 func (c routingCheck) Check(context.Context) health.Result {
-	if !c.enabled {
+	if !c.listening {
+		return health.Unavailable(
+			"Hotspots and repeaters are not accepted, so there is nothing to route. " +
+				"Turn that on, and Forwarding with it, in Network settings.")
+	}
+	if !c.forwarding {
+		if c.wanted() {
+			return health.Unavailable(
+				"Forwarding has been turned on and has not started: it starts when QSP " +
+					"is restarted. Until then stations cannot hear each other.")
+		}
 		return health.Unavailable(
 			"Forwarding is off, so stations cannot hear each other, even on the same " +
 				"talkgroup. Turn on Forwarding in Network settings.")
+	}
+	if !c.wanted() {
+		res := health.Degraded(
+			"Forwarding has been turned off and is still running: stations hear each other "+
+				"until QSP is restarted",
+			"restart QSP from the Administration page, or turn Forwarding back on")
+		return res
 	}
 	// **A master with no bridges is healthy, not degraded.**
 	//
@@ -2126,37 +2195,41 @@ func (c routingCheck) Check(context.Context) health.Result {
 	// repeat. A club whose members all sit on one talkgroup configures no
 	// bridges at all and is working exactly as intended; telling their operator
 	// the instance is degraded sends them looking for a fault. See ADR-0019.
-	if c.bridges == 0 {
+	bridges := c.bridges()
+	if bridges == 0 {
 		res := health.Healthy("peers on a talkgroup hear each other; no bridges configured")
 		res.Detail = map[string]string{"bridges": "0"}
 		return res
 	}
 	res := health.Healthy(fmt.Sprintf(
-		"peers on a talkgroup hear each other, across %d bridge(s)", c.bridges))
-	res.Detail = map[string]string{"bridges": strconv.Itoa(c.bridges)}
+		"peers on a talkgroup hear each other, across %d bridge(s)", bridges))
+	res.Detail = map[string]string{"bridges": strconv.Itoa(bridges)}
 	return res
 }
 
 // schedulerCheck reports whether any bridge is scheduled.
 type schedulerCheck struct {
-	windows    int
+	// windows is read each time: a schedule is applied as it is saved.
+	windows func() int
+	// forwarding is whether anything is being relayed, fixed at startup.
 	forwarding bool
 }
 
 func (schedulerCheck) Name() string { return "scheduler" }
 
 func (c schedulerCheck) Check(context.Context) health.Result {
-	if c.windows == 0 {
+	windows := c.windows()
+	if windows == 0 {
 		return health.Unavailable("no schedule is configured; bridges follow their own enabled setting")
 	}
 	if !c.forwarding {
 		return health.Degraded(
-			fmt.Sprintf("%d scheduled window(s) configured, but forwarding is off so they relay nothing", c.windows),
-			"set dmr.forwarding, or remove the schedule",
+			fmt.Sprintf("%d scheduled window(s) configured, but forwarding is off so they relay nothing", windows),
+			"turn on Forwarding in Network settings and restart, or remove the schedule",
 		)
 	}
-	res := health.Healthy(fmt.Sprintf("%d scheduled window(s)", c.windows))
-	res.Detail = map[string]string{"windows": strconv.Itoa(c.windows)}
+	res := health.Healthy(fmt.Sprintf("%d scheduled window(s)", windows))
+	res.Detail = map[string]string{"windows": strconv.Itoa(windows)}
 	return res
 }
 
