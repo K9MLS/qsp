@@ -232,6 +232,13 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A new or reset console password is one a person can type.** Adding an
+  administrator or resetting a password handed over 43 characters of
+  mixed-case random text, which was made for a link between two servers and
+  not for a login form. It is now sixteen characters in four groups, as
+  `k7mq-x2bd-9fhp-t4wz`, from letters and digits that are not mistaken for
+  one another, so it can be read out over the phone. It is still far beyond
+  guessing. Passwords already issued are not changed.
 - **Saving a page no longer undoes what changed somewhere else.** The Access,
   Bridges, Network, Weather and Zello pages each load the whole configuration
   and saved the whole of it back, so a page opened before another change put

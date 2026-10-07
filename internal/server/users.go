@@ -105,7 +105,7 @@ func (s *Server) handleAddUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	password, err := peering.NewPassphrase()
+	password, err := peering.NewAccountPassword()
 	if err != nil {
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot generate a password"})
@@ -138,7 +138,7 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := strings.TrimSpace(r.PathValue("name"))
-	password, err := peering.NewPassphrase()
+	password, err := peering.NewAccountPassword()
 	if err != nil {
 		writeJSON(w, s.log, http.StatusInternalServerError,
 			map[string]string{"error": "cannot generate a password"})

@@ -199,20 +199,60 @@ const MemberPasswordLength = 10
 // Ten characters from an unambiguous alphabet is the trade: unguessable, and
 // short enough to read aloud and type once.
 func NewMemberPassword() (string, error) {
-	out := make([]byte, MemberPasswordLength)
-	buf := make([]byte, MemberPasswordLength)
-	if _, err := rand.Read(buf); err != nil {
+	out, err := readable(MemberPasswordLength)
+	if err != nil {
 		return "", fmt.Errorf("peering: generating a member password: %w", err)
 	}
-	// Rejection-free selection would bias the alphabet; the alphabet's length
-	// does not divide 256 evenly, so bytes above the largest whole multiple are
-	// redrawn rather than folded.
+	// Grouped, because that is how people transcribe without losing their place.
+	return out[0:4] + "-" + out[4:7] + "-" + out[7:10], nil
+}
+
+// AccountPasswordLength is how many characters of the alphabet
+// NewAccountPassword produces, before the dashes that group them.
+//
+// Sixteen is a little over 76 bits. A console login is guessed against the
+// server, which throttles by source address, and never offline, so this is far
+// more than it needs; what it buys is a password that stays out of reach if
+// the hashes are ever read from a stolen database.
+const AccountPasswordLength = 16
+
+// NewAccountPassword returns a password for an administrator's console login:
+// one an administrator can read to another over the phone.
+//
+// # Why this is not NewPassphrase either
+//
+// The same mistake as the one NewMemberPassword records, made a second time.
+// Adding an administrator and resetting a password both called NewPassphrase,
+// so the page handed over 43 characters of mixed-case base64 for a person to
+// type at a login form. The operator who met it called it overkill, which it
+// was: a link's passphrase is pasted between two servers once, and this is
+// typed by somebody every time their session ends.
+//
+// Four groups of four from the alphabet with no look-alikes, as `k7mq-x2bd-
+// 9fhp-t4wz`. The dashes are part of the password as stored and typed, and
+// with them it is nineteen characters, past the twelve a console password
+// must have.
+func NewAccountPassword() (string, error) {
+	out, err := readable(AccountPasswordLength)
+	if err != nil {
+		return "", fmt.Errorf("peering: generating an account password: %w", err)
+	}
+	return out[0:4] + "-" + out[4:8] + "-" + out[8:12] + "-" + out[12:16], nil
+}
+
+// readable returns n characters drawn evenly from memberAlphabet.
+func readable(n int) (string, error) {
+	out := make([]byte, n)
+	var buf []byte
+	// Folding a byte onto the alphabet would favour its first letters: the
+	// alphabet's length does not divide 256 evenly, so bytes above the largest
+	// whole multiple are redrawn rather than folded.
 	limit := byte(256 - (256 % len(memberAlphabet)))
 	for i := 0; i < len(out); {
 		if len(buf) == 0 {
-			buf = make([]byte, MemberPasswordLength)
+			buf = make([]byte, n)
 			if _, err := rand.Read(buf); err != nil {
-				return "", fmt.Errorf("peering: generating a member password: %w", err)
+				return "", err
 			}
 		}
 		b := buf[0]
@@ -223,8 +263,7 @@ func NewMemberPassword() (string, error) {
 		out[i] = memberAlphabet[int(b)%len(memberAlphabet)]
 		i++
 	}
-	// Grouped, because that is how people transcribe without losing their place.
-	return string(out[0:4]) + "-" + string(out[4:7]) + "-" + string(out[7:10]), nil
+	return string(out), nil
 }
 
 // FingerprintOf returns a short identifier for a passphrase.
