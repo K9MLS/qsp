@@ -42,7 +42,7 @@ def serving(document):
 class Page:
     """One console page, open, with every request it made on record."""
 
-    def __init__(self, name, api=None, viewport=(1280, 900)):
+    def __init__(self, name, api=None, viewport=(1280, 900), clock=False):
         self.requests = []
         self.errors = []
         self.api = {
@@ -57,8 +57,23 @@ class Page:
         self.page.on("pageerror", lambda e: self.errors.append(str(e)))
         self.page.on("dialog", lambda d: d.accept())
         self.page.route("**/*", self._answer)
+        if clock:
+            # The page's timers are the check's to move: a page that
+            # refreshes every ten seconds is checked without waiting ten.
+            self.page.clock.install()
         self.page.goto("http://qsp.test/" + name)
         self.page.wait_for_timeout(600)
+
+    def pass_time(self, seconds):
+        """Move the page's clock on, and let what that started finish."""
+        # run_for fires a repeating timer every time it falls due;
+        # fast_forward would fire it once however far it jumped.
+        self.page.clock.run_for(int(seconds * 1000))
+        self.page.wait_for_timeout(250)
+
+    def asked(self, method, path):
+        """How many times the page has made this request."""
+        return len([1 for m, p, _ in self.requests if m == method and p == path])
 
     def _answer(self, route, request):
         url = urlparse(request.url)

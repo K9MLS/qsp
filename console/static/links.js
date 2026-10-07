@@ -17,10 +17,44 @@
 
   var POLL_MS = 5000;
 
-  /* **A page that redraws every five seconds cannot hold a text box.** The
-   * address field is edited in place, and a poll landing mid-keystroke would
-   * replace what the operator had typed with what the server still has. */
-  var editing = false;
+  /* **A page that redraws every five seconds must not redraw what somebody
+   * is in the middle of.** The list is rebuilt whole on each refresh, and
+   * until 0.1.332 the refresh held off only while an address box had the
+   * cursor in it. So it also (found 2026-10-07, E3):
+   *
+   *   - took the confirmation off a button between its two clicks. "Remove
+   *     alpha?" became "Remove" again, the second click asked again, and a
+   *     link could be made unremovable by the page's own timing;
+   *   - put the old address back in a box the operator had typed in and then
+   *     clicked away from, so Save saved the old one;
+   *   - refilled the boxes of the offer form each time they were cleared.
+   *
+   * busy() is what the refresh now waits for, and held is what it puts back. */
+  function busy() {
+    if (!list) { return false; }
+    if (list.contains(document.activeElement) &&
+        document.activeElement.matches("input, textarea, select")) { return true; }
+    /* A button asking "are you sure", or one whose request is on its way. */
+    return !!list.querySelector('[data-armed="yes"], button:disabled');
+  }
+
+  /* held is every address box whose text is not what it was drawn with. */
+  function held() {
+    var out = {};
+    Array.prototype.forEach.call(list.querySelectorAll("[data-address]"), function (box) {
+      if (box.value !== box.defaultValue) {
+        out[box.getAttribute("data-address")] = box.value;
+      }
+    });
+    return out;
+  }
+
+  function putBack(typed) {
+    Array.prototype.forEach.call(list.querySelectorAll("[data-address]"), function (box) {
+      var name = box.getAttribute("data-address");
+      if (Object.prototype.hasOwnProperty.call(typed, name)) { box.value = typed[name]; }
+    });
+  }
 
   /* What the instance last told us about itself, so the address suggestion can
      follow the kind of link being offered rather than being filled once. */
@@ -163,7 +197,8 @@
         (l.inbound
           ? fact("Far end", l.far_end || "not configured")
           : '<div class="link__fact"><dt>Far end</dt><dd>' +
-            '<input class="link__address" type="text" value="' +
+            '<input class="link__address" type="text" aria-label="Far end address of ' +
+            escapeText(l.name) + '" value="' +
             escapeText(l.far_end || "") + '" data-address="' + escapeText(l.name) + '">' +
             '<button class="button button--quiet link__save" type="button" ' +
             'data-save="' + escapeText(l.name) + '">Save</button>' +
@@ -233,6 +268,8 @@
           /* Disarms itself. A button left in a confirming state is one an
            * operator meets later having forgotten what it was asking. */
           setTimeout(function () {
+            /* Not once it has been pressed a second time. */
+            if (button.disabled) { return; }
             button.dataset.armed = "no";
             button.textContent = "Remove";
             button.classList.remove("button--danger");
@@ -263,7 +300,7 @@
             fail("links-note", "Removed " + name + "." +
               restartNote(b, "it stays open and pointed at the far end"));
           }
-          load();
+          load(true);
         }).catch(function (e) {
           button.disabled = false;
           button.textContent = "Remove";
@@ -282,6 +319,7 @@
       button.textContent = question;
       button.classList.add("button--danger");
       setTimeout(function () {
+        if (button.disabled) { return; }
         button.dataset.armed = "no";
         button.textContent = button.dataset.idle;
         button.classList.remove("button--danger");
@@ -306,8 +344,6 @@
       if (!box) { return; }
       /* The field is edited in place, so polling must not overwrite what is
          being typed. */
-      box.addEventListener("focus", function () { editing = true; });
-      box.addEventListener("blur", function () { editing = false; });
       button.addEventListener("click", function () {
         var name = button.getAttribute("data-save");
         button.disabled = true;
@@ -322,10 +358,9 @@
             return b;
           });
         }).then(function (b) {
-          editing = false;
           fail("links-note", "The link " + name + " now reaches the far end at " +
             b.address + "." + restartNote(b, "it keeps using the old address"));
-          load();
+          load(true);
         }).catch(function (e) {
           button.disabled = false;
           fail("links-note", e.message);
@@ -369,7 +404,7 @@
             said += " A session already established stays up until it times out or QSP restarts.";
             said += restartNote(b, "this server still accepts it");
             fail("links-note", said);
-            load();
+            load(true);
           }).catch(function (e) {
             button.disabled = false;
             button.textContent = "Stop accepting";
@@ -444,8 +479,12 @@
       escapeText(value) + "</dd></div>";
   }
 
-  function load() {
-    if (editing) { return; }
+  /* load refreshes the page. now is for a refresh that follows something
+   * the operator did, which is drawn whatever the page is in the middle of
+   * and takes nothing typed with it. */
+  function load(now) {
+    now = now === true;
+    if (!now && busy()) { return; }
     fetch("/api/links", { headers: { Accept: "application/json" }, credentials: "same-origin" })
       .then(function (r) {
         if (r.status === 401) {
@@ -458,9 +497,13 @@
       })
       .then(function (body) {
         if (!body) { return; }
+        /* The answer can arrive after a click that the request left before. */
+        if (!now && busy()) { return; }
         hide(loading);
         hide(signedOut);
+        var typed = now ? {} : held();
         render(body.links || []);
+        putBack(typed);
         fillOffer(body.identity);
         show(form);
       })
@@ -508,7 +551,12 @@
    * naming a different field. A value already present is not typed again. */
   function fillOffer(identity) {
     if (!identity) return;
+    /* **Once.** This ran on every refresh and filled whatever was empty, so
+     * a box the operator had cleared on purpose was full again five seconds
+     * later. The address still follows the kind of link, in fillOfferAddress. */
+    var first = !lastIdentity;
     lastIdentity = identity;
+    if (!first) { return; }
     var pairs = [
       ["offer-callsign", identity.callsign],
       ["offer-netid", identity.network_id]
@@ -657,7 +705,7 @@
         " register, and has written a password for it alone." +
         restartNote(b, "the far end cannot register yet");
       fail("links-note", note);
-      load();
+      load(true);
     }).catch(function (e) { fail("offer-error", e.message); });
   }
 
@@ -819,7 +867,7 @@
         show(el("accept-result"));
         text(el("accept-summary"),
           "The link is written." + restartNote(b, "it carries nothing in either direction"));
-        load();
+        load(true);
       }).catch(function (e) { fail("accept-error", e.message); });
     });
   }

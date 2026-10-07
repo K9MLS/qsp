@@ -507,8 +507,13 @@ func TestALinksAddressCanBeChangedFromThePage(t *testing.T) {
 	}
 	// A page that redraws every five seconds cannot hold a text box: a poll
 	// landing mid-keystroke replaces what was typed with what the server has.
-	if !strings.Contains(js, "editing") {
-		t.Error("the poll is not suspended while the address is being edited")
+	// Since 0.1.332 that is busy(), which also holds the refresh for a button
+	// that is asking to be confirmed, and held()/putBack() keep an address
+	// that was typed and then left. scripts/console-check holds what they do.
+	for _, want := range []string{"if (!now && busy()) { return; }", "putBack(typed)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the poll no longer has %q, so it redraws what the operator is in the middle of", want)
+		}
 	}
 }
 

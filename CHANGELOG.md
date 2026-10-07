@@ -291,6 +291,25 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Administration page's refresh no longer undoes what you are
+  editing.** The page refreshes every ten seconds, and it held off only while
+  a box had the cursor in it. Choose "off" for the callsign lookup, or type a
+  new login length, move to the next box, and the old value was back within
+  ten seconds; Save then saved what the server already had and said "Saved".
+  A box you have changed is now left alone until it is saved, and a box you
+  have not touched still follows the server (2026-10-07 hunt, E2).
+- **The Links page's refresh waits for whatever you are in the middle of.**
+  The list was rebuilt every five seconds, which (E3):
+  - took the confirmation off Remove and Stop accepting between their two
+    clicks, so the second click asked the question again;
+  - put the old address back in a box you had typed in and then clicked away
+    from, so Save saved the old one;
+  - refilled the boxes of the invitation form each time they were cleared.
+- **Administration's "Not passing" listed every subsystem**, healthy ones
+  included. It compared with a word the server never uses (F2).
+- The Restart button keeps saying "Restarting" once pressed; five seconds
+  later it used to go back to "Restart QSP" while still busy. The far-end
+  address box on Links has a name a screen reader can say (F5).
 - **The Access and Zello pages save only what you changed**, as the Network
   page has since 0.1.330 (2026-10-07 hunt, E5, E6, E8).
   - *Access.* All four lists were written on every save, so a server with no

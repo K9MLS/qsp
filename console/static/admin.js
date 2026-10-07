@@ -19,10 +19,28 @@
   var loading = document.getElementById("loading");
   var note = document.getElementById("admin-note");
 
-  /* Suspended while the operator is typing in the contact box, for the reason
-     the links page learned: a page that redraws on a timer cannot hold a text
-     field. */
-  var editing = false;
+  /* What the refresh last put in each box it fills.
+   *
+   * **The refresh fills a box only while the box still says what the refresh
+   * last put there.** Until 0.1.332 it held off only while a box had the
+   * cursor in it. Choose "off" for the callsign lookup, or type a new login
+   * length, move to the next box, and within ten seconds the page had put
+   * the old value back: Save then saved what the server already had, and
+   * said "Saved" (found 2026-10-07, E2). */
+  var drawn = {};
+
+  function fill(node, value) {
+    if (!node) { return; }
+    if (document.activeElement === node) { return; }
+    if (node.id in drawn && node.value !== drawn[node.id]) { return; }
+    node.value = value;
+    drawn[node.id] = node.value;
+  }
+
+  /* saved lets the refresh fill these boxes again, from what was saved. */
+  function saved(ids) {
+    ids.forEach(function (id) { delete drawn[id]; });
+  }
 
   load();
   setInterval(load, POLL_MS);
@@ -124,9 +142,7 @@
     }
     say(el("sessions-state"), parts.join(" "));
 
-    if (!editing) {
-      el("sessions-lifetime").value = duration(x.lifetime_seconds);
-    }
+    fill(el("sessions-lifetime"), duration(x.lifetime_seconds));
   }
 
   /* Seconds as an operator writes them: 12h, 90m, 45s. */
@@ -238,6 +254,9 @@
         button.textContent = "Restart now? Everything drops.";
         button.classList.add("button--danger");
         setTimeout(function () {
+          /* Not once it has been pressed: the label would go back to
+           * "Restart QSP" on a button that is busy restarting it. */
+          if (button.disabled) { return; }
           button.dataset.armed = "no";
           button.textContent = button.dataset.idle;
           button.classList.remove("button--danger");
@@ -245,6 +264,7 @@
         return;
       }
       button.disabled = true;
+      button.classList.remove("button--danger");
       button.textContent = "Restarting";
       fetch("/api/restart", {
         method: "POST",
@@ -274,8 +294,11 @@
     facts += fact("Callsign lookup", c.usable ? "on" : (c.enabled ? "on, cannot run" : "off"));
     facts += fact("Subsystems", health.status || "unknown");
 
+    /* The server's word for a subsystem that is well is "healthy". This
+     * compared with "passing", which it never says, so every subsystem was
+     * listed as not passing on a server with nothing wrong. */
     var failing = (health.results || []).filter(function (r) {
-      return r.status && r.status !== "passing";
+      return r.status && r.status !== "healthy";
     });
     facts += fact("Not passing", failing.length === 0
       ? "none"
@@ -289,10 +312,8 @@
     say(el("callsigns-state"), c.why ||
       "Callsign lookup is on and working. Last heard names the radios it sees.");
 
-    if (!editing) {
-      el("callsigns-enabled").value = c.enabled ? "on" : "off";
-      el("callsigns-contact").value = c.contact || "";
-    }
+    fill(el("callsigns-enabled"), c.enabled ? "on" : "off");
+    fill(el("callsigns-contact"), c.contact || "");
     show(el("block-callsigns"));
   }
 
@@ -303,11 +324,6 @@
    * other is a decision with consequences that wants looking at first. */
   show(el("block-backup"));
 
-  var restoreDoc = el("restore-document");
-  if (restoreDoc) {
-    restoreDoc.addEventListener("focus", function () { editing = true; });
-    restoreDoc.addEventListener("blur", function () { editing = false; });
-  }
 
   var readBackup = el("restore");
   if (readBackup) {
@@ -357,7 +373,6 @@
       if (!res.ok) { throw new Error(res.body.error || "could not restore"); }
 
       hide(el("restore-confirm"));
-      editing = false;
       el("restore-document").value = "";
       var missing = (res.body.missing_credentials || []).length;
       say(el("restore-done"),
@@ -549,6 +564,7 @@
       button.textContent = question;
       button.classList.add("button--danger");
       setTimeout(function () {
+        if (button.disabled) { return; }
         button.dataset.armed = "no";
         button.textContent = button.dataset.idle;
         button.classList.remove("button--danger");
@@ -742,18 +758,6 @@
     });
   }
 
-  var contact = el("callsigns-contact");
-  if (contact) {
-    contact.addEventListener("focus", function () { editing = true; });
-    contact.addEventListener("blur", function () { editing = false; });
-  }
-
-  var lifetime = el("sessions-lifetime");
-  if (lifetime) {
-    lifetime.addEventListener("focus", function () { editing = true; });
-    lifetime.addEventListener("blur", function () { editing = false; });
-  }
-
   var saveSessions = el("sessions-save");
   if (saveSessions) {
     saveSessions.addEventListener("click", function () {
@@ -778,7 +782,7 @@
           return b;
         });
       }).then(function () {
-        editing = false;
+        saved(["sessions-lifetime"]);
         load();
       }).catch(function (e) {
         say(el("sessions-error"), e.message);
@@ -850,7 +854,7 @@
           return b;
         });
       }).then(function (b) {
-        editing = false;
+        saved(["callsigns-enabled", "callsigns-contact"]);
         var c = b.callsigns || {};
         say(el("callsigns-done"), c.usable
           ? "Saved. Callsigns will fill in as radios are heard; the first fetch " +
