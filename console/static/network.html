@@ -535,6 +535,14 @@
                 polls. Nothing reads it yet: a gateway is answered with the poll
                 it sent rather than with one of ours.</p>
             </label>
+            <label class="picker__field">
+              <span class="picker__label">Most gateways at once</span>
+              <input class="picker__input" id="p25-max" type="text"
+                     inputmode="numeric" placeholder="250">
+              <p class="field__note">Past this many, a gateway that is not
+                already registered is not answered until one goes quiet. Leave
+                empty for 250. It matters when no gateways are named below.</p>
+            </label>
           </div>
 
           <label class="field__label" for="p25-allowed">Allowed gateways</label>

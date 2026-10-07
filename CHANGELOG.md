@@ -186,6 +186,30 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **A stranger can no longer stop a hotspot logging in.** A hotspot's login
+  is two packets. A login request naming the same ID, sent from any other
+  address in between, replaced the challenge the hotspot was about to
+  answer; repeated every few seconds it kept that hotspot off for as long as
+  somebody cared to, and hotspot IDs are on the public peer list. Two logins
+  for one ID are now kept side by side, each address finishes its own, and a
+  wrong password from one no longer wipes the other (2026-10-07 hunt, A4).
+- **A flood of forged login requests no longer pushes real ones out.**
+  Logins waiting on their challenge shared the peer limit of 200 and the
+  oldest went when it was full, so a few thousand forged requests a second
+  evicted a real hotspot's between its two packets. They are counted apart
+  now, with room for 4,096, and the peer limit is on stations that have
+  logged in. Counting them no longer means going through the whole registry
+  for every packet (A4).
+- **The hotspot login limit no longer switches off when its table is full.**
+  4,096 forged failures filled it, and after that a real guesser at a new
+  address was never counted. A failure that proves its address always gets a
+  place, taken first from the forged kind (A5).
+- **Only so many P25 gateways are registered at once**: 250 by default,
+  "Most gateways at once" on the Network page (`p25.max_gateways`). With no
+  gateways named there was no limit, and every voice frame goes to every
+  registered address (A3).
+- **Only so many repeater tunnels are open at once**: 64. With no routers
+  named there was no limit (A9).
 - **A new password signs the account out.** Resetting a password left every
   session opened with the old one working until it expired, so a reset did
   not put out whoever had the old password. A reset now ends that account's

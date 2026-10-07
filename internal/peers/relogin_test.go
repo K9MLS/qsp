@@ -130,7 +130,8 @@ func TestAReloginChallengeIsSpentAndBoundToItsAddress(t *testing.T) {
 // Two hundred of them used to hold every slot for thirty seconds at a time,
 // and a real hotspot was told the peer limit was reached.
 //
-// To see it fail: remove `&& !m.evictHalfOpen()` from handleLogin.
+// To see it fail: in handleLogin, count logins waiting on their challenge
+// as stations.
 func TestHalfOpenLoginsDoNotFillThePeerLimit(t *testing.T) {
 	h := newHarness(t, func(c *peers.MasterConfig) {
 		c.MaxPeers = 4

@@ -226,6 +226,16 @@ func (p *Peer) offerRelogin(from netip.AddrPort, salt [4]byte, now time.Time, ti
 	p.relogins = append(kept, relogin{addr: from, salt: salt, at: now})
 }
 
+// hasRelogin reports whether a challenge is outstanding for from.
+func (p *Peer) hasRelogin(from netip.AddrPort) bool {
+	for _, r := range p.relogins {
+		if r.addr == from {
+			return true
+		}
+	}
+	return false
+}
+
 // takeRelogin returns and removes the challenge issued to from, if one is
 // still current. A challenge is answered once.
 func (p *Peer) takeRelogin(from netip.AddrPort, now time.Time, timeout time.Duration) (relogin, bool) {

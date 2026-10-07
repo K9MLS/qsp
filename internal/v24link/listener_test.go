@@ -561,3 +561,45 @@ func TestATransmissionWithNoEndIsClosedWhenItGoesQuiet(t *testing.T) {
 		t.Fatalf("%d calls finished, repeater %+v", l.Calls(), rs)
 	}
 }
+
+// TestOnlySoManyTunnelsAreOpenAtOnce. With no routers named, anybody who can
+// reach the port could open tunnels without limit, each a connection held
+// with three goroutines behind it.
+//
+// Break it: remove the `len(l.conns) >= l.cfg.MaxTunnels` test from accept.
+func TestOnlySoManyTunnelsAreOpenAtOnce(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit int
+		open  int
+	}{
+		{"a limit of two", 2, 5},
+		{"the default", 0, DefaultMaxTunnels + 6},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			want := tc.limit
+			if want == 0 {
+				want = DefaultMaxTunnels
+			}
+			l, _ := start(t, Config{Keepalive: time.Hour, MaxTunnels: tc.limit})
+			conns := make([]net.Conn, 0, tc.open)
+			for range tc.open {
+				conns = append(conns, dial(t, l))
+			}
+			waitFor(t, "the extra connections refused", func() bool {
+				return l.Refused() == uint64(tc.open-want)
+			})
+			if got := len(l.Repeaters()); got != want {
+				t.Fatalf("%d tunnels are open, want %d", got, want)
+			}
+
+			// One closes, and there is room for another.
+			_ = conns[0].Close()
+			waitFor(t, "a tunnel to close", func() bool { return len(l.Repeaters()) == want-1 })
+			c := dial(t, l)
+			_, _ = c.Write(join(linkRequest))
+			expect(t, c, join(linkAnswer, ourRequest))
+		})
+	}
+}

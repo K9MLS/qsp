@@ -32,6 +32,11 @@ history for:
   the protocol, not QSP, and no version of QSP fixes it. The allow list is the
   only thing between the port and anyone who knows it, so it is worth
   maintaining and it is not authentication.
+- **Only so many gateways are registered at once**: 250 unless "Most gateways
+  at once" on the Network page says otherwise (`p25.max_gateways`). Past
+  that, a gateway not already registered is not answered until one of the
+  others goes quiet, and the log says so once a minute. With a list of
+  allowed gateways the list is the limit and this never comes into it.
 
 **Reachability.** A gateway on your own network reaches the port directly. One
 anywhere else needs 41000/udp forwarded to this machine, and that is what a

@@ -65,6 +65,9 @@ type Config struct {
 	// asserts about itself and nothing verifies it, so this list is the only
 	// thing between the port and anybody who knows one.
 	AllowedCallsigns []string
+	// MaxGateways is the most gateways registered at once. Zero selects
+	// DefaultMaxGateways.
+	MaxGateways int
 	// Now is the clock, for tests. Nil selects time.Now.
 	Now func() time.Time
 	// Repeaters, when set, is sent every voice frame of a gateway's call that
@@ -78,6 +81,12 @@ type Config struct {
 	// to take turns with, which behaves as it always has.
 	Floor *Floor
 }
+
+// DefaultMaxGateways is how many gateways may be registered at once unless
+// the configuration says otherwise. A club's P25 side is a handful; this is
+// room for a large one, and small enough that sending a voice frame to all of
+// them is still nothing.
+const DefaultMaxGateways = 250
 
 // Gateway is a P25 gateway that has polled.
 type Gateway struct {
@@ -163,6 +172,9 @@ type Listener struct {
 	// an operator actually has, which the IPSC listener learned on 2026-09-02.
 	refused         atomic.Uint64
 	refusedCallsign atomic.Pointer[string]
+	// fullSaid is when the log last said the registry was full, so a flood
+	// of registrations is one line a minute and not one a datagram.
+	fullSaid time.Time
 
 	// unparsed counts datagrams this build does not recognise. Expected to be
 	// non-zero over time: three captures are not the whole protocol.

@@ -91,6 +91,8 @@ def check_what_cannot_be_read_is_refused_and_named():
         ("#ipsc-cc", "16", "Colour code", "not between"),
         ("#p25_repeaters-hold", "500", "Hold before transmitting", "not between"),
         ("#p25-allowed", "W9AAA\nW9 BBB", "P25 gateways allowed", "more than one word"),
+        ("#p25-max", "lots", "Most gateways at once", "not a whole number"),
+        ("#p25-max", "0", "Most gateways at once", "not between"),
     ]
     for selector, typed, label, says in cases:
         p = Page("network")
@@ -121,11 +123,17 @@ def check_a_blank_box_clears_and_a_zero_is_a_zero():
         edit(p, "#identity-latitude", "")
         edit(p, "#p25_repeaters-hold", "")
         edit(p, "#ipsc-cc", "0")
+        edit(p, "#p25-max", "40")
         save(p)
         diff = differences(config(), p.saves()[0]["config"])
         assert diff == [(".dmr.identity.latitude", 41.88, 0),
                         (".ipsc.colour_code", 1, 0),
+                        (".p25.max_gateways", "<absent>", 40),
                         (".p25_repeaters.hold_ms", 150, "<absent>")], diff
+        # And blanked again, it leaves the document as the default does.
+        edit(p, "#p25-max", "")
+        save(p)
+        assert "max_gateways" not in p.saves()[1]["config"]["p25"]
     finally:
         p.close()
 

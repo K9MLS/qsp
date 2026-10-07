@@ -179,6 +179,15 @@ type P25 struct {
 	// callsign the gateway asserts about itself and nothing verifies it, so
 	// this list is the only thing between the port and anybody who knows one.
 	AllowedCallsigns []string `json:"allowed_callsigns"`
+	// MaxGateways is the most gateways registered at once. Zero is the
+	// default, p25link.DefaultMaxGateways.
+	//
+	// **It matters when AllowedCallsigns is empty.** A registration is one
+	// datagram naming any callsign, from an address its sender can forge, and
+	// every voice frame is then sent to every address registered: without a
+	// limit that is somebody else's choice of how much memory QSP uses and
+	// how much traffic it sends to addresses that never asked for any.
+	MaxGateways int `json:"max_gateways,omitempty"`
 }
 
 type IPSC struct {
@@ -1638,6 +1647,10 @@ func (c Config) Validate() error {
 		// check already refuses to start a listener reachable from beyond the
 		// host with no access rules, and a second warning about the same thing
 		// teaches an operator to skim both.
+		if c.P25.MaxGateways < 0 || c.P25.MaxGateways > 10000 {
+			v.add("p25.max_gateways", fmt.Sprintf("%d is not between 1 and 10000", c.P25.MaxGateways),
+				"leave it out for the default of 250, or name how many gateways may be registered at once")
+		}
 		for i, call := range c.P25.AllowedCallsigns {
 			if strings.TrimSpace(call) == "" {
 				v.add(fmt.Sprintf("p25.allowed_callsigns[%d]", i), "is empty",

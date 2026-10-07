@@ -183,6 +183,17 @@ type Master struct {
 	mu sync.RWMutex
 
 	peers map[hbp.RepeaterID]*Peer
+	// waiting is how many entries in peers are logins that have not answered
+	// their challenge, and halfOpen is those logins in the order they began.
+	//
+	// **Kept, not counted, because a forged login request is what asks.**
+	// Counting meant going through the registry for each one, and choosing
+	// the oldest to evict meant going through it again: four thousand
+	// entries twice, for a datagram that cost its sender nothing, on the
+	// goroutine that carries voice. halfOpen may name logins that have since
+	// finished or gone; evictHalfOpen passes over those.
+	waiting  int
+	halfOpen []halfOpenLogin
 	// subscribers maps a radio ID to where it was last heard. Learned from
 	// traffic, never configured; see subscribers.go.
 	subscribers map[uint32]*Location
@@ -389,9 +400,21 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 	}
 
 	existing, known := m.peers[msg.RepeaterID]
-	if !known && len(m.peers) >= m.cfg.MaxPeers && !m.evictHalfOpen() {
-		return m.reject(msg.RepeaterID, from,
-			fmt.Sprintf("peer limit of %d reached", m.cfg.MaxPeers))
+	if !known {
+		// **Two limits, because they are limits on two things.** MaxPeers
+		// is stations that logged in. A login that has not yet answered its
+		// challenge costs its sender one datagram from an address it can
+		// forge, so those are counted apart and given far more room: until
+		// 0.1.333 they shared MaxPeers, and a flood of a few thousand forged
+		// logins a second pushed a real hotspot's out in the instant between
+		// its two packets, every time it tried (found 2026-10-07, A4).
+		if m.stations() >= m.cfg.MaxPeers {
+			return m.reject(msg.RepeaterID, from,
+				fmt.Sprintf("peer limit of %d reached", m.cfg.MaxPeers))
+		}
+		if m.waiting >= maxHalfOpen {
+			m.evictHalfOpen()
+		}
 	}
 
 	salt, err := m.cfg.Salt()
@@ -410,7 +433,15 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 		)
 	}
 
-	if known && existing.State != StateChallenged {
+	// **A login in progress is not replaced by another for the same ID from
+	// somewhere else.** It was: the newer challenge overwrote the older, so
+	// one login request naming a hotspot's ID, sent from any address as that
+	// hotspot logged in, left the hotspot answering a challenge QSP had
+	// forgotten. Repeated every few seconds it kept that hotspot off for as
+	// long as anybody cared to (A4). The second challenge is kept beside the
+	// first, as it already was for a station that is logged in, and each
+	// address can finish its own.
+	if known && (existing.State != StateChallenged || existing.Addr != from) {
 		existing.offerRelogin(from, salt, now, m.cfg.LoginTimeout)
 		return Outcome{Responses: []Response{{
 			To:      from,
@@ -432,6 +463,16 @@ func (m *Master) handleLogin(msg hbp.Login, from netip.AddrPort, now time.Time) 
 		p.FirstSeen = existing.FirstSeen
 		p.Config = existing.Config
 		p.ConfiguredAt = existing.ConfiguredAt
+		// And whoever else is part-way through logging in as this ID: an
+		// address asking again must not wipe the others' challenges.
+		p.relogins = existing.relogins
+	}
+	if !known {
+		m.waiting++
+		m.halfOpen = append(m.halfOpen, halfOpenLogin{id: p.ID, began: now})
+		if len(m.halfOpen) > 4*maxHalfOpen {
+			m.tidyHalfOpen()
+		}
 	}
 	m.peers[msg.RepeaterID] = p
 
@@ -459,6 +500,11 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 		return m.handleReloginKey(p, msg, from, now)
 	}
 	if p.Addr != from {
+		if p.hasRelogin(from) {
+			// Another address logging in as the same ID at the same moment,
+			// answering the challenge that was sent to it.
+			return m.handleReloginKey(p, msg, from, now)
+		}
 		// The digest is bound to a salt issued to a specific address. Accepting
 		// it from elsewhere would let anyone who observed the exchange
 		// authenticate as that peer.
@@ -469,19 +515,27 @@ func (m *Master) handleKey(msg hbp.Key, from netip.AddrPort, now time.Time) Outc
 
 	password, ok := m.cfg.Password(msg.RepeaterID)
 	if !ok {
-		delete(m.peers, msg.RepeaterID)
+		m.abandon(p)
 		m.noteFailure(msg.RepeaterID, from, ReasonUnknownID, now)
 		return dropped("no password is configured for repeater ID %d", msg.RepeaterID)
 	}
 	if !hbp.VerifyDigest(p.Salt, password, msg.Digest) {
 		// Remove the half-open registration so a wrong password cannot hold a
 		// slot, and so retries start cleanly.
-		delete(m.peers, msg.RepeaterID)
+		m.abandon(p)
 		m.noteFailure(msg.RepeaterID, from, ReasonWrongPassword, now)
 		return m.reject(msg.RepeaterID, from,
 			fmt.Sprintf("authentication failed for repeater ID %d (wrong password)", msg.RepeaterID))
 	}
+	// Logins that were in progress together can finish together, and the
+	// limit is on how many are logged in, so it is asked again here.
+	if m.stations() >= m.cfg.MaxPeers {
+		m.abandon(p)
+		return m.reject(msg.RepeaterID, from,
+			fmt.Sprintf("peer limit of %d reached", m.cfg.MaxPeers))
+	}
 
+	m.waiting--
 	p.State = StateAuthenticated
 	p.LastHeard = now
 	// The salt is spent. Clearing it means a replayed RPTK cannot be checked
@@ -520,6 +574,15 @@ func (m *Master) handleReloginKey(p *Peer, msg hbp.Key, from netip.AddrPort, now
 			fmt.Sprintf("authentication failed for repeater ID %d (wrong password)", msg.RepeaterID))
 	}
 
+	if p.State == StateChallenged {
+		// Nobody is logged in under this ID yet, so this is one more station.
+		if m.stations() >= m.cfg.MaxPeers {
+			return m.reject(msg.RepeaterID, from,
+				fmt.Sprintf("peer limit of %d reached", m.cfg.MaxPeers))
+		}
+		m.waiting--
+	}
+
 	p.Addr = from
 	p.State = StateAuthenticated
 	p.LastHeard = now
@@ -531,6 +594,61 @@ func (m *Master) handleReloginKey(p *Peer, msg hbp.Key, from netip.AddrPort, now
 	return Outcome{Responses: []Response{{To: from, Payload: hbp.Ack{Payload: id}.Marshal()}}}
 }
 
+// maxHalfOpen is how many logins may be waiting on their challenge at once.
+//
+// The oldest goes when it is reached, so what this sets is how many forged
+// logins it takes to push a real one out before it answers, which takes a
+// hotspot one round trip. At four thousand that is tens of thousands of
+// datagrams a second, sustained, where the two hundred slots shared with
+// MaxPeers needed a few thousand.
+const maxHalfOpen = 4096
+
+// halfOpenLogin is one login waiting on its challenge, as halfOpen lists it.
+type halfOpenLogin struct {
+	id    hbp.RepeaterID
+	began time.Time
+}
+
+// stations is how many stations are logged in. The caller holds the lock.
+func (m *Master) stations() int { return len(m.peers) - m.waiting }
+
+// forget removes an entry from the registry. Every removal goes through
+// here, because it is what keeps waiting right. The caller holds the lock.
+func (m *Master) forget(id hbp.RepeaterID) {
+	if p, ok := m.peers[id]; ok && p.State == StateChallenged {
+		m.waiting--
+	}
+	delete(m.peers, id)
+}
+
+// tidyHalfOpen drops from halfOpen the logins that are no longer waiting.
+func (m *Master) tidyHalfOpen() {
+	kept := m.halfOpen[:0]
+	for _, h := range m.halfOpen {
+		if p, ok := m.peers[h.id]; ok && p.State == StateChallenged && p.FirstSeen.Equal(h.began) {
+			kept = append(kept, h)
+		}
+	}
+	m.halfOpen = kept
+}
+
+// abandon ends the login in progress at p's own address. If another address
+// was logging in as the same ID beside it, that login takes its place; if
+// none was, the entry goes. The caller holds the lock.
+//
+// **A failed login does not take the others down with it.** The entry used
+// to be deleted whole, so a wrong password sent on purpose for a hotspot's ID
+// wiped the challenge that hotspot was about to answer.
+func (m *Master) abandon(p *Peer) {
+	if len(p.relogins) == 0 {
+		m.forget(p.ID)
+		return
+	}
+	next := p.relogins[0]
+	p.relogins = p.relogins[1:]
+	p.Addr, p.Salt, p.LastHeard = next.addr, next.salt, next.at
+}
+
 // evictHalfOpen makes room for a login by forgetting the oldest registration
 // that never answered its challenge, and reports whether there was one.
 //
@@ -539,21 +657,16 @@ func (m *Master) handleReloginKey(p *Peer, msg hbp.Key, from netip.AddrPort, now
 // the limit for thirty seconds at a time, so a real hotspot was told the
 // server was full. Only a server full of stations that logged in is full.
 func (m *Master) evictHalfOpen() bool {
-	var oldest *Peer
-	for _, p := range m.peers {
-		if p.State != StateChallenged {
-			continue
-		}
-		if oldest == nil || p.FirstSeen.Before(oldest.FirstSeen) ||
-			(p.FirstSeen.Equal(oldest.FirstSeen) && p.ID < oldest.ID) {
-			oldest = p
+	for len(m.halfOpen) > 0 {
+		h := m.halfOpen[0]
+		m.halfOpen = m.halfOpen[1:]
+		// Still the login that was listed, and still waiting.
+		if p, ok := m.peers[h.id]; ok && p.State == StateChallenged && p.FirstSeen.Equal(h.began) {
+			m.forget(h.id)
+			return true
 		}
 	}
-	if oldest == nil {
-		return false
-	}
-	delete(m.peers, oldest.ID)
-	return true
+	return false
 }
 
 // handleConfig completes registration.
@@ -839,7 +952,7 @@ func (m *Master) SetAccess(l access.Lists) {
 		reason := "no longer permitted by dmr.access.registration"
 		m.log.Info("peer removed", logging.PeerID(uint32(id)), logging.Callsign(p.Callsign()),
 			slog.String("reason", reason))
-		delete(m.peers, id)
+		m.forget(id)
 		if p.State == StateConfigured {
 			m.evicted = append(m.evicted, Event{Kind: EventDisconnected, Peer: p.clone(), Reason: reason})
 		}
@@ -899,7 +1012,7 @@ func (m *Master) handleClose(msg hbp.RepeaterClose, from netip.AddrPort) Outcome
 			msg.RepeaterID, from, p.Addr)
 	}
 
-	delete(m.peers, msg.RepeaterID)
+	m.forget(msg.RepeaterID)
 	m.log.Info("peer disconnected cleanly",
 		logging.PeerID(uint32(p.ID)),
 		logging.Callsign(p.Callsign()),
@@ -980,7 +1093,7 @@ func (m *Master) Expire() []Event {
 			logging.Callsign(p.Callsign()),
 			slog.String("reason", reason),
 		)
-		delete(m.peers, id)
+		m.forget(id)
 		if p.State == StateConfigured {
 			events = append(events, Event{Kind: EventDisconnected, Peer: p.clone(), Reason: reason})
 		}

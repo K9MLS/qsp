@@ -152,6 +152,27 @@ func (l *Listener) poll(raw []byte, from *net.UDPAddr) {
 	now := l.now()
 	l.mu.Lock()
 	g := l.gateways[callsign]
+	if g == nil && len(l.gateways) >= l.maxGateways() {
+		// **Not registered and not answered.** Until 0.1.333 there was no
+		// limit: with no allow list, twenty thousand forged polls made
+		// twenty thousand gateways, each sent every voice frame (found
+		// 2026-10-07, A3). The gateways already registered keep polling and
+		// are untouched; this one finds room when one of them goes quiet.
+		say := now.Sub(l.fullSaid) >= time.Minute
+		if say {
+			l.fullSaid = now
+		}
+		l.mu.Unlock()
+		l.refused.Add(1)
+		who := poll.Callsign
+		l.refusedCallsign.Store(&who)
+		if say {
+			l.log.Warn("a p25 gateway was turned away: the limit on gateways at once has been reached",
+				"callsign", poll.Callsign, "limit", l.maxGateways(),
+				"fix", "name the gateways allowed on the Network page, or raise the most allowed at once")
+		}
+		return
+	}
 	if g == nil {
 		g = &Gateway{Callsign: poll.Callsign, FirstSeen: now}
 		l.gateways[callsign] = g
@@ -168,6 +189,14 @@ func (l *Listener) poll(raw []byte, from *net.UDPAddr) {
 		l.log.Warn("cannot answer a p25 poll", "callsign", poll.Callsign,
 			"error", err.Error())
 	}
+}
+
+// maxGateways is the most gateways registered at once.
+func (l *Listener) maxGateways() int {
+	if l.cfg.MaxGateways > 0 {
+		return l.cfg.MaxGateways
+	}
+	return DefaultMaxGateways
 }
 
 // voice records a frame and relays it to every other registered gateway.

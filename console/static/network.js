@@ -72,6 +72,7 @@
   var p25Listen = document.getElementById("p25-listen");
   var p25Callsign = document.getElementById("p25-callsign");
   var p25Allowed = document.getElementById("p25-allowed");
+  var p25Max = document.getElementById("p25-max");
   var p25EnabledState = document.getElementById("p25-enabled-state");
   var p25State = document.getElementById("p25-state");
   var p25AllowedState = document.getElementById("p25-allowed-state");
@@ -105,7 +106,7 @@
     networkName, networkAddress, identityCallsign, identityLocation,
     identityLatitude, identityLongitude, peerPasswords, subEnabled, subTimeout,
     subUnlink, retain, parrotEnabled, parrotTalkgroup, parrotTimeslot,
-    dmrEnabled, dmrForwarding, p25Enabled, p25Listen, p25Callsign, p25Allowed,
+    dmrEnabled, dmrForwarding, p25Enabled, p25Listen, p25Callsign, p25Allowed, p25Max,
     repeatersEnabled, repeatersListen, repeatersRecord, repeatersSite,
     repeatersPresent, repeatersHeader, repeatersHold, repeatersAllowed,
     ipscEnabled, ipscListen, ipscMaster, ipscCC, ipscTimeout, ipscPeers, ipscSlot2
@@ -355,6 +356,8 @@
     /* One per line rather than comma separated, because a callsign list is
      * read down a column and a long comma-separated line is not. */
     p25Allowed.value = (p25.allowed_callsigns || []).join("\n");
+    /* Blank is the default, which the document says by leaving it out. */
+    p25Max.value = p25.max_gateways ? String(p25.max_gateways) : "";
     refreshP25State();
 
     var repeaters = cfg.p25_repeaters || {};
@@ -583,6 +586,14 @@
       }
       return calls;
     });
+    if (touched(p25Max)) {
+      if (p25Max.value.trim() === "") {
+        delete p25().max_gateways;
+      } else {
+        var most = whole(p25Max, "Most gateways at once", 1, 10000);
+        if (most !== null) { p25().max_gateways = most; }
+      }
+    }
     if (turnedOn(p25Enabled) && !p25().listen_address) {
       p25().listen_address = "0.0.0.0:41000";
     }

@@ -243,36 +243,12 @@ func TestTheServersOwnOriginIsRefused(t *testing.T) {
 	}
 }
 
-// TestPeerLimitIsEnforced bounds memory against a flood of distinct IDs.
-//
-// The registry never holds more than the limit. A login that never answered
-// its challenge gives way to a new one rather than refusing it, so a flood of
-// login requests cannot make the server look full to a real hotspot; a server
-// full of stations that did log in refuses, which
-// TestHalfOpenLoginsDoNotFillThePeerLimit covers.
-func TestPeerLimitIsEnforced(t *testing.T) {
-	h := newHarness(t, func(c *peers.MasterConfig) {
-		c.MaxPeers = 3
-		c.Password = func(hbp.RepeaterID) ([]byte, bool) { return []byte(testPassword), true }
-	})
-	for i := 1; i <= 50; i++ {
-		if out := h.send(hbp.Login{RepeaterID: hbp.RepeaterID(i)}, addrA); out.Dropped != "" {
-			t.Fatalf("login %d refused while every slot was only half open: %s", i, out.Dropped)
-		}
-		if h.m.Count() > 3 {
-			t.Fatalf("registry holds %d peers after %d logins, want at most 3", h.m.Count(), i)
-		}
-	}
-	if h.m.Count() != 3 {
-		t.Errorf("registry holds %d peers, want 3", h.m.Count())
-	}
-
-	// An already-registered peer may still re-login at the limit, or a reboot
-	// would lock it out until its old registration expired.
-	if out := h.send(hbp.Login{RepeaterID: 2}, addrA); out.Dropped != "" {
-		t.Errorf("an existing peer was refused at the limit: %s", out.Dropped)
-	}
-}
+// The peer limit, and what a flood of login requests can and cannot do to
+// it, are in loginrace_test.go: TestThePeerLimitIsStationsThatLoggedIn and
+// TestForgedLoginsDoNotPushOutARealOne. Until 0.1.333 the test here asserted
+// that the registry never held more entries than the limit, counting logins
+// that had not answered their challenge; that sharing is what let a flood
+// push a real login out.
 
 // TestSilentPeerTimesOut covers the only way a peer currently leaves.
 func TestSilentPeerTimesOut(t *testing.T) {

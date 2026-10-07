@@ -109,10 +109,7 @@ func (t *throttle) fail(from netip.AddrPort, reason FailureReason, now time.Time
 	// A run that has gone quiet starts again. A hotspot that fails once a day
 	// for a week is somebody who fixed it and broke it again.
 	if a == nil || now.Sub(a.last) > loginFailureWindow {
-		if a == nil && len(t.attempts) >= maxTrackedSources {
-			// Full of other sources' failures. Not tracking one more costs a
-			// guesser nothing they did not have; tracking without limit lets
-			// anybody who can forge a source address fill memory.
+		if a == nil && len(t.attempts) >= maxTrackedSources && !t.makeRoom(reason, now) {
 			return false, ""
 		}
 		a = &loginAttempts{first: now, reasons: map[FailureReason]int{}}
@@ -147,6 +144,65 @@ func (t *throttle) fail(from netip.AddrPort, reason FailureReason, now time.Time
 	return true, fmt.Sprintf("%d failed logins from %s in %s (%s); ignoring it for %s",
 		a.failures, addr, now.Sub(a.first).Truncate(time.Second),
 		describeReasons(a.reasons), t.lockout)
+}
+
+// makeRoom frees one place in a full table for a failure of this kind, and
+// reports whether it did.
+//
+// **A full table used to mean nobody new was counted**, on the reasoning that
+// this cost a guesser nothing. It cost the limit itself: 4,096 datagrams from
+// forged addresses, each a failure of the kind that is shown and not counted,
+// filled the table, and from then on a real guesser at a new address was
+// never counted and never locked out (found 2026-10-07, A5).
+//
+// So a failure that proves its address always gets a place, and takes it
+// from what proves least: first anything that has lapsed, then the quietest
+// entry that never proved its address, which is the kind that can be forged
+// without limit; then the quietest that is not locked out; and only then the
+// lockout nearest its end. A failure that proves nothing is not worth
+// anybody's place and is turned away from a full table, as before.
+func (t *throttle) makeRoom(reason FailureReason, now time.Time) bool {
+	// Before anything is looked through. This is reached once for every
+	// forged datagram while the table is full, and going through four
+	// thousand entries for each would be a way to spend the server's time
+	// that costs its sender nothing. The sweep clears out what has lapsed.
+	if !reason.provesAddress() {
+		return false
+	}
+	t.expire(now)
+	if len(t.attempts) < maxTrackedSources {
+		return true
+	}
+	var unproven, unlocked, locked netip.Addr
+	var haveUnproven, haveUnlocked, haveLocked bool
+	for addr, a := range t.attempts {
+		isLocked := !a.until.IsZero() && now.Before(a.until)
+		switch {
+		case a.failures == 0:
+			if !haveUnproven || a.last.Before(t.attempts[unproven].last) {
+				unproven, haveUnproven = addr, true
+			}
+		case !isLocked:
+			if !haveUnlocked || a.last.Before(t.attempts[unlocked].last) {
+				unlocked, haveUnlocked = addr, true
+			}
+		default:
+			if !haveLocked || a.until.Before(t.attempts[locked].until) {
+				locked, haveLocked = addr, true
+			}
+		}
+	}
+	switch {
+	case haveUnproven:
+		delete(t.attempts, unproven)
+	case haveUnlocked:
+		delete(t.attempts, unlocked)
+	case haveLocked:
+		delete(t.attempts, locked)
+	default:
+		return false
+	}
+	return true
 }
 
 // succeed clears a source's history.

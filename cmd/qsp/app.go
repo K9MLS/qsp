@@ -655,6 +655,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 			ListenAddress:    cfg.P25.ListenAddress,
 			Callsign:         cfg.P25.Callsign,
 			AllowedCallsigns: cfg.P25.AllowedCallsigns,
+			MaxGateways:      cfg.P25.MaxGateways,
 			Calls:            a.p25Calls,
 			Floor:            p25Floor,
 			Repeaters:        repeaterSink(a.repeaters),

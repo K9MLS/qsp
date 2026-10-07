@@ -86,9 +86,20 @@ type Config struct {
 	// crosses between the two. Nil is a floor of this listener's own, so
 	// repeaters still take turns among themselves.
 	Floor *p25link.Floor
+	// MaxTunnels is the most tunnels open at once. Zero is DefaultMaxTunnels.
+	MaxTunnels int
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
 }
+
+// DefaultMaxTunnels is how many routers' tunnels may be open at once. One
+// tunnel is one repeater, so this is room for a large network of them.
+//
+// **There was no limit.** Each tunnel is a connection held open with three
+// goroutines behind it, and with no allowed routers named anybody who can
+// reach the port can open one, and another, for as long as they like (found
+// 2026-10-07, A9).
+const DefaultMaxTunnels = 64
 
 // Sink is where a repeater's voice goes besides other repeaters: the P25
 // gateway listener, which takes the frames as they are.
@@ -198,6 +209,9 @@ func New(log *slog.Logger, cfg Config) (*Listener, error) {
 	}
 	if l.cfg.Keepalive <= 0 {
 		l.cfg.Keepalive = KeepaliveInterval
+	}
+	if l.cfg.MaxTunnels <= 0 {
+		l.cfg.MaxTunnels = DefaultMaxTunnels
 	}
 	for _, r := range cfg.AllowedRouters {
 		l.allowed[net.ParseIP(strings.TrimSpace(r)).String()] = true
@@ -396,6 +410,14 @@ func (l *Listener) accept(ctx context.Context, ln net.Listener) {
 			continue
 		}
 		l.mu.Lock()
+		if len(l.conns) >= l.cfg.MaxTunnels {
+			l.mu.Unlock()
+			l.refused.Add(1)
+			l.log.Warn("a connection was refused: as many tunnels are open as are allowed",
+				slog.String("from", router), slog.Int("limit", l.cfg.MaxTunnels))
+			_ = conn.Close()
+			continue
+		}
 		l.nextID++
 		st := &station{
 			id:     l.nextID,
