@@ -291,6 +291,29 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Access and Zello pages save only what you changed**, as the Network
+  page has since 0.1.330 (2026-10-07 hunt, E5, E6, E8).
+  - *Access.* All four lists were written on every save, so a server with no
+    access settings at all was given four empty ones by a save that edited
+    nothing. A list is now written only when its text or its mode was
+    changed.
+  - *Access, Motorola repeaters.* A line that did not begin with a radio ID
+    (a callsign typed first, or an ID with a letter O in it) was skipped,
+    and that repeater left the allow list with the answer "saved". The save
+    is refused, the line is named, and nothing is dropped.
+  - *Zello.* Saving the page untouched on a server that had never had Zello
+    made a vocoder channel and a bridge. On one that had it, any save
+    dropped `connector_health`, which is where the connector reports its
+    health. The settings, the channel and the bridge are each written only
+    when one of their own boxes was edited, and what the page does not show
+    is kept.
+  - *Zello.* A level typed as `3,5` was saved as 3, and a repeater ID with a
+    letter in it left the list of repeaters that carry Zello. Both are
+    refused now, naming the box.
+  - Both pages have the save bar: Save stays at the foot of the window with
+    its answer beside it.
+  - A server error while loading either page is shown as an error, not as
+    empty lists or an empty setup with a working Save button.
 - **The Network settings page saves only what you changed.** Every setting
   on the page was written from its box on every save, and a box cannot
   always show what is stored, so changing one thing changed others nobody

@@ -35,8 +35,12 @@ func TestTheZelloPageWritesOnlyKeysTheServerReads(t *testing.T) {
 
 	body := functionBody(t, string(src), "collect")
 	written := map[string]bool{}
-	for _, m := range regexp.MustCompile(`\bt\.([a-z_]+)\s*=[^=]`).FindAllStringSubmatch(body, -1) {
-		written[m[1]] = true
+	// Two shapes: `t.key = value`, and since 0.1.331 `set(t, "key", control,
+	// value, fresh)`, which writes it only when its control was edited.
+	for _, shape := range []string{`\bt\.([a-z_]+)\s*=[^=]`, `\bset\(t, "([a-z_]+)"`} {
+		for _, m := range regexp.MustCompile(shape).FindAllStringSubmatch(body, -1) {
+			written[m[1]] = true
+		}
 	}
 	if len(written) == 0 {
 		t.Fatal("collect() writes no transcoder field; this test would pass by finding nothing")
@@ -103,7 +107,7 @@ func TestTheAliasFieldIsOnThePageAndReadBack(t *testing.T) {
 			"the alias input does not stop at 31 characters"},
 		{"render() reads it back", strings.Contains(functionBody(t, string(js), "render"), "alias.value = t.alias"),
 			"render() does not fill the field, so a saved alias looks unset"},
-		{"collect() writes it", strings.Contains(functionBody(t, string(js), "collect"), "t.alias ="),
+		{"collect() writes it", strings.Contains(functionBody(t, string(js), "collect"), `set(t, "alias", alias,`),
 			"collect() does not write the field, so saving it does nothing"},
 	}
 	for _, tc := range tests {

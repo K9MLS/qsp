@@ -92,15 +92,41 @@
   };
 
   var loaded = null;
+  var bar = window.QSPSaveBar(document.getElementById("save-status"));
+
+  /* The three things this page owns, and the controls that decide each:
+   * the Zello settings, the vocoder channel named "zello", and the bridge
+   * named "zello".
+   *
+   * **One of them is written only when one of its controls was edited**
+   * (since 0.1.331). All three were written on every save. So on a server
+   * that had never had Zello, saving the page untouched made a channel and
+   * a bridge; and the Zello settings were rebuilt from four boxes, which
+   * dropped `connector_health` and anything else the page does not show
+   * (found 2026-10-07, E6). */
+  var SETTINGS = [enabled, socket, issuer, channel];
+  var CHANNEL = [enabled, ambe, radioID, alias, gainUSRP, gainDMR, usrpListen,
+    usrpPeer, permitAll, permit];
+  var BRIDGE = [enabled, talkgroup, timeslot, permitAll, permit];
+  var CONTROLS = SETTINGS.concat(CHANNEL, BRIDGE);
+
+  var shown = {};
+
+  function valueOf(node) { return node.type === "checkbox" ? node.checked : node.value; }
+
+  function mark() {
+    CONTROLS.forEach(function (node) {
+      shown[node.id] = valueOf(node);
+      node.removeAttribute("aria-invalid");
+    });
+  }
+
+  function touched(node) { return valueOf(node) !== shown[node.id]; }
+
+  function changed() { return !!loaded && CONTROLS.some(touched); }
 
   function show(node) { if (node) { node.hidden = false; } }
   function hide(node) { if (node) { node.hidden = true; } }
-
-  function scrollIntoView(node) {
-    if (node && node.scrollIntoView) {
-      node.scrollIntoView({ block: "nearest", behavior: "smooth" });
-    }
-  }
 
   function same(a, b) {
     return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
@@ -122,13 +148,30 @@
     return null;
   }
 
+  /* parseIDs is the repeater IDs typed so far, for the sentence beside the
+   * box. What cannot be read is left out here and reported by badIDs when
+   * the page is saved. */
   function parseIDs(text) {
-    return String(text || "").split(",")
-      .map(function (p) { return parseInt(p.trim(), 10); })
-      .filter(function (p) { return !isNaN(p) && p > 0; });
+    return String(text || "").split(/[\s,]+/)
+      .filter(function (p) { return /^\d+$/.test(p) && Number(p) > 0; })
+      .map(Number);
   }
 
-  /* ---- Settings ---- */
+  /* badIDs is the entries of a list that are not IDs. */
+  function badIDs(text) {
+    return String(text || "").split(/[\s,]+/)
+      .filter(function (p) { return p !== "" && !(/^\d+$/.test(p) && Number(p) > 0); });
+  }
+
+  /* number reads a box as a number, strictly: null when it is not one. Blank
+   * is zero. parseFloat reads "3,5" as 3 and "loud" as nothing, and `|| 0`
+   * makes nothing a zero; both were saved without a word. */
+  function number(node, wholeOnly) {
+    var raw = node.value.trim();
+    if (raw === "") { return 0; }
+    if (wholeOnly ? !/^\d+$/.test(raw) : !/^-?\d+(\.\d+)?$/.test(raw)) { return null; }
+    return Number(raw);
+  }
 
   function render(cfg) {
     var z = cfg.zello || {};
@@ -165,6 +208,7 @@
 
     if (cfg.dmr && cfg.dmr.forwarding === false) { show(forwardingOff); } else { hide(forwardingOff); }
     refreshStates();
+    mark();
   }
 
   function refreshStates() {
@@ -188,79 +232,127 @@
     }, null, 2);
   }
 
-  /* What the page can say before the server does. The server validates too;
-   * these are the three a new user most often leaves out, said in the words
-   * of this page rather than as configuration field names. */
+  /* What the page can say before the server does: each is a control and a
+   * sentence about it, in the words of this page rather than as
+   * configuration field names. The server validates too.
+   *
+   * First what cannot be read, whatever the switch says, because a number
+   * that is not one would otherwise be saved as zero. Then, with Zello on,
+   * the steps a new user most often leaves out. */
   function pageProblems() {
     var problems = [];
-    if (!enabled.checked) { return problems; }
-    if (!channel.value.trim()) { problems.push("Step 1: give the Zello channel."); }
-    if (!issuer.value.trim()) { problems.push("Step 1: give the issuer from the developer portal."); }
-    if (!(parseInt(radioID.value, 10) > 0)) { problems.push("Step 2: give the gateway its DMR ID."); }
-    if (!(parseInt(talkgroup.value, 10) > 0)) { problems.push("Step 3: choose the talkgroup Zello carries."); }
+    function bad(node, message) { problems.push({ node: node, message: message }); }
+
+    if (number(radioID, true) === null) {
+      bad(radioID, "Step 2: \u201c" + radioID.value.trim() + "\u201d is not a DMR ID. Digits only.");
+    }
+    if (number(talkgroup, true) === null) {
+      bad(talkgroup, "Step 3: \u201c" + talkgroup.value.trim() + "\u201d is not a talkgroup number.");
+    }
+    [[gainUSRP, "toward Zello"], [gainDMR, "toward the radios"]].forEach(function (g) {
+      if (number(g[0], false) === null) {
+        bad(g[0], "Step 2: the level " + g[1] + ", \u201c" + g[0].value.trim() +
+          "\u201d, is not a number. Decibels, with a full stop for a decimal: 3.5.");
+      }
+    });
+    if (!permitAll.checked) {
+      var wrong = badIDs(permit.value);
+      if (wrong.length) {
+        bad(permit, "Step 3: \u201c" + wrong[0] + "\u201d is not a repeater ID. Nothing was " +
+          "saved, so no repeater has been dropped from the list.");
+      }
+    }
+    if (problems.length || !enabled.checked) { return problems; }
+
+    if (!channel.value.trim()) { bad(channel, "Step 1: give the Zello channel."); }
+    if (!issuer.value.trim()) { bad(issuer, "Step 1: give the issuer from the developer portal."); }
+    if (!(number(radioID, true) > 0)) { bad(radioID, "Step 2: give the gateway its DMR ID."); }
+    if (!(number(talkgroup, true) > 0)) { bad(talkgroup, "Step 3: choose the talkgroup Zello carries."); }
     if (!permitAll.checked && parseIDs(permit.value).length === 0) {
-      problems.push("Step 3: list at least one repeater whose owner has agreed, or say every one has.");
+      bad(permit, "Step 3: list at least one repeater whose owner has agreed, or say every one has.");
     }
     return problems;
   }
 
   function collect() {
     var next = JSON.parse(JSON.stringify(loaded));
-    next.dmr = next.dmr || {};
-    next.dmr.transcoders = next.dmr.transcoders || [];
-    next.dmr.bridges = next.dmr.bridges || [];
 
     var on = enabled.checked;
-    var tg = parseInt(talkgroup.value, 10) || 0;
-    var ts = parseInt(timeslot.value, 10) === 1 ? 1 : 2;
+    var tg = number(talkgroup, true) || 0;
+    var ts = Number(timeslot.value) === 1 ? 1 : 2;
     var ids = parseIDs(permit.value);
 
-    next.zello = {
-      logon_socket: socket.value.trim() || DEFAULT_SOCKET,
-      issuer: issuer.value.trim(),
-      audience: (loaded.zello && loaded.zello.audience) || "",
-      channel: channel.value.trim()
-    };
-    next.zello.enabled = on;
-
-    var t = findTranscoder(next);
-    if (!t) {
-      t = { name: NAME };
-      next.dmr.transcoders.push(t);
+    /* set writes one setting when its control was edited, or when the thing
+     * it belongs to is being made now and needs every one of them. */
+    function set(target, key, node, value, making) {
+      if (making || touched(node)) { target[key] = value; }
     }
-    t.enabled = on;
-    t.address = ambe.value.trim();
-    t.radio_id = parseInt(radioID.value, 10) || 0;
-    /* **The operator's string and nothing else** (ADR-0064 §3). The server
-     * validates it -- ASCII, 31 characters -- and refuses the whole save with
-     * the reason if it is wrong, so this does not check it a second time. */
-    t.alias = alias.value.trim();
-    t.gain_to_usrp_db = parseFloat(gainUSRP.value) || 0;
-    t.gain_to_dmr_db = parseFloat(gainDMR.value) || 0;
-    t.usrp_listen = usrpListen.value.trim();
-    t.usrp_peer = usrpPeer.value.trim();
-    t.permit_all_peers = permitAll.checked;
-    t.permit_peers = permitAll.checked ? [] : ids;
 
-    /* **One endpoint per agreed repeater, not one for every peer.** Routing
-     * withholds transcoded audio from an every-peer endpoint unless every
-     * peer has agreed, so a bridge written that way with a list would carry
-     * nothing and say so only in a log. */
-    var endpoints = [];
-    if (permitAll.checked) {
-      endpoints.push({ peer: 0, talkgroup: tg, timeslot: ts });
-    } else {
-      ids.forEach(function (id) { endpoints.push({ peer: id, talkgroup: tg, timeslot: ts }); });
+    if (SETTINGS.some(touched)) {
+      /* Over what was there, so the audience, where the connector reports
+       * its health, and anything else not on this page stay as they were. */
+      var making = !loaded.zello;
+      var z = JSON.parse(JSON.stringify(loaded.zello || {}));
+      set(z, "issuer", issuer, issuer.value.trim(), making);
+      set(z, "channel", channel, channel.value.trim(), making);
+      set(z, "enabled", enabled, on, making);
+      set(z, "logon_socket", socket, socket.value.trim() || DEFAULT_SOCKET, making);
+      /* The box shows the usual socket when none is stored. Turned on with
+       * none stored, that is the one it gets. */
+      if (on && !z.logon_socket) { z.logon_socket = socket.value.trim() || DEFAULT_SOCKET; }
+      next.zello = z;
     }
-    endpoints.push({ transcoder: NAME, talkgroup: tg, timeslot: ts });
 
-    var b = findBridge(next);
-    if (!b) {
-      b = { name: NAME };
-      next.dmr.bridges.push(b);
+    if (CHANNEL.some(touched)) {
+      next.dmr = next.dmr || {};
+      next.dmr.transcoders = next.dmr.transcoders || [];
+      var t = findTranscoder(next);
+      var fresh = !t;
+      if (fresh) {
+        t = { name: NAME };
+        next.dmr.transcoders.push(t);
+      }
+      set(t, "enabled", enabled, on, fresh);
+      set(t, "address", ambe, ambe.value.trim(), fresh);
+      set(t, "radio_id", radioID, number(radioID, true) || 0, fresh);
+      /* **The operator's string and nothing else** (ADR-0064 §3). The server
+       * validates it -- ASCII, 31 characters -- and refuses the whole save with
+       * the reason if it is wrong, so this does not check it a second time. */
+      set(t, "alias", alias, alias.value.trim(), fresh);
+      set(t, "gain_to_usrp_db", gainUSRP, number(gainUSRP, false) || 0, fresh);
+      set(t, "gain_to_dmr_db", gainDMR, number(gainDMR, false) || 0, fresh);
+      set(t, "usrp_listen", usrpListen, usrpListen.value.trim(), fresh);
+      set(t, "usrp_peer", usrpPeer, usrpPeer.value.trim(), fresh);
+      if (fresh || touched(permitAll) || touched(permit)) {
+        t.permit_all_peers = permitAll.checked;
+        t.permit_peers = permitAll.checked ? [] : ids;
+      }
     }
-    b.enabled = on;
-    b.endpoints = endpoints;
+
+    if (BRIDGE.some(touched)) {
+      next.dmr = next.dmr || {};
+      next.dmr.bridges = next.dmr.bridges || [];
+      /* **One endpoint per agreed repeater, not one for every peer.** Routing
+       * withholds transcoded audio from an every-peer endpoint unless every
+       * peer has agreed, so a bridge written that way with a list would carry
+       * nothing and say so only in a log. */
+      var endpoints = [];
+      if (permitAll.checked) {
+        endpoints.push({ peer: 0, talkgroup: tg, timeslot: ts });
+      } else {
+        ids.forEach(function (id) { endpoints.push({ peer: id, talkgroup: tg, timeslot: ts }); });
+      }
+      /* peer: 0 is how the server writes "no peer", so it is how this does. */
+      endpoints.push({ peer: 0, transcoder: NAME, talkgroup: tg, timeslot: ts });
+
+      var b = findBridge(next);
+      if (!b) {
+        b = { name: NAME };
+        next.dmr.bridges.push(b);
+      }
+      b.enabled = on;
+      b.endpoints = endpoints;
+    }
     return next;
   }
 
@@ -272,7 +364,15 @@
           show(signedOut);
           return null;
         }
-        return r.json();
+        /* An answer that is not the configuration is an error to show, not
+         * an empty setup to fill in and save over what is there. */
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          if (!r.ok || !body.config) {
+            throw new Error(body.error || "This server answered " + r.status +
+              " and not its configuration.");
+          }
+          return body;
+        });
       })
       .then(function (body) {
         if (!body) { return; }
@@ -280,6 +380,7 @@
         loaded = body.config;
         render(loaded);
         show(form);
+        bar.watch(form, changed);
         if (!body.writable) {
           readOnlyReason.textContent = body.read_only_reason || "";
           show(readOnly);
@@ -290,9 +391,10 @@
         loadPeers();
         loadChecklist();
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = (e && e.message && e.name === "Error")
+          ? e.message : "Cannot reach this instance.";
         show(errorBox);
       });
   }
@@ -303,21 +405,29 @@
     hide(restartNote);
     errorFields.innerHTML = "";
 
+    CONTROLS.forEach(function (node) { node.removeAttribute("aria-invalid"); });
     var problems = pageProblems();
     if (problems.length) {
-      errorText.textContent = "Some steps are not finished.";
+      errorText.textContent = "Nothing was saved. Some steps are not finished.";
       problems.forEach(function (p) {
         var li = document.createElement("li");
-        li.textContent = p;
+        li.textContent = p.message;
         errorFields.appendChild(li);
+        p.node.setAttribute("aria-invalid", "true");
       });
       show(errorBox);
-      scrollIntoView(errorBox);
+      bar.failed("Not saved: " + problems[0].message);
+      /* To the box itself: it is the thing to mend, and the bar has said
+       * what is wrong with it. */
+      var first = problems[0].node;
+      if (first.scrollIntoView) { first.scrollIntoView({ block: "center" }); }
+      first.focus({ preventScroll: true });
       return;
     }
 
     var next = collect();
     saveButton.disabled = true;
+    bar.saving();
     fetch("/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -327,12 +437,16 @@
       body: JSON.stringify({ config: next, base: loaded, summary: "zello" })
     })
       .then(function (r) {
-        return r.json().then(function (body) { return { status: r.status, body: body }; });
+        return r.json().catch(function () { return {}; })
+          .then(function (body) { return { status: r.status, body: body }; });
       })
       .then(function (res) {
         saveButton.disabled = false;
         if (res.status === 200) {
           loaded = next;
+          /* Redrawn from what was saved, so every control is again "as
+           * drawn" and the next save starts from here. */
+          render(loaded);
           var changes = (res.body.changes || []).length;
           savedText.textContent = changes === 0
             ? "Nothing had changed, so nothing was recorded."
@@ -347,10 +461,13 @@
             show(restartNote);
           }
           show(savedBox);
-          scrollIntoView(savedBox);
+          bar.saved(savedText.textContent +
+            (restart.length ? " A restart is needed; see the top of the page." : ""));
+          if (restart.length) { bar.reveal(savedBox); }
           loadChecklist();
           return;
         }
+        bar.failed("Not saved. The reason is shown above.");
         if (res.status === 400 && res.body.fields) {
           errorText.textContent = res.body.error || "";
           res.body.fields.forEach(function (f) {
@@ -359,16 +476,20 @@
             errorFields.appendChild(li);
           });
           show(errorBox);
-          scrollIntoView(errorBox);
+          bar.reveal(errorBox);
           return;
         }
-        errorText.textContent = (res.body && res.body.error) || "That did not save.";
+        errorText.textContent = (res.body && res.body.error) ||
+          "That did not save: the server answered " + res.status + ".";
         show(errorBox);
+        bar.reveal(errorBox);
       })
       .catch(function () {
         saveButton.disabled = false;
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = "Cannot reach this instance. Nothing was saved.";
         show(errorBox);
+        bar.failed("Not saved. The reason is shown above.");
+        bar.reveal(errorBox);
       });
   }
 
@@ -675,6 +796,7 @@
     hide(errorBox);
     hide(savedBox);
     if (loaded) { render(loaded); }
+    bar.clean();
   });
 
   load();

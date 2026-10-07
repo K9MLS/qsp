@@ -755,8 +755,11 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 		// The Network page, since 0.1.330, opens the section with
 		// `part(next, "<name>")` and writes each setting in it only when its
 		// control was edited; scripts/console-check holds that it does.
+		// The Zello page builds its section in a copy and assigns the whole of
+		// it, `next.<name> = z`, having set `"enabled"` in the copy.
 		if !strings.Contains(script, "next."+name+".enabled") &&
-			!strings.Contains(script, `part(next, "`+name+`")`) {
+			!strings.Contains(script, `part(next, "`+name+`")`) &&
+			!(strings.Contains(script, "next."+name+" = ") && strings.Contains(script, `"enabled", enabled`)) {
 			t.Errorf("%s.js never writes %s.enabled, so the control cannot save", base, name)
 		}
 	}

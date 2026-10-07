@@ -78,6 +78,38 @@
   /* The configuration as loaded, kept so Discard can restore it and so a save
    * sends everything this page did not touch back unchanged. */
   var loaded = null;
+  var bar = window.QSPSaveBar(document.getElementById("save-status"));
+
+  /* What each list showed when it was last drawn from the server's document:
+   * its mode and its text. **A list still as it was drawn is not written.**
+   * Until 0.1.331 all four were written on every save, so a server with no
+   * access block at all was given four empty ones by a save that edited
+   * nothing, and the Motorola list was rebuilt from whatever lines of it
+   * could be read. */
+  var shown = {};
+
+  function listNow(spec) {
+    var el = document.getElementById(spec.id);
+    if (!el) { return ""; }
+    var checked = el.querySelector('input[type="radio"]:checked');
+    return (checked ? checked.value : "") + "\n" + el.querySelector(".acl__ids").value;
+  }
+
+  function ipscNow() {
+    var box = document.getElementById("acl-ipsc-ids");
+    return box ? box.value : null;
+  }
+
+  function mark() {
+    LISTS.forEach(function (spec) { shown[spec.id] = listNow(spec); });
+    shown.ipsc = ipscNow();
+  }
+
+  function changed() {
+    if (!loaded) { return false; }
+    return LISTS.some(function (spec) { return listNow(spec) !== shown[spec.id]; }) ||
+      ipscNow() !== shown.ipsc;
+  }
 
   function show(el) { if (el) { el.hidden = false; } }
   function hide(el) { if (el) { el.hidden = true; } }
@@ -138,8 +170,9 @@
         return "Nothing is allowed. A permit list with no entries refuses every " +
           escapeText(noun) + ".";
       }
-      return "Only the " + count + " " + escapeText(noun) +
-        (count === 1 ? "" : "s") + " listed below are allowed.";
+      return count === 1
+        ? "Only the " + escapeText(noun) + " listed below is allowed."
+        : "Only the " + count + " " + escapeText(noun) + "s listed below are allowed.";
     }
     if (count === 0) {
       return "Everything is allowed. Nothing is blocked.";
@@ -288,43 +321,42 @@
       return "Every repeater that knows the address is admitted. " +
         "On an address the internet can reach, name the repeaters instead.";
     }
-    return "Only the " + ids.length + " repeater" + (ids.length === 1 ? "" : "s") +
-      " listed below are answered. Everything else is ignored and counted.";
+    return (ids.length === 1 ? "Only the repeater listed below is answered."
+        : "Only the " + ids.length + " repeaters listed below are answered.") +
+      " Everything else is ignored and counted.";
   }
 
-  /* readIPSC returns the radio IDs currently typed, ignoring blanks and
-   * anything that is not a number — the same tolerance the lists above give a
-   * half-finished line.
+  /* parseIPSC reads the Motorola list: one radio ID to a line, and a
+   * callsign after it if the operator wants one.
    *
    * **A line may carry a callsign after the ID.** The two are stored in
    * different places — the ID decides admission, the name decides only what an
    * operator reads — but asking somebody to keep two lists in step by hand is
-   * how one of them goes stale. One field, two destinations. */
-  function readIPSC() {
-    return parseIPSC().ids;
-  }
-
-  /* readIPSCNames returns the callsigns typed beside those IDs. */
-  function readIPSCNames() {
-    return parseIPSC().names;
-  }
-
+   * how one of them goes stale. One field, two destinations.
+   *
+   * **A line that does not begin with an ID is reported, not skipped.** It
+   * was skipped, as "the tolerance a half-finished line deserves", and the
+   * save went ahead without it: a callsign typed before its ID, or an ID
+   * with a letter O in it, took that repeater off the allow list with the
+   * answer "saved" (found 2026-10-07, E5). */
   function parseIPSC() {
     var box = document.getElementById("acl-ipsc-ids");
-    var out = { ids: [], names: {} };
+    var out = { ids: [], names: {}, problems: [] };
     if (!box) {
       return out;
     }
-    box.value.split("\n").forEach(function (line) {
+    box.value.split("\n").forEach(function (line, index) {
       var t = line.trim();
       if (t === "") {
         return;
       }
       var parts = t.split(/[\s,]+/);
-      if (!/^[0-9]+$/.test(parts[0])) {
+      if (!/^[0-9]+$/.test(parts[0]) || Number(parts[0]) === 0) {
+        out.problems.push("Allowed repeaters, line " + (index + 1) + ": \u201c" + t +
+          "\u201d does not begin with a radio ID. The ID comes first, then the callsign.");
         return;
       }
-      var id = parseInt(parts[0], 10);
+      var id = Number(parts[0]);
       out.ids.push(id);
       var name = parts.slice(1).join(" ").trim();
       if (name !== "") {
@@ -332,6 +364,11 @@
       }
     });
     return out;
+  }
+
+  /* readIPSC is the IDs as typed so far, for the sentence above the box. */
+  function readIPSC() {
+    return parseIPSC().ids;
   }
 
   /* writeIPSC turns the two stored shapes back into the one field they were
@@ -360,6 +397,7 @@
     if (window.QSPHints) {
       window.QSPHints.wire(document);
     }
+    mark();
   }
 
   function load() {
@@ -370,7 +408,15 @@
           show(signedOut);
           return null;
         }
-        return r.json();
+        /* An answer that is not the configuration is an error to show, not
+         * four empty lists to save over what is there. */
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          if (!r.ok || !body.config) {
+            throw new Error(body.error || "This server answered " + r.status +
+              " and not its configuration.");
+          }
+          return body;
+        });
       })
       .then(function (body) {
         if (!body) {
@@ -380,6 +426,7 @@
         loaded = body.config;
         render(loaded);
         show(form);
+        bar.watch(form, changed);
 
         if (!body.writable) {
           readOnlyReason.textContent = body.read_only_reason || "";
@@ -387,11 +434,43 @@
           saveButton.disabled = true;
         }
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = (e && e.message && e.name === "Error")
+          ? e.message : "Cannot reach this instance.";
         show(errorBox);
       });
+  }
+
+  /* collect is the document to save: the one loaded, with each list that
+   * was edited replaced. It returns what could not be read beside it. */
+  function collect() {
+    /* A copy, so a refused save leaves the page showing what the operator
+     * typed rather than a half-applied document. */
+    var next = JSON.parse(JSON.stringify(loaded));
+    var problems = [];
+
+    LISTS.forEach(function (spec) {
+      if (listNow(spec) === shown[spec.id]) { return; }
+      /* Over what was there, so anything else the list carries stays. */
+      var was = spec.path.reduce(function (node, key) {
+        return node && typeof node === "object" ? node[key] : undefined;
+      }, loaded);
+      var now = readList(spec);
+      var out = was && typeof was === "object" ? JSON.parse(JSON.stringify(was)) : {};
+      out.mode = now.mode;
+      out.ids = now.ids;
+      setAt(next, spec.path, out);
+    });
+
+    var box = document.getElementById("acl-ipsc-ids");
+    if (box && ipscNow() !== shown.ipsc && next.ipsc && next.ipsc.enabled) {
+      var typed = parseIPSC();
+      problems = problems.concat(typed.problems);
+      next.ipsc.allowed_peers = typed.ids;
+      next.ipsc.peer_names = typed.names;
+    }
+    return { next: next, problems: problems };
   }
 
   function save() {
@@ -399,18 +478,28 @@
     hide(savedBox);
     errorFields.innerHTML = "";
 
-    /* A copy, so a refused save leaves the page showing what the operator
-     * typed rather than a half-applied document. */
-    var next = JSON.parse(JSON.stringify(loaded));
-    LISTS.forEach(function (spec) {
-      setAt(next, spec.path, readList(spec));
-    });
-    if (next.ipsc && next.ipsc.enabled) {
-      next.ipsc.allowed_peers = readIPSC();
-      next.ipsc.peer_names = readIPSCNames();
+    var collected = collect();
+    var next = collected.next;
+    var box = document.getElementById("acl-ipsc-ids");
+    if (box) { box.removeAttribute("aria-invalid"); }
+    if (collected.problems.length) {
+      errorText.textContent = "The list of allowed repeaters could not be read, so " +
+        "nothing was saved and no repeater has been dropped from it.";
+      collected.problems.forEach(function (message) {
+        var li = document.createElement("li");
+        li.textContent = message;
+        errorFields.appendChild(li);
+      });
+      show(errorBox);
+      bar.failed("Not saved: " + collected.problems[0]);
+      box.setAttribute("aria-invalid", "true");
+      if (box.scrollIntoView) { box.scrollIntoView({ block: "center" }); }
+      box.focus({ preventScroll: true });
+      return;
     }
 
     saveButton.disabled = true;
+    bar.saving();
     fetch("/api/config", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -420,21 +509,28 @@
       body: JSON.stringify({ config: next, base: loaded, summary: "access control" })
     })
       .then(function (r) {
-        return r.json().then(function (body) { return { status: r.status, body: body }; });
+        return r.json().catch(function () { return {}; })
+          .then(function (body) { return { status: r.status, body: body }; });
       })
       .then(function (res) {
         saveButton.disabled = false;
 
         if (res.status === 200) {
           loaded = next;
+          /* Redrawn from what was saved, so every list is again "as drawn"
+           * and the next save starts from here. */
+          render(loaded);
           var changes = (res.body.changes || []).length;
           savedText.textContent = changes === 0
             ? "Nothing had changed, so nothing was recorded."
             : changes + (changes === 1 ? " change" : " changes") +
               " applied, saved as version " + res.body.version + ".";
           show(savedBox);
+          bar.saved(savedText.textContent);
           return;
         }
+
+        bar.failed("Not saved. The reason is shown above.");
 
         if (res.status === 400 && res.body.fields) {
           errorText.textContent = res.body.error || "";
@@ -447,16 +543,21 @@
             errorFields.appendChild(li);
           });
           show(errorBox);
+          bar.reveal(errorBox);
           return;
         }
 
-        errorText.textContent = (res.body && res.body.error) || "That did not save.";
+        errorText.textContent = (res.body && res.body.error) ||
+          "That did not save: the server answered " + res.status + ".";
         show(errorBox);
+        bar.reveal(errorBox);
       })
       .catch(function () {
         saveButton.disabled = false;
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = "Cannot reach this instance. Nothing was saved.";
         show(errorBox);
+        bar.failed("Not saved. The reason is shown above.");
+        bar.reveal(errorBox);
       });
   }
 
@@ -467,6 +568,7 @@
     if (loaded) {
       render(loaded);
     }
+    bar.clean();
   });
 
   /* The join link, built from the address this page was reached by.
