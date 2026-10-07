@@ -1768,7 +1768,11 @@ func TestTheStationIdentityIsEditable(t *testing.T) {
 		t.Fatalf("reading network.js: %v", err)
 	}
 	src := string(script)
-	if !strings.Contains(src, "next.dmr.identity") {
+	// Since 0.1.330 a setting is written by put(control, section, key, ...)
+	// and only when its control was edited; scripts/console-check holds what
+	// that does, and this holds that it is there to do.
+	if !strings.Contains(src, `part(dmr(), "identity")`) ||
+		!strings.Contains(src, `put(identityCallsign, identity, "callsign"`) {
 		t.Error("network.js never writes the identity, so the form cannot save")
 	}
 	// A coordinate must not be saved as zero when it is simply absent: zero is a
@@ -1818,7 +1822,7 @@ func TestSubscriptionAndRetentionAreEditable(t *testing.T) {
 		t.Fatalf("reading network.js: %v", err)
 	}
 	src := string(script)
-	for _, want := range []string{"next.dmr.subscription", "next.dmr.calls"} {
+	for _, want := range []string{`part(dmr(), "subscription")`, `part(dmr(), "calls")`} {
 		if !strings.Contains(src, want) {
 			t.Errorf("network.js never writes %s, so the form cannot save", want)
 		}
@@ -1892,13 +1896,14 @@ func TestThePeerPasswordDirectoryIsEditable(t *testing.T) {
 		t.Fatalf("reading network.js: %v", err)
 	}
 	src := string(script)
-	if !strings.Contains(src, "next.dmr.peer_passwords") {
+	if !strings.Contains(src, `put(peerPasswords, dmr, "peer_passwords"`) {
 		t.Error("network.js never writes the directory, so the form cannot save")
 	}
 	// Written even when blank, or clearing the field leaves the old directory in
 	// place and the network stays on per-member passwords the operator thought
-	// they had turned off.
-	if !strings.Contains(src, "peerPasswords.value.trim();") {
+	// they had turned off. The value is the box's own text, trimmed, with no
+	// test for emptiness in front of it.
+	if !strings.Contains(src, `put(peerPasswords, dmr, "peer_passwords", text(peerPasswords));`) {
 		t.Error("network.js does not write an empty directory, so clearing the field " +
 			"cannot return the network to one shared password")
 	}

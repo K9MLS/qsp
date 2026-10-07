@@ -1,0 +1,86 @@
+{
+ "version": 1,
+ "server": {
+  "listen_address": "127.0.0.1:8080",
+  "read_header_timeout": "5s",
+  "read_timeout": "30s",
+  "write_timeout": "30s",
+  "idle_timeout": "2m0s",
+  "shutdown_timeout": "15s",
+  "session_lifetime": "12h0m0s",
+  "behind_proxy": false,
+  "map": {
+   "tile_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+   "attribution": "\u00a9 OpenStreetMap contributors",
+   "max_zoom": 18
+  }
+ },
+ "database": {
+  "driver": "sqlite",
+  "dsn": "qsp.db",
+  "max_open_conns": 4,
+  "conn_max_lifetime": "1h0m0s",
+  "busy_timeout": "5s"
+ },
+ "logging": {
+  "level": "info",
+  "format": "text",
+  "include_source": false
+ },
+ "events": {
+  "history_size": 256,
+  "subscriber_buffer": 64
+ },
+ "dmr": {
+  "enabled": false,
+  "listen_address": "0.0.0.0:62031",
+  "password_file": "",
+  "peer_timeout": "1m0s",
+  "login_timeout": "30s",
+  "max_peers": 200,
+  "subscriber_timeout": "2h0m0s",
+  "forwarding": false,
+  "join": {
+   "network_name": "",
+   "address": "",
+   "talkgroups": null
+  },
+  "bridges": null,
+  "triggers": null,
+  "schedule": null,
+  "upstreams": null,
+  "subscription": {
+   "enabled": false,
+   "timeout": "15m0s"
+  },
+  "parrot": {
+   "enabled": false,
+   "talkgroup": 0,
+   "timeslot": 0,
+   "max_duration": "0s",
+   "gap": "0s"
+  },
+  "callsigns": {
+   "enabled": false,
+   "contact": ""
+  },
+  "calls": {
+   "retain": "720h0m0s"
+  },
+  "identity": {}
+ },
+ "ipsc": {
+  "enabled": false,
+  "listen_address": "",
+  "master_id": 0,
+  "allowed_peers": null,
+  "peer_timeout_seconds": 0,
+  "colour_code": null,
+  "slot_bit_is_timeslot2": false
+ },
+ "p25": {
+  "enabled": false,
+  "listen_address": "",
+  "allowed_callsigns": null
+ }
+}

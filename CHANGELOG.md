@@ -291,6 +291,31 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Network settings page saves only what you changed.** Every setting
+  on the page was written from its box on every save, and a box cannot
+  always show what is stored, so changing one thing changed others nobody
+  had touched (2026-10-07 hunt, E4):
+  - a timeout or retention the dropdown does not offer was shown as the
+    dropdown's first choice and saved as that. It is now shown as what it
+    is, and kept;
+  - on a server that had never had a parrot, any save wrote one with two
+    defaults and asked for a restart;
+  - port numbers were filled in for things nobody had turned on. They are
+    supplied as something is turned on, and at no other time.
+
+  A save with nothing edited now changes nothing, on a full configuration
+  and on a fresh install.
+- **The Network page refuses what it cannot read, and says which box.** A
+  latitude typed as `41,88` was saved as 0, a repeater ID with a stray
+  letter was dropped from the allow list, and a talkgroup with a name and no
+  number vanished, each answered "Saved". Nothing is sent now; the box is
+  marked, brought into view, and the bar beside Save says what is wrong with
+  it (E5).
+- **The Network page has the save bar** the Bridges page got in 0.1.329:
+  Save stays at the foot of the window and its answer is beside it. On a
+  page five screens long, a refusal used to be drawn at the top (E8).
+- Wording: "Only the 1 router listed are accepted" is now "Only the router
+  listed is accepted", and the same for gateways.
 - **The Bridges page no longer strips the link or Zello side from a bridge.**
   Saving the page rebuilt every bridge from the three things it shows (peer,
   talkgroup, slot), so an endpoint that is a link to another network, or the

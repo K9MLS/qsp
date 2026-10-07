@@ -4,6 +4,22 @@
  * document back. Same terms as the access page: the server compares it with
  * what is running and records the difference, so a page sending fragments would
  * have to reason about what it had not touched.
+ *
+ * **Only what was edited is written into that document** (since 0.1.330).
+ * Each control is remembered as it was drawn, and one still as it was drawn
+ * leaves its setting exactly as the server sent it.
+ *
+ * Until then every setting on the page was written from its control on every
+ * save, and a control cannot always show what is stored. A timeout the
+ * dropdown does not offer was drawn as the dropdown's first choice and saved
+ * as that; a server that had never had a parrot was given one with two
+ * defaults and told to restart; turning nothing on supplied port numbers.
+ * Saving the page to change one thing changed several nobody had touched
+ * (found 2026-10-07, E4).
+ *
+ * **What cannot be read is refused, by name, and nothing is sent.** A
+ * latitude typed as 41,88 was saved as 0, and a repeater ID with a stray
+ * letter in the list was dropped from it, each with the answer "Saved" (E5).
  */
 (function () {
   "use strict";
@@ -20,6 +36,7 @@
   var restartNote = document.getElementById("restart-note");
   var form = document.getElementById("form");
   var saveButton = document.getElementById("save");
+  var bar = window.QSPSaveBar(document.getElementById("save-status"));
 
   var networkName = document.getElementById("network-name");
   var networkAddress = document.getElementById("network-address");
@@ -83,27 +100,48 @@
 
   var loaded = null;
 
+  /* Every control whose value is a setting. */
+  var CONTROLS = [
+    networkName, networkAddress, identityCallsign, identityLocation,
+    identityLatitude, identityLongitude, peerPasswords, subEnabled, subTimeout,
+    subUnlink, retain, parrotEnabled, parrotTalkgroup, parrotTimeslot,
+    dmrEnabled, dmrForwarding, p25Enabled, p25Listen, p25Callsign, p25Allowed,
+    repeatersEnabled, repeatersListen, repeatersRecord, repeatersSite,
+    repeatersPresent, repeatersHeader, repeatersHold, repeatersAllowed,
+    ipscEnabled, ipscListen, ipscMaster, ipscCC, ipscTimeout, ipscPeers, ipscSlot2
+  ];
+
+  /* What each control, and the talkgroup list, showed when it was last drawn
+   * from the server's document. */
+  var shown = {};
+  var shownRows = "";
+
+  function valueOf(el) { return el.type === "checkbox" ? el.checked : el.value; }
+
+  function rowsNow() {
+    return JSON.stringify(rows.map(function (r) {
+      return [r.name, r.dialled, r.timeslot];
+    }));
+  }
+
+  function mark() {
+    CONTROLS.forEach(function (el) {
+      shown[el.id] = valueOf(el);
+      el.removeAttribute("aria-invalid");
+    });
+    shownRows = rowsNow();
+  }
+
+  function touched(el) { return valueOf(el) !== shown[el.id]; }
+
+  function changed() {
+    return !!loaded && (CONTROLS.some(touched) || rowsNow() !== shownRows);
+  }
+
+  function copy(value) { return JSON.parse(JSON.stringify(value)); }
+
   function show(el) { if (el) { el.hidden = false; } }
 
-  /* **A confirmation you cannot see is not one.** The saved notice sits at the
-   * top of this page and the Save button at the bottom of it, so pressing Save
-   * changed nothing in view: the version number, the change count and the
-   * restart instruction all rendered several screens above, which is
-   * indistinguishable from a button that does nothing.
-   *
-   * Honours prefers-reduced-motion, and is guarded because scrollIntoView with
-   * options is absent in older browsers — a missing scroll is better than a
-   * broken save handler. */
-  function scrollIntoView(el) {
-    if (!el || !el.scrollIntoView) { return; }
-    var still = window.matchMedia &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    try {
-      el.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "center" });
-    } catch (e) {
-      el.scrollIntoView();
-    }
-  }
   function hide(el) { if (el) { el.hidden = true; } }
 
   function escapeText(value) {
@@ -182,8 +220,9 @@
       ? "on, " + routers.length + (routers.length === 1 ? " router" : " routers")
       : "on, any router";
     repeatersAllowedState.textContent = routers.length
-      ? "Only the " + routers.length + " router" + (routers.length === 1 ? "" : "s") +
-        " listed are accepted. Everything else is refused and counted."
+      ? (routers.length === 1 ? "Only the router listed is accepted."
+          : "Only the " + routers.length + " routers listed are accepted.") +
+        " Everything else is refused and counted."
       : "Every router that can reach the port is accepted.";
   }
 
@@ -211,8 +250,9 @@
       ? "on, " + calls.length + (calls.length === 1 ? " gateway" : " gateways")
       : "on, any gateway";
     p25AllowedState.textContent = calls.length
-      ? "Only the " + calls.length + " gateway" + (calls.length === 1 ? "" : "s") +
-        " listed are answered. Everything else is ignored and counted."
+      ? (calls.length === 1 ? "Only the gateway listed is answered."
+          : "Only the " + calls.length + " gateways listed are answered.") +
+        " Everything else is ignored and counted."
       : "Every gateway that knows the address is answered. On an address the " +
         "internet can reach, name the gateways instead.";
   }
@@ -256,9 +296,9 @@
     rows = [];
     (join.talkgroups || []).forEach(function (t) {
       rows.push({
+        raw: copy(t),
         name: t.name || "",
         dialled: t.dialled || 0,
-        arrives: t.arrives || 0,
         timeslot: t.timeslot || 2
       });
     });
@@ -334,8 +374,16 @@
     parrotTalkgroup.value = parrot.talkgroup || "";
     parrotTimeslot.value = String(parrot.timeslot || 2);
     refreshParrotState();
+
+    mark();
   }
 
+  /* setIfOffered selects a stored value, adding it to the list when the
+   * list does not offer it.
+   *
+   * **A value set in the file is shown as what it is.** It used to be left
+   * on the list's first choice, so the page showed fifteen minutes for a
+   * timeout of twenty, and then saved fifteen. */
   function setIfOffered(select, value) {
     if (!select || !value) { return; }
     for (var i = 0; i < select.options.length; i++) {
@@ -344,6 +392,11 @@
         return;
       }
     }
+    var option = document.createElement("option");
+    option.value = value;
+    option.textContent = value + " (as set in the configuration)";
+    select.appendChild(option);
+    select.value = value;
   }
 
   function refreshPeerPasswordState() {
@@ -370,139 +423,265 @@
       : "no callsign";
   }
 
-  /* A coordinate is written only when it parses. An unparseable one is left out
-   * rather than saved as zero, because zero is a real place and being plotted
-   * in the Gulf of Guinea is worse than not being plotted. */
-  function coordinate(el) {
-    var raw = el.value.trim();
-    if (raw === "") { return 0; }
-    var n = Number(raw);
-    return isFinite(n) ? n : 0;
+  /* What could not be read on the last attempt to save: the control and a
+   * sentence about it. */
+  var problems = [];
+
+  function bad(el, message) {
+    problems.push({ el: el, message: message });
+    return null;
   }
 
+  /* whole reads a whole number of at least min, or reports why it cannot.
+   * Blank is zero, which for every box here means "none" or "the default".
+   *
+   * **parseInt is not used to read what a person typed.** It reads "12abc"
+   * as 12 and "abc" as nothing, and `|| 0` then turns nothing into zero:
+   * both are a number the operator did not enter, saved without a word. */
+  function whole(el, label, min, max) {
+    var raw = el.value.trim();
+    if (raw === "") { return 0; }
+    if (!/^\d+$/.test(raw)) {
+      return bad(el, label + ": “" + raw + "” is not a whole number.");
+    }
+    var n = Number(raw);
+    if (n < min || (max !== undefined && n > max)) {
+      return bad(el, label + ": " + raw + " is not between " + min + " and " + max + ".");
+    }
+    return n;
+  }
+
+  /* A coordinate. Blank clears it. Zero is a real place in the Gulf of
+   * Guinea, so what cannot be read is refused and never becomes zero. */
+  function coordinate(el, label, limit) {
+    var raw = el.value.trim();
+    if (raw === "") { return 0; }
+    if (raw.indexOf(",") >= 0) {
+      return bad(el, label + ": “" + raw + "” has a comma in it. " +
+        "Write the decimal with a full stop, like " + raw.replace(",", ".") + ".");
+    }
+    var n = Number(raw);
+    if (!isFinite(n)) {
+      return bad(el, label + ": “" + raw + "” is not a number. Decimal degrees, like 41.88.");
+    }
+    if (Math.abs(n) > limit) {
+      return bad(el, label + ": " + raw + " is not between -" + limit + " and " + limit + ".");
+    }
+    return n;
+  }
+
+  /* A list of whole numbers separated by commas, spaces or new lines. Every
+   * entry has to be one, or the list is refused: an entry dropped from an
+   * allow list is a repeater turned away. */
+  function numbers(el, label) {
+    var out = [];
+    var entries = el.value.split(/[\s,]+/).filter(function (e) { return e !== ""; });
+    for (var i = 0; i < entries.length; i++) {
+      if (!/^\d+$/.test(entries[i]) || Number(entries[i]) === 0) {
+        return bad(el, label + ": “" + entries[i] + "” is not an ID. " +
+          "Nothing was saved, so no repeater has been dropped from the list.");
+      }
+      out.push(Number(entries[i]));
+    }
+    return out;
+  }
+
+  function lines(el) {
+    return el.value.split("\n")
+      .map(function (c) { return c.trim(); })
+      .filter(function (c) { return c !== ""; });
+  }
+
+  /* collect is the document to save: the one loaded, with each setting whose
+   * control has been edited replaced by what the control now says. It fills
+   * `problems` with whatever could not be read. */
   function collect() {
-    var next = JSON.parse(JSON.stringify(loaded));
-    if (!next.dmr) { next.dmr = {}; }
+    var next = copy(loaded);
+    problems = [];
 
-    /* Written even when blank, so clearing the field actually returns the
-     * network to one shared password rather than leaving the old directory in
-     * place. */
-    next.dmr.peer_passwords = peerPasswords.value.trim();
+    function part(parent, key) {
+      if (!parent[key]) { parent[key] = {}; }
+      return parent[key];
+    }
+    function dmr() { return part(next, "dmr"); }
+    /* put writes one setting, when its control was edited and could be read. */
+    function put(el, section, key, value) {
+      if (!touched(el)) { return; }
+      var v = typeof value === "function" ? value() : value;
+      if (v !== null) { section()[key] = v; }
+    }
+    function text(el) { return el.value.trim(); }
+    function upper(el) { return el.value.trim().toUpperCase(); }
 
-    next.dmr.subscription = next.dmr.subscription || {};
-    next.dmr.subscription.enabled = subEnabled.checked;
-    next.dmr.subscription.timeout = subTimeout.value;
+    /* Written when blanked, so clearing the field returns the network to one
+     * shared password rather than leaving the old directory in place. */
+    put(peerPasswords, dmr, "peer_passwords", text(peerPasswords));
+
+    function subscription() { return part(dmr(), "subscription"); }
+    put(subEnabled, subscription, "enabled", subEnabled.checked);
+    put(subTimeout, subscription, "timeout", subTimeout.value);
     /* Blank means the network offers no disconnect talkgroup, which is a real
      * choice: PNWDigital does not use 4000 at all. */
-    next.dmr.subscription.unlink = parseInt(subUnlink.value, 10) || 0;
+    put(subUnlink, subscription, "unlink", function () {
+      return whole(subUnlink, "Disconnect talkgroup", 0, 16777215);
+    });
 
-    next.dmr.calls = next.dmr.calls || {};
-    next.dmr.calls.retain = retain.value;
+    put(retain, function () { return part(dmr(), "calls"); }, "retain", retain.value);
 
-    next.dmr.identity = next.dmr.identity || {};
-    next.dmr.identity.callsign = identityCallsign.value.trim().toUpperCase();
-    next.dmr.identity.location = identityLocation.value.trim();
-    next.dmr.identity.latitude = coordinate(identityLatitude);
-    next.dmr.identity.longitude = coordinate(identityLongitude);
+    function identity() { return part(dmr(), "identity"); }
+    put(identityCallsign, identity, "callsign", upper(identityCallsign));
+    put(identityLocation, identity, "location", text(identityLocation));
+    put(identityLatitude, identity, "latitude", function () {
+      return coordinate(identityLatitude, "Latitude", 90);
+    });
+    put(identityLongitude, identity, "longitude", function () {
+      return coordinate(identityLongitude, "Longitude", 180);
+    });
 
-    next.dmr.join = next.dmr.join || {};
-    next.dmr.join.network_name = networkName.value.trim();
-    next.dmr.join.address = networkAddress.value.trim();
-    next.dmr.join.talkgroups = rows
-      .filter(function (r) { return r.dialled > 0; })
-      .map(function (r) {
-        var out = { name: r.name, dialled: r.dialled, timeslot: r.timeslot || 2 };
-        /* **Arrives is never written.** A talkgroup number is the same on both
-         * sides of a hotspot: 2 is 2 and 11 is 11. Offering a field that
-         * changes one invites a rewrite nobody afterwards remembers writing,
-         * and the symptom is a member transmitting into silence with every log
-         * healthy. Existing values are preserved by the model and no longer
-         * created here.
-         *
-         * Kept for the shape of the old comment:
-         * absent as "the hotspot does not rewrite it" and storing the same
-         * number twice would say something different. */
-        if (r.arrives && r.arrives !== r.dialled) {
-          out.arrives = r.arrives;
+    function join() { return part(dmr(), "join"); }
+    put(networkName, join, "network_name", text(networkName));
+    put(networkAddress, join, "address", text(networkAddress));
+    if (rowsNow() !== shownRows) {
+      var kept = [];
+      rows.forEach(function (r) {
+        if (!r.name.trim() && !r.dialled) { return; } /* a row added and left empty */
+        if (!(r.dialled > 0)) {
+          bad(talkgroups.querySelector('[data-key="dialled"]') || talkgroups,
+            "Talkgroup “" + r.name + "” has no number. Give it one or remove the row.");
+          return;
         }
-        return out;
+        /* Over what the server sent, so anything else a talkgroup carries
+         * goes back with it. That includes `arrives`, which this page has
+         * never offered: a talkgroup number is the same on both sides of a
+         * hotspot, and a box that changes one invites a rewrite nobody
+         * afterwards remembers writing. */
+        var out = r.raw ? copy(r.raw) : {};
+        out.name = r.name;
+        out.dialled = r.dialled;
+        out.timeslot = r.timeslot || 2;
+        kept.push(out);
       });
-
-    next.p25 = next.p25 || {};
-    next.p25.enabled = p25Enabled.checked;
-    next.p25.listen_address = p25Listen.value.trim();
-    next.p25.callsign = p25Callsign.value.trim().toUpperCase();
-    next.p25.allowed_callsigns = p25Allowed.value.split("\n")
-      .map(function (c) { return c.trim().toUpperCase(); })
-      .filter(function (c) { return c !== ""; });
-    /* Supplied here rather than left empty, which validation refuses. An
-     * operator turning this on should not have to know a port number. */
-    if (next.p25.enabled && !next.p25.listen_address) {
-      next.p25.listen_address = "0.0.0.0:41000";
+      join().talkgroups = kept;
     }
 
-    next.p25_repeaters = next.p25_repeaters || {};
-    next.p25_repeaters.enabled = repeatersEnabled.checked;
-    next.p25_repeaters.listen_address = repeatersListen.value.trim();
-    next.p25_repeaters.record_dir = repeatersRecord.value.trim();
-    next.p25_repeaters.site = parseInt(repeatersSite.value, 10) || 0;
-    next.p25_repeaters.present_as = repeatersPresent.value;
-    next.p25_repeaters.send_header = repeatersHeader.checked;
-    /* Left out when empty, so the server's default applies and a
-       configuration nobody set a hold in stays as it was. */
-    var hold = parseInt(repeatersHold.value, 10);
-    if (repeatersHold.value.trim() === "" || isNaN(hold)) {
-      delete next.p25_repeaters.hold_ms;
-    } else {
-      next.p25_repeaters.hold_ms = hold;
-    }
-    next.p25_repeaters.allowed_routers = repeatersRouters();
-    /* Supplied for the same reason as the P25 port above. */
-    if (next.p25_repeaters.enabled && !next.p25_repeaters.listen_address) {
-      next.p25_repeaters.listen_address = "0.0.0.0:1994";
+    /* **A port is supplied only as something is turned on here**, so that
+     * an operator turning it on does not have to know one. Supplied on
+     * every save, it was a change to a server where nothing was turned on. */
+    function turnedOn(el) { return touched(el) && el.checked; }
+
+    function p25() { return part(next, "p25"); }
+    put(p25Enabled, p25, "enabled", p25Enabled.checked);
+    put(p25Listen, p25, "listen_address", text(p25Listen));
+    put(p25Callsign, p25, "callsign", upper(p25Callsign));
+    put(p25Allowed, p25, "allowed_callsigns", function () {
+      var calls = lines(p25Allowed).map(function (c) { return c.toUpperCase(); });
+      for (var i = 0; i < calls.length; i++) {
+        if (/\s/.test(calls[i])) {
+          return bad(p25Allowed, "P25 gateways allowed: “" + calls[i] +
+            "” is more than one word. One callsign on each line.");
+        }
+      }
+      return calls;
+    });
+    if (turnedOn(p25Enabled) && !p25().listen_address) {
+      p25().listen_address = "0.0.0.0:41000";
     }
 
-    next.dmr = next.dmr || {};
-    next.dmr.enabled = dmrEnabled.checked;
-    next.dmr.forwarding = dmrForwarding.checked;
-    /* Supplied rather than left empty, which validation refuses: turning the
-     * server on should not need a port number. */
-    if (next.dmr.enabled && !next.dmr.listen_address) {
-      next.dmr.listen_address = "0.0.0.0:62031";
+    function repeaters() { return part(next, "p25_repeaters"); }
+    put(repeatersEnabled, repeaters, "enabled", repeatersEnabled.checked);
+    put(repeatersListen, repeaters, "listen_address", text(repeatersListen));
+    put(repeatersRecord, repeaters, "record_dir", text(repeatersRecord));
+    put(repeatersSite, repeaters, "site", function () {
+      return whole(repeatersSite, "Site number", 0, 127);
+    });
+    put(repeatersPresent, repeaters, "present_as", repeatersPresent.value);
+    put(repeatersHeader, repeaters, "send_header", repeatersHeader.checked);
+    if (touched(repeatersHold)) {
+      /* Left out when empty, so the server's default applies. Absent and 0
+       * are different: 0 is no hold at all. */
+      if (repeatersHold.value.trim() === "") {
+        delete repeaters().hold_ms;
+      } else {
+        var hold = whole(repeatersHold, "Hold before transmitting", 0, 200);
+        if (hold !== null) { repeaters().hold_ms = hold; }
+      }
+    }
+    put(repeatersAllowed, repeaters, "allowed_routers", repeatersRouters());
+    if (turnedOn(repeatersEnabled) && !repeaters().listen_address) {
+      repeaters().listen_address = "0.0.0.0:1994";
     }
 
-    next.ipsc = next.ipsc || {};
-    next.ipsc.enabled = ipscEnabled.checked;
-    next.ipsc.listen_address = ipscListen.value.trim();
-    next.ipsc.master_id = parseInt(ipscMaster.value, 10) || 0;
-    next.ipsc.peer_timeout_seconds = parseInt(ipscTimeout.value, 10) || 0;
-    next.ipsc.slot_bit_is_timeslot2 = ipscSlot2.checked;
-    next.ipsc.colour_code = ipscCC.value.trim() === ""
-      ? null : parseInt(ipscCC.value, 10);
-    next.ipsc.allowed_peers = ipscPeers.value.split(",")
-      .map(function (p) { return parseInt(p.trim(), 10); })
-      .filter(function (p) { return !isNaN(p) && p > 0; });
-    /* Supplied here rather than left at zero, which validation refuses. An
-     * operator turning this on should not have to know a default. */
-    if (next.ipsc.enabled) {
-      if (!next.ipsc.listen_address) { next.ipsc.listen_address = "0.0.0.0:50000"; }
-      if (!next.ipsc.peer_timeout_seconds) { next.ipsc.peer_timeout_seconds = 90; }
+    put(dmrEnabled, dmr, "enabled", dmrEnabled.checked);
+    put(dmrForwarding, dmr, "forwarding", dmrForwarding.checked);
+    if (turnedOn(dmrEnabled) && !dmr().listen_address) {
+      dmr().listen_address = "0.0.0.0:62031";
     }
 
-    next.dmr.parrot = next.dmr.parrot || {};
-    next.dmr.parrot.enabled = parrotEnabled.checked;
-    next.dmr.parrot.talkgroup = parseInt(parrotTalkgroup.value, 10) || 0;
-    next.dmr.parrot.timeslot = parseInt(parrotTimeslot.value, 10) || 2;
-    /* Defaults supplied here rather than left at zero, which validation
-     * refuses. An operator turning parrot on should not have to know that a
-     * duration is required. */
-    if (!next.dmr.parrot.max_duration || next.dmr.parrot.max_duration === "0s") {
-      next.dmr.parrot.max_duration = "30s";
+    function ipsc() { return part(next, "ipsc"); }
+    put(ipscEnabled, ipsc, "enabled", ipscEnabled.checked);
+    put(ipscListen, ipsc, "listen_address", text(ipscListen));
+    put(ipscMaster, ipsc, "master_id", function () {
+      return whole(ipscMaster, "Motorola master ID", 0, 16777215);
+    });
+    put(ipscTimeout, ipsc, "peer_timeout_seconds", function () {
+      return whole(ipscTimeout, "Motorola repeater timeout", 0, 86400);
+    });
+    put(ipscSlot2, ipsc, "slot_bit_is_timeslot2", ipscSlot2.checked);
+    if (touched(ipscCC)) {
+      /* A pointer in the document: blank is "not set", and 0 is a colour
+       * code. */
+      if (ipscCC.value.trim() === "") {
+        ipsc().colour_code = null;
+      } else {
+        var cc = whole(ipscCC, "Colour code", 0, 15);
+        if (cc !== null) { ipsc().colour_code = cc; }
+      }
     }
-    if (!next.dmr.parrot.gap || next.dmr.parrot.gap === "0s") {
-      next.dmr.parrot.gap = "1s";
+    put(ipscPeers, ipsc, "allowed_peers", function () {
+      return numbers(ipscPeers, "Motorola repeaters allowed");
+    });
+    if (turnedOn(ipscEnabled)) {
+      if (!ipsc().listen_address) { ipsc().listen_address = "0.0.0.0:50000"; }
+      if (!ipsc().peer_timeout_seconds) { ipsc().peer_timeout_seconds = 90; }
+    }
+
+    function parrot() { return part(dmr(), "parrot"); }
+    put(parrotEnabled, parrot, "enabled", parrotEnabled.checked);
+    put(parrotTalkgroup, parrot, "talkgroup", function () {
+      return whole(parrotTalkgroup, "Parrot talkgroup", 0, 16777215);
+    });
+    put(parrotTimeslot, parrot, "timeslot", function () {
+      return Number(parrotTimeslot.value) === 1 ? 1 : 2;
+    });
+    /* The two durations no box here sets, supplied as parrot is turned on
+     * so that it can be without anybody knowing they are required. */
+    if (turnedOn(parrotEnabled)) {
+      if (!parrot().max_duration || parrot().max_duration === "0s") { parrot().max_duration = "30s"; }
+      if (!parrot().gap || parrot().gap === "0s") { parrot().gap = "1s"; }
     }
     return next;
+  }
+
+  /* refuse shows what could not be read and sends nothing. */
+  function refuse() {
+    errorText.textContent = problems.length === 1
+      ? "One box could not be read, so nothing was saved."
+      : problems.length + " boxes could not be read, so nothing was saved.";
+    problems.forEach(function (p) {
+      var li = document.createElement("li");
+      li.textContent = p.message;
+      errorFields.appendChild(li);
+      if (p.el && p.el.setAttribute) { p.el.setAttribute("aria-invalid", "true"); }
+    });
+    show(errorBox);
+    bar.failed("Not saved: " + problems[0].message);
+    /* To the box itself and not to the notice: it is the thing to mend, and
+     * the bar has already said what is wrong with it. */
+    var first = problems[0].el;
+    if (first && first.focus) {
+      if (first.scrollIntoView) { first.scrollIntoView({ block: "center" }); }
+      first.focus({ preventScroll: true });
+    }
   }
 
   function load() {
@@ -513,7 +692,15 @@
           show(signedOut);
           return null;
         }
-        return r.json();
+        /* An answer that is not the configuration is an error to show, not
+         * an empty page to edit and save over what is there. */
+        return r.json().catch(function () { return {}; }).then(function (body) {
+          if (!r.ok || !body.config) {
+            throw new Error(body.error || "This server answered " + r.status +
+              " and not its configuration.");
+          }
+          return body;
+        });
       })
       .then(function (body) {
         if (!body) { return; }
@@ -521,6 +708,7 @@
         loaded = body.config;
         render(loaded);
         show(form);
+        bar.watch(form, changed);
 
         if (!body.writable) {
           readOnlyReason.textContent = body.read_only_reason || "";
@@ -528,9 +716,10 @@
           saveButton.disabled = true;
         }
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = (e && e.message && e.name === "Error")
+          ? e.message : "Cannot reach this instance.";
         show(errorBox);
       });
   }
@@ -540,9 +729,15 @@
     hide(savedBox);
     hide(restartNote);
     errorFields.innerHTML = "";
+    CONTROLS.forEach(function (el) { el.removeAttribute("aria-invalid"); });
 
     var next = collect();
+    if (problems.length) {
+      refuse();
+      return;
+    }
     saveButton.disabled = true;
+    bar.saving();
 
     fetch("/api/config", {
       method: "POST",
@@ -553,13 +748,17 @@
       body: JSON.stringify({ config: next, base: loaded, summary: "network settings" })
     })
       .then(function (r) {
-        return r.json().then(function (body) { return { status: r.status, body: body }; });
+        return r.json().catch(function () { return {}; })
+          .then(function (body) { return { status: r.status, body: body }; });
       })
       .then(function (res) {
         saveButton.disabled = false;
 
         if (res.status === 200) {
           loaded = next;
+          /* Redrawn from what was saved, so every control is again "as
+           * drawn" and the next save starts from here. */
+          render(loaded);
           var changes = (res.body.changes || []).length;
           savedText.textContent = changes === 0
             ? "Nothing had changed, so nothing was recorded."
@@ -581,9 +780,15 @@
             show(restartNote);
           }
           show(savedBox);
-          scrollIntoView(savedBox);
+          /* The bar says it where the button is. The notice is brought into
+           * view only when it has more to say than the bar has room for. */
+          bar.saved(savedText.textContent +
+            (restart.length ? " A restart is needed; see the top of the page." : ""));
+          if (restart.length) { bar.reveal(savedBox); }
           return;
         }
+
+        bar.failed("Not saved. The reason is shown above.");
 
         if (res.status === 400 && res.body.fields) {
           errorText.textContent = res.body.error || "";
@@ -593,21 +798,26 @@
             errorFields.appendChild(li);
           });
           show(errorBox);
+          bar.reveal(errorBox);
           return;
         }
 
-        errorText.textContent = (res.body && res.body.error) || "That did not save.";
+        errorText.textContent = (res.body && res.body.error) ||
+          "That did not save: the server answered " + res.status + ".";
         show(errorBox);
+        bar.reveal(errorBox);
       })
       .catch(function () {
         saveButton.disabled = false;
-        errorText.textContent = "Cannot reach this instance.";
+        errorText.textContent = "Cannot reach this instance. Nothing was saved.";
         show(errorBox);
+        bar.failed("Not saved. The reason is shown above.");
+        bar.reveal(errorBox);
       });
   }
 
   document.getElementById("add-talkgroup").addEventListener("click", function () {
-    rows.push({ name: "", dialled: 0, arrives: 0, timeslot: 2 });
+    rows.push({ name: "", dialled: 0, timeslot: 2 });
     renderTalkgroups();
   });
 
@@ -646,6 +856,7 @@
     hide(errorBox);
     hide(savedBox);
     if (loaded) { render(loaded); }
+    bar.clean();
   });
 
   load();

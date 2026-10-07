@@ -750,7 +750,13 @@ func TestEverySwitchableSubsystemCanBeReachedFromTheConsole(t *testing.T) {
 				"control for it — the setting exists and no operator can reach it", name, base)
 		}
 		// Write: the script must put it back, or the control is decoration.
-		if !strings.Contains(script, "next."+name+".enabled") {
+		//
+		// Two shapes. A page that assigns it writes `next.<name>.enabled`.
+		// The Network page, since 0.1.330, opens the section with
+		// `part(next, "<name>")` and writes each setting in it only when its
+		// control was edited; scripts/console-check holds that it does.
+		if !strings.Contains(script, "next."+name+".enabled") &&
+			!strings.Contains(script, `part(next, "`+name+`")`) {
 			t.Errorf("%s.js never writes %s.enabled, so the control cannot save", base, name)
 		}
 	}

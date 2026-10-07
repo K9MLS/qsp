@@ -21,11 +21,22 @@ from playwright.sync_api import sync_playwright
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.normpath(os.path.join(HERE, "..", "..", "console", "static"))
 CONFIG = json.load(open(os.path.join(HERE, "config.json")))
+FRESH = json.load(open(os.path.join(HERE, "fresh.json")))
 
 
 def config():
     """A configuration with something in every part a page edits."""
     return copy.deepcopy(CONFIG)
+
+
+def fresh():
+    """The configuration of a server just installed: `qsp -print-config`."""
+    return copy.deepcopy(FRESH)
+
+
+def serving(document):
+    """An answer to GET /api/config that serves a copy of document."""
+    return lambda rq: (200, {"config": copy.deepcopy(document), "writable": True})
 
 
 class Page:

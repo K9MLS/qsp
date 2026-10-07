@@ -1293,6 +1293,13 @@ a.muted:focus-visible {
   color: var(--color-failing);
 }
 
+/* A box whose contents could not be read, after the eye has left it. The
+   words about it are in the save bar and the notice; this says which box. */
+.picker__input[aria-invalid="true"],
+.field__input[aria-invalid="true"] {
+  border-color: var(--color-failing);
+}
+
 /* On a phone the two buttons share a line and the answer has its own, so
    the bar is two lines tall and not three. */
 @media (max-width: 480px) {

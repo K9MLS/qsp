@@ -37,12 +37,14 @@ func TestMotorolaRepeatersCanBeConfiguredFromTheConsole(t *testing.T) {
 	// **Every one has to be written, not merely mentioned.** Searching the file
 	// for the key name finds the render function reading it and passes whether
 	// or not the save writes it — which it did, against a save with a field
-	// deleted. "next.ipsc.x =" is an assignment into the outgoing document.
+	// deleted. `put(control, ipsc, "x"` and `ipsc().x =` are the two ways a
+	// setting is written into the outgoing document since 0.1.330.
 	for _, key := range []string{
 		"listen_address", "master_id", "colour_code",
 		"peer_timeout_seconds", "allowed_peers", "slot_bit_is_timeslot2",
 	} {
-		if !strings.Contains(js, "next.ipsc."+key+" =") {
+		put := regexp.MustCompile(`put\(\w+, ipsc, "` + key + `"`)
+		if !put.MatchString(js) && !strings.Contains(js, "ipsc()."+key+" =") {
 			t.Errorf("the save never writes ipsc.%s, so the form edits nothing there", key)
 		}
 	}
@@ -132,15 +134,17 @@ func TestTheSaveNoticeIsBroughtIntoView(t *testing.T) {
 	if notice > actions {
 		t.Skip("the notice now follows the button; scrolling may no longer be needed")
 	}
-	// **The call, not the name.** Searching for "scrollIntoView" finds the
-	// helper's own declaration and passes with the call deleted — which it did.
-	if !strings.Contains(js, "scrollIntoView(savedBox)") {
-		t.Error("saving scrolls nothing into view, so the confirmation renders " +
+	// **The call, not the name.** Since 0.1.330 the answer is given in the
+	// save bar beside the button, and the notice is brought into view when it
+	// has a restart to explain. The bar moves the page at once and animates
+	// nothing, so there is no motion for an operator to have asked not to
+	// see. scripts/console-check holds that both are on screen.
+	if !strings.Contains(js, "bar.saved(") {
+		t.Error("a save is not answered in the save bar, so the confirmation is " +
 			"off-screen above the button that produced it")
 	}
-	// Motion an operator may have asked their system not to produce.
-	if !strings.Contains(js, "prefers-reduced-motion") {
-		t.Error("the scroll ignores prefers-reduced-motion")
+	if !strings.Contains(js, "bar.reveal(savedBox)") {
+		t.Error("the restart instruction is never brought into view")
 	}
 }
 
