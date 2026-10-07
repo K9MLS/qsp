@@ -186,6 +186,32 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **A full restore writes password files only inside the server's own
+  directory.** A backup says where each of its password files goes, and the
+  list of places allowed came from the configuration inside the same backup,
+  so a backup made for the purpose could write a file anywhere the service
+  can: it only had to name the place twice. They are now written only inside
+  the directory that holds the configuration file, `/var/lib/qsp` on both
+  installs, which nothing in the console or in a backup can change. A file
+  the backup places elsewhere is named before the restore is confirmed and is
+  not written (2026-10-07 hunt, C1).
+- **A full backup reads password files only from there too.** A
+  password-file setting is a path anybody signed in can save; pointed at any
+  other file and followed by a full backup, it carried that file's first
+  64 KiB away. The member password directory is checked before it is listed
+  and every file in it before it is read, links followed (C2). **If your
+  password files are somewhere else, the next full backup is refused and
+  names the file**: move it into the directory and change the setting. Logins
+  are not affected, only the backup.
+- **Removing a link deletes only its own passphrase file.** It deleted
+  whatever its passphrase setting named (C3).
+- **A link cannot write its passphrase over another password.** A link named
+  for the shared password file wrote its passphrase over the password every
+  hotspot logs in with. The name must be a plain file name, and one the
+  server is not already using (C5).
+- **The restore on the Administration page** is sent once however often the
+  button is pressed, shows a refusal that is not JSON as what it was, and
+  does not keep the passphrase in the page when it fails (H4).
 - **A stranger can no longer stop a hotspot logging in.** A hotspot's login
   is two packets. A login request naming the same ID, sent from any other
   address in between, replaced the challenge the hotspot was about to

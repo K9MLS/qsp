@@ -218,6 +218,8 @@ func TestAFullBackupCarriesThePasswordFiles(t *testing.T) {
 
 	cm := newStubConfig()
 	srv, a := newFullBackupServer(t, cm, &stubSecrets{values: map[string]string{}})
+	// The replacement machine is laid out as the lost one was.
+	srv.opts.CredentialDir = from.opts.CredentialDir
 
 	code, body := restoreVia(t, srv, a, true, file, false)
 	if code != http.StatusPreconditionRequired {
@@ -305,7 +307,8 @@ func TestARestoreWritesOnlyTheFilesTheConfigurationNames(t *testing.T) {
 		{"a directory below the members", filepath.Join(cfg.DMR.PeerPasswords, "deeper", "3132911"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			written, failed := writePasswordFiles(cfg, map[string]string{tc.path: "contents"})
+			srv := &Server{opts: Options{CredentialDir: CredentialDirFor(filepath.Join(dir, "qsp.json"))}}
+			written, failed := srv.writePasswordFiles(cfg, map[string]string{tc.path: "contents"})
 			_, err := os.Stat(tc.path)
 			if exists := err == nil; exists != tc.written {
 				t.Errorf("written is %v, want %v", exists, tc.written)

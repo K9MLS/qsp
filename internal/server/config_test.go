@@ -102,11 +102,24 @@ func newConfigServer(t *testing.T, cm ConfigManager, rec audit.Recorder) (*Serve
 		Auth:          a,
 		Config:        cm,
 		Audit:         rec,
+		CredentialDir: credentialDirOf(cm),
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
 	return srv, a
+}
+
+// credentialDirOf is the directory a test server keeps password files in:
+// the one its configuration already keeps the shared password in, as an
+// installed server's is. A test that wants another sets Options.CredentialDir
+// itself.
+func credentialDirOf(cm ConfigManager) string {
+	stub, ok := cm.(*stubConfig)
+	if !ok || stub == nil || stub.current.DMR.PasswordFile == "" {
+		return ""
+	}
+	return CredentialDirFor(stub.current.DMR.PasswordFile)
 }
 
 // authed sends a request carrying a session and a same-origin header.

@@ -136,3 +136,77 @@ def check_the_restart_button_does_not_forget_it_was_pressed():
         assert p.page.is_disabled("[data-restart]")
     finally:
         p.close()
+
+
+def choose_a_backup(p, passphrase="correct horse"):
+    p.page.set_input_files("#full-restore-file",
+                           files=[{"name": "club.qspfull", "mimeType": "application/octet-stream",
+                                   "buffer": b"QSPFULL\x00not a real one"}])
+    p.page.fill("#full-restore-passphrase", passphrase)
+    p.page.click("#full-restore")
+    p.page.wait_for_timeout(300)
+
+
+def check_a_restore_says_which_password_files_it_will_not_write():
+    """The server refuses a password file a backup places outside its own
+    directory, and says so before the restore is confirmed.
+
+    Break it: drop refused_password_files from the list in fullRestore()."""
+    p = open_page()
+    try:
+        p.api[("POST", "/api/admin/full-restore")] = lambda rq: (428, {
+            "summary": "This backup holds 3 password files; 1 will not be written.",
+            "password_files": ["/var/lib/qsp/peers.pw"],
+            "refused_password_files": ["/etc/cron.d/qsp"]})
+        choose_a_backup(p)
+        assert p.in_view("#full-restore-confirm"), "the confirmation did not appear"
+        contents = p.page.inner_text("#full-restore-contents")
+        assert "will not be written" in contents and "/etc/cron.d/qsp" in contents, contents
+    finally:
+        p.close()
+
+
+def check_a_restore_that_failed_keeps_nothing():
+    """An answer that was not JSON was shown as the browser's complaint about
+    parsing it, and the passphrase stayed in the page.
+
+    Break it: remove the .catch() after r.json() in fullRestore(), or the
+    line that empties full-restore-passphrase."""
+    p = open_page()
+    try:
+        p.api[("POST", "/api/admin/full-restore")] = lambda rq: (502, "<html>Bad Gateway</html>")
+        choose_a_backup(p)
+        said = p.page.inner_text("#full-restore-error")
+        assert "502" in said and "JSON" not in said and "token" not in said, said
+        assert p.page.input_value("#full-restore-passphrase") == "", "the passphrase is still in the page"
+        assert not p.page.is_disabled("#full-restore"), "the button was left disabled"
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
+def check_a_restore_is_sent_once_however_often_it_is_pressed():
+    """Both buttons stayed live while the request was out, and a second press
+    sent a second restore.
+
+    Break it: remove the line that disables the buttons in fullRestore()."""
+    p = open_page()
+    try:
+        confirmed = []
+
+        def answer(rq):
+            body = rq.post_data_json
+            if not body.get("confirm"):
+                return (428, {"summary": "This backup holds everything."})
+            confirmed.append(1)
+            import time
+            time.sleep(0.6)
+            return (200, {"note": "Restored."})
+        p.api[("POST", "/api/admin/full-restore")] = answer
+        choose_a_backup(p)
+        p.page.evaluate("""() => { const b = document.getElementById('full-restore-confirmed');
+                                   b.click(); b.click(); b.click(); }""")
+        p.page.wait_for_timeout(2500)
+        assert len(confirmed) == 1, "the restore was sent %d times" % len(confirmed)
+    finally:
+        p.close()

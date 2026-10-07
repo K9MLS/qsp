@@ -556,7 +556,28 @@ func (s *Server) writePassphrase(cfg config.Config, name, passphrase string) (st
 	if dir == "" || dir == "." {
 		return "", fmt.Errorf("no directory to write a passphrase into; set dmr.password_file")
 	}
+	// **The name is a file name and nothing more**, and not one already in
+	// use. A link named for the shared password file's stem wrote its
+	// passphrase over the password every hotspot logs in with (C5).
+	if name == "" || name != filepath.Base(name) || strings.HasPrefix(name, ".") {
+		return "", fmt.Errorf("%q cannot be used as the name of a passphrase file", name)
+	}
 	path := filepath.Join(dir, name+".pass")
+	if _, err := s.credentialPath(path); err != nil {
+		return "", err
+	}
+	// The link's own file from an earlier agreement is its to replace.
+	taken := filepath.Clean(strings.TrimSpace(cfg.DMR.PasswordFile)) == path
+	for _, u := range cfg.DMR.Upstreams {
+		if !strings.EqualFold(u.Name, name) &&
+			(filepath.Clean(u.PasswordFile) == path || filepath.Clean(u.PassphraseFile) == path) {
+			taken = true
+		}
+	}
+	if taken {
+		return "", fmt.Errorf("a link named %q would keep its passphrase in %s, which this server "+
+			"already uses for another password; give the link a different name", name, path)
+	}
 	if err := os.WriteFile(path, []byte(passphrase), 0o600); err != nil {
 		return "", fmt.Errorf("cannot write the passphrase file: %w", err)
 	}

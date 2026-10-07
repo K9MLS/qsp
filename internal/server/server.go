@@ -48,6 +48,10 @@ type Options struct {
 	// BehindProxy declares that a reverse proxy terminates TLS in front of
 	// QSP, which makes forwarding headers trustworthy.
 	BehindProxy bool
+	// CredentialDir is the directory QSP reads and writes password files in:
+	// the one that holds its configuration file. Empty refuses every such
+	// read and write. See credentialdir.go.
+	CredentialDir string
 	// ConsoleAssets serves the embedded console. It may be nil, in which case
 	// the console routes report that no assets are built into this binary.
 	ConsoleAssets fs.FS

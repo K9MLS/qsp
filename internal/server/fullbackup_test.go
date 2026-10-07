@@ -116,6 +116,7 @@ func newFullBackupServer(t *testing.T, cm ConfigManager, store CredentialStore) 
 			Auth:          a,
 			Config:        cm,
 			Secrets:       store,
+			CredentialDir: credentialDirOf(cm),
 		})
 	if err != nil {
 		t.Fatalf("New: %v", err)

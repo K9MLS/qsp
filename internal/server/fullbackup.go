@@ -92,11 +92,18 @@ func (s *Server) handleFullBackup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := s.opts.Config.Current()
-	files, err := readPasswordFiles(cfg)
+	files, err := s.readPasswordFiles(cfg)
 	if err != nil {
 		s.recordBackup(r, audit.ActionConfigFullExported, audit.OutcomeFailure)
-		writeJSON(w, s.log, http.StatusInternalServerError,
-			map[string]string{"error": "cannot read a password file: " + err.Error()})
+		status, message := http.StatusInternalServerError, "cannot read a password file: "+err.Error()
+		if errors.Is(err, errOutsideCredentialDir) {
+			// The configuration is at fault and the operator can mend it,
+			// which is what a 400 says and a 500 does not.
+			status = http.StatusBadRequest
+			message = "no backup was made: " + err.Error() + ". Move that file into the " +
+				"directory and change the setting that names it, then take the backup again"
+		}
+		writeJSON(w, s.log, status, map[string]string{"error": message})
 		return
 	}
 	full := config.NewFullBackup(cfg, values, buildinfo.Version, time.Now())
@@ -240,6 +247,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	// Worked out before the confirmation, so that what the operator agrees to
 	// is what will happen.
 	absent := absentPasswordFiles(cfg, full.PasswordFiles)
+	outside := s.outsidePasswordFiles(full.PasswordFiles)
 
 	if !req.Confirm {
 		// Said before it happens, in the operator's terms, and naming what
@@ -263,6 +271,12 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 				"in this backup nor on this machine; the links and members that need them "+
 				"will be refused until they are reissued.", len(absent))
 		}
+		if len(outside) > 0 {
+			summary += fmt.Sprintf(" %d of the password files will not be written: the backup "+
+				"places them outside %s, where this server keeps its own. The links and "+
+				"members that need them will be refused until they are reissued.",
+				len(outside), s.opts.CredentialDir)
+		}
 		writeJSON(w, s.log, http.StatusPreconditionRequired, map[string]any{
 			"error":   "not confirmed",
 			"summary": summary,
@@ -280,6 +294,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 			"credential_names":       full.SecretNames(),
 			"password_files":         full.PasswordFilePaths(),
 			"missing_password_files": absent,
+			"refused_password_files": outside,
 			"exported_at":            full.Backup.ExportedAt,
 			"qsp_version":            full.Backup.QSPVersion,
 		})
@@ -314,7 +329,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	// that cannot be written does not stop the restore: it is one link
 	// awaiting a credential, which the answer names, where stopping here
 	// would leave the credentials above restored and nothing else.
-	written, failed := writePasswordFiles(cfg, full.PasswordFiles)
+	written, failed := s.writePasswordFiles(cfg, full.PasswordFiles)
 	for _, f := range failed {
 		s.log.Warn("cannot restore a password file", "path", f.Path, "error", f.Error)
 	}
@@ -416,9 +431,18 @@ func memberPasswordFile(dir, path string) bool {
 // never issued — and the restore reports it. Unreadable is allSecrets' case: a
 // backup silently lacking a credential the server does have, which the
 // operator cannot know about when they make it.
-func readPasswordFiles(cfg config.Config) (map[string]string, error) {
+//
+// **And a file outside this server's directory fails it too**, naming the
+// file. A password-file setting is a path anybody signed in can save, and a
+// backup that read whatever it named would be a way to carry any file the
+// service can read off the machine. See credentialdir.go.
+func (s *Server) readPasswordFiles(cfg config.Config) (map[string]string, error) {
 	files, dir := passwordFilePaths(cfg)
 	if dir != "" {
+		// Before it is listed, not only before its files are read.
+		if _, err := s.credentialPath(dir); err != nil {
+			return nil, fmt.Errorf("the member password directory: %w", err)
+		}
 		entries, err := os.ReadDir(dir)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("the member password directory: %w", err)
@@ -433,6 +457,11 @@ func readPasswordFiles(cfg config.Config) (map[string]string, error) {
 
 	out := make(map[string]string, len(files))
 	for _, path := range files {
+		// Every file, the members' included: those are found by listing a
+		// directory, and a link in there is a way out of it.
+		if _, err := s.credentialPath(path); err != nil {
+			return nil, err
+		}
 		raw, err := os.ReadFile(path)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -457,16 +486,18 @@ type passwordFileFailure struct {
 // writePasswordFiles puts a backup's password files where the restored
 // configuration names them.
 //
-// **Only a path the configuration names is written.** The file says where each
-// one goes, and a file is not to be trusted with that on its own: without this
-// check a backup could carry anything to anywhere the service can write. A
-// path the configuration does not name is reported and left alone.
+// **Only a path the configuration names is written, and only inside this
+// server's own directory.** The file says where each one goes, and the
+// configuration that names the paths allowed is in the same file, so the
+// first rule by itself let a backup carry anything to anywhere the service
+// can write: it only had to name the place twice. The second rule is not the
+// backup's to state. A path that fails either is reported and left alone.
 //
 // The directory at 0700 before the file at 0600, as everywhere else a
 // credential is written. The mode is set again afterwards because WriteFile
 // keeps the mode of a file that already exists, and QSP refuses to use a
 // password file anybody else can read.
-func writePasswordFiles(cfg config.Config, files map[string]string) (written []string, failed []passwordFileFailure) {
+func (s *Server) writePasswordFiles(cfg config.Config, files map[string]string) (written []string, failed []passwordFileFailure) {
 	named, dir := passwordFilePaths(cfg)
 	written = []string{}
 
@@ -482,6 +513,11 @@ func writePasswordFiles(cfg config.Config, files map[string]string) (written []s
 				Error: "the restored configuration does not name this file, so it was not written"})
 			continue
 		}
+		if _, err := s.credentialPath(path); err != nil {
+			failed = append(failed, passwordFileFailure{Path: path,
+				Error: err.Error() + ", so it was not written"})
+			continue
+		}
 		if err := writePasswordFile(path, files[path]); err != nil {
 			failed = append(failed, passwordFileFailure{Path: path, Error: err.Error()})
 			continue
@@ -489,6 +525,20 @@ func writePasswordFiles(cfg config.Config, files map[string]string) (written []s
 		written = append(written, path)
 	}
 	return written, failed
+}
+
+// outsidePasswordFiles lists the files of a backup that a restore will not
+// write for being outside this server's directory, so the operator is told
+// before agreeing and not after.
+func (s *Server) outsidePasswordFiles(files map[string]string) []string {
+	out := []string{}
+	for path := range files {
+		if _, err := s.credentialPath(path); err != nil {
+			out = append(out, path)
+		}
+	}
+	slices.Sort(out)
+	return out
 }
 
 // writePasswordFile writes one credential, readable by nobody else.

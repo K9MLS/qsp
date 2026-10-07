@@ -422,7 +422,11 @@
         body: JSON.stringify({ passphrase: first.value })
       }).then(function (r) {
         if (!r.ok) {
-          return r.json().then(function (b) { throw new Error(b.error || "That backup could not be made."); });
+          /* A refusal that is not JSON, from a proxy say, was shown as the
+           * browser's complaint about parsing it. */
+          return r.json().catch(function () { return {}; }).then(function (b) {
+            throw new Error(b.error || "That backup could not be made: the server answered " + r.status + ".");
+          });
         }
         var named = /filename="([^"]+)"/.exec(r.headers.get("Content-Disposition") || "");
         var warning = r.headers.get("X-QSP-Passphrase-Warning") || "";
@@ -499,6 +503,10 @@
    * the second press. */
   function fullRestore(confirm) {
     if (!fullPending) { return; }
+    /* Both buttons, for as long as the request is out: a second press of
+     * "restore" sent a second restore. */
+    var buttons = [el("full-restore"), el("full-restore-confirmed")];
+    buttons.forEach(function (b) { if (b) { b.disabled = true; } });
     fetch("/api/admin/full-restore", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -507,7 +515,8 @@
         document: fullPending.document, passphrase: fullPending.passphrase, confirm: confirm
       })
     }).then(function (r) {
-      return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
+      return r.json().catch(function () { return {}; })
+        .then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
     }).then(function (res) {
       if (!res.ok && res.status === 428) {
         say(el("full-restore-summary"), res.body.summary);
@@ -518,11 +527,16 @@
           listed("Credentials in this backup", res.body.credential_names) +
           listed("Password files in this backup", res.body.password_files) +
           listed("Password files it does not have, and this machine does not either",
-            res.body.missing_password_files);
+            res.body.missing_password_files) +
+          listed("Password files that will not be written, because the backup places " +
+            "them outside this server's own directory", res.body.refused_password_files);
         show(el("full-restore-confirm"));
         return;
       }
-      if (!res.ok) { throw new Error(res.body.error || "That backup could not be restored."); }
+      if (!res.ok) {
+        throw new Error(res.body.error ||
+          "That backup could not be restored: the server answered " + res.status + ".");
+      }
 
       hide(el("full-restore-confirm"));
       fullPending = null;
@@ -545,7 +559,15 @@
       result.hidden = !result.innerHTML;
       load();
     }).catch(function (e) {
+      /* Nothing of a restore that failed is kept: not the question it had
+       * asked, and not the passphrase, which would otherwise sit in the
+       * page until it was closed. */
+      hide(el("full-restore-confirm"));
+      fullPending = null;
+      el("full-restore-passphrase").value = "";
       say(el("full-restore-error"), e.message);
+    }).then(function () {
+      buttons.forEach(function (b) { if (b) { b.disabled = false; } });
     });
   }
 

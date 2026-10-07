@@ -191,11 +191,27 @@ each member's own, and each link's password or passphrase — the files the
 configuration names, which ADR-0012 keeps outside the credential store. They
 are inside the encrypted payload and nowhere else. A restore writes each back
 at mode 0600, in a directory created 0700, **only at a path the restored
-configuration names**: the file says where each one goes, and without that
-check a backup could put anything anywhere the service can write. That check
-is against the configuration in the same file, so restoring a full backup from
-somebody else is trusting them with every path QSP can write — it is for an
-operator's own server. A password file that is neither in the backup nor on
+configuration names, and only inside the directory that holds this server's
+configuration file** (the data directory, on both installs). The first rule is
+checked against the configuration in the same file, so by itself it let a
+backup put anything anywhere the service could write, by naming the place
+twice; until 0.1.334 that was the only rule. The second is fixed by how the
+process was started and nothing in the console or in a backup can change it.
+A file a backup places elsewhere is named in the confirmation, before the
+operator agrees, and is not written.
+
+**The same directory bounds everything else QSP does with a password file on
+an operator's say-so.** A full backup reads none outside it, and is refused
+naming the file, since a password-file setting is a path anybody signed in
+can save and a backup that read whatever it named would carry any file the
+service can read off the machine. Removing a link deletes its passphrase file
+only if it is there. A link's passphrase file is written there under the
+link's name, and not over a file the server already uses for another
+password. A symbolic link at the end of a path is refused and links in the
+directories above it are followed before the path is judged. This is not a
+limit on where QSP *reads* a password to check a login: a server whose files
+were put elsewhere by hand keeps running, and is told which file to move when
+it next takes a full backup. A password file that is neither in the backup nor on
 the machine is named in the confirmation and in the answer, rather than the
 restore claiming links will work. A file that exists and cannot be read fails
 the backup, as an undecryptable credential does.

@@ -911,6 +911,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		IdleTimeout:         cfg.Server.IdleTimeout.AsDuration(),
 		ShutdownTimeout:     cfg.Server.ShutdownTimeout.AsDuration(),
 		BehindProxy:         cfg.Server.BehindProxy,
+		CredentialDir:       server.CredentialDirFor(configPath),
 		ConsoleAssets:       assets,
 		Calls:               callHistory(callStore),
 		Callsign:            func(id uint32) string { return resolve(id, gateways, a.names) },

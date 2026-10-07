@@ -104,8 +104,14 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 	// under a link that is still configured leaves an instance that cannot
 	// authenticate and cannot say why; a file left behind under a link that is
 	// gone is untidy and harmless.
+	//
+	// **And only a file in this server's own directory.** The path is a
+	// setting, and this deleted whatever it named.
 	if p := strings.TrimSpace(removed.PassphraseFile); p != "" {
-		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+		if _, err := s.credentialPath(p); err != nil {
+			s.log.Warn("the passphrase file of a removed link was left where it is",
+				"link", removed.Name, "error", err)
+		} else if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
 			s.log.Warn("could not remove the passphrase file for a removed link",
 				"link", removed.Name, "path", p, "error", err)
 		}
