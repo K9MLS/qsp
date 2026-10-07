@@ -1244,6 +1244,73 @@ a.muted:focus-visible {
   margin-top: var(--space-5);
 }
 
+/* ---- Save bar --------------------------------------------------------- */
+
+/* Save, and what came of it, at the foot of the window however long the page
+   is. See savebar.js. The surface is opaque because the page scrolls beneath
+   it. */
+.savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--color-surface);
+}
+
+.savebar__status {
+  flex: 1 1 14rem;
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-foreground-muted);
+}
+
+/* Colour and words together: the words carry it for anybody who cannot tell
+   the colours apart. */
+.savebar--dirty {
+  border-color: var(--color-degraded);
+}
+
+.savebar--dirty .savebar__status {
+  color: var(--color-degraded);
+}
+
+.savebar--saved .savebar__status {
+  color: var(--color-healthy);
+}
+
+.savebar--failed {
+  border-color: var(--color-failing);
+}
+
+.savebar--failed .savebar__status {
+  color: var(--color-failing);
+}
+
+/* On a phone the two buttons share a line and the answer has its own, so
+   the bar is two lines tall and not three. */
+@media (max-width: 480px) {
+  .savebar {
+    padding: var(--space-3);
+  }
+
+  .savebar .button {
+    flex: 1 1 0;
+    padding-left: var(--space-2);
+    padding-right: var(--space-2);
+  }
+
+  .savebar__status {
+    flex-basis: 100%;
+  }
+}
+
 .panel__body {
   padding: var(--space-5) var(--space-5) var(--space-6);
 }
@@ -1424,6 +1491,28 @@ a.muted:focus-visible {
   /* Aligned with the inputs rather than their labels, so the row reads as one
      line rather than a button floating above it. */
   flex: 0 0 auto;
+}
+
+/* A bridge endpoint this page shows and does not edit: a link to another
+   network, or an audio channel. It sits where the Peer box would, as tall as
+   a box so the row's other fields line up with it, and no wider than its
+   words so they stay beside it. */
+.tg-row__field--fixed {
+  flex: 0 1 auto;
+}
+
+.tg-row__fixed {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-min);
+  color: var(--color-foreground);
+  font-size: var(--text-base);
+}
+
+/* Said under the whole row, not inside one field of it. */
+.tg-row__note {
+  flex: 1 0 100%;
+  margin: 0;
 }
 
 /* A single value does not need the width of a monitor, and a box that wide

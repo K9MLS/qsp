@@ -58,6 +58,16 @@ else
   echo "Install with: sudo dnf install opus-devel   (Debian/Ubuntu: libopus-dev)"
 fi
 
+# The console in a real browser. Nothing above runs its JavaScript. Skipped
+# only when Python's playwright is absent, and said so.
+step "console pages in a browser"
+if python3 -c 'import playwright' 2>/dev/null; then
+  python3 scripts/console-check/run.py || fail=1
+else
+  echo "Python playwright not installed; skipping."
+  echo "Install with: pip install playwright && playwright install chromium"
+fi
+
 step "staticcheck ./..."
 if command -v staticcheck >/dev/null 2>&1; then
   staticcheck ./... || fail=1

@@ -6,6 +6,12 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The console's pages are now checked in a real browser.** Nothing in the
+  gates ran the console's JavaScript; the Go tests read it as text.
+  `scripts/console-check/run.py` opens a page in Chromium against a stand-in
+  for the server and checks what it sends and shows. The Bridges page is the
+  first, with nine checks. `scripts/check.sh` runs it when Python's
+  playwright is installed and says so when it is not.
 - **An administrator can change their own password.** Administration,
   under Administrators, has "Change my password": the current password and
   the new one twice. Until now the only way to a new password was Reset,
@@ -285,6 +291,29 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **The Bridges page no longer strips the link or Zello side from a bridge.**
+  Saving the page rebuilt every bridge from the three things it shows (peer,
+  talkgroup, slot), so an endpoint that is a link to another network, or the
+  Zello channel, came back as "any peer": a bridge to another network was
+  saved as a bridge to nowhere. With the link running the save was refused
+  for a reason nothing on the page could mend; with it paused the bridge was
+  quietly rewritten. The page now sends back everything it does not edit as
+  it found it, and a save with nothing changed changes nothing (2026-10-07
+  hunt, E1). **If you saved the Bridges page while a link or Zello was
+  paused, open it and check those bridges still show their link.**
+  - A link or the Zello channel is shown by name ("Link to brandmeister")
+    where the Peer box would be. Its talkgroup and slot can be changed here;
+    it is removed on the page that made it.
+  - Renaming a bridge takes its schedule windows with it. They stayed on the
+    old name, so the net's window opened nothing and the renamed bridge was
+    on all week (E7).
+  - Save stays at the foot of the window, and says beside the button whether
+    there are changes not saved, that a save worked, or that it did not. A
+    refusal's reason is scrolled into view. Before, the answer was drawn at
+    the head of the page and a refused save looked like a saved one (E8).
+    Leaving the page with changes unsaved asks first.
+  - A server error while loading is shown as an error, not as an empty page
+    with a working Save button.
 - **Calls through Motorola P25 repeaters: one at a time, and each ended
   once.** Seven faults from the 2026-10-07 hunt (D1 to D8), most of them one
   cause: each repeater kept its own note of "I am being carried" and "I have

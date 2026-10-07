@@ -1,0 +1,263 @@
+{
+ "version": 1,
+ "server": {
+  "listen_address": "127.0.0.1:8080",
+  "read_header_timeout": "5s",
+  "read_timeout": "30s",
+  "write_timeout": "30s",
+  "idle_timeout": "2m0s",
+  "shutdown_timeout": "15s",
+  "session_lifetime": "12h0m0s",
+  "behind_proxy": false,
+  "map": {
+   "tile_url": "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+   "attribution": "\u00a9 OpenStreetMap contributors",
+   "max_zoom": 18
+  }
+ },
+ "database": {
+  "driver": "sqlite",
+  "dsn": "qsp.db",
+  "max_open_conns": 4,
+  "conn_max_lifetime": "1h0m0s",
+  "busy_timeout": "5s"
+ },
+ "logging": {
+  "level": "info",
+  "format": "text",
+  "include_source": false
+ },
+ "events": {
+  "history_size": 256,
+  "subscriber_buffer": 64
+ },
+ "dmr": {
+  "enabled": true,
+  "listen_address": "0.0.0.0:62031",
+  "password_file": "/etc/qsp/dmr.pass",
+  "peer_timeout": "1m0s",
+  "login_timeout": "30s",
+  "max_peers": 200,
+  "subscriber_timeout": "2h0m0s",
+  "forwarding": true,
+  "join": {
+   "network_name": "Club Net",
+   "address": "qsp.example.org",
+   "talkgroups": [
+    {
+     "name": "Local",
+     "dialled": 9,
+     "timeslot": 2
+    },
+    {
+     "name": "Wide",
+     "dialled": 3100,
+     "arrives": 91,
+     "timeslot": 1
+    }
+   ]
+  },
+  "bridges": [
+   {
+    "name": "bm",
+    "enabled": true,
+    "endpoints": [
+     {
+      "peer": 0,
+      "talkgroup": 3100,
+      "timeslot": 1
+     },
+     {
+      "peer": 0,
+      "upstream": "brandmeister",
+      "talkgroup": 3100,
+      "timeslot": 1
+     }
+    ]
+   },
+   {
+    "name": "zello",
+    "enabled": true,
+    "endpoints": [
+     {
+      "peer": 310001,
+      "talkgroup": 9,
+      "timeslot": 2
+     },
+     {
+      "peer": 0,
+      "transcoder": "zello",
+      "talkgroup": 9,
+      "timeslot": 2
+     }
+    ]
+   }
+  ],
+  "triggers": null,
+  "schedule": [
+   {
+    "bridge": "bm",
+    "days": [
+     1,
+     3
+    ],
+    "start": "20:00",
+    "duration": "1h0m0s",
+    "timezone": "America/Chicago",
+    "enabled": true
+   }
+  ],
+  "upstreams": [
+   {
+    "name": "brandmeister",
+    "protocol": "openbridge",
+    "enabled": true,
+    "address": "bm.example:62035",
+    "listen_address": "0.0.0.0:62035",
+    "network_id": 3100,
+    "passphrase_file": "bm.pass",
+    "stale_after": "1m0s"
+   }
+  ],
+  "subscription": {
+   "enabled": true,
+   "timeout": "15m0s",
+   "static": [
+    {
+     "peer": 310001,
+     "talkgroup": 9,
+     "timeslot": 2
+    }
+   ],
+   "unlink": 4000
+  },
+  "parrot": {
+   "enabled": true,
+   "talkgroup": 9990,
+   "timeslot": 2,
+   "max_duration": "45s",
+   "gap": "2s"
+  },
+  "callsigns": {
+   "enabled": true,
+   "contact": "op@example.org"
+  },
+  "calls": {
+   "retain": "720h0m0s"
+  },
+  "identity": {
+   "callsign": "W9XYZ",
+   "latitude": 41.88,
+   "longitude": -87.63,
+   "height": 30,
+   "location": "Chicago",
+   "description": "club",
+   "url": "https://example.org"
+  },
+  "transcoders": [
+   {
+    "name": "zello",
+    "enabled": true,
+    "address": "127.0.0.1:2460",
+    "usrp_listen": "127.0.0.1:32001",
+    "usrp_peer": "127.0.0.1:32002",
+    "radio_id": 3100999,
+    "alias": "ZELLO",
+    "permit_peers": [
+     310001
+    ],
+    "gain_to_usrp_db": 3
+   }
+  ],
+  "access": {
+   "registration": {
+    "mode": "permit",
+    "ids": [
+     "310001",
+     "3100-3199"
+    ]
+   },
+   "subscribers": {
+    "mode": "deny",
+    "ids": [
+     "3101234"
+    ]
+   },
+   "talkgroups": {
+    "timeslot_1": {
+     "mode": "deny",
+     "ids": []
+    },
+    "timeslot_2": {
+     "mode": "permit",
+     "ids": [
+      "9",
+      "3100"
+     ]
+    }
+   }
+  },
+  "peer_passwords": "/etc/qsp/peers.json"
+ },
+ "ipsc": {
+  "enabled": true,
+  "listen_address": "0.0.0.0:50000",
+  "master_id": 3100,
+  "allowed_peers": [
+   3101,
+   3102
+  ],
+  "peer_names": {
+   "3101": "W9AAA",
+   "3102": "W9BBB"
+  },
+  "peer_timeout_seconds": 90,
+  "colour_code": 1,
+  "slot_bit_is_timeslot2": false
+ },
+ "p25": {
+  "enabled": true,
+  "listen_address": "0.0.0.0:41000",
+  "callsign": "W9XYZ",
+  "allowed_callsigns": [
+   "W9AAA"
+  ]
+ },
+ "p25_repeaters": {
+  "enabled": true,
+  "listen_address": "0.0.0.0:1994",
+  "allowed_routers": [
+   "10.0.0.1"
+  ],
+  "site": 2,
+  "present_as": "console",
+  "send_header": true,
+  "hold_ms": 150,
+  "record_dir": "/var/rec"
+ },
+ "zello": {
+  "enabled": true,
+  "logon_socket": "/run/qsp/zello.sock",
+  "issuer": "iss",
+  "audience": "aud",
+  "channel": "Club",
+  "connector_health": "127.0.0.1:18090"
+ },
+ "weather": {
+  "enabled": true,
+  "transmit": true,
+  "zones": [
+   "TXC121",
+   "TXZ103"
+  ],
+  "events": [
+   "* Warning",
+   "Tornado Watch",
+   "Odd Event"
+  ],
+  "talkgroup": 9,
+  "timeslot": 2,
+  "sender_id": 9990,
+  "contact": "wx@example.org"
+ }
+}

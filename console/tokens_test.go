@@ -327,6 +327,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"setup.js":   true,
 		"zello.js":   true,
 		"weather.js": true,
+		"savebar.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {
@@ -453,7 +454,7 @@ func TestEveryClassTheScriptsUseIsStyled(t *testing.T) {
 		"static/console.js", "static/map.js", "static/join.js", "static/access.js",
 		"static/index.html", "static/join.html", "static/signin.html",
 		"static/access.html", "static/network.html", "static/network.js",
-		"static/bridges.html", "static/bridges.js",
+		"static/bridges.html", "static/bridges.js", "static/savebar.js",
 		"static/history.html", "static/history.js", "static/hints.js",
 	} {
 		body, err := assets.ReadFile(script)
