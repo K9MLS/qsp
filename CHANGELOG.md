@@ -130,6 +130,10 @@ All notable changes to QSP. Dates are UTC.
 
 ### Documentation
 
+- The handover is brought up to 2026-10-07: 0.1.320 is deployed on both
+  servers and published, what the operator has confirmed on the running
+  servers, what nobody has tried yet, and how to go back. No change to what
+  QSP does.
 - **A guide to linking a Motorola P25 repeater**, `docs/P25-REPEATER-SITE.md`:
   the parts, the checks to make at the station before touching a cable, the
   codeplug and switch settings, the adapter and its jumper, the router's

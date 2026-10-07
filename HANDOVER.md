@@ -1,4 +1,25 @@
-# Handover, 2026-10-04
+# Handover, 2026-10-07
+
+**Start here: 0.1.320 is deployed and published, and eight patches went into
+it in one day.** Production and the test server run it, `qsp-zello` on
+production runs it, and GitHub has `main` and `v0.1.320` with Actions green.
+What each patch did is in "What to deploy, and why" below, 0.1.313 to 0.1.320,
+newest first. **Confirmed by the operator on the running servers** (2026-10-06
+and 07): DMR as before; an administrator's password reset, which is the fault
+that started the day; Zello one over each way through the new connector; and a
+hotspot's call to the Quantar with the 60 ms hold, "good and working".
+
+**Not yet tried by anybody**, and each is a few minutes at a console:
+- **Two tabs.** Save Weather, then save Network from a tab opened before, and
+  see Weather's change survive (0.1.319).
+- **A full backup downloaded** from the Administration page, on production;
+  and **a full restore, on the test server only** (0.1.320). No real one has
+  ever been run from the page.
+- **"a radio ID's registration changed"** in the log, when somebody whose
+  callsign changed is next heard (0.1.318).
+- **The figures behind the hold**: `worst_gap_ms` and `ran_dry` on the line "a
+  call was sent to the repeater". It was heard to work; nobody has read them.
+
 
 Read `NEW-SESSION.md`, then **§8a** of `PROJECT_MEMORY.md` — how this project
 finds its defects, and the thing the last two days proved again. Then **§8s**,
@@ -275,9 +296,9 @@ distant router is after the queue. That leg depends on how the repeater treats
 a late record, **which nobody has measured** — the test is to add jitter on
 the server's traffic to the router only (`tc netem`), key a hotspot and listen
 at 20, 40 and 80 ms, once the Quantar is off the Pi-Star's frequency.
-**To confirm on air**: a hotspot's call still keys the Quantar and sounds as
-it did, and the log line "a call was sent to the repeater" shows
-`worst_gap_ms` and `ran_dry`. **Rollback**: a hold saved on the Network page
+**Heard on air, reported 2026-10-07**: a hotspot's call keyed the Quantar
+and the operator called it good. The log line "a call was sent to the repeater" shows
+`worst_gap_ms` and `ran_dry`, which nobody has read yet. **Rollback**: a hold saved on the Network page
 writes `hold_ms`, which an older binary refuses; clear the box and save first.
 
 **0.1.314 makes the database tests run, and changes nothing QSP does** (0472).
@@ -464,17 +485,21 @@ paces Zello audio at 60 ms, which removed an echo on every call, and 0.1.269
 fills a stall Zello makes with silence rather than leaving the repeater to
 repeat audio. Both confirmed by ear on 2026-09-21.
 
-**Versions, as of 2026-10-04** (check with `-version` before trusting these;
+**Versions, as of 2026-10-07** (check with `-version` before trusting these;
 they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.320: the full backup on the Administration page (0478), on top of 0471 to 0477; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
-| **GitHub** `main` | 0.1.311, tagged `v0.1.311`, pushed 2026-10-04 | the push output; Actions green for `v0.1.310`, **not confirmed for `v0.1.311`** |
-| **Production** (systemd, 192.168.1.247) | **QSP 0.1.311** from 2026-10-04, database at migration 7, Motorola P25 repeater link on, `qsp-zello` 0.1.300, AMBEserver as `ambeserver.service` | `qsp -version` after the restart; calls heard both ways |
-| **Test server** (Docker, 192.168.1.27) | 0.1.311 built from source, 2026-10-04, migration 7 applied, the XPR8300 behind it | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
+| **Fedora working tree** | 0.1.321, this handover and no code (0479) | `cat VERSION`, `git log --oneline -1` |
+| **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
+| **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
+| **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
 
-**Going back on production.** `~/qsp-previous-0.1.310` is the binary before
+**Going back on production.** `~/qsp-previous-0.1.311` and
+`~/qsp-zello-previous-0.1.300` are the two binaries before 0.1.320, and need
+nothing else: no migration and no configuration change lies between. **If a
+hold has been saved on the Network page, clear the box and save first** — an
+older binary will not start with `hold_ms` in the file. `~/qsp-previous-0.1.310` is the binary before
 0.1.311 and needs nothing else. Anything older than 0.1.309 will not start
 against the database as it is now: `~/qsp-previous-0.1.308` goes with the
 database copy in `~/qsp-data-before-0.1.310`, restored to `/var/lib/qsp/`.
@@ -557,7 +582,7 @@ learned to run it as a service.
    Pi-Star's frequency. (b) **Repeater to repeater relay** has never run:
    there is one repeater. (c) **`send_header`** is off and was not needed; the
    Quantar keyed from voice alone. (d) **Frames are held and paced toward a
-   repeater since 0.1.315**, unheard on air; the leg from QSP to a distant
+   repeater since 0.1.315**, heard on the LAN, reported 2026-10-07; the leg from QSP to a distant
    router is still unproven, and the jitter test above is how to prove it.
 
    **For the network Pete, Paul and K9MLS want** — Motorola P25 repeaters in
