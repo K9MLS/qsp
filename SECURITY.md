@@ -80,10 +80,9 @@ whoever loads it first — is real, and the token is what guards it: without one
 an attacker who wins the race gets a form they cannot submit.
 
 The token is generated at startup when no account exists, logged once, held in
-memory and never written to disk. **It is not required from loopback**, because
-a request from the machine itself is from somebody who could read the journal
-anyway — **unless `behind_proxy` is set**, when every request arrives from the
-proxy and the token is always required. It is compared in constant time, and a refusal does not distinguish a
+memory and never written to disk. **It is required from everybody, this machine included** (since 0.1.325).
+A request from loopback used to be let off it, and behind a reverse proxy on
+the same host every request is from loopback. It is compared in constant time, and a refusal does not distinguish a
 wrong token from an absent one.
 
 **Every account after the first is created from the console**, by an
@@ -462,12 +461,12 @@ nobody tried.
 once one exists — 404 rather than a message, so somebody probing cannot tell a
 configured QSP from anything else. It is gated by a one-time token generated
 when the server starts with no account, logged once, held in memory only and
-never written to disk; a restart mints a new one. **No token is required from
-loopback**, because a request from the machine itself is from somebody who could
-read the token from the journal in any case — that recognises a check already
-passed rather than removing one. With `behind_proxy` set that check has not
-been passed by anybody: a proxy on the same host makes every request look
-local, so the token is then required from everyone. The token is compared in constant time and a
+never written to disk; a restart mints a new one. **The token is required from
+everybody, loopback included.** Until 0.1.325 a request from the machine itself
+was let off it unless `behind_proxy` was set; that setting is off by default,
+and a proxy on the same host makes every request look local, so a fresh
+install put behind nginx or Caddy before anybody set it could be claimed by
+whoever found it first. Somebody at the machine can read the journal. The token is compared in constant time and a
 refusal does not distinguish a wrong token from an absent one. See ADR-0056,
 which amends ADR-0026.
 

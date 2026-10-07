@@ -13,6 +13,7 @@ import (
 
 	"github.com/k9mls/qsp/console"
 	"github.com/k9mls/qsp/internal/audit"
+	"github.com/k9mls/qsp/internal/auth"
 	"github.com/k9mls/qsp/internal/config"
 	"github.com/k9mls/qsp/internal/events"
 	"github.com/k9mls/qsp/internal/health"
@@ -658,38 +659,66 @@ func (s stubLogins) BlockedSources(time.Time) int                 { return len(s
 
 // TestRefusedLoginsReachTheConsole. An operator learning about a run of failed
 // logins from a member's phone call is the case this exists to end.
+//
+// **And nobody else is told.** A refusal is a member's home address and the
+// fact that they are trying to get on right now.
+//
+// To see it fail: in handlePeers, drop `&& signedIn` from the line that
+// fills Refused.
 func TestRefusedLoginsReachTheConsole(t *testing.T) {
-	bus := events.NewBus(nil, events.Options{})
-	t.Cleanup(bus.Close)
-	srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
-		ListenAddress: "127.0.0.1:0",
-		Logins: stubLogins{failures: []peers.LoginFailure{{
-			Address: "203.0.113.5", RepeaterID: 3155413,
-			Reason: "6 wrong password", Failures: 6,
-			LockedUntil: time.Now().Add(5 * time.Minute),
-		}}},
-	})
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	for _, tc := range []struct {
+		name     string
+		signedIn bool
+		want     int
+	}{
+		{"an operator who is signed in sees them", true, 1},
+		{"a visitor does not", false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bus := events.NewBus(nil, events.Options{})
+			t.Cleanup(bus.Close)
+			a := newStubAuth()
+			a.sessions["signed-in"] = auth.Session{
+				Token: "signed-in", Username: "operator",
+				ExpiresAt: time.Now().Add(time.Hour).UTC(),
+			}
+			srv, err := New(nil, stubRegistry{report: health.Report{Status: health.StatusHealthy}}, bus, Options{
+				ListenAddress: "127.0.0.1:0",
+				Auth:          a,
+				Logins: stubLogins{failures: []peers.LoginFailure{{
+					Address: "203.0.113.5", RepeaterID: 3155413,
+					Reason: "6 wrong password", Failures: 6,
+					LockedUntil: time.Now().Add(5 * time.Minute),
+				}}},
+			})
+			if err != nil {
+				t.Fatalf("New: %v", err)
+			}
 
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/peers", nil))
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/api/peers", nil)
+			if tc.signedIn {
+				req.AddCookie(&http.Cookie{Name: SessionCookie, Value: "signed-in"})
+			}
+			srv.Handler().ServeHTTP(rec, req)
 
-	var body struct {
-		Refused []map[string]any `json:"refused"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(body.Refused) != 1 {
-		t.Fatalf("%d refusals reported, want 1", len(body.Refused))
-	}
-	if body.Refused[0]["address"] != "203.0.113.5" {
-		t.Errorf("the refusal does not name the source: %v", body.Refused[0])
-	}
-	if body.Refused[0]["reason"] == "" {
-		t.Error("the refusal does not say what failed")
+			var body struct {
+				Refused []map[string]any `json:"refused"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if len(body.Refused) != tc.want {
+				t.Fatalf("%d refusals reported, want %d", len(body.Refused), tc.want)
+			}
+			if strings.Contains(rec.Body.String(), "203.0.113.5") != tc.signedIn {
+				t.Errorf("the address is in the answer: %v, want %v",
+					!tc.signedIn, tc.signedIn)
+			}
+			if tc.signedIn && body.Refused[0]["reason"] == "" {
+				t.Error("the refusal does not say what failed")
+			}
+		})
 	}
 }
 

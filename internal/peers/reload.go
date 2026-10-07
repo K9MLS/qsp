@@ -107,9 +107,12 @@ func (l *Listener) applyPending() {
 	)
 
 	if l.cfg.Bus != nil {
+		// **Not who saved it.** The event stream is read without signing
+		// in, and until 0.1.325 this carried the administrator's username:
+		// half of a sign-in, published to anybody watching the Overview. It
+		// is in the log line above and in the audit trail.
 		l.cfg.Bus.Publish(events.TypeRouteChanged, map[string]any{
 			"source": "configuration",
-			"author": r.Author,
 		})
 	}
 }

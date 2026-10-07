@@ -27,7 +27,7 @@ func TestTheSourceTableIsBounded(t *testing.T) {
 			name: "past the ceiling the address quiet longest is forgotten",
 			fill: func(th *sourceThrottle) {
 				for i := range 6 {
-					th.fail(fmt.Sprintf("192.0.2.%d", i), 0, start.Add(time.Duration(i)*time.Second))
+					th.fail(fmt.Sprintf("192.0.2.%d", i), start.Add(time.Duration(i)*time.Second))
 				}
 			},
 			wantKept: []string{"192.0.2.5", "192.0.2.4"},
@@ -37,11 +37,11 @@ func TestTheSourceTableIsBounded(t *testing.T) {
 			name: "expired entries go before live ones",
 			fill: func(th *sourceThrottle) {
 				for i := range 3 {
-					th.fail(fmt.Sprintf("192.0.2.%d", i), 0, start)
+					th.fail(fmt.Sprintf("192.0.2.%d", i), start)
 				}
 				// Heard from longest ago of the live ones, and still in its window.
-				th.fail("198.51.100.1", 0, start.Add(window-time.Minute))
-				th.fail("198.51.100.2", 0, start.Add(window+time.Second))
+				th.fail("198.51.100.1", start.Add(window-time.Minute))
+				th.fail("198.51.100.2", start.Add(window+time.Second))
 			},
 			wantKept: []string{"198.51.100.1", "198.51.100.2"},
 			wantGone: []string{"192.0.2.0", "192.0.2.1", "192.0.2.2"},

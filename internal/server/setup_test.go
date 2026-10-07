@@ -11,41 +11,6 @@ import (
 	"github.com/k9mls/qsp/internal/logging"
 )
 
-// **The exemption must come from the connection, never from a header.**
-// `X-Forwarded-For` is whatever the client wrote, so trusting it would let
-// anybody claim to be local — which is the whole exemption, handed over.
-func TestLoopbackIsReadFromTheConnectionNotAHeader(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		addr string
-		want bool
-	}{
-		{"IPv4 loopback", "127.0.0.1:51234", true},
-		{"IPv6 loopback", "[::1]:51234", true},
-		{"another loopback address", "127.0.0.53:51234", true},
-		{"a LAN address", "192.168.1.27:51234", false},
-		{"a public address", "203.0.113.7:51234", false},
-		{"nonsense", "not-an-address", false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			r := httptest.NewRequest("GET", "/api/setup", nil)
-			r.RemoteAddr = tc.addr
-			if got := fromLoopback(r); got != tc.want {
-				t.Errorf("fromLoopback(%q) is %v, want %v", tc.addr, got, tc.want)
-			}
-		})
-	}
-
-	// A forwarded header claiming loopback changes nothing.
-	r := httptest.NewRequest("GET", "/api/setup", nil)
-	r.RemoteAddr = "203.0.113.7:51234"
-	r.Header.Set("X-Forwarded-For", "127.0.0.1")
-	r.Header.Set("X-Real-IP", "127.0.0.1")
-	if fromLoopback(r) {
-		t.Error("a forwarded header claiming loopback was believed; anybody could send one")
-	}
-}
-
 // The token is unguessable and different every time. It guards a window of
 // minutes, so it is sized against guessing rather than against an offline
 // attack — there is nothing here to attack offline.
@@ -176,35 +141,4 @@ type haveAccounts struct{}
 func (haveAccounts) AnyAccount(ctx context.Context) (bool, error) { return true, nil }
 func (haveAccounts) CreateAccount(ctx context.Context, u, p string) (auth.Account, error) {
 	return auth.Account{Username: u}, nil
-}
-
-// Behind a reverse proxy the setup token is always required. With nginx or
-// Caddy on the same host every request arrives from 127.0.0.1, so the
-// exemption for somebody at the machine let anybody on the internet create
-// the first administrator of a fresh install.
-//
-// To see it fail: drop `s.opts.BehindProxy ||` from setupTokenRequired.
-func TestTheSetupTokenIsRequiredBehindAProxy(t *testing.T) {
-	cases := []struct {
-		name        string
-		behindProxy bool
-		remote      string
-		want        bool
-	}{
-		{"at the machine, no proxy", false, "127.0.0.1:50000", false},
-		{"from the network, no proxy", false, "203.0.113.7:50000", true},
-		{"through a proxy on this host", true, "127.0.0.1:50000", true},
-		{"through a proxy on this host, over IPv6", true, "[::1]:50000", true},
-		{"through a proxy elsewhere", true, "10.0.0.5:50000", true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			s := &Server{opts: Options{BehindProxy: tc.behindProxy}}
-			r := httptest.NewRequest("POST", "/api/setup", nil)
-			r.RemoteAddr = tc.remote
-			if got := s.setupTokenRequired(r); got != tc.want {
-				t.Errorf("token required: %v, want %v", got, tc.want)
-			}
-		})
-	}
 }

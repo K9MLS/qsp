@@ -62,10 +62,18 @@ type sourceState struct {
 	// until is when the address is answered again; zero when it is not being
 	// refused.
 	until time.Time
-	// account is the last real account this address failed against, zero when
-	// every failure named nobody. It is what lets `qsp unlock` reach a refusal
-	// held in another process; see Service.Authenticate.
-	account int64
+	// marked is the account the refusal was written on, zero when it was
+	// written on none. It is what lets `qsp unlock` reach a refusal held in
+	// another process; see Service.Authenticate.
+	//
+	// **Set only once the mark is in the database**, by wrote. Until 0.1.325
+	// this was the last real account the address had failed against, whether
+	// or not anything was written on it. Four guesses at a real name and a
+	// fifth at a name nobody holds tripped the refusal with no mark written,
+	// and the next guess at the real name found an account with no mark,
+	// took that for `qsp unlock`, and was forgiven: unlimited guesses, four
+	// in every five of them real.
+	marked int64
 }
 
 // sourceThrottle counts failed logins by where they came from.
@@ -96,8 +104,8 @@ func newSourceThrottle(limit int, window time.Duration) *sourceThrottle {
 }
 
 // refused reports whether an address is being refused, until when, and the
-// account its failures were against.
-func (t *sourceThrottle) refused(key string, now time.Time) (until time.Time, account int64, refused bool) {
+// account that refusal was written on.
+func (t *sourceThrottle) refused(key string, now time.Time) (until time.Time, marked int64, refused bool) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -113,13 +121,13 @@ func (t *sourceThrottle) refused(key string, now time.Time) (until time.Time, ac
 		return time.Time{}, 0, false
 	}
 	st.last = now
-	return st.until, st.account, true
+	return st.until, st.marked, true
 }
 
 // fail counts one failed attempt. It returns when the address will be answered
 // again if this attempt was the one that used up its allowance, and the zero
 // time otherwise.
-func (t *sourceThrottle) fail(key string, account int64, now time.Time) time.Time {
+func (t *sourceThrottle) fail(key string, now time.Time) time.Time {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -136,13 +144,19 @@ func (t *sourceThrottle) fail(key string, account int64, now time.Time) time.Tim
 	}
 	st.failures++
 	st.last = now
-	if account != 0 {
-		st.account = account
-	}
 	if st.failures >= t.limit {
 		st.until = now.Add(t.window)
 	}
 	return st.until
+}
+
+// wrote records that an address's refusal is now written on an account.
+func (t *sourceThrottle) wrote(key string, account int64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if st, ok := t.sources[key]; ok && !st.until.IsZero() {
+		st.marked = account
+	}
 }
 
 // forget drops what is remembered about an address.

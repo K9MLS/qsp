@@ -263,8 +263,8 @@ QSP writes the configuration on its first run. After that it is yours, and
 this will never overwrite it.
 
 Once it starts, open the console and it will ask you to create the first
-administrator. From the machine itself there is nothing else to do; over a
-network it will ask for a setup token, which QSP prints once at startup.
+administrator. It will ask for a setup token, which QSP prints once at
+startup: look for setup_token in its log.
 `, path, peerPasswordEnv, allowedPeersEnv)
 }
 

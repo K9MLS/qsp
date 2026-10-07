@@ -80,11 +80,17 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// answer is the same for a real username and for one nobody holds, and
 		// it cannot be used to ask which is which.
 		s.log.Warn("login refused: too many failed attempts from this address",
-			"username", req.Username, "from", clientIP(r, s.opts.BehindProxy))
-		s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeDenied, "locked out")
+			"username", auditActor(req.Username), "from", clientIP(r, s.opts.BehindProxy))
 		wait := "a few minutes"
 		var lockout *auth.Lockout
-		if errors.As(err, &lockout) {
+		if !errors.As(err, &lockout) {
+			s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeDenied, "locked out")
+		} else {
+			// Once for the refusal. The attempts made during it say nothing
+			// the first did not.
+			if s.authAudit.firstOfRefusal(clientIP(r, s.opts.BehindProxy), lockout.Until, time.Now()) {
+				s.recordAuth(r, audit.ActionUserLogin, req.Username, audit.OutcomeDenied, "locked out")
+			}
 			if left := time.Until(lockout.Until); left > 0 {
 				// Rounded up, so the wait named is never shorter than the wait.
 				seconds := int(left/time.Second) + 1
@@ -106,7 +112,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		// Everything else is one message. Distinguishing a wrong password from
 		// an unknown username turns this into a way of asking which callsigns
 		// hold accounts here.
-		s.log.Warn("login refused", "username", req.Username, "from", clientIP(r, s.opts.BehindProxy))
+		s.log.Warn("login refused", "username", auditActor(req.Username), "from", clientIP(r, s.opts.BehindProxy))
 		// The username as typed, which may be nobody's account. A failed
 		// attempt against a name that does not exist is the shape of somebody
 		// guessing, and an audit trail that only records successes cannot show
@@ -322,6 +328,25 @@ func (s *Server) recordAuth(r *http.Request, action audit.Action, username strin
 	if s.opts.Audit == nil {
 		return
 	}
+	now := time.Now().UTC()
+	if outcome != audit.OutcomeSuccess {
+		ok, unrecorded := s.authAudit.allow(now)
+		if unrecorded > 0 {
+			if err := s.opts.Audit.Record(r.Context(), audit.Event{
+				OccurredAt: now,
+				Actor:      audit.SystemActor,
+				Action:     action,
+				Outcome:    audit.OutcomeDenied,
+				Detail: map[string]string{"reason": strconv.Itoa(unrecorded) +
+					" more refused sign-ins in the minute before this were not recorded one by one"},
+			}); err != nil {
+				s.log.Warn("cannot record an authentication in the audit trail", "error", err)
+			}
+		}
+		if !ok {
+			return
+		}
+	}
 	detail := map[string]string{}
 	if note != "" {
 		detail["reason"] = note
@@ -330,8 +355,8 @@ func (s *Server) recordAuth(r *http.Request, action audit.Action, username strin
 		detail = nil
 	}
 	if err := s.opts.Audit.Record(r.Context(), audit.Event{
-		OccurredAt: time.Now().UTC(),
-		Actor:      username,
+		OccurredAt: now,
+		Actor:      auditActor(username),
 		Action:     action,
 		Outcome:    outcome,
 		SourceIP:   clientIP(r, s.opts.BehindProxy),

@@ -316,14 +316,17 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 
 	// Refused before the password is looked at, so an address that has used up
 	// its attempts costs a map lookup rather than a key derivation.
-	if until, against, refused := s.throttle.refused(source, now); refused {
+	if until, marked, refused := s.throttle.refused(source, now); refused {
 		// **The one way out early is the host.** `qsp unlock` runs in another
 		// process and cannot reach this table, so what it clears is the mark
 		// on the account, and an address refused for guessing at that account
 		// is let try again when the mark is gone. Nothing an anonymous sender
 		// can do removes the mark, so the answer they get does not depend on
 		// whether the name is real.
-		if !found || against != account.ID || !account.LockedUntil.IsZero() {
+		//
+		// **Only a refusal whose mark was written.** One tripped on a name
+		// nobody holds has no mark to clear, and is served out in full.
+		if !found || marked == 0 || marked != account.ID || !account.LockedUntil.IsZero() {
 			return Session{}, &Lockout{Until: until}
 		}
 		s.throttle.forget(source)
@@ -342,11 +345,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 	}
 
 	if !found || verr != nil {
-		var id int64
-		if found {
-			id = account.ID
-		}
-		until := s.throttle.fail(source, id, now)
+		until := s.throttle.fail(source, now)
 		if found && !until.IsZero() {
 			// Marked on the account so the users page can show that somebody is
 			// being refused for guessing at it, and so that clearing the mark
@@ -358,6 +357,7 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 			if err := s.repo.UpdateAttempts(ctx, account.ID, 0, until, account.LastLoginAt); err != nil {
 				return Session{}, fmt.Errorf("auth: cannot record the refusal: %w", err)
 			}
+			s.throttle.wrote(source, account.ID)
 		}
 		// The attempt that uses up the allowance is still answered as a wrong
 		// password; it is the next one that is refused.

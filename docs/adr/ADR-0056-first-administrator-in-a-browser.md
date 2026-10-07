@@ -47,6 +47,11 @@ administrator exists, logs it once beside a line saying the server has no
 administrator, and holds it in memory only. A restart mints a new one; nothing
 is written to disk, so there is no file to leak or forget.
 
+> **Superseded in 0.1.325: the token is asked for from loopback too.** A
+> reverse proxy on the same host makes every request arrive from loopback, and
+> nothing in a request tells a proxied visitor from somebody at the machine.
+> What follows is the original reasoning, kept for the record.
+
 **Except from loopback, where there is no token to type.** A request arriving
 on the loopback interface is from somebody already on the machine, who could
 read the token from the journal in any case. Skipping it there is not a

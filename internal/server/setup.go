@@ -6,7 +6,6 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -112,37 +111,23 @@ func (s *Server) setupNeeded(ctx context.Context) bool {
 	return !any
 }
 
-// setupTokenRequired reports whether first-run setup must present the token.
-//
-// **Behind a reverse proxy, always.** The exemption is for somebody sitting
-// at the machine, and the connection's address is how that is known. With
-// nginx or Caddy on the same host every request arrives from 127.0.0.1, the
-// whole internet included, so on a fresh install anybody could create the
-// first administrator without the token (found 2026-10-03). The forwarded
-// header cannot be used instead, for the reason fromLoopback gives.
-func (s *Server) setupTokenRequired(r *http.Request) bool {
-	return s.opts.BehindProxy || !fromLoopback(r)
-}
-
-// fromLoopback reports whether a request came from this machine.
-//
-// **Read from the connection, never from a header.** `X-Forwarded-For` is
-// whatever the client wrote, so trusting it here would let anybody claim to be
-// local — which is the whole exemption, handed over.
-func fromLoopback(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	ip := net.ParseIP(strings.Trim(host, "[]"))
-	return ip != nil && ip.IsLoopback()
-}
+// **The token is always asked for.** Until 0.1.325 a request from this
+// machine was let off it, on the reasoning that somebody at the machine could
+// read the log anyway, and the connection's address was how that was known.
+// It is not known that way. With nginx or Caddy on the same host every
+// request arrives from 127.0.0.1, the whole internet included, so on a fresh
+// install behind a proxy that `behind_proxy` had not yet been set for (and it
+// is not set by default) anybody could create the first administrator (found
+// 2026-10-03, and again 2026-10-07 for the default). Nothing in a request
+// tells the two apart: a plain nginx `proxy_pass` adds no forwarding header.
+// Somebody at the machine can read the log, so they are asked to.
 
 // setupBody is what the page reads before showing the form.
 type setupBody struct {
 	// Needed is false once an administrator exists.
 	Needed bool `json:"needed"`
-	// TokenRequired is false from loopback.
+	// TokenRequired is always true. It is still sent because a page cached
+	// from before 0.1.325 hides the token box without it.
 	TokenRequired bool `json:"token_required"`
 	// Note explains where to find the token, when one is wanted.
 	Note string `json:"note,omitempty"`
@@ -159,11 +144,9 @@ func (s *Server) handleSetupState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body := setupBody{Needed: true, TokenRequired: s.setupTokenRequired(r)}
-	if body.TokenRequired {
-		body.Note = "This server printed a setup token when it started. Find it with " +
-			"`docker logs qsp` or `journalctl -u qsp`, and paste it below."
-	}
+	body := setupBody{Needed: true, TokenRequired: true,
+		Note: "This server printed a setup token when it started. Find it with " +
+			"`docker logs qsp` or `journalctl -u qsp`, and paste it below."}
 	writeJSON(w, s.log, http.StatusOK, body)
 }
 
@@ -186,7 +169,7 @@ func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.setupTokenRequired(r) {
+	{
 		s.setup.mu.Lock()
 		want := s.setup.token
 		s.setup.mu.Unlock()
@@ -261,7 +244,7 @@ func (s *Server) PrepareSetup(ctx context.Context) error {
 	s.log.Warn("this server has no administrator and is waiting to be set up",
 		"open", "the console",
 		"setup_token", token,
-		"note", "no token is needed from this machine; the token is for setting up over a network",
+		"note", "the setup page asks for this token",
 		"expires", "when the first administrator is created, or at the next restart",
 	)
 	_ = time.Now

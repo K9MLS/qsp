@@ -172,6 +172,33 @@ All notable changes to QSP. Dates are UTC.
 
 ### Security
 
+- **Guessing at a console password could go on without limit.** Four wrong
+  passwords for a real account and then one for a name nobody holds, repeated,
+  was never refused: the address was locked out with nothing written on the
+  account, and the next guess at the real name took the missing mark for
+  `qsp unlock` and was forgiven. An address is now forgiven early only when
+  the mark it is waiting on was written and has since been cleared from the
+  host. Found in the 2026-10-07 hunt (A1).
+- **The first-run setup page asks for its token from everybody**, the machine
+  QSP runs on included. A request from that machine was let off it, and
+  behind nginx or Caddy on the same host every request is from that machine;
+  `behind_proxy` closed this only once somebody had set it, and it is off by
+  default. On a fresh install behind a proxy, whoever found the page first
+  could make themselves the administrator (A2). **If you set up a new server
+  you will now be asked for the token even at its own keyboard**: it is in the
+  log, as `setup_token`.
+- **Hotspots being refused are shown to a signed-in operator only.** The list
+  on `/api/peers` gave anybody each refused hotspot's address, the ID it
+  claimed and whether it was still trying (A6).
+- **Refused sign-ins can no longer fill the audit trail.** Every attempt wrote
+  a row holding the name as typed, up to 8 KiB, including every attempt from
+  an address already being refused. A name is recorded up to 64 characters,
+  an address being refused is recorded once for that refusal, and refused
+  sign-ins from everybody together are recorded up to 20 a minute with one
+  row counting the rest (A7).
+- **Saving the configuration no longer publishes who saved it.** The
+  administrator's username was on the event stream, which is read without
+  signing in. It is still in the log and the audit trail (A8).
 - **Bug hunt, sixth patch: the console.**
   - **Anybody could lock an administrator out of the console**, five wrong
     passwords at a time, and a locked account answered differently from an

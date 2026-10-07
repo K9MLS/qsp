@@ -548,10 +548,19 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		GeneratedAt: now,
 	}
 
+	_, signedIn := s.session(r)
+
 	// Before the early return. A refusal is exactly what an operator needs to
 	// see when the peer list is empty — the case where somebody is trying to
 	// connect and failing is the one where nothing else on the page says so.
-	if r := s.loginReporter(); r != nil {
+	//
+	// **An operator, so signed in.** Each of these is an address, the ID it
+	// claimed and whether it is still trying: a member's home connection,
+	// and that they are at it now. 0.1.264 took exactly that off the event
+	// stream and left it here, on the one endpoint anybody can read (found
+	// 2026-10-07). The whole list goes, for the reason RecentDrops gives
+	// below.
+	if r := s.loginReporter(); r != nil && signedIn {
 		body.Refused = r.LoginFailures(now)
 	}
 
@@ -559,7 +568,6 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	// returned here when the DMR listener was off, before P25 was ever
 	// looked at, so a network running only P25 had an Overview that said
 	// "the DMR listener is not enabled" and nothing else.
-	_, signedIn := s.session(r)
 	if s.opts.Peers == nil {
 		body.Reason = s.opts.PeersDisabledReason
 		if body.Reason == "" {

@@ -85,8 +85,7 @@ The setup token is printed once per start. If you miss it,
 **3. Make your administrator account.** Open `http://<this machine>:8080` in a
 browser. The console is reachable from your whole network, so keep 8080/tcp off
 the internet unless you mean it to be there. The first page asks for a callsign,
-a password and the setup token. From a browser on the QSP machine itself, no
-token is needed.
+a password and the setup token.
 
 **4. Point a hotspot at it.** In Pi-Star or WPSD, add a custom DMR master with
 this machine's address, port **62031**, and your `QSP_PEER_PASSWORD`. The

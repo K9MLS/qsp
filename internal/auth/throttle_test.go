@@ -113,6 +113,28 @@ func TestFailedLoginsAreCountedAgainstTheSourceNotTheAccount(t *testing.T) {
 			},
 		},
 		{
+			// The bypass found 2026-10-07: two guesses at a real name, the
+			// third at a name nobody holds, and the address went on guessing
+			// at the real name for ever. To see it fail: add
+			// `st.marked = 1` to sourceThrottle.fail, which is the old
+			// behaviour of remembering an account nothing was written on.
+			name: "tripping on a name nobody holds does not forgive the guesses before it",
+			steps: []step{
+				wrong(stranger), wrong(stranger), nobody(stranger),
+				{username: "K9MLS", password: "wrong", ip: stranger, want: auth.ErrLockedOut},
+				{username: "K9MLS", password: goodPassword, ip: stranger, want: auth.ErrLockedOut},
+				{username: "K9MLS", password: goodPassword, ip: stranger, wait: 9 * time.Minute, want: auth.ErrLockedOut},
+			},
+		},
+		{
+			name: "a name nobody holds between real guesses does not hide them",
+			steps: []step{
+				wrong(stranger), nobody(stranger), wrong(stranger),
+				{username: "K9MLS", password: goodPassword, ip: stranger, want: auth.ErrLockedOut},
+				{username: "K9MLS", password: goodPassword, ip: stranger, unlock: true},
+			},
+		},
+		{
 			name: "one IPv6 /64 is one source however many addresses it uses",
 			steps: []step{
 				wrong("2001:db8:1:2::1"), wrong("2001:db8:1:2::2"), wrong("2001:db8:1:2:ffff::3"),

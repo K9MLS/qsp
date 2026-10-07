@@ -77,16 +77,15 @@ Both values are read **only on the first run**. After that
 until it does. Open the console after `docker compose up` and it will ask you
 for a callsign and a password.
 
-**Over a network it asks for a setup token as well.** QSP prints one once when
-it starts with no administrator:
+**It asks for a setup token as well.** QSP prints one once when it starts with
+no administrator:
 
 ```sh
 docker logs qsp 2>&1 | grep setup_token
 ```
 
-There is no token to type when you open the console **from the machine QSP is
-running on** — a request from loopback is from somebody who could read that log
-line anyway. A restart prints a new token, so a missed one costs a
+It is asked for wherever you open the console from, the machine QSP is running
+on included. A restart prints a new token, so a missed one costs a
 `docker compose restart` rather than anything worse.
 
 Setup runs once. Afterwards the page refuses, and every account after the first

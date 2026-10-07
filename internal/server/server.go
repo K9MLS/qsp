@@ -159,6 +159,9 @@ type Server struct {
 	textReference atomic.Uint32
 	// setup holds the one-time token until the first administrator exists.
 	setup setupState
+	// authAudit limits what refused sign-ins write to the audit trail. See
+	// authaudit.go.
+	authAudit authAuditBudget
 	// offered holds passphrases this instance has offered and not yet seen
 	// come back, so a reciprocal invitation needs no secret typed. See
 	// offered.go.
