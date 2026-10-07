@@ -2550,6 +2550,29 @@ func mapSettings(cfg config.Config) server.MapSettings {
 		TileURL:     cfg.Server.Map.TileURL,
 		Attribution: cfg.Server.Map.Attribution,
 		MaxZoom:     cfg.Server.Map.MaxZoom,
+		Self:        selfPin(cfg),
+	}
+}
+
+// selfPin is this server as its own map draws it: where its identity says it
+// is, under the name it announces. **A server given no position has none**,
+// and is not drawn. Nought and nought is what a position left empty looks
+// like, as it is everywhere else the identity is read.
+func selfPin(cfg config.Config) *server.ServerPin {
+	id := cfg.DMR.Identity
+	if id.Latitude == 0 && id.Longitude == 0 {
+		return nil
+	}
+	if id.Latitude < -90 || id.Latitude > 90 || id.Longitude < -180 || id.Longitude > 180 {
+		return nil
+	}
+	return &server.ServerPin{
+		Name:      strings.TrimSpace(cfg.DMR.Join.NetworkName),
+		Callsign:  strings.TrimSpace(id.Callsign),
+		Location:  strings.TrimSpace(id.Location),
+		Latitude:  id.Latitude,
+		Longitude: id.Longitude,
+		Self:      true,
 	}
 }
 
@@ -2654,6 +2677,8 @@ func (l *links) LinkStatuses() []server.LinkStatus {
 			// other operator's console showed a name (ADR-0052 rule 3).
 			Network:      st.FarEndNetwork,
 			Software:     st.FarEndSoftware,
+			Callsign:     st.FarEndCallsign,
+			Location:     st.FarEndLocation,
 			Measured:     true,
 			Sent:         st.Stats.Sent,
 			Received:     st.Stats.Received,
@@ -2661,6 +2686,10 @@ func (l *links) LinkStatuses() []server.LinkStatus {
 			EverReceived: st.EverReceived,
 			Summary:      st.Summary,
 			Advice:       st.Advice,
+		}
+		if st.FarEndLocated {
+			lat, lon := st.FarEndLatitude, st.FarEndLongitude
+			entry.Latitude, entry.Longitude = &lat, &lon
 		}
 		if st.EverReceived {
 			entry.IdleSeconds = int(st.Since.Seconds())
@@ -2716,14 +2745,23 @@ func attachmentViews(l *peers.Listener, peer hbp.RepeaterID, now time.Time) []se
 // server with nothing configured announces empty fields, and the far end's
 // console reports that it was not announced rather than guessing — an invented
 // name is worse than an address, because an address is at least true.
+//
+// **Its position too, from 0.1.323, when it has been given one.** A server
+// that dials another has always sent its position, in the configuration every
+// Homebrew peer sends; the server it dialled said nothing back about where it
+// was, so each end of a link could draw only one of the two.
 func serverIdentity(cfg config.Config) hbp.Identity {
-	return hbp.Identity{
+	out := hbp.Identity{
 		Network:     strings.TrimSpace(cfg.DMR.Join.NetworkName),
 		Callsign:    strings.TrimSpace(cfg.DMR.Identity.Callsign),
 		Software:    buildVersion(),
 		Description: strings.TrimSpace(cfg.DMR.Identity.Description),
 		ServerID:    strings.TrimSpace(cfg.Server.Identifier),
 	}
+	if pin := selfPin(cfg); pin != nil {
+		out.Location, out.Latitude, out.Longitude, out.Located = pin.Location, pin.Latitude, pin.Longitude, true
+	}
+	return out
 }
 
 // setupOrNil and accountsOrNil keep a nil *auth.Service out of a non-nil

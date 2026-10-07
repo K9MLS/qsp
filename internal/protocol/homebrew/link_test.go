@@ -620,3 +620,35 @@ func TestTheFirstRetryIsJitteredToo(t *testing.T) {
 			waited, 5*time.Second)
 	}
 }
+
+// A link keeps where its far end says it is, with the rest of what it said,
+// so a console can draw the server this one dialled.
+//
+// Break it: leave the position out of the FarEnd the link stores.
+func TestALinkKeepsWhereItsFarEndIs(t *testing.T) {
+	tests := []struct {
+		name string
+		said hbp.Identity
+	}{
+		{"a far end with a position", hbp.Identity{Network: "KD9EJA-01", Location: "Wausau, WI",
+			Latitude: 44.9591, Longitude: -89.6301, Located: true}},
+		{"a far end with none", hbp.Identity{Network: "KD9EJA-01"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.connect()
+			tc.said.RepeaterID = linkID
+			h.l.Handle(tc.said.Marshal())
+
+			far := h.l.FarEnd()
+			if !far.Known || far.Network != "KD9EJA-01" {
+				t.Fatalf("the far end's name was not kept: %+v", far)
+			}
+			if far.Located != tc.said.Located || far.Latitude != tc.said.Latitude ||
+				far.Longitude != tc.said.Longitude || far.Location != tc.said.Location {
+				t.Errorf("kept %+v, said %+v", far, tc.said)
+			}
+		})
+	}
+}

@@ -403,3 +403,58 @@ func TestNewPeerRequiresItsDependencies(t *testing.T) {
 		})
 	}
 }
+
+// push sends any message down the path the link last spoke from.
+func (m *fakeMaster) push(msg interface{ Marshal() []byte }) {
+	m.mu.Lock()
+	peer := m.peer
+	m.mu.Unlock()
+	if peer == nil {
+		m.t.Fatal("the master has not heard from the link yet")
+	}
+	_, _ = m.conn.WriteToUDP(msg.Marshal(), peer)
+}
+
+// What the server a link dialled says about itself reaches the link's status,
+// which is all the console is given: its name, its callsign, and from 0.1.323
+// where it is. Over a real socket, as a far end sends it.
+//
+// Break it: leave the position out of Status in PeerLink.Status.
+func TestWhatTheFarEndAnnouncesReachesTheStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		said hbp.Identity
+	}{
+		{"with a position", hbp.Identity{RepeaterID: linkID, Network: "KD9EJA-01", Callsign: "KD9EJA",
+			Software: "QSP 0.1.323", Location: "Wausau, WI", Latitude: 44.9591, Longitude: -89.6301, Located: true}},
+		{"without one, as an older server", hbp.Identity{RepeaterID: linkID, Network: "KD9EJA-01",
+			Callsign: "KD9EJA", Software: "QSP 0.1.320"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			master := newFakeMaster(t)
+			l := newPeerLink(t, master.address(), nil)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if err := l.Start(ctx); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			defer func() { _ = l.Close() }()
+			waitFor(t, "the link to connect", func() bool { return l.State() == homebrew.StateConnected })
+
+			master.push(tc.said)
+			waitFor(t, "the announcement to arrive", func() bool { return l.Status().FarEndNetwork != "" })
+
+			st := l.Status()
+			if st.FarEndNetwork != "KD9EJA-01" || st.FarEndCallsign != "KD9EJA" || st.FarEndSoftware != tc.said.Software {
+				t.Errorf("the status carries %q, %q, %q", st.FarEndNetwork, st.FarEndCallsign, st.FarEndSoftware)
+			}
+			if st.FarEndLocated != tc.said.Located || st.FarEndLatitude != tc.said.Latitude ||
+				st.FarEndLongitude != tc.said.Longitude || st.FarEndLocation != tc.said.Location {
+				t.Errorf("the status says located=%v at %v, %v (%q); the far end said located=%v at %v, %v (%q)",
+					st.FarEndLocated, st.FarEndLatitude, st.FarEndLongitude, st.FarEndLocation,
+					tc.said.Located, tc.said.Latitude, tc.said.Longitude, tc.said.Location)
+			}
+		})
+	}
+}

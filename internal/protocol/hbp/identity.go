@@ -80,6 +80,20 @@ type Identity struct {
 	// neighbour that cannot yet say, and a console reports that rather than
 	// inventing one.
 	ServerID string
+	// Location is the place name the sending server gives for itself, free
+	// text, and Latitude and Longitude are where it says it is, in decimal
+	// degrees. **Valid only when Located.** A server that has not been given
+	// a position announces none and is not plotted, and neither is one whose
+	// position is outside the globe: a pin in the wrong place is believed,
+	// and a missing one prompts somebody to ask.
+	//
+	// Added in 0.1.323 so a console can draw the servers it is linked to. A
+	// server older than that sends none of these and ignores them when sent,
+	// which is why the payload is JSON.
+	Location  string
+	Latitude  float64
+	Longitude float64
+	Located   bool
 }
 
 // identityPayload is the wire form of the fields above.
@@ -93,6 +107,24 @@ type identityPayload struct {
 	Software    string `json:"software,omitempty"`
 	Description string `json:"description,omitempty"`
 	ServerID    string `json:"server_id,omitempty"`
+	Location    string `json:"location,omitempty"`
+	// Pointers, because nought degrees is a real latitude and a field left
+	// out is a server that said nothing.
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
+}
+
+// plausiblePosition reports whether a latitude and longitude are on the globe
+// and are not the point where both are zero, which is what an unset pair
+// looks like and is open ocean.
+func plausiblePosition(lat, lon float64) bool {
+	if lat != lat || lon != lon { // NaN
+		return false
+	}
+	if lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return false
+	}
+	return lat != 0 || lon != 0
 }
 
 // identityTag is the four bytes that mark this message.
@@ -115,13 +147,19 @@ func (i Identity) Marshal() []byte { return i.AppendTo(nil) }
 
 // AppendTo appends the wire encoding to dst.
 func (i Identity) AppendTo(dst []byte) []byte {
-	body, err := json.Marshal(identityPayload{
+	payload := identityPayload{
 		Network:     strings.TrimSpace(i.Network),
 		Callsign:    strings.TrimSpace(i.Callsign),
 		Software:    strings.TrimSpace(i.Software),
 		Description: strings.TrimSpace(i.Description),
 		ServerID:    strings.TrimSpace(i.ServerID),
-	})
+		Location:    strings.TrimSpace(i.Location),
+	}
+	if i.Located && plausiblePosition(i.Latitude, i.Longitude) {
+		lat, lon := i.Latitude, i.Longitude
+		payload.Latitude, payload.Longitude = &lat, &lon
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		// The payload is four strings; there is no input that fails to encode.
 		// An empty object still parses as an identity that says nothing, which
@@ -166,5 +204,11 @@ func parseIdentity(b []byte) (Message, error) {
 	out.Software = p.Software
 	out.Description = p.Description
 	out.ServerID = p.ServerID
+	out.Location = p.Location
+	// Both or neither, and on the globe. Half a position, or one that cannot
+	// be, is a server with no position: the rest of what it said still stands.
+	if p.Latitude != nil && p.Longitude != nil && plausiblePosition(*p.Latitude, *p.Longitude) {
+		out.Latitude, out.Longitude, out.Located = *p.Latitude, *p.Longitude, true
+	}
 	return out, nil
 }

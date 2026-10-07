@@ -6,6 +6,18 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Servers are on the map.** The Overview's map drew the stations registered
+  with a server and nothing else. It now draws the server itself, from the
+  latitude and longitude in the Identity panel on the Network page, and the
+  servers it is linked to: a server you dialled now says where it is, which
+  it did not before, and a server that dialled you was already drawn but as
+  though it were a hotspot. A server's pin is a square where a station's is
+  round, and its label says "server" or "this server". The line above the map
+  counts them. **Nothing new to set**: a server with no position is drawn
+  nowhere, on its own map or anybody else's. The map is public and the panel
+  now says so; a position for the town is enough. **Both ends of a link need
+  0.1.323 for the server you dialled to appear**; an older server ignores
+  what it is told and says nothing back, and the link is unaffected.
 - **The full backup can be made and restored from the console.** QSP has had
   an encrypted backup that carries the settings, every stored credential and
   the password files since ADR-0065, and no page offered it: the

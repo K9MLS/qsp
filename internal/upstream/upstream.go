@@ -314,6 +314,11 @@ type Status struct {
 	FarEndNetwork  string
 	FarEndCallsign string
 	FarEndSoftware string
+	// Where the far end says it is. Valid only when FarEndLocated.
+	FarEndLocation  string
+	FarEndLatitude  float64
+	FarEndLongitude float64
+	FarEndLocated   bool
 	// EverReceived reports whether any frame has ever verified.
 	EverReceived bool
 	// Since is how long since a frame last arrived. Meaningless when

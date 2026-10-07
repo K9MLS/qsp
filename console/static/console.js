@@ -468,6 +468,13 @@
       '<path d="M8 8.5V10H2V4h1.5"/></svg></a>';
   }
 
+  // serverLabel names a server's pin. The word is in the label because a
+  // different shape alone is a cue somebody has to learn.
+  function serverLabel(name, self) {
+    var what = self ? "this server" : "server";
+    return name ? name + " (" + what + ")" : (self ? "This server" : "A linked server");
+  }
+
   // renderMap draws the peers that announced a usable position.
   //
   // A peer with no coordinates, or coordinates the server could not parse, is
@@ -481,20 +488,56 @@
     }
     var list = (payload && payload.peers) || [];
     var points = [];
+    /* Counted by what is drawn: a server that dialled this one is a peer in
+       the list and a server on the map, and the line above the map says
+       "servers" for every pin that is labelled one. */
+    var located = 0;
+    var stations = 0;
+    var drawn = 0;
     for (var i = 0; i < list.length; i++) {
       var p = list[i];
+      /* A peer with a link name is a QSP server that dialled this one. It
+         has always been plotted, as though it were a hotspot. */
+      var linked = !!p.link_name;
+      if (!linked) {
+        stations++;
+      }
       if (typeof p.latitude !== "number" || typeof p.longitude !== "number") {
         continue;
+      }
+      if (linked) {
+        drawn++;
+      } else {
+        located++;
       }
       points.push({
         lat: p.latitude,
         lon: p.longitude,
-        label: p.callsign || String(p.id)
+        label: linked ? serverLabel(p.network || p.callsign, false) : (p.callsign || String(p.id)),
+        kind: linked ? "server" : "station"
+      });
+    }
+
+    /* This server, and the servers it dialled that said where they are. Not
+       counted among the peers: "3 of 4 located" is about who is connected. */
+    var servers = (payload && payload.servers) || [];
+    for (var s = 0; s < servers.length; s++) {
+      var srv = servers[s];
+      if (typeof srv.latitude !== "number" || typeof srv.longitude !== "number") {
+        continue;
+      }
+      drawn++;
+      points.push({
+        lat: srv.latitude,
+        lon: srv.longitude,
+        label: serverLabel(srv.name || srv.callsign, !!srv.self),
+        kind: "server"
       });
     }
 
     if (mapCount) {
-      mapCount.textContent = points.length + " of " + list.length + " located";
+      mapCount.textContent = located + " of " + stations + " located" +
+        (drawn ? ", " + drawn + (drawn === 1 ? " server" : " servers") : "");
     }
 
     if (!points.length) {

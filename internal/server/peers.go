@@ -464,10 +464,33 @@ type peersResponse struct {
 	Active []CallView `json:"active_calls"`
 	// Recent are finished transmissions, most recent first. Never null.
 	Recent []CallView `json:"recent_calls"`
+	// Servers are the QSP servers with a position: this one, and those it
+	// dialled that announced where they are. Never null. A server that
+	// dialled this one is in Peers, with a LinkName, as it always was.
+	Servers []ServerPin `json:"servers"`
 	// Traffic is what the listener has seen since it started.
 	Traffic Traffic `json:"traffic"`
 	// GeneratedAt is when the snapshot was taken, in UTC.
 	GeneratedAt time.Time `json:"generated_at"`
+}
+
+// ServerPin is a QSP server on the map.
+//
+// **Public, as the rest of this response is, and for the same reason**: it is
+// a position somebody chose to announce. A server's operator enters it on the
+// Network page and may enter a town's rather than a street's, or nothing.
+type ServerPin struct {
+	// Name is the server's display name, when it has one.
+	Name string `json:"name,omitempty"`
+	// Callsign is its operator's callsign, when given.
+	Callsign string `json:"callsign,omitempty"`
+	// Location is the place name it gives for itself, free text.
+	Location string `json:"location,omitempty"`
+	// Latitude and Longitude are decimal degrees.
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+	// Self marks this server, as against one it is linked to.
+	Self bool `json:"self,omitempty"`
 }
 
 // MapSettings is what the console needs to draw a map.
@@ -480,6 +503,10 @@ type MapSettings struct {
 	Attribution string `json:"attribution,omitempty"`
 	// MaxZoom bounds how far in the map will go.
 	MaxZoom int `json:"max_zoom,omitempty"`
+	// Self is this server on its own map, or nil when it has been given no
+	// position. Carried here because it changes when the map's settings do,
+	// on a save, and sent in the response's Servers rather than with these.
+	Self *ServerPin `json:"-"`
 }
 
 // tagModes names the mode of every call when the server runs more than one,
@@ -517,6 +544,7 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		Peers:       []PeerView{},
 		Active:      []CallView{},
 		Recent:      []CallView{},
+		Servers:     s.serverPins(),
 		GeneratedAt: now,
 	}
 
@@ -635,4 +663,33 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, s.log, http.StatusOK, body)
+}
+
+// serverPins is this server and the servers it dialled, where each has said
+// where it is.
+//
+// **A link's own name is not used**: it is what this server's operator called
+// the link in their configuration, and this response is public. The far end's
+// announced name is, then its callsign.
+func (s *Server) serverPins() []ServerPin {
+	pins := []ServerPin{}
+	if self := s.MapSettings().Self; self != nil {
+		pins = append(pins, *self)
+	}
+	if s.opts.Links == nil {
+		return pins
+	}
+	for _, l := range s.opts.Links.LinkStatuses() {
+		if l.Latitude == nil || l.Longitude == nil || !l.Open {
+			continue
+		}
+		pins = append(pins, ServerPin{
+			Name:      l.Network,
+			Callsign:  l.Callsign,
+			Location:  l.Location,
+			Latitude:  *l.Latitude,
+			Longitude: *l.Longitude,
+		})
+	}
+	return pins
 }

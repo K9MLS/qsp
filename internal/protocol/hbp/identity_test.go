@@ -106,3 +106,88 @@ func TestTheIdentityTagIsItsOwn(t *testing.T) {
 		}
 	}
 }
+
+// identityWire is an identity message carrying exactly this JSON.
+func identityWire(body string) []byte {
+	return append(Identity{RepeaterID: 3132912}.Marshal()[:8], body...)
+}
+
+// Where a server says it is, as it arrives. A position is taken only when it
+// is whole and on the globe; anything else is a server with no position, and
+// what else it said still stands.
+//
+// Break it: take a latitude without a longitude, drop the range check, or
+// refuse the whole identity for a bad position, and a row fails.
+func TestAnIdentitysPositionAsItArrives(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		located bool
+		lat     float64
+		lon     float64
+	}{
+		{"a position", `{"network":"N","latitude":33.2148,"longitude":-97.1331}`, true, 33.2148, -97.1331},
+		{"on the equator", `{"network":"N","latitude":0,"longitude":-78.5}`, true, 0, -78.5},
+		{"on the prime meridian", `{"network":"N","latitude":51.48,"longitude":0}`, true, 51.48, 0},
+		{"at the extremes", `{"network":"N","latitude":-90,"longitude":180}`, true, -90, 180},
+		{"none, from an older server", `{"network":"N"}`, false, 0, 0},
+		{"a latitude and no longitude", `{"network":"N","latitude":33.2}`, false, 0, 0},
+		{"a longitude and no latitude", `{"network":"N","longitude":-97.1}`, false, 0, 0},
+		{"nought and nought, which is nobody's position", `{"network":"N","latitude":0,"longitude":0}`, false, 0, 0},
+		{"a latitude off the globe", `{"network":"N","latitude":91,"longitude":10}`, false, 0, 0},
+		{"a longitude off the globe", `{"network":"N","latitude":10,"longitude":-180.5}`, false, 0, 0},
+		{"null for both", `{"network":"N","latitude":null,"longitude":null}`, false, 0, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			m, err := Parse(identityWire(tc.body))
+			if err != nil {
+				t.Fatalf("the identity was refused: %v", err)
+			}
+			got := m.(Identity)
+			if got.Network != "N" {
+				t.Errorf("the name was lost with the position: %+v", got)
+			}
+			if got.Located != tc.located || got.Latitude != tc.lat || got.Longitude != tc.lon {
+				t.Errorf("located %v at %v, %v; want %v at %v, %v",
+					got.Located, got.Latitude, got.Longitude, tc.located, tc.lat, tc.lon)
+			}
+		})
+	}
+}
+
+// What a server sends about where it is. Nothing at all unless it has a
+// position, so a server given none does not announce the middle of the ocean.
+//
+// Break it: write the two numbers whether or not Located is set.
+func TestAnIdentityAnnouncesAPositionOnlyWhenItHasOne(t *testing.T) {
+	tests := []struct {
+		name string
+		id   Identity
+		sent bool
+	}{
+		{"located", Identity{Network: "N", Location: "Denton, TX", Latitude: 33.2148, Longitude: -97.1331, Located: true}, true},
+		{"numbers set and not located", Identity{Network: "N", Latitude: 33.2148, Longitude: -97.1331}, false},
+		{"located at nought and nought", Identity{Network: "N", Located: true}, false},
+		{"located off the globe", Identity{Network: "N", Latitude: 120, Longitude: 10, Located: true}, false},
+		{"nothing", Identity{Network: "N"}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			body := string(tc.id.Marshal()[8:])
+			if has := strings.Contains(body, `"latitude"`) && strings.Contains(body, `"longitude"`); has != tc.sent {
+				t.Errorf("sent %s", body)
+			}
+			if !tc.sent && (strings.Contains(body, "latitude") || strings.Contains(body, "longitude")) {
+				t.Errorf("half a position was sent: %s", body)
+			}
+			back, err := Parse(tc.id.Marshal())
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if got := back.(Identity); got.Located != tc.sent {
+				t.Errorf("read back as located=%v, want %v", got.Located, tc.sent)
+			}
+		})
+	}
+}

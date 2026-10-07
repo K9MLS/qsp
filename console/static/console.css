@@ -931,6 +931,22 @@ body {
   box-shadow: 0 0 0 2px var(--color-background), 0 1px 3px rgba(0, 0, 0, 0.6);
 }
 
+/* A QSP server: a square in the accent colour, where a station is a round dot
+   in the primary. Its label says "server" as well, so neither the shape nor
+   the colour has to be read to tell the two apart. */
+/* Its label goes to the left of its dot, where a station's goes to the
+   right. A server and its operator's hotspot are often in the same room, and
+   two labels on the same side of the same point cover one another. */
+.map__pin--server {
+  flex-direction: row-reverse;
+  transform: translate(calc(-100% + 5px), -50%);
+}
+
+.map__pin--server .map__pin-dot {
+  border-radius: 2px;
+  background: var(--color-accent-hover);
+}
+
 .map__pin-label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);

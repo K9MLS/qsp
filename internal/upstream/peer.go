@@ -467,6 +467,8 @@ func (l *PeerLink) Status() Status {
 		st.FarEndNetwork = far.Network
 		st.FarEndCallsign = far.Callsign
 		st.FarEndSoftware = far.Software
+		st.FarEndLocation = far.Location
+		st.FarEndLatitude, st.FarEndLongitude, st.FarEndLocated = far.Latitude, far.Longitude, far.Located
 	}
 	if st.EverReceived {
 		st.Since = l.now().Sub(l.lastReceived).Truncate(time.Second)

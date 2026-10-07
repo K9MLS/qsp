@@ -446,7 +446,9 @@
       }
 
       var pin = document.createElement("div");
-      pin.className = "map__pin";
+      /* A server is drawn as a square where a station is a circle, and its
+         label says which it is: the shape and colour are not the only cue. */
+      pin.className = p.kind === "server" ? "map__pin map__pin--server" : "map__pin";
       pin.style.left = x + "px";
       pin.style.top = y + "px";
 

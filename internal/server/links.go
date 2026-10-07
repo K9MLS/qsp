@@ -55,6 +55,14 @@ type LinkStatus struct {
 	Network string `json:"network,omitempty"`
 	// Software is what the far end says it runs, verbatim and unverified.
 	Software string `json:"software,omitempty"`
+	// Callsign is the far end operator's callsign, when it announced one.
+	Callsign string `json:"callsign,omitempty"`
+	// Location is the place name the far end gives for itself, and Latitude
+	// and Longitude where it says it is: present only when it announced a
+	// position that is on the globe. A claim, like everything else here.
+	Location  string   `json:"location,omitempty"`
+	Latitude  *float64 `json:"latitude,omitempty"`
+	Longitude *float64 `json:"longitude,omitempty"`
 	// Enabled reports whether the configuration asks for this link at all.
 	//
 	// **A disabled link is not a link awaiting a restart**, and this page said

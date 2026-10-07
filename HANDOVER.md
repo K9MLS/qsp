@@ -9,6 +9,20 @@ and 07): DMR as before; an administrator's password reset, which is the fault
 that started the day; Zello one over each way through the new connector; and a
 hotspot's call to the Quantar with the 60 ms hold, "good and working".
 
+**0.1.322 and 0.1.323 came after the deploy and are on no server yet.**
+0.1.322 (0480) makes a new or reset console password sixteen characters in
+four groups in place of 43 of base64. 0.1.323 (0481) draws servers on the
+Overview's map: this one from `dmr.identity`'s position, a server it dialled
+from a position now carried in the `QSPI` announcement
+(`internal/protocol/hbp/identity.go`, which older servers ignore), and a
+server that dialled it, which was already a peer with a `link_name` and was
+drawn as a hotspot. **Each piece is tested, the socket included, and the map
+was drawn in Chromium from invented stations. Two real servers have not been
+seen on each other's maps**: that needs 0.1.323 on production and on the test
+server, each with a position entered, and is the proof. The README's picture
+of the Overview predates it; `scripts/overview-screenshot/run.sh` on Fedora
+makes a new one.
+
 **Not yet tried by anybody**, and each is a few minutes at a console:
 - **Two tabs.** Save Weather, then save Network from a tab opened before, and
   see Weather's change survive (0.1.319).
@@ -490,7 +504,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | 0.1.322: a readable account password (0480), on top of 0479; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | 0.1.323: servers on the map (0481), on top of 0479 and 0480; **check with `git log`** | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
 | **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

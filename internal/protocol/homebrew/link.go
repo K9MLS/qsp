@@ -350,6 +350,10 @@ func (l *Link) Handle(datagram []byte) Outcome {
 			Software:    v.Software,
 			Description: v.Description,
 			ServerID:    v.ServerID,
+			Location:    v.Location,
+			Latitude:    v.Latitude,
+			Longitude:   v.Longitude,
+			Located:     v.Located,
 			Known:       true,
 		}
 		return Outcome{Note: fmt.Sprintf("%s: the far end is %s", l.cfg.Name, farEndLabel(l.farEnd))}
@@ -526,6 +530,13 @@ type FarEnd struct {
 	// ServerID is the far end's identifier (ADR-0053), empty from a server too
 	// old to have one. Opaque: compared, never parsed.
 	ServerID string
+	// Location is the place name the far end gives for itself, and Latitude
+	// and Longitude where it says it is. Valid only when Located: a far end
+	// that announced no position, or an impossible one, has none.
+	Location  string
+	Latitude  float64
+	Longitude float64
+	Located   bool
 	// Known reports whether the far end has said anything at all.
 	//
 	// **False is not empty.** A link to an older QSP never receives an identity
