@@ -20,13 +20,14 @@ half-working.
 
 ## The QSP side
 
-From the console's P25 page, which writes the same file the console keeps
-history for:
+From **P25 gateways** on the console's **Network settings** page, which writes
+the same file the console keeps history for:
 
 - **Turn the listener on** and give it an address. **41000/udp** is what amateur
   reflectors use and what a gateway tries first.
 - **List the gateways you answer.** An empty list answers every gateway that
-  knows the address, which is the same hazard as an empty IPSC list.
+  knows the address, which is the same hazard as an empty IPSC list. The list
+  applies when it is saved: a gateway taken off it is dropped within a second.
 - **A callsign is a claim, not a credential.** The reflector protocol has no
   login: a gateway asserts a callsign in its poll and QSP believes it. That is
   the protocol, not QSP, and no version of QSP fixes it. The allow list is the
@@ -46,7 +47,7 @@ Confirm QSP is listening before touching the gateway:
 
 ```sh
 ss -lunp | grep 41000
-journalctl -u qsp | grep -i 'subsystem":"p25' | tail -3
+journalctl -u qsp | grep -iE 'subsystem(=|":")p25' | tail -3
 ```
 
 The startup line names the address, the callsign and how many gateways are

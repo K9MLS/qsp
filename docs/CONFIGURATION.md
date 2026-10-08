@@ -1,10 +1,28 @@
 # Configuring QSP by hand
 
-**Most operators never need this page.** Everything below can be done from the
-console, which writes the same configuration file and keeps a version history
-of it. This is the file format, for anybody who prefers a text editor, keeps
-configuration in version control, or is building from source without the
+**Most operators never need this page.** Nearly everything below can be done
+from the console, which writes the same configuration file and keeps a version
+history of it. This is the file format, for anybody who prefers a text editor,
+keeps configuration in version control, or is building from source without the
 Docker install's first-run settings.
+
+**These are set here and nowhere else.** No console page has a control for
+them; a page that saves keeps whatever the file says.
+
+<!-- file-only: each line names one setting; TestTheFileOnlySettingsAreSettings holds it to the program -->
+- `dmr.triggers`: push-to-talk triggers, a whole feature
+- `dmr.subscription.static` and `dmr.subscription.unlink_timeslot`
+- `dmr.peer_timeout`, `dmr.login_timeout`, `dmr.max_peers` and `dmr.subscriber_timeout`
+- `dmr.parrot.max_duration` and `dmr.parrot.gap`: the Network page fills in the defaults when parrot is turned on, and does not show them
+- `dmr.identity.url`, `dmr.identity.height` and `dmr.identity.description`
+- `dmr.transcoders`, each one's `rate`
+- `server.map`: the tiles the Overview's map draws, their credit and how far it zooms
+- `server.read_header_timeout`, `server.read_timeout`, `server.write_timeout`, `server.idle_timeout`, `server.shutdown_timeout` and `server.behind_proxy`
+- `zello.audience` and `zello.connector_health`
+- `database`, `logging` and `events`
+
+Changed by hand, these and everything else in the file take effect when QSP
+is restarted: the file is read when it starts.
 
 On the Docker install the file is `/var/lib/qsp/qsp.json` inside the `qsp-data`
 volume, and `deploy/docker/README.md` shows how to read and edit it. A source

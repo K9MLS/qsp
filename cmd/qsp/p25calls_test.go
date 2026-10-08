@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -36,15 +37,17 @@ func TestAP25CallSurvivesARestart(t *testing.T) {
 	store := p25calls.NewStore(db.SQL(), 24*time.Hour)
 
 	// Before the restart: one call heard and finished.
-	before := newP25Calls(ctx, store, nil, logging.Discard())
+	before, stop := newP25Calls(ctx, store, nil, logging.Discard())
 	started := time.Now().UTC().Add(-time.Minute)
 	call := p25calls.Call{Started: started, Source: 8080303, Talkgroup: 1, Frames: 135,
 		ViaKind: p25calls.ViaRepeater, Via: "Quantar, site 1", Carried: true}
 	before.Heard("repeater 1", call)
 	before.Finished("repeater 1", call, started.Add(3*time.Second))
+	stop() // what is waiting is written, as at shutdown
 
 	// After it: a new tracker on the same database.
-	after := newP25Calls(ctx, store, nil, logging.Discard())
+	after, stopAfter := newP25Calls(ctx, store, nil, logging.Discard())
+	defer stopAfter()
 	active, recent := after.Snapshot()
 	if len(active) != 0 || len(recent) != 1 {
 		t.Fatalf("%d in progress and %d finished after the restart, want the one call", len(active), len(recent))
@@ -137,7 +140,8 @@ func TestP25CallsAreAnnouncedToTheConsole(t *testing.T) {
 	sub, _ := bus.Subscribe()
 	defer sub.Close()
 
-	tr := newP25Calls(context.Background(), nil, bus, logging.Discard())
+	tr, stop := newP25Calls(context.Background(), nil, bus, logging.Discard())
+	defer stop()
 	c := p25calls.Call{Started: time.Now().UTC(), Source: 8080303, Talkgroup: 1, Via: "Quantar, site 1", Carried: true}
 	tr.Heard("a", c)
 	tr.Heard("a", c)
@@ -156,4 +160,48 @@ func TestP25CallsAreAnnouncedToTheConsole(t *testing.T) {
 	if got[0] != events.TypeCallStarted || got[1] != events.TypeCallEnded {
 		t.Errorf("announced %v", got)
 	}
+}
+
+// TestAStalledRecordDoesNotHoldUpTheAir. The end of a P25 call was written
+// to the database on the loop that reads every gateway's datagrams, with up
+// to two seconds to finish, so a busy database held up all P25 audio for as
+// long (2026-10-07, section I).
+//
+// To see it fail: have write call record itself, as OnEnd used to.
+func TestAStalledRecordDoesNotHoldUpTheAir(t *testing.T) {
+	release := make(chan struct{})
+	var mu sync.Mutex
+	var stored []uint32
+	record := func(_ context.Context, c p25calls.Call) error {
+		<-release // a database that is busy
+		mu.Lock()
+		stored = append(stored, c.Source)
+		mu.Unlock()
+		return nil
+	}
+	write, stop := callWriter(record, 2, logging.Discard())
+
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		for source := range uint32(5) {
+			write(p25calls.Call{Source: source + 1})
+		}
+	}()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("finishing five calls waited on a busy record")
+	}
+
+	close(release)
+	stop()
+	mu.Lock()
+	defer mu.Unlock()
+	// One taken by the writer, two in the queue; the rest reported and lost.
+	if len(stored) < 2 || len(stored) > 3 || stored[0] != 1 {
+		t.Errorf("the record kept %v; want the first calls, in order, up to what there was room for", stored)
+	}
+	write(p25calls.Call{Source: 9}) // after stop: no panic, nothing kept
 }

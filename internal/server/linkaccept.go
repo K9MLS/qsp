@@ -106,7 +106,7 @@ func (s *Server) acceptLink(w http.ResponseWriter, r *http.Request, req acceptRe
 	if strings.TrimSpace(cfg.DMR.Identity.Callsign) == "" {
 		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
 			"error": "this server has no callsign, and a link announces one to the far end; " +
-				"set dmr.identity.callsign in Administration first",
+				"set its Callsign under This station in Network settings first",
 		})
 		return
 	}

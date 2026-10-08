@@ -91,20 +91,19 @@ const (
 	// is silently useless and finding out when a hotspot will not register.
 	allowedPeersEnv = "QSP_ALLOWED_PEERS"
 	// contactEnv is the address sent to the amateur DMR registry so it knows
-	// who is asking.
+	// who is asking, and given it the first run turns the lookup on.
 	//
-	// **The lookup is on by default and cannot run without this.** Naming
-	// radios is what an operator expects a network to do — a Last-heard table
-	// of seven-digit numbers is a server that looks broken — so a fresh
-	// instance turns it on. But the registry is volunteer-run and asks
-	// automated clients to identify themselves, and QSP has no business
-	// inventing an address for somebody else: it is the operator making the
-	// requests and the operator who would be contacted if something were
-	// wrong.
+	// **Optional.** The lookup is off by default (config.Callsigns), because
+	// it makes requests of a volunteer-run registry that asks automated
+	// clients to say who they are, and QSP has no business inventing an
+	// address for somebody else. An operator who gives one at install comes
+	// up with radios named; one who does not turns it on later from This
+	// server.
 	//
-	// Unset is not an error. The instance starts with the lookup on and
-	// unusable, and the administration page says so in those words rather
-	// than showing a table of numbers and letting an operator wonder.
+	// Until 0.1.338 this was read with os.Getenv, past the environment the
+	// first run is handed, written as the contact and never as "on", and no
+	// install passed it: three reasons it never did anything (2026-10-07,
+	// section I).
 	contactEnv = "QSP_CONTACT"
 )
 
@@ -160,6 +159,9 @@ func bootstrapConfig(path string, env func(string) string) (written bool, err er
 	// machine. A half-made state that survives a refusal is worse than the
 	// refusal, because the next attempt starts from somewhere nobody chose.
 	cfg := starterConfig(passwordPath, allowed)
+	if contact := strings.TrimSpace(env(contactEnv)); contact != "" {
+		cfg.DMR.Callsigns.Enabled, cfg.DMR.Callsigns.Contact = true, contact
+	}
 	if err := cfg.Validate(); err != nil {
 		return false, fmt.Errorf("the starting configuration is not valid: %w", err)
 	}
@@ -337,9 +339,5 @@ func starterConfig(passwordPath string, allowed []string) config.Config {
 	cfg.DMR.Forwarding = true
 	cfg.IPSC.Enabled = false
 	cfg.Server.ListenAddress = "0.0.0.0:8080"
-	// The contact is taken from the environment when it is there, so a
-	// container configured with one comes up naming radios rather than
-	// enabled and inert.
-	cfg.DMR.Callsigns.Contact = strings.TrimSpace(os.Getenv(contactEnv))
 	return cfg
 }

@@ -90,7 +90,7 @@ func checkConnector(ctx context.Context, client *http.Client, address string) he
 		return withDetail(health.Degraded("qsp-zello is starting", "give it a few seconds"))
 	case "qsp_unreachable":
 		return withDetail(health.Degraded("qsp-zello cannot reach QSP's logon socket"+extra,
-			"restart qsp-zello; its logon_socket must match zello.logon_socket"))
+			"restart qsp-zello; its logon_socket must be the logon socket on QSP's Zello page"))
 	case "credentials_missing":
 		return withDetail(health.Degraded("qsp-zello has no Zello credentials to log on with",
 			"store the username, password and private key on the Zello page"))

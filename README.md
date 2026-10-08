@@ -105,14 +105,14 @@ exactly what is wanted.
 What has been confirmed on air: Homebrew hotspots, including a live capture
 committed at [`testdata/hbp/hbp-voice-live.pcap`](testdata/hbp/hbp-voice-live.pcap);
 Motorola repeaters over IPSC in both directions; two QSP servers linked in both
-directions; and Zello both ways, heard on hotspots and Motorola repeaters.
+directions; Zello both ways, heard on hotspots and Motorola repeaters; and a
+Motorola P25 repeater, which links over a V.24 interface rather than IP: QSP
+opens that link through a router's serial tunnel, and calls cross both ways
+between a Quantar and a P25 gateway on a Pi-Star.
 
 What has not happened yet: a third linked server, so relaying between more than
 two is unit-tested and never exercised; the arm64 image run on a Raspberry Pi;
-and the two-week unattended soak. A Motorola P25 repeater links over a V.24 interface
-rather than IP: QSP opens that link through a router's serial tunnel and reads
-its calls, proven on a Quantar, and carrying them to P25 gateways is still being
-built.
+and the two-week unattended soak.
 
 [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md) is the full list of what is
 built and where the line is. [`BLUEPRINT.md`](BLUEPRINT.md) is the product
@@ -143,7 +143,7 @@ rather run a plain binary. You need Go 1.27 or later:
 go build ./cmd/qsp
 ./qsp -print-config > qsp.json   # write the effective configuration
 ./qsp -config qsp.json           # run with it
-./qsp -check                     # validate a configuration and exit
+./qsp -config qsp.json -check    # validate a configuration and exit
 ./qsp -version
 ```
 

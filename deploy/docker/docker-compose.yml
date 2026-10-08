@@ -15,7 +15,7 @@
 
 services:
   qsp:
-    image: ghcr.io/k9mls/qsp:0.1.337
+    image: ghcr.io/k9mls/qsp:0.1.338
 
     container_name: qsp
     restart: unless-stopped
@@ -38,6 +38,8 @@ services:
       # the configuration file is yours and these are ignored.
       QSP_PEER_PASSWORD: ${QSP_PEER_PASSWORD:?set it in .env}
       QSP_ALLOWED_PEERS: ${QSP_ALLOWED_PEERS:?set it in .env}
+      # Optional: names radios on the first run. See .env.example.
+      QSP_CONTACT: ${QSP_CONTACT:-}
 
     volumes:
       # Configuration, the peer password and the call history. **Keep this.**

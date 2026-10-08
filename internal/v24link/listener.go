@@ -460,11 +460,21 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 	log := l.log.With(slog.String("router", router))
 	opened := l.now()
 	rec := l.openRecord(log, router, opened)
+	// One lock for the socket and the record, because two things write: this
+	// loop answering, and the keepalive below.
+	var mu sync.Mutex
 	defer func() {
 		_ = conn.Close()
+		// **Under the lock that writes it.** The keepalive and the pacer can
+		// still be in a send when this runs, and closing the file under them
+		// was a race the detector would find on the day a link closed
+		// mid-keepalive (2026-10-07, section I).
+		mu.Lock()
 		if rec != nil {
 			_ = rec.Close()
+			rec = nil
 		}
+		mu.Unlock()
 		l.mu.Lock()
 		delete(l.conns, st.id)
 		delete(l.stations, st.id)
@@ -546,9 +556,6 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 		}
 	}()
 
-	// One lock for the socket and the record, because two things write: this
-	// loop answering, and the keepalive below.
-	var mu sync.Mutex
 	record := func(direction string, f Frame) {
 		if rec == nil {
 			return

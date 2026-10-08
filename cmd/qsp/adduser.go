@@ -34,12 +34,7 @@ func adduser(ctx context.Context, cfg config.Config, username string) error {
 	// entry in the operator's journal.
 	log := logging.Discard()
 
-	db, err := database.Open(ctx, log, database.Options{
-		Driver:          cfg.Database.Driver,
-		DSN:             cfg.Database.DSN,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
-	})
+	db, err := database.Open(ctx, log, databaseOptions(cfg))
 	if err != nil {
 		// Refusing here rather than falling back to somewhere writable: an
 		// account created in an unexpected database is one the server will
@@ -109,12 +104,7 @@ func unlock(ctx context.Context, cfg config.Config, username string) error {
 		return err
 	}
 
-	db, err := database.Open(ctx, logging.Discard(), database.Options{
-		Driver:          cfg.Database.Driver,
-		DSN:             cfg.Database.DSN,
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
-	})
+	db, err := database.Open(ctx, logging.Discard(), databaseOptions(cfg))
 	if err != nil {
 		return fmt.Errorf("cannot open the database this instance uses: %w", err)
 	}
@@ -201,4 +191,21 @@ func promptOnce(prompt string) (string, error) {
 	// Only the line ending is trimmed. A password is allowed to begin or end
 	// with a space, and quietly removing one would make it unenterable later.
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// databaseOptions is how the server and both account commands open the
+// database: one place, so that a setting is not honoured by one and ignored
+// by another.
+//
+// **The commands left out the busy timeout**, so `qsp adduser` or `qsp
+// unlock`, run while the server was writing, met SQLite's default of no wait
+// at all and failed with "database is locked" (2026-10-07, section I).
+func databaseOptions(cfg config.Config) database.Options {
+	return database.Options{
+		Driver:          cfg.Database.Driver,
+		DSN:             cfg.Database.DSN,
+		BusyTimeout:     cfg.Database.BusyTimeout.AsDuration(),
+		MaxOpenConns:    cfg.Database.MaxOpenConns,
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
+	}
 }

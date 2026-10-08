@@ -60,8 +60,8 @@ func (h HealthCheck) Check(context.Context) health.Result {
 	if refusing {
 		return health.Degraded(
 			summary+fmt.Sprintf("; radio ID %d is being refused right now", refused),
-			fmt.Sprintf("add %d under ipsc.allowed_peers if it should connect, "+
-				"or leave it if it should not", refused))
+			fmt.Sprintf("add %d under Motorola repeaters on the Access control page "+
+				"if it should connect, or leave it if it should not", refused))
 	}
 	return health.Healthy(summary)
 }

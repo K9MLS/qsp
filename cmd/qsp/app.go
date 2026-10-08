@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -147,13 +148,7 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 
 	var dbUnavailableReason string
 	var callStore *calls.Store
-	db, err := database.Open(ctx, log, database.Options{
-		Driver:          cfg.Database.Driver,
-		DSN:             cfg.Database.DSN,
-		BusyTimeout:     cfg.Database.BusyTimeout.AsDuration(),
-		MaxOpenConns:    cfg.Database.MaxOpenConns,
-		ConnMaxLifetime: cfg.Database.ConnMaxLifetime.AsDuration(),
-	})
+	db, err := database.Open(ctx, log, databaseOptions(cfg))
 	switch {
 	case errors.Is(err, database.ErrDriverNotRegistered):
 		dbUnavailableReason = fmt.Sprintf(
@@ -208,7 +203,11 @@ func build(ctx context.Context, cfg config.Config, configPath string, log *slog.
 		pruneCallsAtStart(ctx, a.p25Store, log, time.Now().UTC())
 	}
 
-	a.p25Calls = newP25Calls(ctx, a.p25Store, a.bus, log)
+	p25Calls, stopP25Writes := newP25Calls(ctx, a.p25Store, a.bus, log)
+	a.p25Calls = p25Calls
+	// After the listeners that finish calls have closed, and before the
+	// database has: closers run last first.
+	a.closers = append(a.closers, func(context.Context) error { stopP25Writes(); return nil })
 
 	// **Before anything that reads it.** This was built after the console's
 	// view source captured a.names, so the view held nil, no radio ID was ever
@@ -1847,7 +1846,15 @@ func p25History(store *p25calls.Store) server.P25CallHistory {
 // The tracker exists whether or not there is a database. Without one, calls
 // are kept in memory and gone at the next restart, which is what Last heard
 // was for DMR before it had a record.
-func newP25Calls(ctx context.Context, store *p25calls.Store, bus *events.Bus, log *slog.Logger) *p25calls.Tracker {
+//
+// **Finished calls are written to the record off the listener's goroutine.**
+// The P25 listener reads every gateway's datagrams on one loop, and the end of
+// a call was written to the database on it, with up to two seconds to finish:
+// a database busy with a backup or a prune held up every gateway's audio for
+// as long (2026-10-07, section I). A writer of its own now takes them in turn,
+// and a call it has no room for is reported and not kept, because the record
+// is bookkeeping and the audio is the point. stop waits for what it has.
+func newP25Calls(ctx context.Context, store *p25calls.Store, bus *events.Bus, log *slog.Logger) (tracker *p25calls.Tracker, stop func()) {
 	publish := func(t events.Type, c p25calls.Call) {
 		if bus == nil {
 			return
@@ -1862,21 +1869,14 @@ func newP25Calls(ctx context.Context, store *p25calls.Store, bus *events.Bus, lo
 			"end_reason": string(c.EndReason),
 		})
 	}
-	tracker := p25calls.NewTracker(p25calls.Options{
+	write, stop := callWriter(store.Record, p25WriteQueue, log)
+
+	tracker = p25calls.NewTracker(p25calls.Options{
 		OnStart: func(c p25calls.Call) { publish(events.TypeCallStarted, c) },
 		OnEnd: func(c p25calls.Call) {
 			publish(events.TypeCallEnded, c)
-			if !store.Enabled() {
-				return
-			}
-			// Bounded, and on the listener's own goroutine, as the DMR record
-			// is written: a call is a few dozen bytes and a database that
-			// cannot take them in two seconds has a larger problem.
-			sctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-			defer cancel()
-			if err := store.Record(sctx, c); err != nil {
-				log.Warn("cannot record a P25 call in the history",
-					slog.Uint64("source", uint64(c.Source)), slog.String("error", err.Error()))
+			if store.Enabled() {
+				write(c)
 			}
 		},
 	})
@@ -1890,7 +1890,59 @@ func newP25Calls(ctx context.Context, store *p25calls.Store, bus *events.Bus, lo
 			log.Info("P25 last heard seeded from the record", slog.Int("calls", len(recent)))
 		}
 	}
-	return tracker
+	return tracker, stop
+}
+
+// p25WriteQueue is how many finished P25 calls may wait for the record: some
+// minutes of a busy net, should the database stall.
+const p25WriteQueue = 256
+
+// callWriter records finished calls in turn, on a goroutine of its own.
+//
+// write never waits: a call with no room in the queue is reported and not
+// kept. stop takes no more, and returns when what was queued is written.
+func callWriter(record func(context.Context, p25calls.Call) error, queue int, log *slog.Logger) (write func(p25calls.Call), stop func()) {
+	writes := make(chan p25calls.Call, queue)
+	written := make(chan struct{})
+	go func() {
+		defer close(written)
+		for c := range writes {
+			// Bounded: a call is a few dozen bytes, and a database that cannot
+			// take them in two seconds has a larger problem.
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			if err := record(ctx, c); err != nil {
+				log.Warn("cannot record a P25 call in the history",
+					slog.Uint64("source", uint64(c.Source)), slog.String("error", err.Error()))
+			}
+			cancel()
+		}
+	}()
+
+	var mu sync.Mutex
+	stopped := false
+	write = func(c p25calls.Call) {
+		mu.Lock()
+		defer mu.Unlock()
+		if stopped {
+			return
+		}
+		select {
+		case writes <- c:
+		default:
+			log.Warn("a P25 call was not recorded: the record is not keeping up",
+				slog.Uint64("source", uint64(c.Source)))
+		}
+	}
+	stop = func() {
+		mu.Lock()
+		if !stopped {
+			stopped = true
+			close(writes)
+		}
+		mu.Unlock()
+		<-written
+	}
+	return write, stop
 }
 
 func (p p25GatewaySource) Traffic() server.Traffic {

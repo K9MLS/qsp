@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/config"
 )
@@ -92,5 +94,27 @@ func TestATakenNameIsRefusedBeforeThePasswordIsAsked(t *testing.T) {
 	if lookup > prompt {
 		t.Error("the password is asked for before the username is checked; an operator " +
 			"types it twice to be told the name was taken")
+	}
+}
+
+// TestEveryDatabaseSettingReachesTheDatabase. The account commands opened the
+// database without the busy timeout, so run while the server was writing they
+// failed with "database is locked" (2026-10-07, section I). Every field of
+// database.Options must come from the configuration, so one added later is
+// not honoured by the server and ignored by the commands.
+//
+// To see it fail: leave any field out of databaseOptions.
+func TestEveryDatabaseSettingReachesTheDatabase(t *testing.T) {
+	cfg := config.Default()
+	cfg.Database.Driver, cfg.Database.DSN = "sqlite", "file:qsp.db"
+	cfg.Database.BusyTimeout = config.Duration(7 * time.Second)
+	cfg.Database.MaxOpenConns = 3
+	cfg.Database.ConnMaxLifetime = config.Duration(9 * time.Minute)
+
+	got := reflect.ValueOf(databaseOptions(cfg))
+	for i := range got.NumField() {
+		if got.Field(i).IsZero() {
+			t.Errorf("database.Options.%s is not taken from the configuration", got.Type().Field(i).Name)
+		}
 	}
 }

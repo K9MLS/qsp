@@ -177,8 +177,8 @@ func (h HealthCheck) Check(context.Context) health.Result {
 		// is the cause. Naming the symptom first is what sends an operator to
 		// somebody else's network.
 		return health.Unavailable(
-			"this link is open, and forwarding is off so nothing can reach it: " +
-				"the routing table is only built when dmr.forwarding is on")
+			"this link is open, and forwarding is off so nothing can reach it: turn on " +
+				"Forwarding in Network settings and restart QSP")
 
 	case st.Degraded():
 		// The advice comes from the link. What to check differs entirely

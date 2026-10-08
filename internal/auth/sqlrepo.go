@@ -238,6 +238,14 @@ func (r *SQLRepository) Accounts(ctx context.Context) ([]Account, error) {
 //
 // **In one transaction**, so a password cannot be replaced while the sessions
 // opened with the old one survive.
+// UpgradeHash implements Repository.
+func (r *SQLRepository) UpgradeHash(ctx context.Context, id int64, hash string) error {
+	if _, err := r.db.ExecContext(ctx, `UPDATE users SET password_hash = ? WHERE id = ?`, hash, id); err != nil {
+		return fmt.Errorf("auth: storing a stronger hash: %w", err)
+	}
+	return nil
+}
+
 func (r *SQLRepository) SetPassword(ctx context.Context, id int64, hash, keep string) error {
 	const q = `UPDATE users SET password_hash = ?, failed_count = 0, locked_until = '' WHERE id = ?`
 

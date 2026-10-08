@@ -341,6 +341,32 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A password hash weaker than today's is replaced at sign-in**, as
+  SECURITY.md has always said it is. Nothing called the check, so an account
+  made under older parameters kept them. The other sessions and any lockout
+  are left as they were (2026-10-07 hunt, section I).
+- **`qsp adduser` and `qsp unlock` wait for a busy database** as the server
+  does. They left out `database.busy_timeout`, so run while the server was
+  writing they failed with "database is locked".
+- **`QSP_CONTACT` works.** The container's first run was meant to take an
+  email address from it and turn on callsign lookups; it read the address
+  from the wrong place, never turned the lookup on, and no install passed
+  it. `docker-compose.yml` passes it now and `.env.example` explains it.
+- **The end of a P25 call is written to the record off the packet loop.**
+  It was written on the loop that reads every gateway's datagrams, with two
+  seconds to finish, so a busy database held up all P25 audio for as long.
+  A call the record cannot keep up with is reported and not kept.
+- **Four messages name the console control rather than the setting in the
+  file**: Forwarding, a Motorola repeater being refused, a link that needs
+  this server's callsign, and the Zello logon socket.
+- The repeater link's record file is closed under the lock that writes it.
+- **Documentation.** `docs/CONFIGURATION.md` said everything could be done
+  from the console; it now lists the settings only the file sets, and a test
+  holds the list to the program. `docs/P25-GATEWAY.md` named a P25 page that
+  is part of Network settings, and searched the log in a way that only
+  matched JSON. The README said carrying P25 repeater calls to gateways was
+  still being built, and `./qsp -check` checked the built-in defaults rather
+  than your file.
 - **A page the server refused says so.** A page asked for its data, the
   server said no, and the page read the refusal as the data: the call record
   said nobody had transmitted, the history that nothing had ever been saved,

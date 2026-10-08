@@ -148,6 +148,9 @@ type Repository interface {
 	// in the second case whoever had it is signed in. Until 0.1.327 their
 	// session went on working until it expired, which by default is days.
 	SetPassword(ctx context.Context, id int64, hash, keep string) error
+	// UpgradeHash replaces one account's hash with a stronger one of the same
+	// password, and changes nothing else: not the lockout, not a session.
+	UpgradeHash(ctx context.Context, id int64, hash string) error
 	// DeleteAccount removes an account and every session it holds.
 	//
 	// **One call, not two.** An account removed while its sessions survive is
@@ -411,6 +414,18 @@ func (s *Service) Authenticate(ctx context.Context, username, password, ip, agen
 	}
 	if err := s.repo.UpdateAttempts(ctx, account.ID, 0, mark, now); err != nil {
 		return Session{}, fmt.Errorf("auth: cannot record the sign-in: %w", err)
+	}
+
+	// **A hash weaker than today's is replaced while the password is in
+	// hand.** SECURITY.md has said so since the first release, and nothing
+	// called NeedsRehash, so an account made under older parameters kept
+	// them for ever (2026-10-07, section I). Best effort: a sign-in is not
+	// refused because a stronger hash could not be written, and the next
+	// sign-in tries again.
+	if NeedsRehash(account.PasswordHash, s.policy.Hash) {
+		if stronger, herr := Hash(password, s.policy.Hash); herr == nil {
+			_ = s.repo.UpgradeHash(ctx, account.ID, stronger)
+		}
 	}
 
 	token, err := NewToken()

@@ -24,6 +24,8 @@ type memoryRepo struct {
 	sessions map[string]auth.Session
 	// failCreateSession makes storage fail, for the path where it does.
 	failCreateSession bool
+	// upgrades counts stronger hashes stored.
+	upgrades int
 }
 
 func newRepo() *memoryRepo {
@@ -603,6 +605,21 @@ func (r *memoryRepo) Accounts(ctx context.Context) ([]auth.Account, error) {
 	return out, nil
 }
 
+// UpgradeHash implements auth.Repository.
+func (r *memoryRepo) UpgradeHash(_ context.Context, id int64, hash string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.upgrades++
+	for fold, a := range r.accounts {
+		if a.ID == id {
+			a.PasswordHash = hash
+			r.accounts[fold] = a
+			return nil
+		}
+	}
+	return errors.New("no such account")
+}
+
 // SetPassword implements auth.Repository.
 func (r *memoryRepo) SetPassword(ctx context.Context, id int64, hash, keep string) error {
 	r.mu.Lock()
@@ -692,5 +709,51 @@ func TestALoginLengthChangedAppliesToTheNextLogin(t *testing.T) {
 	clk.advance(50 * time.Minute)
 	if _, err := svc.Session(ctx, earlier.Token); err != nil {
 		t.Errorf("the earlier login ended early: %v", err)
+	}
+}
+
+// TestAWeakHashIsReplacedAtSignIn. SECURITY.md has said since the first
+// release that a hash made under older parameters is replaced at the next
+// sign-in, and nothing called NeedsRehash (2026-10-07, section I).
+//
+// To see it fail: remove the NeedsRehash block from Authenticate.
+func TestAWeakHashIsReplacedAtSignIn(t *testing.T) {
+	old := auth.Params{Iterations: auth.MinIterations, SaltLength: 16, KeyLength: 32}
+	now := auth.Params{Iterations: auth.MinIterations + 20_000, SaltLength: 16, KeyLength: 32}
+	repo := newRepo()
+	ctx := context.Background()
+
+	before, _ := newService(t, repo, auth.Policy{Hash: old})
+	if _, err := before.CreateAccount(ctx, "K9MLS", goodPassword); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	other, err := before.Authenticate(ctx, "K9MLS", goodPassword, "", "")
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	if repo.upgrades != 0 {
+		t.Fatalf("a hash at today's parameters was replaced %d times", repo.upgrades)
+	}
+
+	after, _ := newService(t, repo, auth.Policy{Hash: now})
+	if _, err := after.Authenticate(ctx, "K9MLS", goodPassword, "", ""); err != nil {
+		t.Fatalf("Authenticate after the parameters rose: %v", err)
+	}
+	if repo.upgrades != 1 {
+		t.Fatalf("the weaker hash was replaced %d times at sign-in, want once", repo.upgrades)
+	}
+	stored, _, _ := repo.AccountByUsername(ctx, "k9mls")
+	if auth.NeedsRehash(stored.PasswordHash, now) {
+		t.Error("what was stored is still weaker than today's parameters")
+	}
+	// Nothing else: the other session goes on, and the password still works.
+	if _, err := after.Session(ctx, other.Token); err != nil {
+		t.Errorf("replacing the hash ended another session: %v", err)
+	}
+	if _, err := after.Authenticate(ctx, "K9MLS", goodPassword, "", ""); err != nil {
+		t.Fatalf("the password no longer works after its hash was replaced: %v", err)
+	}
+	if repo.upgrades != 1 {
+		t.Errorf("a hash already at today's parameters was replaced again: %d", repo.upgrades)
 	}
 }

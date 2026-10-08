@@ -427,3 +427,40 @@ func TestTheExampleIDsAreOnesThatCanRegister(t *testing.T) {
 			"configuration: %v", allowedPeersEnv, value, err)
 	}
 }
+
+// TestAContactAtFirstRunTurnsTheLookupOn. The address was read past the
+// environment the first run is handed, written without turning the lookup
+// on, and passed by no install (2026-10-07, section I).
+//
+// To see it fail: drop the contactEnv block from bootstrapConfig.
+func TestAContactAtFirstRunTurnsTheLookupOn(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		contact string
+		on      bool
+	}{
+		{"given", "  op@example.org ", true},
+		{"not given", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "qsp.json")
+			if _, err := bootstrapConfig(path, envFrom(map[string]string{
+				peerPasswordEnv: "a-shared-secret", allowedPeersEnv: "3132910", contactEnv: tc.contact,
+			})); err != nil {
+				t.Fatalf("%v", err)
+			}
+			f, err := os.Open(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = f.Close() }()
+			cfg, err := config.Load(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.DMR.Callsigns; got.Enabled != tc.on || (tc.on && got.Contact != "op@example.org") {
+				t.Errorf("the lookup is %+v", got)
+			}
+		})
+	}
+}

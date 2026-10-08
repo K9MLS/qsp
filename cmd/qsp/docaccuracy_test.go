@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -865,5 +866,40 @@ func TestNoMessageSendsAnOperatorToAFieldTheConsoleCanChange(t *testing.T) {
 	}
 	if checked < 40 {
 		t.Fatalf("only %d Go files read; this test would pass by finding nothing", checked)
+	}
+}
+
+// TestTheFileOnlySettingsAreSettings. docs/CONFIGURATION.md said everything
+// could be done from the console, and fifteen settings could not (2026-10-07,
+// section I). It now lists them; this holds each name on the list to a
+// setting the program has, so a rename does not leave the list naming
+// nothing.
+//
+// To see it fail: misspell a name in the list.
+func TestTheFileOnlySettingsAreSettings(t *testing.T) {
+	raw, err := os.ReadFile("../../docs/CONFIGURATION.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := string(raw)
+	start := strings.Index(doc, "<!-- file-only:")
+	if start < 0 {
+		t.Fatal("docs/CONFIGURATION.md has no list of file-only settings")
+	}
+	block, _, _ := strings.Cut(doc[start:], "\n\n")
+	paths := config.SettingPaths()
+	named := 0
+	for _, m := range regexp.MustCompile("`([a-z_0-9.]+)`").FindAllStringSubmatch(block, -1) {
+		name := m[1]
+		if !strings.Contains(name, ".") && !slices.Contains([]string{"database", "logging", "events"}, name) {
+			continue // a field of the setting before it, such as `rate`
+		}
+		named++
+		if !slices.ContainsFunc(paths, func(p string) bool { return p == name || strings.HasPrefix(p, name+".") }) {
+			t.Errorf("docs/CONFIGURATION.md lists %s as set only in the file, and there is no such setting", name)
+		}
+	}
+	if named < 15 {
+		t.Errorf("the list names %d settings; the parsing has stopped reading it", named)
 	}
 }
