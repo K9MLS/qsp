@@ -160,6 +160,7 @@ func (s *Server) handleOfferPeering(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, s.log, r, &req) {
 		return
 	}
+	defer s.editing()()
 	cfg := s.opts.Config.Current()
 
 	address := strings.TrimSpace(req.Address)
@@ -347,6 +348,7 @@ func (s *Server) handleAcceptPeering(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	cfg := s.opts.Config.Current()
 	// Kept so the restart notice is derived rather than asserted. A hardcoded
 	// "restart to apply" would be a second place to keep true, and

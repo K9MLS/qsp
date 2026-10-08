@@ -274,7 +274,12 @@ type LoginFailure struct {
 	Since time.Time `json:"since"`
 	// LockedUntil is when QSP will listen to it again, zero when it is not
 	// locked out.
-	LockedUntil time.Time `json:"locked_until,omitempty"`
+	//
+	// **Left out when there is none.** It was `omitempty`, which leaves out
+	// nothing of a time, so every address that had failed once was sent as
+	// locked until the first of January in year one, and the Overview showed
+	// each as "ignored until" a time (2026-10-07, F1).
+	LockedUntil time.Time `json:"locked_until,omitzero"`
 }
 
 // recentFailures returns what is being refused, newest run first.

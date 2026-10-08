@@ -27,6 +27,8 @@ type stubConfig struct {
 	saveErr  error
 	// applyErr makes Save record the configuration and then fail to apply it.
 	applyErr error
+	// writing is how long Save takes, as a real write to disk takes some.
+	writing  time.Duration
 	versions []config.Version
 	// saved records what Save was asked to write.
 	saved   []config.Config
@@ -57,6 +59,7 @@ func (c *stubConfig) Save(_ context.Context, cfg config.Config, author, summary 
 	if err := cfg.Validate(); err != nil {
 		return config.Version{}, err
 	}
+	time.Sleep(c.writing)
 	c.saved = append(c.saved, cfg)
 	c.authors = append(c.authors, author)
 	c.current = cfg

@@ -15,6 +15,7 @@ func withIdentity(pkg string) func(*peers.MasterConfig) {
 			return hbp.Identity{Network: "KD9EJA-01", Callsign: "KD9EJA", Software: "QSP 0.1.139"}
 		}
 		c.IsQSPLink = func(cfg hbp.Config) bool { return cfg.PackageID == pkg }
+		c.OwnPassword = func(hbp.RepeaterID) bool { return true }
 	}
 }
 
@@ -82,6 +83,27 @@ func TestOnlyAQSPLinkIsToldWhatThisServerIs(t *testing.T) {
 		h := newHarness(t, withIdentity(linkPackage))
 		if _, ok := identityIn(t, handshake(t, h, from, "Pi-Star_v4.1.6")); ok {
 			t.Error("a hotspot was sent a QSP identity, which it never asked for")
+		}
+	})
+
+	// **A member that claims to be a link is not one.** The package ID is
+	// whatever a station sends, and the shared password is every member's;
+	// told this server's identifier, one could pass as it to the servers it
+	// links to (2026-10-07, C6). To see it fail: remove the OwnPassword test
+	// from handleConfig.
+	t.Run("a station on the shared password that claims to be a link is not", func(t *testing.T) {
+		h := newHarness(t, withIdentity(linkPackage), func(c *peers.MasterConfig) {
+			c.OwnPassword = func(hbp.RepeaterID) bool { return false }
+		})
+		if _, ok := identityIn(t, handshake(t, h, from, linkPackage)); ok {
+			t.Error("a station with the shared password was told this server's identity")
+		}
+	})
+
+	t.Run("with no way to tell, nobody is", func(t *testing.T) {
+		h := newHarness(t, withIdentity(linkPackage), func(c *peers.MasterConfig) { c.OwnPassword = nil })
+		if _, ok := identityIn(t, handshake(t, h, from, linkPackage)); ok {
+			t.Error("the identity was sent with nothing to say the station had a password of its own")
 		}
 	})
 

@@ -93,7 +93,17 @@ func mergeMaps(prefix string, base, mine, current map[string]any, kept, conflict
 		mNested, mIsMap := mv.(map[string]any)
 		cNested, cIsMap := cv.(map[string]any)
 		if (mIsMap || cIsMap) && (bIsMap || !inBase) && (mIsMap || !inMine) && (cIsMap || !inCurrent) {
-			out[k] = mergeMaps(path, bNested, mNested, cNested, kept, conflicts)
+			merged := mergeMaps(path, bNested, mNested, cNested, kept, conflicts)
+			// **A section neither side had stays out when this save put
+			// nothing in it.** A page sends an access block whether or not
+			// the server has one, and every setting in it at its zero is
+			// the block saying nothing; written, it turned "no access
+			// block", which the server warns about at startup, into an
+			// empty one, which it does not (2026-10-07, H2).
+			if !inBase && !inCurrent && empty(merged) {
+				continue
+			}
+			out[k] = merged
 			continue
 		}
 
@@ -165,6 +175,13 @@ func wholeValue(v reflect.Value) (value any, present bool, err error) {
 			return nil, false, nil
 		}
 		return wholeValue(v.Elem())
+	case t.Kind() == reflect.Map && v.IsNil():
+		// **No map and an empty one are the same map**, and both are merged
+		// key by key. Written as the file writes them, one was null and the
+		// other {}, so a page that sent {} for a server with no names was
+		// read as having changed them, and a repeater named meanwhile on
+		// another page made its save a conflict (2026-10-07, H1).
+		return map[string]any{}, true, nil
 	case t.Kind() == reflect.Struct:
 		out := make(map[string]any, t.NumField())
 		for i := range t.NumField() {
@@ -201,6 +218,30 @@ func wholeValue(v reflect.Value) (value any, present bool, err error) {
 		return nil, false, fmt.Errorf("cannot decode a setting for merging: %w", err)
 	}
 	return decoded, true, nil
+}
+
+// empty reports whether every setting in a decoded section is at its zero.
+func empty(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return true
+	case bool:
+		return !x
+	case float64:
+		return x == 0
+	case string:
+		return x == ""
+	case []any:
+		return len(x) == 0
+	case map[string]any:
+		for _, e := range x {
+			if !empty(e) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // noList reports whether a decoded value is a list with nothing in it, or no

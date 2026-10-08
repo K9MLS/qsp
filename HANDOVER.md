@@ -505,7 +505,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | Every setting classified as applied on save or at startup, with a walk-every-setting test; P25 allow list, session length and server identity applied on save; every saver treats saved-not-applied as saved | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | Saves held apart; merge treats no map as an empty one and adds no empty access block; Zello loss warned once a spell; identity only to a station with its own password; no false lockout times | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
 | **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

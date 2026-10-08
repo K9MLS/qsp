@@ -341,6 +341,33 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **Two saves at once no longer undo one another.** Each read the
+  configuration, made its change and wrote, and nothing held the three
+  together, so the second written was made from what it had read, without
+  the first's change. Every page's save now holds the others off from its
+  read to its write (2026-10-07 hunt, H5).
+- **The Access page's save is no longer refused for a repeater named
+  meanwhile.** It sent repeater names as `{}` on a server that had none, the
+  file held none at all, and the two were read as different, so a name added
+  on the Network page made the Access page's save a conflict about a setting
+  it had not touched. No map and an empty one are now the same, and names
+  are merged repeater by repeater (H1).
+- **A save no longer gives a server an empty access block it did not
+  have.** It permitted the same as none and silenced the startup warning
+  that a listener reachable from beyond this host has no access block (H2).
+- **The Zello connector says it is dropping audio once a spell**, not once
+  for every frame lost: 93 frames had been 93 warnings (H3).
+- **A member that claims to be a link is no longer told this server's
+  identifier.** The package ID that marks a QSP link is whatever a station
+  sends. This server's identity now goes only to a station that logged in
+  with a password of its own, which every link offered from the console
+  has (C6).
+- **The Overview no longer shows every refused login as "ignored until" a
+  time.** An address that was not locked out was sent as locked until the
+  first of January in year one (F1).
+- Two reads that could race a save: the hook that applies a save, attached
+  after the console was already serving, and whether talkgroup attachment is
+  on, read without the lock it is written under (I).
 - **A save says so when it needs a restart, for every setting.** The list of
   settings that need one was written by hand, and a setting nobody had
   written was reported as in force the moment it was saved. Ten were: the P25

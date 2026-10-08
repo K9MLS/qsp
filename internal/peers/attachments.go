@@ -157,7 +157,14 @@ func (m *Master) DropAttachments(peer hbp.RepeaterID) int {
 }
 
 // SubscriptionEnabled reports whether per-peer attachment is in force.
-func (m *Master) SubscriptionEnabled() bool { return m.cfg.Subscription.Enabled }
+//
+// Under the lock SetSubscription writes it under: a save from the console
+// changes it while the Overview is asking (2026-10-07, section I).
+func (m *Master) SubscriptionEnabled() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.cfg.Subscription.Enabled
+}
 
 // AttachmentCount returns how many attachments are held.
 func (m *Master) AttachmentCount() int {

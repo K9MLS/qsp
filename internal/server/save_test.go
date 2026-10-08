@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/k9mls/qsp/internal/audit"
 	"github.com/k9mls/qsp/internal/config"
@@ -144,5 +147,56 @@ func TestTheSessionLengthSavedIsNotCalledWaiting(t *testing.T) {
 	}
 	if got := needsRestartOf(t, res.Body.Bytes()); len(got) != 0 {
 		t.Errorf("a restart was asked for: %q", got)
+	}
+}
+
+// TestTwoSavesAtOnceKeepBoth. Two pages opened on the same configuration
+// each change their own setting and save within milliseconds. Each read the
+// configuration, merged its change into it, and wrote, and nothing held the
+// three together: the second write was made from what the second save read,
+// which did not have the first's change (2026-10-07, H5).
+//
+// To see it fail: make editing return func() {} without taking the lock.
+func TestTwoSavesAtOnceKeepBoth(t *testing.T) {
+	cm := newStubConfig()
+	cm.writing = 40 * time.Millisecond
+	srv, a := newConfigServer(t, cm, &recordingAudit{})
+	opened := cm.current
+
+	edits := []func(*config.Config){
+		func(c *config.Config) { c.Weather.Talkgroup = 3100 },
+		func(c *config.Config) { c.Events.HistorySize = 512 },
+	}
+	// Signed in once, first: the two saves are what is being raced, and the
+	// stand-in for sign-in is not built to be.
+	cookie := sessionCookieFrom(t, postLogin(t, srv, "K9MLS", a.password))
+	handler := srv.Handler()
+
+	var wg sync.WaitGroup
+	codes := make([]int, len(edits))
+	for i, edit := range edits {
+		mine := opened.Clone()
+		edit(&mine)
+		body, _ := json.Marshal(map[string]any{"config": mine, "base": opened, "summary": "one setting"})
+		req := httptest.NewRequest(http.MethodPost, "/api/config", strings.NewReader(string(body)))
+		req.AddCookie(cookie)
+		req.Host = "qsp.example"
+		req.Header.Set("Origin", "http://qsp.example")
+		wg.Go(func() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			codes[i] = rec.Code
+		})
+	}
+	wg.Wait()
+
+	for i, code := range codes {
+		if code != http.StatusOK {
+			t.Fatalf("save %d answered %d", i, code)
+		}
+	}
+	if got := cm.current; got.Weather.Talkgroup != 3100 || got.Events.HistorySize != 512 {
+		t.Errorf("after two saves the configuration has talkgroup %d and history %d; "+
+			"one undid the other", got.Weather.Talkgroup, got.Events.HistorySize)
 	}
 }

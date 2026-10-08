@@ -1,6 +1,7 @@
 package peers
 
 import (
+	"encoding/json"
 	"net/netip"
 	"strings"
 	"testing"
@@ -218,5 +219,32 @@ func TestBlockedCountsOnlyLockedSources(t *testing.T) {
 
 	if got := th.blocked(now); got != 1 {
 		t.Errorf("blocked = %d, want 1", got)
+	}
+}
+
+// TestNoLockoutIsNotSent. An address that had failed and was not locked out
+// was sent as locked until the first of January in year one, and the
+// Overview showed every such address as "ignored until" a time (2026-10-07,
+// F1).
+//
+// To see it fail: tag LockedUntil omitempty, as it was.
+func TestNoLockoutIsNotSent(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		until time.Time
+		sent  bool
+	}{
+		{"not locked out", time.Time{}, true},
+		{"locked out", time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := json.Marshal(LoginFailure{Address: "203.0.113.5:62031", LockedUntil: tc.until})
+			if err != nil {
+				t.Fatalf("Marshal: %v", err)
+			}
+			if got := strings.Contains(string(raw), "locked_until"); got == tc.sent {
+				t.Errorf("%s: %s", tc.name, raw)
+			}
+		})
 	}
 }

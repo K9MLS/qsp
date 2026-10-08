@@ -49,6 +49,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	cfg := s.opts.Config.Current()
 	// Kept so the restart notice is derived from config.NeedsRestart rather
 	// than asserted here.

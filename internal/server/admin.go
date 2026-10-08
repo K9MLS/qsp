@@ -277,6 +277,7 @@ func (s *Server) handleCallsigns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	cfg := before.Clone()
 	cfg.DMR.Callsigns.Enabled = req.Enabled
@@ -385,6 +386,7 @@ func (s *Server) handleSessionLifetime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	cfg := s.opts.Config.Current()
 	cfg.Server.SessionLifetime = config.Duration(time.Duration(req.Seconds) * time.Second)
 

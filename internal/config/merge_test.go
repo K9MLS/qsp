@@ -286,3 +286,101 @@ func TestWholeLeavesOutNothingTheFileWrites(t *testing.T) {
 		t.Errorf("through the merge and back changed %v", changes)
 	}
 }
+
+// TestAMapNobodyHadIsAnEmptyOne. The Access page sends repeater names as {}
+// on a server that has none, and the file holds no map at all. The two were
+// compared as different values, so the page was taken to have changed the
+// names, and a repeater named meanwhile on the Network page made the Access
+// page's save a conflict about a setting it had not touched (2026-10-07, H1).
+//
+// To see it fail: remove the nil-map case from wholeValue.
+func TestAMapNobodyHadIsAnEmptyOne(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		base, mine   map[uint32]string
+		current      map[uint32]string
+		want         map[uint32]string
+		conflictFree bool
+	}{
+		{"named elsewhere, the page sent {}", nil, map[uint32]string{},
+			map[uint32]string{313291: "Tower"}, map[uint32]string{313291: "Tower"}, true},
+		{"the page named one, another was named elsewhere", nil, map[uint32]string{313292: "Barn"},
+			map[uint32]string{313291: "Tower"}, map[uint32]string{313291: "Tower", 313292: "Barn"}, true},
+		{"both named the same repeater differently", nil, map[uint32]string{313291: "Barn"},
+			map[uint32]string{313291: "Tower"}, nil, false},
+		{"the page removed one", map[uint32]string{313291: "Tower"}, map[uint32]string{},
+			map[uint32]string{313291: "Tower"}, map[uint32]string{}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			base, mine, current := Default(), Default(), Default()
+			base.IPSC.PeerNames, mine.IPSC.PeerNames, current.IPSC.PeerNames = tc.base, tc.mine, tc.current
+			mine.DMR.Forwarding = !base.DMR.Forwarding
+
+			got, _, conflicts, err := Merge(base, mine, current)
+			if err != nil {
+				t.Fatalf("Merge: %v", err)
+			}
+			if tc.conflictFree != (len(conflicts) == 0) {
+				t.Fatalf("conflicts %v, want none: %v", conflicts, tc.conflictFree)
+			}
+			if !tc.conflictFree {
+				return
+			}
+			if len(got.IPSC.PeerNames) != len(tc.want) {
+				t.Errorf("the names are %v, want %v", got.IPSC.PeerNames, tc.want)
+			}
+			for id, name := range tc.want {
+				if got.IPSC.PeerNames[id] != name {
+					t.Errorf("the names are %v, want %v", got.IPSC.PeerNames, tc.want)
+				}
+			}
+			if got.DMR.Forwarding == base.DMR.Forwarding {
+				t.Error("the page's own change was not saved")
+			}
+		})
+	}
+}
+
+// TestASectionNobodyHadStaysOut. A page sends an access block whether or not
+// the server has one. Merged, a server with none was saved with an empty one,
+// which permits exactly the same, and which silenced the startup warning that
+// a listener reachable from beyond this host has no access block (H2).
+//
+// To see it fail: remove the empty(merged) test from mergeMaps.
+func TestASectionNobodyHadStaysOut(t *testing.T) {
+	base, current := Default(), Default()
+	base.DMR.Access, current.DMR.Access = nil, nil
+
+	sentEmpty := Default()
+	sentEmpty.DMR.Access = &Access{}
+	sentEmpty.DMR.Forwarding = !base.DMR.Forwarding
+	got, _, conflicts, err := Merge(base, sentEmpty, current)
+	if err != nil || len(conflicts) > 0 {
+		t.Fatalf("Merge: %v %v", err, conflicts)
+	}
+	if got.DMR.Access != nil {
+		t.Errorf("a server with no access block was given one: %+v", *got.DMR.Access)
+	}
+
+	// One the page filled in is kept, of course.
+	sentFull := sentEmpty.Clone()
+	sentFull.DMR.Access = &Access{Registration: ACL{Mode: "deny", IDs: []string{"3132913"}}}
+	got, _, _, err = Merge(base, sentFull, current)
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if got.DMR.Access == nil || got.DMR.Access.Registration.Mode != "deny" {
+		t.Errorf("the access block the page filled in was lost: %+v", got.DMR.Access)
+	}
+
+	// And an empty one a server already has stays.
+	had := Default()
+	had.DMR.Access = &Access{}
+	got, _, _, err = Merge(had, sentEmpty, had.Clone())
+	if err != nil {
+		t.Fatalf("Merge: %v", err)
+	}
+	if got.DMR.Access == nil {
+		t.Error("an empty access block the server had was taken away")
+	}
+}

@@ -76,6 +76,7 @@ func (s *Server) acceptLink(w http.ResponseWriter, r *http.Request, req acceptRe
 		return
 	}
 
+	defer s.editing()()
 	cfg := s.opts.Config.Current()
 	before := cfg
 

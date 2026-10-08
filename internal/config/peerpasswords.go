@@ -108,6 +108,19 @@ func (p *PeerPasswords) For(peer uint32) ([]byte, error) {
 	return []byte(password), nil
 }
 
+// Own reports whether a peer has a password file of its own, which a station
+// that logged in successfully then logged in with.
+//
+// Asked after a login, so the file has already been read and judged by For;
+// this does not judge it again.
+func (p *PeerPasswords) Own(peer uint32) bool {
+	if p == nil || p.dir == "" || p.stat == nil {
+		return false
+	}
+	info, err := p.stat(filepath.Join(p.dir, strconv.FormatUint(uint64(peer), 10)))
+	return err == nil && info.Mode().IsRegular()
+}
+
 // PerPeer reports whether any peer has a password of its own.
 func (p *PeerPasswords) PerPeer() bool { return p != nil && p.dir != "" }
 

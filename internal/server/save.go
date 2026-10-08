@@ -41,3 +41,20 @@ func notApplied(needsRestart []string, late string) []string {
 	return append(needsRestart, "everything in this save: it could not be applied "+
 		"while running ("+late+")")
 }
+
+// editing holds every other save off until the function it returns is called,
+// which is when the handler that took it returns.
+//
+// **A save is a read, a change and a write, and nothing held the three
+// together.** Two saves landing within milliseconds each read the same
+// configuration, each changed its own part, and the second written undid the
+// first: the merge that protects a page from a stale document cannot protect
+// it from a current one that goes stale while it is being merged (found
+// 2026-10-07, H5). Every handler that saves takes this before it reads.
+//
+// Saves are rare and short, so one lock for all of them costs nothing an
+// operator could notice; two locks would be two orders to get wrong.
+func (s *Server) editing() func() {
+	s.configMu.Lock()
+	return s.configMu.Unlock
+}

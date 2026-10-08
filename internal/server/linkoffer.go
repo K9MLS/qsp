@@ -91,6 +91,7 @@ func (s *Server) handleOfferLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	// A copy that shares nothing, because what follows edits the registration
 	// list in place; see handleLinkAddress.

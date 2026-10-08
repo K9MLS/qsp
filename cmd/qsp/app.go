@@ -1095,6 +1095,9 @@ func buildDMR(cfg config.Config, log *slog.Logger, bus *events.Bus, identity fun
 		// and the old place (G8).
 		Identity:  identity,
 		IsQSPLink: func(c hbp.Config) bool { _, ok := LinkNameFromPackageID(c.PackageID); return ok },
+		OwnPassword: func(id hbp.RepeaterID) bool {
+			return peerPasswords.Own(uint32(id))
+		},
 	})
 	if err != nil {
 		return nil, "", err
@@ -1200,7 +1203,7 @@ func (a *app) run(ctx context.Context) error {
 		// The author travels with the change, so the line the listener logs
 		// names the administrator rather than "console" — the version row
 		// could attribute a live change and the log could not.
-		a.configManager.apply = applyToListener(a.dmr, a.ipsc, a.p25)
+		a.configManager.setApply(applyToListener(a.dmr, a.ipsc, a.p25))
 	}
 
 	// Resolving names is background work by design: nothing waits on it, and a

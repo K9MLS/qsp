@@ -147,20 +147,43 @@ const usrpQueue = 256
 // **A full queue gives up its oldest audio and never a keyup or a release**
 // (audio.Queue). It fills only when the pump has been stuck for five seconds,
 // which is a stalled connection to Zello, and that is said once each time it
-// happens rather than once a frame.
+// happens rather than once a frame: see losses.
 func receive(ctx context.Context, conn *audio.Conn, out *audio.Queue, log *slog.Logger) {
-	losing := false
+	var l losses
 	for {
 		f, err := conn.Receive(ctx)
 		if err != nil {
 			return
 		}
-		lost := out.Push(f)
-		if lost && !losing {
+		if l.pushed(out.Push(f), time.Now()) {
 			log.Warn("audio from QSP is arriving faster than it reaches Zello; the oldest is being dropped")
 		}
-		losing = lost
 	}
+}
+
+// lossQuiet is how long without a dropped frame ends one spell of them.
+const lossQuiet = 5 * time.Second
+
+// losses decides when dropping audio is news.
+//
+// **Once a spell, not once a change.** This said it whenever a frame was lost
+// after one that was not, and a full queue does exactly that: each push drops
+// the oldest, the pump takes one, the next push fits. 93 frames lost were 93
+// warnings (2026-10-07, H3). A spell now ends after lossQuiet with nothing
+// lost.
+type losses struct {
+	last time.Time
+}
+
+// pushed records whether a push dropped a frame, and reports whether that
+// begins a spell.
+func (l *losses) pushed(lost bool, now time.Time) bool {
+	if !lost {
+		return false
+	}
+	begins := l.last.IsZero() || now.Sub(l.last) > lossQuiet
+	l.last = now
+	return begins
 }
 
 // loop connects, carries audio until the session ends, and connects again.

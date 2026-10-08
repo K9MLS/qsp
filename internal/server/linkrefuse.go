@@ -87,6 +87,7 @@ func (s *Server) handleRefuseInbound(w http.ResponseWriter, r *http.Request) {
 	}
 	id := uint32(id64)
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	// A copy that shares nothing, because what follows edits the registration
 	// list in place; see handleLinkAddress.

@@ -189,3 +189,28 @@ func TestNoPeerPasswordDirectoryIsFine(t *testing.T) {
 		t.Fatalf("an instance with one shared password was refused: %v", err)
 	}
 }
+
+// TestOnlyAFileOfItsOwnIsOwn. What decides whether a station that claims to
+// be a link is told this server's identity (2026-10-07, C6).
+//
+// To see it fail: have Own return true whenever per-peer passwords are on.
+func TestOnlyAFileOfItsOwnIsOwn(t *testing.T) {
+	read, stat := files(map[string]string{"/pw/3132913": "a-link-of-its-own"}, 0o600)
+	for _, tc := range []struct {
+		name string
+		p    *PeerPasswords
+		peer uint32
+		want bool
+	}{
+		{"a link with its own file", NewPeerPasswords("/pw", []byte("shared"), read, stat), 3132913, true},
+		{"a member on the shared password", NewPeerPasswords("/pw", []byte("shared"), read, stat), 3155413, false},
+		{"a server with no directory", NewPeerPasswords("", []byte("shared"), read, stat), 3132913, false},
+		{"no passwords at all", nil, 3132913, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.p.Own(tc.peer); got != tc.want {
+				t.Errorf("Own(%d) = %v, want %v", tc.peer, got, tc.want)
+			}
+		})
+	}
+}

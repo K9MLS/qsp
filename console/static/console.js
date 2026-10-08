@@ -605,7 +605,10 @@
     for (var i = 0; i < list.length; i++) {
       var f = list[i];
       var state = "retrying";
-      if (f.locked_until) {
+      /* Only a lockout still to come. The server sent year one for "none"
+       * until 0.1.336, and a lockout that has ended is not one. */
+      var until = f.locked_until ? Date.parse(f.locked_until) : NaN;
+      if (until > Date.now()) {
         blocked++;
         state = "ignored until " + escapeText(new Date(f.locked_until).toLocaleTimeString());
       }

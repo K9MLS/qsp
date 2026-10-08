@@ -171,6 +171,7 @@ func (s *Server) handleSaveConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	if req.Base != nil {
 		merged, kept, conflicts, err := config.Merge(*req.Base, req.Config, before)

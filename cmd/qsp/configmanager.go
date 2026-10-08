@@ -76,6 +76,17 @@ func (m *configManager) Current() config.Config {
 	return m.current.Clone()
 }
 
+// setApply attaches what hands a save to the listeners.
+//
+// **Under the mutex, because the console is already serving.** It was
+// assigned directly after the listeners started, while a save on another
+// goroutine could be reading it (2026-10-07, section I).
+func (m *configManager) setApply(apply func(cfg config.Config, author, summary string) error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.apply = apply
+}
+
 // Writable implements server.ConfigManager.
 func (m *configManager) Writable() error {
 	if m.writer == nil {

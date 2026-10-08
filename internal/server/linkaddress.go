@@ -78,6 +78,7 @@ func (s *Server) handleLinkAddress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	// **A copy that shares nothing.** `cfg := before` copied the struct and
 	// shared the upstreams behind it, so the assignment below wrote the new

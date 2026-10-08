@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -148,6 +149,8 @@ type Options struct {
 type Server struct {
 	// live holds the options a saved configuration can change. See live.go.
 	live live
+	// configMu holds saves apart. See editing, in save.go.
+	configMu sync.Mutex
 
 	opts   Options
 	log    *slog.Logger

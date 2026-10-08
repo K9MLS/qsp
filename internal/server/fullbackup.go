@@ -240,6 +240,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	cfg := full.Backup.Config
 	keepMachineLocal(&cfg, before)

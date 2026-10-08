@@ -547,3 +547,28 @@ func TestWhatArrivedDuringTheLogonIsNotPlayed(t *testing.T) {
 		t.Errorf("%d frames counted as discarded, want the 8 that arrived during the logon", got)
 	}
 }
+
+// TestDroppedAudioIsSaidOnceASpell. A full queue alternates: each push
+// drops the oldest, the pump takes one, the next fits. The warning followed
+// the alternation and was written 93 times for 93 frames (2026-10-07, H3).
+//
+// To see it fail: make losses.pushed warn on a loss after a push that lost
+// nothing, as receive used to.
+func TestDroppedAudioIsSaidOnceASpell(t *testing.T) {
+	t0 := time.Date(2026, 10, 8, 7, 0, 0, 0, time.UTC)
+	var l losses
+	said := 0
+	// 186 pushes 60 ms apart, every other one dropping a frame.
+	for i := range 186 {
+		if l.pushed(i%2 == 0, t0.Add(time.Duration(i)*60*time.Millisecond)) {
+			said++
+		}
+	}
+	if said != 1 {
+		t.Fatalf("93 frames lost in one spell were reported %d times, want once", said)
+	}
+	// Quiet for longer than a spell, and it is news again.
+	if !l.pushed(true, t0.Add(186*60*time.Millisecond+lossQuiet+time.Second)) {
+		t.Error("a second spell, after a quiet one, was not reported")
+	}
+}

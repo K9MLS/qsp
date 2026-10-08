@@ -95,6 +95,17 @@ type MasterConfig struct {
 	// hotspot, which is the safe direction: nothing is sent that nobody
 	// expects.
 	IsQSPLink func(hbp.Config) bool
+	// OwnPassword reports whether a station logged in with a password issued
+	// to it alone, rather than the one every member shares.
+	//
+	// **A link has one; a hotspot that claims to be a link does not.** The
+	// package ID that marks a QSP link is whatever a station chooses to
+	// send, so any member could claim it, and was sent this server's whole
+	// identity, the identifier included, which its neighbours use to know it
+	// (2026-10-07, C6). A link offered from the console is always issued a
+	// password of its own, so this costs a real link nothing. Nil sends the
+	// identity to nobody, which is the safe direction.
+	OwnPassword func(hbp.RepeaterID) bool
 	// Now supplies the current time. Zero uses time.Now.
 	Now func() time.Time
 	// Salt generates login challenges. Zero uses crypto/rand.
@@ -702,7 +713,8 @@ func (m *Master) handleConfig(msg hbp.Config, from netip.AddrPort, now time.Time
 	// **After the ACK, not instead of it.** The handshake is HBP's and must
 	// complete exactly as a hotspot's does; this is an extra datagram that a
 	// server which does not understand it reports as a note and ignores.
-	if m.cfg.Identity != nil && m.cfg.IsQSPLink != nil && m.cfg.IsQSPLink(msg) {
+	if m.cfg.Identity != nil && m.cfg.IsQSPLink != nil && m.cfg.IsQSPLink(msg) &&
+		m.cfg.OwnPassword != nil && m.cfg.OwnPassword(msg.RepeaterID) {
 		ident := m.cfg.Identity()
 		ident.RepeaterID = msg.RepeaterID
 		out.Responses = append(out.Responses, Response{To: from, Payload: ident.Marshal()})

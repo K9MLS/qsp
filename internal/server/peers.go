@@ -317,13 +317,13 @@ type CallView struct {
 	Duration string `json:"duration"`
 	// Ago is how long since it ended. Empty while in progress.
 	Ago string `json:"ago,omitempty"`
-	// EndedAt is when it ended, in UTC. Zero while in progress.
+	// EndedAt is when it ended, in UTC, and absent while in progress.
 	//
 	// It exists because two listeners' recent calls have to be merged into one
 	// list that is genuinely most-recent-first, and Ago is a rendered string
 	// that cannot be sorted. The console may also use it to keep relative
 	// times fresh between polls.
-	EndedAt time.Time `json:"ended_at,omitempty"`
+	EndedAt time.Time `json:"ended_at,omitzero"`
 	// Frames counts the frames received.
 	Frames int `json:"frames"`
 	// Voice reports whether any voice frame arrived. A text message is a few

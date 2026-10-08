@@ -156,6 +156,7 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		replaced = true
 	}
 
+	defer s.editing()()
 	before := s.opts.Config.Current()
 	keepMachineLocal(&cfg, before)
 
