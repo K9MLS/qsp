@@ -95,21 +95,19 @@
   var entries = [];
 
   function load() {
-    fetch("/api/calls?hours=" + encodeURIComponent(value("window", "12")) + "&limit=1000",
-      { headers: { Accept: "application/json" }, credentials: "same-origin" })
-      .then(function (r) {
-        if (r.status === 401) {
+    /* "calls" must be in the answer: a refusal read as one showed an empty
+     * record, as if nobody had transmitted. See get.js. */
+    window.QSPGet("/api/calls?hours=" + encodeURIComponent(value("window", "12")) + "&limit=1000", "calls")
+      .then(function (body) {
+        if (body === null) {
           hide(loading);
           hide(form);
           show(signedOut);
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then(function (body) {
-        if (!body) { return; }
         hide(loading);
         hide(signedOut);
+        window.QSPLoaded();
         entries = body.calls || [];
         if (body.reason) {
           list.innerHTML =
@@ -122,9 +120,11 @@
         render(entries);
         show(form);
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
+        hide(form);
         count.textContent = "\u2014";
+        window.QSPLoadFailed(e);
       });
   }
 

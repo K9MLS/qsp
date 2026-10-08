@@ -341,6 +341,20 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A page the server refused says so.** A page asked for its data, the
+  server said no, and the page read the refusal as the data: the call record
+  said nobody had transmitted, the history that nothing had ever been saved,
+  the links page that there were no links, and the settings pages showed
+  "That did not save" for a page nobody had saved. Eight pages now load
+  through one loader, `get.js`, and a refusal shows "This page could not be
+  loaded" with the server's reason (2026-10-07 hunt, F4).
+- **The Overview no longer takes your place away every ten seconds.** The
+  map went back to the whole network each time it refreshed, so a town you
+  had zoomed in on was gone before you could read it; it now keeps a view
+  you have moved, and follows the stations only while you have not. The
+  tables went back to their first column and lost keyboard focus at each
+  refresh; they now keep both, and are not redrawn at all when nothing in
+  them changed (F3).
 - **Two saves at once no longer undo one another.** Each read the
   configuration, made its change and wrote, and nothing held the three
   together, so the second written was made from what it had read, without

@@ -696,25 +696,16 @@
   }
 
   function load() {
-    fetch("/api/config", { headers: { Accept: "application/json" }, credentials: "same-origin" })
-      .then(function (r) {
-        if (r.status === 401) {
+    /* A refusal is an error to show, not an empty page to fill in and
+     * save over what is there. See get.js. */
+    window.QSPGet("/api/config", "config")
+      .then(function (body) {
+        if (body === null) {
           hide(loading);
           show(signedOut);
-          return null;
+          return;
         }
-        /* An answer that is not the configuration is an error to show, not
-         * an empty page to edit and save over what is there. */
-        return r.json().catch(function () { return {}; }).then(function (body) {
-          if (!r.ok || !body.config) {
-            throw new Error(body.error || "This server answered " + r.status +
-              " and not its configuration.");
-          }
-          return body;
-        });
-      })
-      .then(function (body) {
-        if (!body) { return; }
+        window.QSPLoaded();
         hide(loading);
         loaded = body.config;
         render(loaded);
@@ -729,9 +720,7 @@
       })
       .catch(function (e) {
         hide(loading);
-        errorText.textContent = (e && e.message && e.name === "Error")
-          ? e.message : "Cannot reach this instance.";
-        show(errorBox);
+        window.QSPLoadFailed(e);
       });
   }
 

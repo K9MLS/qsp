@@ -485,31 +485,32 @@
   function load(now) {
     now = now === true;
     if (!now && busy()) { return; }
-    fetch("/api/links", { headers: { Accept: "application/json" }, credentials: "same-origin" })
-      .then(function (r) {
-        if (r.status === 401) {
+    /* A refusal read as an answer said there were no links. See get.js. */
+    window.QSPGet("/api/links", "links")
+      .then(function (body) {
+        if (body === null) {
           hide(loading);
           hide(form);
           show(signedOut);
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then(function (body) {
-        if (!body) { return; }
         /* The answer can arrive after a click that the request left before. */
         if (!now && busy()) { return; }
         hide(loading);
         hide(signedOut);
+        window.QSPLoaded();
         var typed = now ? {} : held();
         render(body.links || []);
         putBack(typed);
         fillOffer(body.identity);
         show(form);
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
         text(count, "\u2014");
+        /* The links already drawn stay: they were true a moment ago, and a
+         * refresh that failed once is said beside them, not instead. */
+        window.QSPLoadFailed(e);
       });
   }
 

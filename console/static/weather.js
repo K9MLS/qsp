@@ -248,22 +248,23 @@
   }
 
   function load() {
-    fetch("/api/config", { headers: { Accept: "application/json" }, credentials: "same-origin" })
-      .then(function (r) {
-        if (r.status === 401) {
+    window.QSPGet("/api/config", "config")
+      .then(function (body) {
+        if (body === null) {
           hide(loading);
           show(signedOut);
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then(function (body) {
-        if (!body) { return; }
         loaded = body.config;
-        return fetch("/api/weather", { headers: { Accept: "application/json" }, credentials: "same-origin" })
-          .then(function (r) { return r.json(); })
+        return window.QSPGet("/api/weather", "available")
           .then(function (w) {
+            if (w === null) {
+              hide(loading);
+              show(signedOut);
+              return;
+            }
             hide(loading);
+            window.QSPLoaded();
             if (!w.available) {
               show(unavailable);
               return;
@@ -279,10 +280,9 @@
             renderStatus(w.status);
           });
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
-        errorText.textContent = "Cannot reach this instance.";
-        show(errorBox);
+        window.QSPLoadFailed(e);
       });
   }
 

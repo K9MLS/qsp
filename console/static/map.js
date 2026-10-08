@@ -88,6 +88,12 @@
      * does not refit: somebody who has panned away from their club should not
      * be yanked back because the window changed width. */
     this.fitted = false;
+    /* Whether the operator has moved the view, by dragging or the zoom
+     * buttons. Once they have, the view is theirs until the page is
+     * reloaded. */
+    this.moved = false;
+    /* Where the points were when the view was last fitted to them. */
+    this.placed = "";
 
     this.el.classList.add("map");
     this.el.innerHTML =
@@ -147,6 +153,7 @@
       buttons[i].addEventListener("click", function (event) {
         var by = parseInt(event.currentTarget.getAttribute("data-zoom"), 10);
         self.zoom = Math.max(1, Math.min(self.maxZoom, self.zoom + by));
+        self.moved = true;
         self.draw();
       });
     }
@@ -185,6 +192,7 @@
       var cx = lonToX(self.centre.lon, self.zoom) - dx;
       var cy = latToY(self.centre.lat, self.zoom) - dy;
       self.centre = { lon: xToLon(cx, self.zoom), lat: yToLat(cy, self.zoom) };
+      self.moved = true;
       self.scheduleDraw();
     });
 
@@ -272,9 +280,23 @@
   };
 
   /* show replaces the points and refits the view. */
+  /* show draws a new set of points.
+   *
+   * **The view is fitted again only when it is still the map's, and only when
+   * the points have moved.** The Overview calls this on every refresh, every
+   * few seconds, and it refitted each time: an operator who had zoomed in on
+   * one town was put back to the whole network before they could read it
+   * (2026-10-07, F3). */
   Map.prototype.show = function (points) {
     this.points = points || [];
-    this.fitted = false;
+    var placed = this.points
+      .map(function (p) { return p.lat.toFixed(5) + "," + p.lon.toFixed(5); })
+      .sort()
+      .join(" ");
+    if (!this.moved && placed !== this.placed) {
+      this.fitted = false;
+    }
+    this.placed = placed;
     this.refit();
   };
 
@@ -317,6 +339,10 @@
      * many tiles to draw, where being wrong costs a few tiles nobody sees. */
     var centreX = lonToX(this.centre.lon, this.zoom);
     var centreY = latToY(this.centre.lat, this.zoom);
+    /* Recorded as data-measured is, so what is being looked at can be read
+     * off the element: zoom, then the centre. */
+    this.el.setAttribute("data-view",
+      this.zoom + " " + this.centre.lat.toFixed(5) + " " + this.centre.lon.toFixed(5));
 
     /* **Built as elements, not as markup with style attributes.**
      *

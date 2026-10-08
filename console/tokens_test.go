@@ -328,6 +328,7 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"zello.js":   true,
 		"weather.js": true,
 		"savebar.js": true,
+		"get.js":     true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {

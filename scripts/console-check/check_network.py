@@ -225,7 +225,8 @@ def check_a_server_error_is_not_an_empty_page():
     """Break it: go back to `return r.json()` in load()."""
     p = Page("network", api={("GET", "/api/config"): lambda rq: (500, {"error": "the database is locked"})})
     try:
-        assert p.page.is_visible("#error") and "database is locked" in p.page.inner_text("#error")
+        assert p.page.is_visible("#load-error") and "database is locked" in p.page.inner_text("#load-error")
+        assert not p.page.is_visible("#error"), "a page that could not load says it did not save"
         assert not p.page.is_visible("#form")
     finally:
         p.close()

@@ -217,28 +217,22 @@
   }
 
   function load() {
-    fetch("/api/config/versions", {
-      headers: { Accept: "application/json" },
-      credentials: "same-origin"
-    })
-      .then(function (r) {
-        if (r.status === 401) {
+    /* A refusal read as an answer said nothing had ever been saved. */
+    window.QSPGet("/api/config/versions", "versions")
+      .then(function (body) {
+        if (body === null) {
           hide(loading);
           show(signedOut);
-          return null;
+          return;
         }
-        return r.json();
-      })
-      .then(function (body) {
-        if (!body) { return; }
         hide(loading);
+        window.QSPLoaded();
         renderList(body.versions || []);
         show(listPanel);
       })
-      .catch(function () {
+      .catch(function (e) {
         hide(loading);
-        errorText.textContent = "Cannot reach this instance.";
-        show(errorBox);
+        window.QSPLoadFailed(e);
       });
   }
 

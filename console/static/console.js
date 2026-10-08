@@ -105,7 +105,7 @@
         '<td class="cell--wrap">' + escapeText(detailText(r.detail)) + "</td></tr>";
     }
 
-    healthBody.innerHTML =
+    redraw(healthBody,
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Health, scrollable"><table class="table">' +
       "<caption>Every subsystem reports its own verdict. " +
       "Unavailable names the phase that brings it.</caption>" +
@@ -113,7 +113,7 @@
       '<th scope="col">Subsystem</th><th scope="col">Status</th>' +
       '<th scope="col" class="cell--wrap">Summary</th>' +
       '<th scope="col" class="cell--wrap">Detail</th>' +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>");
 
     if (healthCount) {
       healthCount.textContent = running + " of " + results.length + " healthy";
@@ -154,6 +154,41 @@
         // status on screen implying everything is fine.
         setHealth("failing", "Unreachable");
       });
+  }
+
+  /* redraw replaces what a panel shows, and keeps the reader's place in it.
+   *
+   * **Every refresh rebuilt every table**, every few seconds: a table scrolled
+   * sideways on a phone went back to its first column, and one a keyboard
+   * user had tabbed into lost its focus, before either could be read
+   * (2026-10-07, F3). Nothing changed is now not redrawn at all, and what is
+   * redrawn keeps each scrolling table's position and its focus. */
+  function redraw(container, html) {
+    /* The same markup, and still the markup this put there: something else
+     * may have drawn over it since, an empty state say. */
+    if (container.qspDrawn === html && container.qspFirst === container.firstChild) {
+      return;
+    }
+    var before = container.querySelectorAll(".table-scroll");
+    var places = [];
+    var focused = -1;
+    for (var i = 0; i < before.length; i++) {
+      places.push({ left: before[i].scrollLeft, top: before[i].scrollTop });
+      if (before[i] === document.activeElement || before[i].contains(document.activeElement)) {
+        focused = i;
+      }
+    }
+    container.innerHTML = html;
+    container.qspDrawn = html;
+    container.qspFirst = container.firstChild;
+    var after = container.querySelectorAll(".table-scroll");
+    for (var j = 0; j < after.length && j < places.length; j++) {
+      after[j].scrollLeft = places[j].left;
+      after[j].scrollTop = places[j].top;
+    }
+    if (focused >= 0 && after[focused]) {
+      after[focused].focus({ preventScroll: true });
+    }
   }
 
   /* Escape text before it reaches innerHTML. Callsigns arrive from the
@@ -272,7 +307,7 @@
         "</tr>";
     }
 
-    peersBody.innerHTML =
+    redraw(peersBody,
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Connected peers, scrollable"><table class="table">' +
       /* **Three sentences of explanation moved to the hint beside the
        * heading.** They were true and they sat above the table permanently,
@@ -301,7 +336,7 @@
         : "") +
       "<th scope=\"col\" class=\"cell--wrap\">Location</th>" +
       (anyAddress ? "<th scope=\"col\">Address</th>" : "") +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>");
 
     knownPeerIds = seen;
     firstPeerLoad = false;
@@ -623,7 +658,7 @@
     }
 
     count.textContent = blocked ? blocked + " ignored" : list.length + " failing";
-    body.innerHTML =
+    redraw(body,
       '<p class="panel__lede">A hotspot with a wrong password retries every ten ' +
       "seconds. After several failures QSP stops answering that address for a " +
       "while, and starts again on its own.</p>" +
@@ -632,7 +667,7 @@
       '<th scope="col">Address</th><th scope="col">Radio ID</th>' +
       '<th scope="col" class="cell--wrap">Reason</th><th scope="col">Failures</th>' +
       '<th scope="col" class="cell--wrap">State</th>' +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>");
   }
 
   function metric(value, label, cls) {
@@ -1165,14 +1200,14 @@
       rows += callRow(recent[i], false, showSlot);
     }
 
-    callsBody.innerHTML =
+    redraw(callsBody,
       '<div class="table-scroll" tabindex="0" role="group" aria-label="Last heard, scrollable"><table class="table">' +
       "<caption>" + callsCaption(payload) + "</caption>" +
       "<thead><tr>" +
       '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
       (showSlot ? '<th scope="col">Slot</th>' : "") + '<th scope="col">Duration</th>' +
       '<th scope="col">Frames</th><th scope="col">When</th>' +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>";
+      "</tr></thead><tbody>" + rows + "</tbody></table></div>");
   }
 
   function refreshPeers() {
