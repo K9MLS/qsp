@@ -309,6 +309,7 @@ func (s *Server) apiRoutes() []apiRoute {
 		// A POST although it changes nothing: it carries the contact email
 		// NWS is sent, which does not belong in a URL.
 		{"POST /api/weather/zones", s.requireSession(s.handleCheckZones)},
+		{"POST /api/weather/area", s.requireSession(s.handleWeatherArea)},
 		{"POST /api/weather/test", s.requireSession(s.handleWeatherTest)},
 		{"PUT /api/secrets/{name}", s.requireSession(s.handleSetSecret)},
 		// **Anything a page creates it must be able to remove.** A credential

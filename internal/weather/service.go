@@ -107,6 +107,9 @@ type Service struct {
 	// could not be looked up.
 	zones        map[string]Zone
 	zoneProblems map[string]string
+	// areas caches each state's list of codes, which NWS changes a few times
+	// a year, for areaFresh.
+	areas map[string]areaList
 	// baselined is false until the first successful poll after QSP starts.
 	// That poll sends nothing: what is in effect then went out before the
 	// restart. applied records that the starting settings have arrived, so
@@ -688,4 +691,51 @@ func (s *Service) CheckZones(ctx context.Context, codes []string, contact string
 		out = append(out, check)
 	}
 	return out
+}
+
+// areaFresh is how long a state's list of codes is kept. NWS redraws zones a
+// few times a year, with weeks of notice; a day is fresh enough, and spares
+// NWS five hundred names each time somebody opens the picker.
+const areaFresh = 24 * time.Hour
+
+// areaList is one state's codes, and when NWS gave them.
+type areaList struct {
+	at    time.Time
+	zones []Zone
+}
+
+// ZonesIn lists the counties and forecast zones NWS has in state, for the
+// page that helps an operator choose theirs. contact is used as CheckZones
+// uses it: a contact typed on the page and not yet saved still works.
+func (s *Service) ZonesIn(ctx context.Context, state, contact string) ([]Zone, error) {
+	state = strings.ToUpper(strings.TrimSpace(state))
+	if !ValidState(state) {
+		return nil, fmt.Errorf("weather: %q is not a two-letter state or territory", state)
+	}
+	s.mu.Lock()
+	client := s.client
+	if got, ok := s.areas[state]; ok && s.opts.Now().Sub(got.at) < areaFresh {
+		s.mu.Unlock()
+		return slices.Clone(got.zones), nil
+	}
+	s.mu.Unlock()
+	if strings.TrimSpace(contact) != "" {
+		if c, err := NewClient(s.opts.BaseURL, s.opts.Version, contact); err == nil {
+			client = c
+		}
+	}
+	if client == nil {
+		return nil, ErrNoContact
+	}
+	zones, err := client.ZonesIn(ctx, state)
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	if s.areas == nil {
+		s.areas = map[string]areaList{}
+	}
+	s.areas[state] = areaList{at: s.opts.Now(), zones: zones}
+	s.mu.Unlock()
+	return slices.Clone(zones), nil
 }

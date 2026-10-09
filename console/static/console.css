@@ -1336,6 +1336,48 @@ a.muted:focus-visible {
   font-size: var(--text-sm);
 }
 
+/* ---- Finding a county or zone by name --------------------------------- */
+
+/* The Weather page's list of a state's counties and zones, one per line
+ * with an Add button. A state has hundreds, so the list scrolls inside
+ * itself rather than pushing the rest of the page away. */
+.zone-find {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.zone-find .page__actions {
+  margin-bottom: var(--space-4);
+}
+
+.zone-list {
+  max-height: 22rem;
+  overflow-y: auto;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.zone-list:empty {
+  display: none;
+}
+
+.zone-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.zone-list .mono {
+  color: var(--color-foreground-muted);
+  font-family: var(--font-mono);
+}
+
 /* ---- Access control lists -------------------------------------------- */
 
 .acl {

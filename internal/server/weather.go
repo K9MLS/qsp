@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -23,6 +24,7 @@ import (
 type WeatherSource interface {
 	Status() weather.Status
 	CheckZones(ctx context.Context, codes []string, contact string) []weather.ZoneCheck
+	ZonesIn(ctx context.Context, state, contact string) ([]weather.Zone, error)
 	SendTest(ctx context.Context) error
 }
 
@@ -99,6 +101,59 @@ func (s *Server) handleCheckZones(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, s.log, http.StatusOK, map[string]any{
 		"checks": s.opts.Weather.CheckZones(ctx, codes, req.Contact),
 	})
+}
+
+// areaRequest is POST /api/weather/area: which state's codes to list. A
+// POST for the reason checkZonesRequest gives: it carries the contact email.
+type areaRequest struct {
+	State   string `json:"state"`
+	Contact string `json:"contact"`
+}
+
+// handleWeatherArea lists the counties and forecast zones NWS has in a state,
+// so an operator can choose theirs by name. It replaces a link to
+// alerts.weather.gov, which NWS retired in December 2025.
+func (s *Server) handleWeatherArea(w http.ResponseWriter, r *http.Request) {
+	if s.opts.Weather == nil {
+		writeJSON(w, s.log, http.StatusNotFound, map[string]string{
+			"error": "this instance has no weather service",
+		})
+		return
+	}
+	var req areaRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": "the request body is not a state",
+		})
+		return
+	}
+	state := strings.ToUpper(strings.TrimSpace(req.State))
+	if !weather.ValidState(state) {
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": "choose a state or territory",
+		})
+		return
+	}
+	s.extendWriteDeadline(w, 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	zones, err := s.opts.Weather.ZonesIn(ctx, state, req.Contact)
+	switch {
+	case errors.Is(err, weather.ErrNoContact):
+		writeJSON(w, s.log, http.StatusBadRequest, map[string]string{
+			"error": "give a contact email in step 4 first: the National Weather Service asks for one",
+		})
+		return
+	case err != nil:
+		// NWS's answer, in words: the page shows it, and it is not this
+		// server's fault, so it is not a 500.
+		writeJSON(w, s.log, http.StatusBadGateway, map[string]string{"error": err.Error()})
+		return
+	}
+	if zones == nil {
+		zones = []weather.Zone{}
+	}
+	writeJSON(w, s.log, http.StatusOK, map[string]any{"state": state, "zones": zones})
 }
 
 // handleWeatherTest is the Weather page's Send test: one text, plainly a test,

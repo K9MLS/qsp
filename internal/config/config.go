@@ -957,7 +957,7 @@ type Weather struct {
 	// Off is Preview: alerts are shown on the page and logged.
 	Transmit bool `json:"transmit,omitempty"`
 	// Zones are NWS county codes (TXC121) and forecast-zone codes (TXZ103),
-	// the same codes SkywarnPlus uses and alerts.weather.gov lists.
+	// the same codes SkywarnPlus uses, which the Weather page finds by name.
 	Zones []string `json:"zones,omitempty"`
 	// Events are the NWS alert types wanted, such as "Tornado Warning".
 	Events []string `json:"events,omitempty"`
@@ -997,7 +997,7 @@ func (c Config) validateWeather(v *validator) {
 	if len(w.Zones) == 0 {
 		v.add("weather.zones", "no county or zone codes are given, so there is nowhere to watch",
 			"give your NWS county code (such as TXC121) or forecast zone code (such as TXZ103); "+
-				"alerts.weather.gov lists them under your state")
+				"Find your codes on the Weather page lists them by name for your state")
 	}
 	for i, z := range w.Zones {
 		if !weatherZone.MatchString(z) {

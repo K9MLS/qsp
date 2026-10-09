@@ -21,6 +21,17 @@ type fakeWeather struct {
 	contact string
 	tests   int
 	testErr error
+	// state is the state asked for; areaErr is what ZonesIn answers.
+	state   string
+	areaErr error
+}
+
+func (f *fakeWeather) ZonesIn(_ context.Context, state, contact string) ([]weather.Zone, error) {
+	f.state, f.contact = state, contact
+	if f.areaErr != nil {
+		return nil, f.areaErr
+	}
+	return []weather.Zone{{Code: "TXC121", Name: "Denton", State: state, Kind: "county"}}, nil
 }
 
 func (f *fakeWeather) SendTest(context.Context) error {
@@ -64,6 +75,7 @@ func TestWeatherEndpointsNeedASession(t *testing.T) {
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodGet, "/api/weather", ""},
 		{http.MethodPost, "/api/weather/zones", `{"codes":["TXC121"]}`},
+		{http.MethodPost, "/api/weather/area", `{"state":"TX"}`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		rec := httptest.NewRecorder()
@@ -199,5 +211,50 @@ func TestSendTestIsAuditedAndAnswered(t *testing.T) {
 	srv.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("without a session: %d, want 401", rec.Code)
+	}
+}
+
+// TestTheAreaListIsAskedForWhatThePageMeans. The state is normalised before
+// NWS is asked, the contact typed on the page is passed through, anything
+// that is not a state is refused before NWS is asked, and NWS failing is
+// NWS's answer, not this server's 500.
+//
+// To see it fail: drop the ValidState test from handleWeatherArea, or answer
+// an NWS failure with 500.
+func TestTheAreaListIsAskedForWhatThePageMeans(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		areaErr    error
+		status     int
+		asked      string
+	}{
+		{"a state", `{"state":" tx ","contact":"op@example.org"}`, nil, http.StatusOK, "TX"},
+		{"not a state", `{"state":"Texas"}`, nil, http.StatusBadRequest, ""},
+		{"a path", `{"state":"../zones"}`, nil, http.StatusBadRequest, ""},
+		{"no contact anywhere", `{"state":"TX"}`, weather.ErrNoContact, http.StatusBadRequest, "TX"},
+		{"NWS is down", `{"state":"TX"}`, fmt.Errorf("weather: the National Weather Service answered 503"), http.StatusBadGateway, "TX"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeWeather{areaErr: tc.areaErr}
+			srv, a := newWeatherServer(t, f)
+			resp := authed(t, srv, a, http.MethodPost, "/api/weather/area", tc.body)
+			if resp.Code != tc.status {
+				t.Fatalf("status %d, want %d: %s", resp.Code, tc.status, resp.Body)
+			}
+			if f.state != tc.asked {
+				t.Errorf("NWS was asked about %q, want %q", f.state, tc.asked)
+			}
+			if tc.status == http.StatusOK {
+				if f.contact != "op@example.org" {
+					t.Errorf("the contact typed on the page was not used: %q", f.contact)
+				}
+				var body struct {
+					Zones []weather.Zone `json:"zones"`
+				}
+				if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil || len(body.Zones) != 1 || body.Zones[0].Code != "TXC121" {
+					t.Errorf("body %s", resp.Body)
+				}
+			}
+		})
 	}
 }

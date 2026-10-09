@@ -241,8 +241,10 @@ or bridged networks, because weather is local.
 ```
 
 `zones` are NWS county codes (a C, such as `TXC121`) and forecast-zone codes (a
-Z, such as `TXZ103`) — the same codes SkywarnPlus uses; alerts.weather.gov lists
-them under your state. `events` are classes — `"* Warning"` is every warning, `"* Watch"` every
+Z, such as `TXZ103`) — the same codes SkywarnPlus uses. The Weather page lists
+every county and zone in a state by name, from NWS, under **Find your codes**;
+alerts.weather.gov, where they used to be looked up, was retired by NWS in
+December 2025. `events` are classes — `"* Warning"` is every warning, `"* Watch"` every
 watch, `"*"` everything — or NWS alert names exactly as NWS writes them.
 `contact` is sent to the National Weather Service, which requires one; empty
 uses `dmr.callsigns.contact`. Changes take effect on save, with no restart.

@@ -146,13 +146,13 @@
           <span class="panel__count" id="area-state">&mdash;</span>
         </div>
         <div class="panel__disclosure" id="hint-area">
-          <p class="hint__text"><strong>These are the same codes SkywarnPlus and other alert tools use.</strong> A county code has a C in the middle, such as TXC121 for Denton County, Texas; a forecast zone code has a Z, such as TXZ103. NWS issues most warnings by county and most watches and advisories by zone, so give both for your area. To find yours, open <a href="https://alerts.weather.gov/" target="_blank" rel="noopener">alerts.weather.gov</a>, choose your state, and look under By County/Zone; or see the NWS <a href="https://www.weather.gov/gis/PublicZones" target="_blank" rel="noopener">public zone list</a>. A county code also catches alerts NWS issues by zone for that county, so if you give only one, give the county. Check codes asks NWS about each one and shows the name it has for it, so a mistyped code shows up here rather than as quiet weather.</p>
+          <p class="hint__text"><strong>These are the same codes SkywarnPlus and other alert tools use.</strong> A county code has a C in the middle, such as TXC121 for Denton County, Texas; a forecast zone code has a Z, such as TXZ103. NWS issues most warnings by county and most watches and advisories by zone, so give both for your area. To find yours, choose your state under <strong>Find your codes</strong>: QSP asks NWS for every county and zone in it, by name, and Add puts one in the box. (NWS retired alerts.weather.gov, where these used to be looked up, in December 2025; what is in effect now is at <a href="https://www.weather.gov/alerts" target="_blank" rel="noopener">weather.gov/alerts</a>.) A county code also catches alerts NWS issues by zone for that county, so if you give only one, give the county. Check codes asks NWS about each one and shows the name it has for it, so a mistyped code shows up here rather than as quiet weather.</p>
         </div>
         <div class="panel__body">
           <label class="picker__field">
             <span class="picker__label">County and zone codes</span>
             <input class="picker__input picker__input--wide" id="weather-zones" type="text" spellcheck="false" autocapitalize="characters" placeholder="TXC121, TXZ103">
-            <p class="field__note">Separated by commas. Find yours at <a href="https://alerts.weather.gov/" target="_blank" rel="noopener">alerts.weather.gov</a>: choose your state, then By County/Zone.</p>
+            <p class="field__note">Separated by commas. Not sure of yours? Find them by name just below.</p>
           </label>
           <p class="acl__state" id="weather-area-advice" hidden>
             <strong>Add your county code too.</strong> Tornado, severe
@@ -164,6 +164,23 @@
             <button class="button button--quiet" id="weather-check" type="button">Check codes</button>
           </div>
           <ul class="notice__list" id="weather-zone-checks"></ul>
+          <div class="zone-find">
+            <label class="picker__field">
+              <span class="picker__label">Find your codes</span>
+              <select class="picker__input" id="weather-state" aria-label="State or territory">
+                <option value="">Choose a state or territory</option>
+              </select>
+            </label>
+            <div class="page__actions">
+              <button class="button button--quiet" id="weather-find" type="button">Show its counties and zones</button>
+            </div>
+            <label class="picker__field" id="weather-filter-field" hidden>
+              <span class="picker__label">Narrow the list</span>
+              <input class="picker__input" id="weather-filter" type="text" spellcheck="false" placeholder="Type part of a name, such as Denton">
+            </label>
+            <p class="field__note" id="weather-find-note" role="status"></p>
+            <ul class="zone-list" id="weather-zone-list" aria-label="Counties and forecast zones"></ul>
+          </div>
         </div>
       </section>
 

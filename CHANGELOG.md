@@ -6,6 +6,15 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Weather page finds your county and zone codes by name.** It sent
+  operators to alerts.weather.gov to look them up, and NWS retired that site
+  in December 2025, with nothing official in its place that lists a state's
+  codes. Under **Find your codes**, choose a state: QSP asks the NWS API it
+  already reads alerts from for every county and forecast zone there, lists
+  them by name, and Add puts one in the box. A box lets the list be narrowed
+  by name. A state's list is kept for a day. The links to the retired site
+  are gone; what is in effect now is at weather.gov/alerts. New endpoint
+  `POST /api/weather/area` (session only, as the code check is).
 - **The console's pages are now checked in a real browser.** Nothing in the
   gates ran the console's JavaScript; the Go tests read it as text.
   `scripts/console-check/run.py` opens a page in Chromium against a stand-in

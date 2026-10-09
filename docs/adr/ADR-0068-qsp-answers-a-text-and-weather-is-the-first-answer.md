@@ -235,7 +235,13 @@ stay parked.
 line.** Off by default, because it puts traffic on the air. The operator gives
 the NWS county and zone codes they already know from SkywarnPlus or
 alerts.weather.gov — the page links there and asks NWS about each code,
-showing its name, so a typo is visible rather than quiet weather. Alert types
+showing its name, so a typo is visible rather than quiet weather.
+
+*Amended in 0.1.340.* NWS retired alerts.weather.gov in December 2025, and
+nothing official replaced it that lists a state's codes by name. The page now
+asks the same API it reads alerts from (`/zones?area=` for counties and
+forecast zones), through `/api/weather/area`, and lists them by name with an
+Add for each; a state's list is kept for a day. Alert types
 are ticked by name, with the severe warnings and watches ticked to start.
 
 **The severity floor is dropped.** Ticking alert types by name says the same

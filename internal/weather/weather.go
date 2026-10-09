@@ -4,8 +4,9 @@
 //
 // **It is off until an operator turns it on, from the Weather page.** Nothing
 // here is configured on a command line. An operator gives the NWS county or
-// forecast-zone codes they already know from SkywarnPlus or alerts.weather.gov,
-// ticks the kinds of alert they want, and chooses a talkgroup.
+// forecast-zone codes they already know from SkywarnPlus, or finds them by name
+// on the page from NWS's own list (ZonesIn), ticks the kinds of alert they
+// want, and chooses a talkgroup.
 //
 // **It starts in Preview**: every alert that would go on the air is shown on
 // the Weather page and logged, exactly as it would read on a radio, so an
@@ -107,6 +108,12 @@ var zoneCode = regexp.MustCompile(`^[A-Z]{2}[CZ][0-9]{3}$`)
 // ValidZoneCode reports whether s looks like an NWS county or zone code. It
 // says nothing about whether NWS knows it; CheckZones asks.
 func ValidZoneCode(s string) bool { return zoneCode.MatchString(s) }
+
+// stateCode is the shape of a two-letter state or territory, as NWS writes it.
+var stateCode = regexp.MustCompile(`^[A-Z]{2}$`)
+
+// ValidState reports whether s looks like a two-letter state or territory.
+func ValidState(s string) bool { return stateCode.MatchString(s) }
 
 // NormalizeZones upper-cases, trims and de-duplicates codes, keeping order.
 // Codes may arrive separated by commas, spaces or new lines, because that is

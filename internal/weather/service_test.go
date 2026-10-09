@@ -3,6 +3,7 @@ package weather
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,6 +39,11 @@ type fakeNWS struct {
 	onAlerts func()
 	// badRequest are codes answered 400, as NWS answers an invalid prefix.
 	badRequest map[string]bool
+	// lists are the requests for a state's list, as asked; refuseParams
+	// answers a list request carrying include_geometry with a 400, as NWS
+	// answers a parameter it does not know.
+	lists        []string
+	refuseParams bool
 }
 
 func (f *fakeNWS) setAlerts(a ...map[string]any) {
@@ -88,6 +94,24 @@ func (f *fakeNWS) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				"timeZone": []string{z.TimeZone},
 			},
 		})
+	case r.URL.Path == "/zones":
+		f.lists = append(f.lists, r.URL.RawQuery)
+		q := r.URL.Query()
+		if f.refuseParams && q.Has("include_geometry") {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"title":"Invalid Parameter","status":400}`)
+			return
+		}
+		features := []map[string]any{}
+		for _, z := range f.zones {
+			if z.State == q.Get("area") && z.Kind == q.Get("type") {
+				features = append(features, map[string]any{"type": "Feature", "geometry": nil,
+					"properties": map[string]any{"id": z.Code, "type": z.Kind, "name": z.Name,
+						"state": z.State, "timeZone": []string{z.TimeZone}}})
+			}
+		}
+		w.Header().Set("Content-Type", "application/geo+json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"type": "FeatureCollection", "features": features})
 	case r.URL.Path == "/alerts/active":
 		f.asked = append(f.asked, r.URL.Query().Get("zone"))
 		features := make([]map[string]any, 0, len(f.alerts))
@@ -511,5 +535,102 @@ func TestAnInvalidPrefixIsAnUnknownCode(t *testing.T) {
 	s.Poll(context.Background())
 	if n := f.requests.Load() - before; n != 1 {
 		t.Errorf("the second poll made %d requests, want only the alert request", n)
+	}
+}
+
+// TestAStatesCodesAreListedByName. alerts.weather.gov, where the Weather
+// page sent operators to find their codes, was retired by NWS in December
+// 2025. The list now comes from the API QSP already reads alerts from:
+// counties first, then forecast zones, each by name, and only the shapes an
+// alert request takes.
+//
+// To see it fail: drop either kind from Client.ZonesIn, or the
+// ValidZoneCode filter in zoneList.
+func TestAStatesCodesAreListedByName(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	f.zones["TXC085"] = Zone{Code: "TXC085", Name: "Collin", State: "TX", Kind: "county"}
+	f.zones["TXZ104"] = Zone{Code: "TXZ104", Name: "Collin", State: "TX", Kind: "forecast"}
+	f.zones["GMZ250"] = Zone{Code: "GMZ250", Name: "Coastal waters", State: "TX", Kind: "forecast"}
+	f.zones["OKC001"] = Zone{Code: "OKC001", Name: "Adair", State: "OK", Kind: "county"}
+	f.zones["TXF999"] = Zone{Code: "TXF999", Name: "Fire zone", State: "TX", Kind: "forecast"}
+	c := &clock{now: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}
+	s := newService(t, srv, c)
+
+	got, err := s.ZonesIn(context.Background(), "tx", "k9mls@example.org")
+	if err != nil {
+		t.Fatalf("ZonesIn: %v", err)
+	}
+	var codes []string
+	for _, z := range got {
+		codes = append(codes, z.Code)
+	}
+	want := []string{"TXC085", "TXC121", "GMZ250", "TXZ104", "TXZ103"}
+	if !slices.Equal(codes, want) {
+		t.Errorf("Texas lists %v, want %v: counties then zones, by name, no fire zone", codes, want)
+	}
+	if got[1].Name != "Denton" || got[1].Kind != "county" {
+		t.Errorf("TXC121 is listed as %+v", got[1])
+	}
+}
+
+// TestAStatesListIsAskedForOnceADay. Five hundred names, which NWS changes a
+// few times a year, are not fetched each time the picker is opened.
+//
+// To see it fail: remove the cache test from Service.ZonesIn.
+func TestAStatesListIsAskedForOnceADay(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	c := &clock{now: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}
+	s := newService(t, srv, c)
+	ask := func() {
+		t.Helper()
+		if _, err := s.ZonesIn(context.Background(), "TX", "k9mls@example.org"); err != nil {
+			t.Fatalf("ZonesIn: %v", err)
+		}
+	}
+	ask()
+	ask()
+	c.Advance(23 * time.Hour)
+	ask()
+	if n := len(f.lists); n != 2 {
+		t.Fatalf("NWS was asked %d times within a day, want twice (counties and zones, once)", n)
+	}
+	c.Advance(2 * time.Hour)
+	ask()
+	if n := len(f.lists); n != 4 {
+		t.Errorf("after a day the list was not asked for again: %d requests", n)
+	}
+}
+
+// TestAListStillComesIfNWSRefusesAParameter. Geometry is asked to be left
+// out, which spares megabytes; NWS answers a parameter it does not know with
+// a 400, and the list is asked for again without it.
+//
+// To see it fail: remove the retry in zoneList.
+func TestAListStillComesIfNWSRefusesAParameter(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	f.refuseParams = true
+	c := &clock{now: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}
+	s := newService(t, srv, c)
+	got, err := s.ZonesIn(context.Background(), "TX", "k9mls@example.org")
+	if err != nil || len(got) != 2 {
+		t.Fatalf("ZonesIn: %v, %+v", err, got)
+	}
+}
+
+// TestAListNeedsAStateAndAContact. Nothing is asked of NWS with neither.
+func TestAListNeedsAStateAndAContact(t *testing.T) {
+	f, srv := newFakeNWS(t)
+	c := &clock{now: time.Date(2026, 10, 9, 0, 0, 0, 0, time.UTC)}
+	s := newService(t, srv, c)
+	for _, state := range []string{"", "T", "TEX", "T1", "../zones"} {
+		if _, err := s.ZonesIn(context.Background(), state, "k9mls@example.org"); err == nil {
+			t.Errorf("%q was taken for a state", state)
+		}
+	}
+	if _, err := s.ZonesIn(context.Background(), "TX", ""); !errors.Is(err, ErrNoContact) {
+		t.Errorf("with no contact anywhere: %v", err)
+	}
+	if len(f.lists) != 0 {
+		t.Errorf("NWS was asked %v", f.lists)
 	}
 }

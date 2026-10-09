@@ -82,6 +82,12 @@
   var areaAdvice = document.getElementById("weather-area-advice");
   var checkButton = document.getElementById("weather-check");
   var zoneChecks = document.getElementById("weather-zone-checks");
+  var stateChoice = document.getElementById("weather-state");
+  var findButton = document.getElementById("weather-find");
+  var findNote = document.getElementById("weather-find-note");
+  var filterField = document.getElementById("weather-filter-field");
+  var filter = document.getElementById("weather-filter");
+  var zoneList = document.getElementById("weather-zone-list");
   var eventsBox = document.getElementById("weather-events");
   var eventsOther = document.getElementById("weather-events-other");
   var eventsState = document.getElementById("events-state");
@@ -417,6 +423,133 @@
       });
   }
 
+  /* ---- Finding codes by name ----
+   *
+   * alerts.weather.gov, where this page sent operators to look their codes
+   * up, was retired by NWS in December 2025 and nothing official replaced it
+   * that lists a state's codes by name. QSP asks the NWS API it already reads
+   * alerts from, through /api/weather/area, and offers each with an Add. */
+
+  /* Every state and territory NWS issues county and zone codes for. */
+  var STATES = [
+    ["AL", "Alabama"], ["AK", "Alaska"], ["AS", "American Samoa"], ["AZ", "Arizona"],
+    ["AR", "Arkansas"], ["CA", "California"], ["CO", "Colorado"], ["CT", "Connecticut"],
+    ["DE", "Delaware"], ["DC", "District of Columbia"], ["FL", "Florida"], ["GA", "Georgia"],
+    ["GU", "Guam"], ["HI", "Hawaii"], ["ID", "Idaho"], ["IL", "Illinois"], ["IN", "Indiana"],
+    ["IA", "Iowa"], ["KS", "Kansas"], ["KY", "Kentucky"], ["LA", "Louisiana"], ["ME", "Maine"],
+    ["MD", "Maryland"], ["MA", "Massachusetts"], ["MI", "Michigan"], ["MN", "Minnesota"],
+    ["MS", "Mississippi"], ["MO", "Missouri"], ["MT", "Montana"], ["NE", "Nebraska"],
+    ["NV", "Nevada"], ["NH", "New Hampshire"], ["NJ", "New Jersey"], ["NM", "New Mexico"],
+    ["NY", "New York"], ["NC", "North Carolina"], ["ND", "North Dakota"],
+    ["MP", "Northern Mariana Islands"], ["OH", "Ohio"], ["OK", "Oklahoma"], ["OR", "Oregon"],
+    ["PA", "Pennsylvania"], ["PR", "Puerto Rico"], ["RI", "Rhode Island"],
+    ["SC", "South Carolina"], ["SD", "South Dakota"], ["TN", "Tennessee"], ["TX", "Texas"],
+    ["VI", "U.S. Virgin Islands"], ["UT", "Utah"], ["VT", "Vermont"], ["VA", "Virginia"],
+    ["WA", "Washington"], ["WV", "West Virginia"], ["WI", "Wisconsin"], ["WY", "Wyoming"]
+  ];
+  STATES.forEach(function (s) {
+    var opt = document.createElement("option");
+    opt.value = s[0];
+    opt.textContent = s[1];
+    stateChoice.appendChild(opt);
+  });
+
+  var found = [];
+
+  /* The codes in the box, so a code already there says so instead of Add. */
+  function inBox() { return parseZones(zones.value); }
+
+  function drawFound() {
+    var want = filter.value.trim().toLowerCase();
+    var have = inBox();
+    zoneList.innerHTML = "";
+    var shown = 0;
+    found.forEach(function (z) {
+      var label = z.kind === "county" ? z.name + " County" : z.name + " (forecast zone)";
+      if (want && label.toLowerCase().indexOf(want) < 0 && z.code.toLowerCase().indexOf(want) < 0) {
+        return;
+      }
+      shown++;
+      var li = document.createElement("li");
+      var text = document.createElement("span");
+      text.textContent = label + " ";
+      var code = document.createElement("span");
+      code.className = "mono";
+      code.textContent = z.code;
+      text.appendChild(code);
+      var add = document.createElement("button");
+      add.type = "button";
+      add.className = "button button--quiet";
+      var there = have.indexOf(z.code) >= 0;
+      add.textContent = there ? "Added" : "Add";
+      add.disabled = there;
+      add.setAttribute("aria-label", (there ? "Added " : "Add ") + label + " " + z.code);
+      add.addEventListener("click", function () {
+        var codes = inBox();
+        if (codes.indexOf(z.code) < 0) { codes.push(z.code); }
+        zones.value = codes.join(", ");
+        /* As if typed: the save bar, the county advice and the area count
+         * all follow the box. */
+        zones.dispatchEvent(new window.Event("input", { bubbles: true }));
+        drawFound();
+      });
+      li.appendChild(text);
+      li.appendChild(add);
+      zoneList.appendChild(li);
+    });
+    if (found.length) {
+      findNote.textContent = shown === found.length
+        ? found.length + " counties and zones. Add your county, and your forecast zone too."
+        : "Showing " + shown + " of " + found.length + ".";
+    }
+  }
+
+  function findCodes() {
+    var state = stateChoice.value;
+    found = [];
+    zoneList.innerHTML = "";
+    filterField.hidden = true;
+    if (!state) {
+      findNote.textContent = "Choose a state or territory first.";
+      return;
+    }
+    findButton.disabled = true;
+    findButton.textContent = "Asking NWS…";
+    findNote.textContent = "";
+    fetch("/api/weather/area", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ state: state, contact: contact.value.trim() })
+    })
+      .then(function (r) {
+        return r.json().catch(function () { return {}; })
+          .then(function (body) { return { status: r.status, body: body }; });
+      })
+      .then(function (res) {
+        if (res.status !== 200) {
+          findNote.textContent = (res.body && res.body.error) ||
+            "That did not work: the server answered " + res.status + ".";
+          return;
+        }
+        found = res.body.zones || [];
+        if (!found.length) {
+          findNote.textContent = "NWS lists no counties or zones there.";
+          return;
+        }
+        filter.value = "";
+        filterField.hidden = false;
+        drawFound();
+      })
+      .catch(function () {
+        findNote.textContent = "This server could not be reached.";
+      })
+      .then(function () {
+        findButton.disabled = false;
+        findButton.textContent = "Show its counties and zones";
+      });
+  }
+
   /* ---- What QSP sees ---- */
 
   function when(iso) {
@@ -543,6 +676,10 @@
   zones.addEventListener("input", refreshStates);
   eventsOther.addEventListener("input", refreshStates);
   checkButton.addEventListener("click", checkCodes);
+  findButton.addEventListener("click", findCodes);
+  filter.addEventListener("input", drawFound);
+  /* A code typed or removed by hand changes which say Added. */
+  zones.addEventListener("input", function () { if (found.length) { drawFound(); } });
   document.getElementById("weather-refresh").addEventListener("click", loadStatus);
   saveButton.addEventListener("click", save);
   document.getElementById("revert").addEventListener("click", function () {

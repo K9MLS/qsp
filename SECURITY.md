@@ -229,10 +229,12 @@ credentials exist is a map for whoever later gets the file.
 it last read NWS, and every alert for the configured area with what was decided
 about it. `/api/weather/zones`, on POST, asks NWS about county and zone codes
 an operator typed, so a typo shows on the Weather page rather than as quiet
-weather. All three require a session. The second is a POST although it changes
-nothing, because it carries the contact email NWS is sent and an address in a
-URL ends up in logs; it refuses more than twenty codes at a time, because each
-is a request to NWS. `/api/weather/test`, on POST, puts one text reading
+weather. `/api/weather/area`, on POST, asks NWS for every county and forecast
+zone in one state, so the page can offer them by name; a state's list is kept
+for a day. All four require a session. These two are POSTs although they
+change nothing, because they carry the contact email NWS is sent and an
+address in a URL ends up in logs; the code check refuses more than twenty
+codes at a time, because each is a request to NWS. `/api/weather/test`, on POST, puts one text reading
 `QSP WEATHER TEST: this is only a test` on the air, from the configured ID on
 the configured talkgroup; every attempt is audited as `weather.test`. The
 settings themselves are saved through `/api/config` like every other page's,

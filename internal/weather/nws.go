@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 )
@@ -133,6 +134,75 @@ func (c *Client) Zone(ctx context.Context, code string) (Zone, error) {
 		z.TimeZone = zr.Properties.TimeZone[0]
 	}
 	return z, nil
+}
+
+// zoneListResponse is the part of /zones?area= that is read: a collection of
+// the same features /zones/{type}/{id} answers one at a time.
+type zoneListResponse struct {
+	Features []zoneResponse `json:"features"`
+}
+
+// ZonesIn lists every county and forecast zone NWS has in one state or
+// territory, counties first, each list in NWS's order of names.
+//
+// **This is how an operator finds their codes now.** The page QSP pointed
+// at, alerts.weather.gov, was retired by NWS in December 2025, and nothing
+// official took its place that lists a state's codes by name. The API QSP
+// already reads its alerts from has them; asking it here means the Weather
+// page cannot lose its way to the codes again while QSP can reach NWS at all.
+func (c *Client) ZonesIn(ctx context.Context, state string) ([]Zone, error) {
+	if !ValidState(state) {
+		return nil, fmt.Errorf("weather: %q is not a two-letter state or territory", state)
+	}
+	var out []Zone
+	for _, kind := range []string{"county", "forecast"} {
+		zones, err := c.zoneList(ctx, state, kind)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, zones...)
+	}
+	return out, nil
+}
+
+// zoneList is one kind of ZonesIn.
+//
+// Geometry is asked to be left out, since a state's outlines run to
+// megabytes and only the names are wanted. **Should NWS refuse that
+// parameter**, as it refuses one it does not know with a 400, the list is
+// asked for again without it: the outlines are larger, and still within what
+// a response may be.
+func (c *Client) zoneList(ctx context.Context, state, kind string) ([]Zone, error) {
+	q := url.Values{"area": {state}, "type": {kind}, "include_geometry": {"false"}}
+	var zl zoneListResponse
+	err := c.get(ctx, "/zones?"+q.Encode(), &zl)
+	if errors.Is(err, errBadRequest) {
+		q.Del("include_geometry")
+		zl = zoneListResponse{}
+		err = c.get(ctx, "/zones?"+q.Encode(), &zl)
+	}
+	switch {
+	case errors.Is(err, ErrUnknownZone), errors.Is(err, errBadRequest):
+		return nil, fmt.Errorf("weather: the National Weather Service has no %s list for %s", kind, state)
+	case err != nil:
+		return nil, err
+	}
+	out := make([]Zone, 0, len(zl.Features))
+	for _, f := range zl.Features {
+		p := f.Properties
+		// Only codes of the shape alerts are asked for with; NWS lists marine
+		// and fire zones under other types, and nothing else belongs here.
+		if !ValidZoneCode(p.ID) {
+			continue
+		}
+		z := Zone{Code: p.ID, Name: p.Name, State: p.State, Kind: kind}
+		if len(p.TimeZone) > 0 {
+			z.TimeZone = p.TimeZone[0]
+		}
+		out = append(out, z)
+	}
+	slices.SortStableFunc(out, func(a, b Zone) int { return strings.Compare(a.Name, b.Name) })
+	return out, nil
 }
 
 // alertsResponse is the part of /alerts/active that is read.
