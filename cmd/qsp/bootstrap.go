@@ -67,10 +67,10 @@ const (
 	// 3155413 and 3127045 are all registered and passing traffic. A Motorola
 	// repeater uses six digits.
 	//
-	// QSP prints an advisory at startup about seven-digit IDs, because the
-	// registry issues those to operators and some hotspots append a two-digit
-	// suffix. **It is a warning and not an error**, and a version of this file
-	// treated it as ground truth — changing the example to 313291001, which
+	// QSP printed an advisory at startup about seven-digit IDs until 0.1.339,
+	// because the registry issues those to operators and some hotspots append a
+	// two-digit suffix. **It was a warning and not an error**, and a version of
+	// this file treated it as ground truth — changing the example to 313291001, which
 	// overflowed the 24-bit subscriber field and made the first run refuse to
 	// start at all. The running network is the evidence; an advisory is a
 	// prompt to check it.
@@ -238,10 +238,8 @@ listener reachable from the internet that accepts anybody is a problem for
 the people it relays to as much as for you.
 
   Use the ID shown on your hotspot's dashboard, which is usually your own
-  seven-digit ID. A Motorola repeater uses six digits. QSP may print an
-  advisory about seven-digit IDs at startup: it is a prompt to check, not
-  an error, and a hotspot registering with a plain seven-digit ID is
-  ordinary.
+  seven-digit ID, or that ID with a two-digit suffix. A Motorola repeater
+  uses six digits.
 
   Docker    put both in the .env file beside docker-compose.yml
 

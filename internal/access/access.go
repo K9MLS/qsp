@@ -294,12 +294,14 @@ func (l List) Advisories(field string, kind Kind) []string {
 			// would be noise.
 			continue
 		}
+		// **Seven digits is not here.** It was, on the reasoning that the
+		// registry issues those to operators and a hotspot appends a suffix;
+		// but a hotspot with no suffix registers with its owner's plain
+		// seven-digit ID, every hotspot on the network this was written for
+		// does, and the warning was printed at every start of every server
+		// that had one. A warning that is wrong for the ordinary case teaches
+		// operators to stop reading warnings (removed in 0.1.339).
 		switch digits(s.lo) {
-		case 7:
-			out = append(out, fmt.Sprintf(
-				"%s names %d, a seven-digit ID: the registry issues those to operators, "+
-					"while repeaters register with six digits and hotspots with a "+
-					"seven-digit ID plus a two-digit suffix", field, s.lo))
 		case 8:
 			out = append(out, fmt.Sprintf(
 				"%s names %d, an eight-digit ID: a hotspot suffix is two digits, so this is "+

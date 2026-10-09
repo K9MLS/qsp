@@ -341,6 +341,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A request for a page that is not there is logged at info, with where it
+  came from.** On 0.1.338's first day on production, 148 of 157 warnings were
+  scanners asking the console for `/.env`, `/.git/HEAD` and the like, each
+  answered 404; they buried the nine worth reading. Every request line now
+  carries the caller's address as `from`.
+- **Zello ending a session after a day is logged as that**, at info, with how
+  long it lasted. It was a warning reading "not connected to Zello" with the
+  state "connected" and no reason.
+- **No more advisory about a seven-digit hotspot ID.** A hotspot with no
+  suffix registers with its owner's plain seven-digit ID, which is ordinary,
+  and the warning was printed at every start of every server that had one.
+  An eight-digit entry, which is probably a nine-digit ID missing a digit,
+  is still flagged.
 - **A password hash weaker than today's is replaced at sign-in**, as
   SECURITY.md has always said it is. Nothing called the check, so an account
   made under older parameters kept them. The other sessions and any lockout

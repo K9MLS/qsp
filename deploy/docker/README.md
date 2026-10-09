@@ -45,18 +45,9 @@ QSP_ALLOWED_PEERS=3132910
 The password is what you put into Pi-Star or WPSD as the master's password.
 
 The IDs are the ones your hotspots register with, shown on their dashboards —
-usually your own seven-digit ID. A Motorola repeater uses six digits.
-
-QSP may print this at startup:
-
-```
-access list advisory  dmr.access.registration names 3132910, a seven-digit ID
-```
-
-**That is a prompt to check, not an error.** Some hotspots append a two-digit
-suffix to the operator's ID and some do not; a plain seven-digit ID is
-ordinary and registers perfectly well, and so does a nine-digit ID with the
-suffix.
+usually your own seven-digit ID. A Motorola repeater uses six digits. Some
+hotspots append a two-digit suffix to the operator's ID and some do not; both
+register perfectly well.
 
 **These IDs decide who may log in, not which radios may talk.** Every radio
 behind a station you admit may transmit, whatever its ID; QSP only refuses

@@ -190,6 +190,7 @@ func (l *losses) pushed(lost bool, now time.Time) bool {
 func (c *connector) loop(ctx context.Context, frames *audio.Queue, radio zellobridge.Radio) error {
 	failures := 0
 	for ctx.Err() == nil {
+		began := time.Now()
 		err := c.once(ctx, frames, radio)
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -207,13 +208,27 @@ func (c *connector) loop(ctx context.Context, frames *audio.Queue, radio zellobr
 			detail = err.Error()
 		}
 		c.setState(state, detail)
-		c.log.Warn("not connected to Zello", slog.String("state", state),
-			slog.String("reason", detail), slog.Duration("retry_in", wait))
+		level, msg := sessionLine(err)
+		c.log.Log(ctx, level, msg, slog.String("state", state), slog.String("reason", detail),
+			slog.Duration("lasted", time.Since(began).Round(time.Second)), slog.Duration("retry_in", wait))
 		if err := c.drainFor(ctx, frames, wait); err != nil {
 			return err
 		}
 	}
 	return ctx.Err()
+}
+
+// sessionLine is how the end of a session is logged.
+//
+// **A session that ran and ended is not a failure.** Zello ends one after a
+// day, and the connector logged that, at a warning, as "not connected to
+// Zello" with the state "connected" and no reason: a line that contradicts
+// itself, once a day, on a server working perfectly (production, 2026-10-09).
+func sessionLine(err error) (slog.Level, string) {
+	if err == nil {
+		return slog.LevelInfo, "Zello ended the session; connecting again"
+	}
+	return slog.LevelWarn, "not connected to Zello"
 }
 
 // once is one logon and one session. A nil error is a session that connected

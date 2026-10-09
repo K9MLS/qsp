@@ -279,13 +279,13 @@ func TestAbsentAccessIsOmittedFromJSON(t *testing.T) {
 
 func TestAccessAdvisories(t *testing.T) {
 	c := enabledDMR()
-	c.DMR.Access = &Access{Registration: ACL{Mode: "permit", IDs: []string{"3121001"}}}
+	c.DMR.Access = &Access{Registration: ACL{Mode: "permit", IDs: []string{"31210011"}}}
 
 	if err := c.Validate(); err != nil {
 		t.Fatalf("an advisory must not become a validation error: %v", err)
 	}
 	if got := c.AccessAdvisories(); len(got) == 0 {
-		t.Error("expected an advisory for a seven-digit registration entry")
+		t.Error("expected an advisory for an eight-digit registration entry")
 	}
 
 	c.DMR.Access = &Access{Registration: ACL{Mode: "permit", IDs: []string{"312100"}}}

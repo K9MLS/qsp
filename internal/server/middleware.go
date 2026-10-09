@@ -102,7 +102,10 @@ func (s *statusRecorder) Flush() {
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // withLogging records one line per completed request.
-func withLogging(log *slog.Logger) middleware {
+//
+// behindProxy says whether the caller's address is to be taken from the
+// proxy's header, as clientIP explains.
+func withLogging(log *slog.Logger, behindProxy bool) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -118,6 +121,14 @@ func withLogging(log *slog.Logger) middleware {
 			switch {
 			case status >= 500:
 				level = slog.LevelError
+			case status == http.StatusNotFound || status == http.StatusMethodNotAllowed:
+				// **Asking for something that is not here is not news.** A
+				// console reachable from the internet is asked for /.env,
+				// /.git/HEAD and /wp-config.php by every scanner that passes:
+				// on the first day of 0.1.338, 148 of production's 157
+				// warnings, burying the nine worth reading. Kept at info,
+				// with where it came from, so a page that is genuinely
+				// missing is still in the log.
 			case status >= 400:
 				level = slog.LevelWarn
 			case polled(r.URL.Path):
@@ -136,6 +147,7 @@ func withLogging(log *slog.Logger) middleware {
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", status),
+				slog.String("from", clientIP(r, behindProxy)),
 				slog.Int64("bytes", rec.written),
 				slog.Duration("duration", time.Since(start)),
 				logging.RequestID(RequestIDFromContext(r.Context())),

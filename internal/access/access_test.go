@@ -267,7 +267,10 @@ func TestAdvisories(t *testing.T) {
 	}{
 		{"six-digit repeater ID", Registration, "312100", false},
 		{"nine-digit hotspot ID", Registration, "312100101", false},
-		{"seven-digit operator ID", Registration, "3121001", true},
+		// A hotspot with no suffix registers with its owner's own ID. This
+		// was warned about until 0.1.339, at every start, on every server
+		// that had one. To see it fail: put the seven-digit case back.
+		{"seven-digit hotspot ID", Registration, "3132910", false},
 		{"eight-digit ID", Registration, "31210011", true},
 		{"a talkgroup is not checked", Talkgroup, "3121001", false},
 		{"a subscriber is not checked", Subscriber, "3121001", false},
@@ -289,15 +292,15 @@ func TestAdvisories(t *testing.T) {
 // a registry convention rather than a rule of the protocol, so a list that
 // trips one still parses and still works.
 func TestAdvisoriesAreNotErrors(t *testing.T) {
-	l, err := Parse("dmr.access.test", Registration, ModePermit, []string{"3121001"})
+	l, err := Parse("dmr.access.test", Registration, ModePermit, []string{"31210011"})
 	if err != nil {
 		t.Fatalf("an advisory must not become an error: %v", err)
 	}
-	if !l.Allows(3121001) {
+	if !l.Allows(31210011) {
 		t.Error("an entry that trips an advisory must still be honoured")
 	}
 	if len(l.Advisories("dmr.access.registration", Registration)) == 0 {
-		t.Error("expected an advisory for a seven-digit registration entry")
+		t.Error("expected an advisory for an eight-digit registration entry")
 	}
 }
 

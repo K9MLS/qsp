@@ -135,9 +135,14 @@ structured on the ITU Mobile Country Code. Underneath, the ID is a flat 24-bit
 number and nothing enforces any of that structure; the segregation exists so
 radios can filter contact lists by region.
 
-So a registration list naming a bare seven-digit ID is probably an operator ID
-where a repeater or hotspot ID belongs, and an eight-digit one is probably a
-nine-digit ID with a digit missing. QSP says what it noticed and carries on.
+So an eight-digit registration entry is probably a nine-digit ID with a digit
+missing. QSP says what it noticed and carries on.
+
+*Amended in 0.1.339.* A bare seven-digit entry was also flagged, as probably an
+operator ID where a repeater or hotspot ID belongs. A hotspot with no suffix
+registers with exactly that, and on the network this was written for every
+hotspot does, so the advisory was wrong in the ordinary case and printed at
+every start. It was removed.
 Refusing on a convention would make QSP wrong on the day the convention changed,
 and this is a registry's habit rather than a rule of the protocol.
 

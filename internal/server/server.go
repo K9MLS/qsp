@@ -410,7 +410,7 @@ func (s *Server) handler() http.Handler {
 		withRequestID(),
 		withRecovery(s.log),
 		withSecurityHeaders(s.opts.Map.TileURL),
-		withLogging(s.log),
+		withLogging(s.log, s.opts.BehindProxy),
 	)
 }
 

@@ -572,3 +572,17 @@ func TestDroppedAudioIsSaidOnceASpell(t *testing.T) {
 		t.Error("a second spell, after a quiet one, was not reported")
 	}
 }
+
+// TestADayLongSessionEndingIsNotAWarning. Zello ends a session after a
+// day; the connector logged it as "not connected to Zello", at a warning,
+// with the state "connected" (production, 2026-10-09).
+//
+// To see it fail: have sessionLine return the warning whatever err is.
+func TestADayLongSessionEndingIsNotAWarning(t *testing.T) {
+	if level, msg := sessionLine(nil); level != slog.LevelInfo || strings.Contains(msg, "not connected") {
+		t.Errorf("a session that ran and ended is logged %s %q", level, msg)
+	}
+	if level, msg := sessionLine(errors.New("dial tcp: no route to host")); level != slog.LevelWarn || !strings.Contains(msg, "not connected") {
+		t.Errorf("a failure to connect is logged %s %q", level, msg)
+	}
+}
