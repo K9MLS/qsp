@@ -350,6 +350,11 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **CI pins Go to its patch release, 1.27.1.** Go 1.27.2 was released
+  between v0.1.338 and v0.1.340 and writes package data in a format the
+  pinned staticcheck (2026.2.1, the newest) cannot read, so v0.1.340's run
+  failed at staticcheck with no QSP code at fault, and its image was not
+  published. Nothing in QSP changed.
 - **A request for a page that is not there is logged at info, with where it
   came from.** On 0.1.338's first day on production, 148 of 157 warnings were
   scanners asking the console for `/.env`, `/.git/HEAD` and the like, each

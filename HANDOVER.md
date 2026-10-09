@@ -505,7 +505,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | Weather page finds county and zone codes by name from NWS, replacing links to the retired alerts.weather.gov | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | CI pins Go 1.27.1: Go 1.27.2 export data is unreadable by staticcheck 2026.2.1 | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
 | **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |

@@ -33,7 +33,12 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.27"
+  # **The patch release too, not "1.27".** Go 1.27.2 came out between two
+  # releases of QSP and changed the format staticcheck reads packages in; the
+  # pinned staticcheck cannot read it, and v0.1.340 went red with not a line
+  # of QSP changed (2026-10-09). Bump this with STATICCHECK_VERSION, in the
+  # same commit, once a staticcheck that reads 1.27.2 exists.
+  GO_VERSION: "1.27.1"
   # Pinned: ADR-0004's reproducibility argument applies to the toolchain too.
   # An unpinned @latest lets an upstream release turn a green commit red without
   # a line of QSP changing. Bump deliberately, in its own commit.
