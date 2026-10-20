@@ -361,6 +361,7 @@
       return r.json().then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
     }).then(function (res) {
       if (!res.ok && res.status === 428) {
+        showChanges("restore", res.body.changes);
         say(el("restore-summary"), res.body.summary);
         say(el("restore-identity"), res.body.identity);
         el("restore-missing").innerHTML = (res.body.missing_credentials || [])
@@ -493,6 +494,44 @@
     fullConfirmed.addEventListener("click", function () { fullRestore(true); });
   }
 
+  /* **Where the backup came from, and what it takes away, said first.** On
+   * 2026-10-18 one server's full backup was restored onto another: the
+   * confirmation spoke of identity in general terms and named nothing, and
+   * the restored server lost its two links at the next restart without a word
+   * on the page. The server compares the file with itself (restorediff.go);
+   * this puts that above everything else in the confirmation. An answer
+   * without the comparison, from an older server, shows nothing rather than
+   * a guess. */
+  var ORIGIN_TITLES = {
+    another_server: "This backup is from another server",
+    unknown: "QSP cannot tell which server made this backup",
+    this_server: "This backup is this server's own"
+  };
+
+  function showChanges(prefix, changes) {
+    var box = el(prefix + "-origin");
+    var list = el(prefix + "-changes");
+    if (!box || !list) { return; }
+    if (!changes || !changes.origin) {
+      box.hidden = true;
+      list.innerHTML = "";
+      return;
+    }
+    box.classList.toggle("notice--warn", changes.origin !== "this_server");
+    say(el(prefix + "-origin-title"), ORIGIN_TITLES[changes.origin] || "");
+    say(el(prefix + "-origin-note"), changes.origin_note);
+    box.hidden = false;
+    var items =
+      listed("Links it removes", changes.links_removed) +
+      listed("Links it adds", changes.links_added) +
+      listed("Bridges it removes", changes.bridges_removed) +
+      listed("Bridges it adds", changes.bridges_added) +
+      listed("Stations it stops allowing to connect", changes.stations_removed) +
+      listed("Stations it allows to connect", changes.stations_added);
+    list.innerHTML = items ||
+      "<li>It changes no links, no bridges and no stations allowed to connect.</li>";
+  }
+
   function listed(heading, items) {
     if (!items || !items.length) { return ""; }
     return "<li>" + escapeText(heading) + ": " + items.map(escapeText).join(", ") + "</li>";
@@ -519,6 +558,7 @@
         .then(function (b) { return { ok: r.ok, status: r.status, body: b }; });
     }).then(function (res) {
       if (!res.ok && res.status === 428) {
+        showChanges("full-restore", res.body.changes);
         say(el("full-restore-summary"), res.body.summary);
         say(el("full-restore-identity"), res.body.identity);
         say(el("full-restore-credentials"), res.body.credentials);

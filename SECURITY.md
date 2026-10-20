@@ -219,6 +219,14 @@ the backup, as an undecryptable credential does.
 A full backup is refused when it is made if it would be larger than the 16 MiB
 a restore reads.
 
+**Both restores say where a backup came from before anything changes.** The
+confirmation compares the file's server identifier with this server's and says
+"This backup was made by <name>, not by this server" when they differ, or that
+it cannot tell when either has none; it never reports an unknown file as this
+server's own. It lists by name the links, bridges and stations allowed to
+connect that the restore would remove or add, and the version a restore saves
+names the other server in its summary.
+
 The audit trail records that a full backup was taken and by whom, and **never
 the passphrase or the names of the credentials**: a trail listing which
 credentials exist is a map for whoever later gets the file.
@@ -562,7 +570,7 @@ of which anything said before.
 
 `/api/restart`, on POST, stops QSP so that its supervisor starts it again. It
 requires a session like every other administrative action, is recorded in the
-audit trail **before** it happens — a record written afterwards is one that
+audit trail as `service.restart.requested` **before** it happens — a record written afterwards is one that
 never gets written — and exits by the ordinary signal path, so shutdown runs
 exactly as it does for `systemctl restart`. **It does not promise the server
 comes back**: QSP cannot see its own supervisor from inside, so the response

@@ -301,6 +301,11 @@
         <button class="button" id="restore" type="button">Read this backup</button>
 
         <div id="restore-confirm" hidden>
+          <div class="notice" id="restore-origin" hidden>
+            <p class="notice__title" id="restore-origin-title"></p>
+            <p class="notice__body" id="restore-origin-note"></p>
+          </div>
+          <ul class="admin__pending" id="restore-changes"></ul>
           <p class="link__advice" id="restore-summary"></p>
           <p class="field__note" id="restore-identity"></p>
           <ul class="admin__pending" id="restore-missing"></ul>
@@ -369,6 +374,11 @@
         <button class="button" id="full-restore" type="button">Read this backup</button>
 
         <div id="full-restore-confirm" hidden>
+          <div class="notice" id="full-restore-origin" hidden>
+            <p class="notice__title" id="full-restore-origin-title"></p>
+            <p class="notice__body" id="full-restore-origin-note"></p>
+          </div>
+          <ul class="admin__pending" id="full-restore-changes"></ul>
           <p class="link__advice" id="full-restore-summary"></p>
           <p class="field__note" id="full-restore-identity"></p>
           <p class="field__note" id="full-restore-credentials"></p>

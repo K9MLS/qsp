@@ -157,3 +157,22 @@ inside the encrypted payload; a restore writes them back, mode 0600, only at
 the paths the restored configuration names, and reports any it could not
 write. Format 1 still opens. Both restores keep this machine's console
 address and database location.
+
+## Amendment, 2026-10-20: a restore says which server made the backup
+
+On 2026-10-18 production's full backup was restored onto the test server.
+The confirmation warned, as it does for every restore, that two servers
+might claim one identity, and named nothing: not that the file came from a
+different machine, and not the two links the test server dialled, which the
+restored configuration did not have. They were gone at the next restart and,
+two days later, looked like a link that had dropped by itself.
+
+Both restores now compare the backup's identifier with the running server's
+before asking. The answer carries `changes`: whether the file is this
+server's, another's or cannot be told (an empty identifier on either side is
+never a match), a sentence naming both servers, and the links, bridges and
+registration IDs it removes and adds. The general identity warning stays for
+every case but this server's own backup, where there is no other machine to
+collide with. The saved version's summary names the other server. Nothing is
+refused on the strength of the comparison: restoring another server's backup
+is what replacing a dead machine is, and is still allowed.

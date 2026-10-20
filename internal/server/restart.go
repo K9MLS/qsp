@@ -80,7 +80,7 @@ func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
 		if err := s.opts.Audit.Record(r.Context(), audit.Event{
 			OccurredAt: time.Now().UTC(),
 			Actor:      actor,
-			Action:     "service.restart.requested",
+			Action:     audit.ActionServiceRestartRequested,
 			Outcome:    audit.OutcomeSuccess,
 		}); err != nil {
 			s.log.Warn("cannot record a restart in the audit trail",

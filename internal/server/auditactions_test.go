@@ -66,6 +66,86 @@ func TestNoAuditHelperIsPassedALiteral(t *testing.T) {
 	}
 }
 
+// TestNoAuditEventIsBuiltWithALiteral is the same guard for the other way an
+// action reaches Record: an audit.Event written out by hand.
+//
+// `Action: "service.restart.requested"` in restart.go compiled for the same
+// reason the helper calls did, sat outside what the test above reads, and was
+// refused at run time on every console restart until 0.1.342. This reads this
+// package and cmd/qsp, which builds the started and stopped events, and refuses
+// a string literal or a conversion as an Event's Action.
+//
+// To see it bite: put `Action: "service.restart.requested",` back in
+// restart.go.
+func TestNoAuditEventIsBuiltWithALiteral(t *testing.T) {
+	for _, tc := range []struct {
+		dir string
+		// least is how many Event literals the directory is known to hold, so
+		// a parser that stops matching fails rather than passing on nothing.
+		least int
+	}{
+		{dir: ".", least: 8},
+		{dir: "../../cmd/qsp", least: 2},
+	} {
+		t.Run(tc.dir, func(t *testing.T) {
+			files, err := filepath.Glob(filepath.Join(tc.dir, "*.go"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fset := token.NewFileSet()
+			events := 0
+			for _, f := range files {
+				if strings.HasSuffix(f, "_test.go") {
+					continue
+				}
+				file, err := parser.ParseFile(fset, f, nil, 0)
+				if err != nil {
+					t.Fatalf("parsing %s: %v", f, err)
+				}
+				ast.Inspect(file, func(n ast.Node) bool {
+					lit, ok := n.(*ast.CompositeLit)
+					if !ok {
+						return true
+					}
+					typ, ok := lit.Type.(*ast.SelectorExpr)
+					if !ok || typ.Sel.Name != "Event" {
+						return true
+					}
+					if pkg, ok := typ.X.(*ast.Ident); !ok || pkg.Name != "audit" {
+						return true
+					}
+					events++
+					for _, elt := range lit.Elts {
+						kv, ok := elt.(*ast.KeyValueExpr)
+						if !ok {
+							continue
+						}
+						if key, ok := kv.Key.(*ast.Ident); !ok || key.Name != "Action" {
+							continue
+						}
+						switch v := kv.Value.(type) {
+						case *ast.BasicLit:
+							t.Errorf("%s: an audit.Event is built with the action %s; use a "+
+								"declared audit.Action constant, or Record refuses it at run time",
+								fset.Position(v.Pos()), v.Value)
+						case *ast.CallExpr:
+							if s, ok := v.Fun.(*ast.SelectorExpr); ok && s.Sel.Name == "Action" {
+								t.Errorf("%s: an audit.Event is built with a conversion to "+
+									"audit.Action; use a declared constant", fset.Position(v.Pos()))
+							}
+						}
+					}
+					return true
+				})
+			}
+			if events < tc.least {
+				t.Fatalf("found %d audit.Event literals in %s, expected at least %d; "+
+					"this test has gone blind", events, tc.dir, tc.least)
+			}
+		})
+	}
+}
+
 // TestEveryCredentialAndBackupActionIsAccepted: each action the console emits
 // for credentials and backups is one Validate accepts.
 func TestEveryCredentialAndBackupActionIsAccepted(t *testing.T) {
@@ -74,6 +154,7 @@ func TestEveryCredentialAndBackupActionIsAccepted(t *testing.T) {
 		audit.ActionPeerCredentialIssued, audit.ActionPeerCredentialRevoked,
 		audit.ActionConfigExported, audit.ActionConfigRestored,
 		audit.ActionConfigFullExported, audit.ActionConfigFullRestored,
+		audit.ActionServiceRestartRequested,
 	} {
 		e := audit.Event{OccurredAt: time.Now(), Actor: "mike", Action: a, Outcome: audit.OutcomeSuccess}
 		if err := e.Validate(); err != nil {

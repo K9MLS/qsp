@@ -247,6 +247,7 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 
 	// Worked out before the confirmation, so that what the operator agrees to
 	// is what will happen.
+	changes := compareRestore(before, cfg, full.Backup.Identifier)
 	absent := absentPasswordFiles(cfg, full.PasswordFiles)
 	outside := s.outsidePasswordFiles(full.PasswordFiles)
 
@@ -281,11 +282,12 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.log, http.StatusPreconditionRequired, map[string]any{
 			"error":   "not confirmed",
 			"summary": summary,
-			"identity": "The backup carries a server identifier. Taking it makes " +
-				"this machine a replacement for the one that made the backup — if " +
-				"that server is still running, two servers will claim one identity " +
-				"and neither will say so. QSP cannot see the other machine and " +
-				"will not pretend to check.",
+			"identity": identityNote(changes.Origin, "The backup carries a server "+
+				"identifier. Taking it makes this machine a replacement for the one "+
+				"that made the backup — if that server is still running, two servers "+
+				"will claim one identity and neither will say so. QSP cannot see the "+
+				"other machine and will not pretend to check."),
+			"changes": changes,
 			"credentials": "These credentials belong to links whose far ends have " +
 				"not been asked. Restoring them revives the passwords the other " +
 				"operators issued, which is why this is a replacement rather than " +
@@ -336,8 +338,8 @@ func (s *Server) handleFullRestore(w http.ResponseWriter, r *http.Request) {
 	}
 
 	version, late, err := s.save(r.Context(), cfg, actor,
-		fmt.Sprintf("restored from a full backup of %s",
-			full.Backup.ExportedAt.Format("2006-01-02")))
+		restoredFrom(fmt.Sprintf("restored from a full backup of %s",
+			full.Backup.ExportedAt.Format("2006-01-02")), changes, cfg))
 	if err != nil {
 		s.recordBackup(r, audit.ActionConfigFullRestored, audit.OutcomeFailure)
 		writeJSON(w, s.log, http.StatusInternalServerError, map[string]string{

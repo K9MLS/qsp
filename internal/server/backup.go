@@ -115,6 +115,11 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Against the running configuration, before the identity choice below
+	// changes the incoming one: where the file came from is a fact about the
+	// file, whichever identity this server then takes.
+	changes := compareRestore(s.opts.Config.Current(), backup.Config, backup.Identifier)
+
 	if !req.Confirm {
 		// Said before it happens, in the operator's terms, and it is the whole
 		// of what an import does rather than a summary of part of it.
@@ -125,10 +130,12 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 				"listed below; links and members will be refused until they are reissued.",
 				backup.ExportedAt.Format("2 January 2006"), backup.QSPVersion,
 				len(backup.Missing)),
-			"identity": "The backup carries a server identifier. Taking it makes this " +
-				"machine a replacement for the one that made the backup — if that server " +
-				"is still running, two servers will claim one identity and neither will " +
-				"say so. QSP cannot see the other machine and will not pretend to check.",
+			"identity": identityNote(changes.Origin, "The backup carries a server "+
+				"identifier. Taking it makes this machine a replacement for the one that "+
+				"made the backup — if that server is still running, two servers will "+
+				"claim one identity and neither will say so. QSP cannot see the other "+
+				"machine and will not pretend to check."),
+			"changes":             changes,
 			"missing_credentials": backup.Missing,
 			"exported_at":         backup.ExportedAt,
 			"qsp_version":         backup.QSPVersion,
@@ -164,8 +171,8 @@ func (s *Server) handleRestore(w http.ResponseWriter, r *http.Request) {
 	if sess, ok := SessionFrom(r.Context()); ok {
 		author = sess.Username
 	}
-	summary := fmt.Sprintf("restored from a backup taken %s",
-		backup.ExportedAt.Format("2006-01-02"))
+	summary := restoredFrom(fmt.Sprintf("restored from a backup taken %s",
+		backup.ExportedAt.Format("2006-01-02")), changes, backup.Config)
 
 	version, late, err := s.save(r.Context(), cfg, author, summary)
 	if err != nil {

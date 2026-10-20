@@ -58,6 +58,17 @@ const (
 	ActionServiceStarted Action = "service.started"
 	// ActionServiceStopped records graceful shutdown.
 	ActionServiceStopped Action = "service.stopped"
+	// ActionServiceRestartRequested records an administrator restarting QSP
+	// from the console, written before the process stops.
+	//
+	// **Emitted since the restart button existed and recorded none of the
+	// time, until 0.1.342** — the fourth action to go that way. restart.go
+	// built the Event itself with the action as a string literal, which the
+	// guard against literals passed to record helpers did not look at, and
+	// every console restart logged "cannot record a restart in the audit
+	// trail". Found on 2026-10-20 reading back the restart that followed a
+	// restore; TestNoAuditEventIsBuiltWithALiteral now covers Event literals.
+	ActionServiceRestartRequested Action = "service.restart.requested"
 
 	// ActionPeeringOffered records an invitation generated for another
 	// network, naming the callsign and address it was made out to.
@@ -124,19 +135,20 @@ const (
 )
 
 var knownActions = map[Action]bool{
-	ActionConfigChanged:       true,
-	ActionConfigRolledBack:    true,
-	ActionUserLogin:           true,
-	ActionUserLogout:          true,
-	ActionUserCreated:         true,
-	ActionUserPasswordReset:   true,
-	ActionUserPasswordChanged: true,
-	ActionUserDeleted:         true,
-	ActionServiceStarted:      true,
-	ActionServiceStopped:      true,
-	ActionPeeringOffered:      true,
-	ActionPeeringAccepted:     true,
-	ActionPeeringRemoved:      true,
+	ActionConfigChanged:           true,
+	ActionConfigRolledBack:        true,
+	ActionUserLogin:               true,
+	ActionUserLogout:              true,
+	ActionUserCreated:             true,
+	ActionUserPasswordReset:       true,
+	ActionUserPasswordChanged:     true,
+	ActionUserDeleted:             true,
+	ActionServiceStarted:          true,
+	ActionServiceStopped:          true,
+	ActionServiceRestartRequested: true,
+	ActionPeeringOffered:          true,
+	ActionPeeringAccepted:         true,
+	ActionPeeringRemoved:          true,
 
 	ActionSecretSet:             true,
 	ActionSecretRemoved:         true,

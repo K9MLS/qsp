@@ -166,6 +166,69 @@ def check_a_restore_says_which_password_files_it_will_not_write():
         p.close()
 
 
+FROM_PRODUCTION = {
+    "origin": "another_server",
+    "origin_note": "This backup was made by QSP Server Prod, not by this server (QSP Test Server).",
+    "links_removed": ["BCARA", "production"]}
+
+
+def check_a_full_restore_says_the_backup_is_from_another_server():
+    """On 2026-10-18 production's full backup was restored onto the test
+    server, the confirmation named neither server nor the two links it would
+    remove, and the links were gone at the next restart.
+
+    Break it: remove showChanges("full-restore", ...) from fullRestore()."""
+    p = open_page()
+    try:
+        p.api[("POST", "/api/admin/full-restore")] = lambda rq: (428, {
+            "summary": "This replaces every setting on this server.", "changes": FROM_PRODUCTION})
+        choose_a_backup(p)
+        assert p.in_view("#full-restore-origin"), "the origin notice did not appear"
+        assert "another server" in p.page.inner_text("#full-restore-origin-title")
+        assert "QSP Server Prod" in p.page.inner_text("#full-restore-origin-note")
+        assert "notice--warn" in p.page.get_attribute("#full-restore-origin", "class")
+        changes = p.page.inner_text("#full-restore-changes")
+        assert "Links it removes: BCARA, production" in changes, changes
+    finally:
+        p.close()
+
+
+def check_a_shareable_restore_says_the_same():
+    """The shareable restore carries the same comparison and shows it the
+    same way.
+
+    Break it: remove showChanges("restore", ...) from restore()."""
+    p = open_page()
+    try:
+        p.api[("POST", "/api/admin/restore")] = lambda rq: (428, {
+            "summary": "This replaces every setting on this server.", "changes": FROM_PRODUCTION})
+        p.page.fill("#restore-document", '{"format":1}')
+        p.page.click("#restore")
+        p.page.wait_for_timeout(300)
+        assert p.in_view("#restore-origin"), "the origin notice did not appear"
+        assert "BCARA, production" in p.page.inner_text("#restore-changes")
+    finally:
+        p.close()
+
+
+def check_an_answer_without_the_comparison_shows_no_guess():
+    """A server from before 0.1.342 answers without "changes". The page says
+    nothing about where the backup came from rather than guessing, and the
+    rest of the confirmation still appears.
+
+    Break it: in showChanges(), drop the test for a missing comparison."""
+    p = open_page()
+    try:
+        p.api[("POST", "/api/admin/full-restore")] = lambda rq: (428, {
+            "summary": "This replaces every setting on this server."})
+        choose_a_backup(p)
+        assert p.in_view("#full-restore-confirm"), "the confirmation did not appear"
+        assert not p.in_view("#full-restore-origin"), "an origin was shown with nothing to show"
+        assert p.page.inner_text("#full-restore-changes") == "", p.page.inner_text("#full-restore-changes")
+    finally:
+        p.close()
+
+
 def check_a_restore_that_failed_keeps_nothing():
     """An answer that was not JSON was shown as the browser's complaint about
     parsing it, and the passphrase stayed in the page.

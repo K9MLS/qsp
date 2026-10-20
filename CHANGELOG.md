@@ -350,6 +350,24 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A restore says which server made the backup and what it removes.** On
+  18 October production's full backup was restored onto the test server; the
+  confirmation spoke about identity in general and named nothing, and the
+  test server's two links were gone at the next restart. Both restores now
+  compare the file with the server they are reading it on and say, at the top
+  of the confirmation, "This backup was made by QSP Server Prod, not by this
+  server (QSP Test Server)", or that QSP cannot tell when either has no
+  identifier. Below that they list by name the links, bridges and stations
+  allowed to connect that the restore removes or adds. A backup of this
+  server's own no longer carries the warning about two servers claiming one
+  identity, and the History entry a restore makes names the other server.
+- **Restarts from the console are in the audit trail.** The restart button
+  wrote its event with an action that was never declared, so every restart
+  was refused by the audit trail and logged "cannot record a restart in the
+  audit trail" instead. It is recorded as `service.restart.requested`, and a
+  test now refuses an audit event written with a literal action anywhere in
+  the server or the program, where the earlier test only looked at helper
+  calls.
 - **CI pins Go to its patch release, 1.27.1.** Go 1.27.2 was released
   between v0.1.338 and v0.1.340 and writes package data in a format the
   pinned staticcheck (2026.2.1, the newest) cannot read, so v0.1.340's run
