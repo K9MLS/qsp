@@ -6,6 +6,19 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **QSP says when a repeater's calls go one way, and why.** A Quantar whose
+  codeplug has RT/RT Configuration disabled marks every call it puts on the
+  wireline that way, and another repeater with it enabled does not transmit
+  them: the link is up, the calls arrive, and nothing is heard. Found on
+  22 October linking a second repeater across the internet, with a packet
+  capture before and after the codeplug changed. QSP now logs `this repeater
+  marks its calls RT/RT disabled` once per link, and the Overview names the
+  repeater in amber with the setting to change.
+- **The P25 site guide covers a second site across the internet**: a port
+  forward limited by Allowed routers, with no VPN, the timing measured, calls
+  between two repeaters both ways, the Cisco 1841 that did it, which images
+  refused STUN, and that the first Allowed routers entry locks out every
+  router not on the list.
 - **The Weather page finds your county and zone codes by name.** It sent
   operators to alerts.weather.gov to look them up, and NWS retired that site
   in December 2025, with nothing official in its place that lists a state's
@@ -350,6 +363,11 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **"Sent to it" counts calls from other repeaters.** A Motorola repeater's
+  Overview row counted only frames from P25 gateways, so two repeaters
+  carrying each other's calls both said "0 sent to it" while they were
+  plainly being sent them. It now counts what each repeater is sent of
+  another repeater's call as well.
 - **A restore says which server made the backup and what it removes.** On
   18 October production's full backup was restored onto the test server; the
   confirmation spoke about identity in general and named nothing, and the

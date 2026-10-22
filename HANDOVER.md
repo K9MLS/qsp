@@ -505,7 +505,7 @@ they go stale with the next deploy):
 
 | Where | Runs | Confirmed how |
 |---|---|---|
-| **Fedora working tree** | `0.1.342` (0500), on `0.1.341` | `cat VERSION`, `git log --oneline -1` |
+| **Fedora working tree** | `0.1.343` (0501), on `0.1.342` | `cat VERSION`, `git log --oneline -1` |
 | **GitHub** `main` | 0.1.320, tagged `v0.1.320`, pushed 2026-10-06 | the push output; **Actions green for `v0.1.320`**, reported by the operator 2026-10-07 |
 | **Production** (systemd, 192.168.1.247) | **QSP 0.1.320** from 2026-10-06 02:09 UTC, database at migration 7, Motorola P25 repeater link on with the default 60 ms hold, **`qsp-zello` 0.1.320**, AMBEserver as `ambeserver.service` | the `starting` log line; the connector's `/healthz` carrying `usrp_dropped_queue_full`, which only 0.1.317 and later report |
 | **Test server** (Docker, 192.168.1.27) | 0.1.320 built from source, 2026-10-06, the XPR8300 behind it. **Its checkout is `~/qsp`** | `docker exec qsp /qsp -version`. Its log is text, not JSON: grep `msg=starting`, not `"starting"` |
@@ -594,17 +594,22 @@ learned to run it as a service.
    lists, which an alias cannot. Set both on the Zello page.
 3. **Motorola P25 repeaters: built, and four things not yet seen.**
    (a) **Hotspot to repeater audio, clean**, once the Quantar is off the
-   Pi-Star's frequency. (b) **Repeater to repeater relay** has never run:
-   there is one repeater. (c) **`send_header`** is off and was not needed; the
+   Pi-Star's frequency. (b) **Repeater to repeater relay: proven on
+   2026-10-22**, both ways, between the Texas Quantar and a Wisconsin one
+   linked across the internet, once the Wisconsin codeplug had RT/RT
+   Configuration enabled; disabled, its calls were marked `04` and never
+   transmitted, and 0.1.343 warns of it. (c) **`send_header`** is off and was not needed; the
    Quantar keyed from voice alone. (d) **Frames are held and paced toward a
-   repeater since 0.1.315**, heard on the LAN, reported 2026-10-07; the leg from QSP to a distant
-   router is still unproven, and the jitter test above is how to prove it.
+   repeater since 0.1.315**, heard on the LAN, reported 2026-10-07, and from
+   Wisconsin on 2026-10-22: worst gap 30 to 46 ms, `ran_dry` 0 to 3, at the
+   default 60 ms hold, with good audio.
 
    **For the network Pete, Paul and K9MLS want** — Motorola P25 repeaters in
    Idaho, Wisconsin and Texas on one QSP, linked like IPSC, one room for now:
-   the jitter test for the leg the hold cannot cover; the tunnel inside a VPN,
-   because the router's serial tunnel has no authentication and no encryption,
-   and no VPN has been chosen; and a second repeater to prove (b). The site
+   Wisconsin is linked, through a port forward on the server's side limited by
+   Allowed routers, with no VPN. Still open: Idaho; and a VPN, because the
+   router's serial tunnel has no authentication and no encryption, and none
+   has been chosen. The site
    guide is written: `docs/P25-REPEATER-SITE.md`. Hotspots stay as they
    are: users move them, and they link by choosing a talkgroup.
 

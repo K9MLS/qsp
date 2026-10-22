@@ -108,7 +108,8 @@ Motorola repeaters over IPSC in both directions; two QSP servers linked in both
 directions; Zello both ways, heard on hotspots and Motorola repeaters; and a
 Motorola P25 repeater, which links over a V.24 interface rather than IP: QSP
 opens that link through a router's serial tunnel, and calls cross both ways
-between a Quantar and a P25 gateway on a Pi-Star.
+between a Quantar and a P25 gateway on a Pi-Star, and between two Quantars,
+one of them linked across the internet.
 
 What has not happened yet: a third linked server, so relaying between more than
 two is unit-tested and never exercised; the arm64 image run on a Raspberry Pi;

@@ -245,8 +245,17 @@ type Repeater struct {
 	// was talking when they began.
 	Relayed uint64
 	Held    uint64
-	// Sent is voice frames from gateways sent to this repeater to transmit.
+	// Sent is voice frames sent to this repeater to transmit: from gateways,
+	// and from other repeaters.
+	//
+	// **Gateways only, until 0.1.343**, so two repeaters carrying each
+	// other's calls both said "0 sent to it" on the Overview while they were
+	// plainly being sent them.
 	Sent uint64
+	// RTRTDisabled reports that this repeater's last call start was marked
+	// RT/RT disabled, which another repeater with RT/RT enabled does not
+	// transmit. See RTRTDisabled.
+	RTRTDisabled bool
 	// Transmitting reports a transmission in progress.
 	Transmitting bool
 	// Talkgroup, SourceID and LastHeard are the last transmission that said
@@ -319,8 +328,8 @@ func (l *Listener) Relayed() uint64 { return l.relayed.Load() }
 // Held is transmissions not carried because another station was talking.
 func (l *Listener) Held() uint64 { return l.held.Load() }
 
-// Sent is voice frames from gateways sent to repeaters since start, counted
-// once for each repeater reached.
+// Sent is voice frames sent to repeaters since start, from gateways and from
+// other repeaters, counted once for each repeater reached.
 func (l *Listener) Sent() uint64 { return l.sent.Load() }
 
 // VoiceFrames is voice frames heard from every repeater since start.
@@ -736,6 +745,10 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			if rec.Kind == RecordVoice {
 				st.view.Frames++
 			}
+			disabled, known := RTRTDisabled(f.Payload)
+			if known {
+				st.view.RTRTDisabled = disabled
+			}
 			if finished != nil {
 				st.view.Calls++
 			}
@@ -763,6 +776,15 @@ func (l *Listener) serve(ctx context.Context, conn net.Conn, router string, st *
 			}
 			if began {
 				log.Debug("a transmission began")
+			}
+			// **Once per link, because it is a setting and not an event**:
+			// every call it makes says the same until the codeplug changes,
+			// and changing it resets the repeater, which opens a new link.
+			if disabled && once("rtrt disabled") {
+				log.Warn("this repeater marks its calls RT/RT disabled, and other "+
+					"repeaters will not transmit them; set RT/RT Configuration to "+
+					"ENABLED in its codeplug",
+					slog.String("start", clip(f.Payload)))
 			}
 			if finished != nil {
 				reason := p25calls.EndMarked

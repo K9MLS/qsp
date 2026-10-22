@@ -4,10 +4,11 @@ For somebody putting a Quantar or a GTR 8000 on a QSP server. It is the short
 way through; [`P25-PLANNING.md`](P25-PLANNING.md) is the long one, with every
 wrong turn and the reason behind each step here.
 
-**One site has been built from this, by the person who wrote it.** A Quantar in
-Texas, linked to QSP on the same LAN, on 2026-10-04. Nobody else has followed
-this page yet, and no site has been linked across the internet. If you are the
-second, what you find wrong with it is the most useful thing you can send back.
+**Two sites have been built from this.** A Quantar in Texas, linked to QSP on
+the same LAN, on 2026-10-04, by the person who wrote it; and a second Quantar in
+Wisconsin, linked to the same server **across the internet** on 2026-10-22, with
+calls carried between the two repeaters both ways. If you are the third, what
+you find wrong with it is the most useful thing you can send back.
 
 Every instruction is marked with how far it can be trusted:
 
@@ -70,8 +71,23 @@ which Cisco expects to be paid for after it. The older cards also do not fit
 it. If a 2921, 2911 or 2901 is what you already have and are licensed for, it
 works.
 
+**What the second site used: a Cisco 1841 with an `HWIC-2A/S` card and the
+Advanced Enterprise image `c1841-adventerprisek9-mz.151-4.M8`.** **Proven
+here**, across the internet. The card is the same family as the 2921's, so the
+cable is the same `CAB-SS-232FC`, and the port is `Serial0/0/0`.
+
 Whichever it is, check before buying a card that the router accepts the word:
 in configuration mode, `stun peer-name 192.0.2.4` is either taken or refused.
+**The feature set is in the image's file name, and most of them lack it.**
+Refused here, on routers that were otherwise fine: Advanced IP Services
+(`advipservicesk9`) and SP Services (`spservicesk9`) on a 2811, and Advanced
+Security (`advsecurityk9`) on an 1841. Accepted: Advanced Enterprise
+(`adventerprisek9`).
+
+**These routers read only some CompactFlash cards.** One that ROMMON answers
+with `Open Error = -66` on `dir flash:` cannot be read at all, whatever is on
+it; a card formatted on a PC as FAT32 or exFAT is the usual reason. Put the
+image on a card the router has already booted from.
 
 ## 2. Ask the repeater first
 
@@ -109,7 +125,17 @@ And `Astro To Wireline: ENABLED`.
 
 `External Transmit Clock` is what makes the repeater take its clock from the
 router, and `RT/RT Configuration` is repeater-to-repeater linking, which is
-what QSP presents itself as. `Digital Idle Link Check` is why a quiet link
+what QSP presents itself as.
+
+**With RT/RT Configuration disabled, audio goes one way.** **Proven here**, at
+the second site. Its repeater linked, was heard by QSP, and transmitted every
+call sent to it, and **no other repeater transmitted a word it sent**. Every
+call it put on the wireline was marked `04` where an enabled repeater marks
+`02`, in the start, the end, the header and the first voice record of each
+block, and nothing else differed; enabled, the same records carried `02` and
+both repeaters transmitted each other's calls. QSP passes one repeater's call
+to another unchanged, so it does not mend this; it says so instead, in its log
+and on the Overview, naming the repeater. `Digital Idle Link Check` is why a quiet link
 still carries frames: without it, a repeater that says nothing is behaving
 correctly.
 
@@ -255,7 +281,9 @@ On the console's **Network** page, in **Motorola P25 repeaters**:
 - Turn on **Link Motorola P25 repeaters**.
 - **Listen on** `0.0.0.0:1994`, the port the router dials.
 - **Allowed routers**: the router's address. An empty list accepts any router
-  that can reach the port, and the tunnel has no password.
+  that can reach the port, and the tunnel has no password. **The first address
+  added locks out every router not on the list**, a repeater already linked
+  included, so add every router at once.
 - **Site number**: leave it empty unless the repeater's own site number is 2.
   QSP must not use the repeater's number, which is 1 unless its codeplug says
   otherwise.
@@ -292,6 +320,7 @@ radio into a P25 hotspot linked to this server: the repeater transmits it.
 | `the repeater's link dropped: it is asking to open it again` | The path between the router and QSP: the repeater starts again when it hears nothing for about five seconds |
 | `the tunnel went quiet and was closed` | Nothing arrived for 30 seconds. The router, or the network |
 | The link is up and the repeater will not transmit a hotspot's call | Turn on **Send a call header to repeaters** and restart. Tell the project if that is what it took |
+| One repeater's calls never key another, while the other way works | **RT/RT Configuration** on the repeater that is not heard (step 3). The Overview says which, and the log says `this repeater marks its calls RT/RT disabled` |
 | Hotspot calls reach the repeater with pieces missing | Whether the hotspot and the repeater share a frequency. The repeater then hears the radio directly as well, with errors, and the two copies compete |
 
 **To see exactly what crossed the link**, give **Record to** a folder. Every
@@ -301,49 +330,57 @@ again.
 
 ## 9. Across the internet
 
-**Nothing here has been run across the internet.** What follows is what is
-known to be needed, and what is not yet known.
+**Proven here, without a VPN**, on 2026-10-22: a repeater in Wisconsin linked
+to a server in Texas, and calls carried both ways with good audio.
 
-**The tunnel has no password and no encryption.** Anybody who can reach port
-1994 can present themselves as a repeater. So:
+**How it was done.** The router at the repeater's site dials out, so nothing
+is forwarded there. At the server's site:
 
-- **Run it inside a VPN** between the site and the server, and
-- **list the router in Allowed routers**, by the address it has inside the VPN.
+- a port forward of **TCP 1994** to the QSP server, limited to the remote
+  site's public address where the router allows it;
+- **Allowed routers** on QSP holding the remote site's **public** address,
+  which is what QSP sees after its NAT, and the local routers' own;
+- on the remote router, `stun route all tcp` the server site's **public**
+  address. It has to be a number: if that address changes, the line does.
 
-**Which VPN is not settled, and no recipe has been tested.** The router
-described here cannot run WireGuard; the choices are a small VPN device at the
-site in front of the router, or IPsec on the router itself. Published builds
-link their sites with VPNs between the Cisco routers.
+`stun peer-name` stays the remote router's own LAN address, as in step 5.
+
+**The tunnel has no password and no encryption.** What keeps a stranger out is
+Allowed routers, and because the tunnel is TCP, an address cannot be forged
+far enough to open one. Anybody on the path can read the frames. A VPN between
+the sites closes that, and is still the stronger choice; which one is not
+settled, and no recipe has been tested. The 1841 used here has a hardware VPN
+module.
+
+**Late audio, measured.** Calls from the remote repeater reached the local one
+with the worst gap between voice records at 30 to 46 ms and `ran_dry` at 0 to
+3, with QSP's hold at its default 60 ms, and the audio was good. If calls
+break up on a distant repeater, look in QSP's log for `a call was sent to the
+repeater`: a large `worst_gap_ms` or a `ran_dry` well above that says the
+audio was already late reaching QSP, and raising the hold will help. If both
+are small, the trouble is on the way to your router, and the hold will not
+help.
 
 **The repeater gives up after about five seconds of silence** and opens the
 link again, so a path that stalls for longer than that drops the link each
 time. **Published** for the limit; QSP sends a keepalive every two seconds to
 stay inside it.
 
-**Late audio.** Voice has to reach the transmitter every 20 ms. QSP holds the
-start of each call for 60 ms and then sends it evenly, which covers audio that
-reaches *QSP* late: a distant hotspot, or another repeater's link. It does
-nothing for delay between QSP and *your* router, which comes after it. **How a
-repeater treats a late record there is not known.** If calls break up on a
-distant repeater, look in QSP's log for `a call was sent to the repeater`: a
-large `worst_gap_ms` or a `ran_dry` above zero says the audio was already late
-reaching QSP, and raising the hold will help. If both are small, the trouble is
-on the way to your router, and the hold will not help.
-
 ## 10. More than one repeater
 
 **One tunnel is one repeater.** A router with two serial ports links two: give
 each port its own `stun group`, with a `stun protocol-group` line for each
-number, and each repeater its own site number in its codeplug. Repeaters on
-different routers need nothing special. QSP is built for both and **neither
-has been run**.
+number, and each repeater its own site number in its codeplug; **not run**.
+Repeaters on different routers need nothing special: **Proven here**, with two
+Quantars, both of which said they were site 1, which did not matter.
 
 Every linked repeater and every linked P25 hotspot hears every call, one call
 at a time. A station that keys while another is talking is counted on the
 Overview and not carried.
 
-**A call from one repeater to another has never been heard**: there has been
-one repeater to test with. **Not known** until a second is linked.
+**A call from one repeater to another: proven here**, both ways, once both
+had RT/RT Configuration enabled (step 3). QSP sends the call on as the
+repeater sent it, record for record.
 
 ## The GTR 8000
 

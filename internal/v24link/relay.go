@@ -112,7 +112,18 @@ func (l *Listener) relay(st *station, payload []byte, rec Record, began, ended b
 		return true, false
 	}
 
-	l.toRepeaters(st.holder, st, payload, rec.Kind == RecordStart, false, nil)
+	// Counted as it is written, as a gateway's call is: "sent to it" is
+	// frames that left (D8).
+	var wrote func(*station)
+	if rec.Kind == RecordVoice {
+		wrote = func(o *station) {
+			l.sent.Add(1)
+			o.mu.Lock()
+			o.view.Sent++
+			o.mu.Unlock()
+		}
+	}
+	l.toRepeaters(st.holder, st, payload, rec.Kind == RecordStart, false, wrote)
 	if rec.Kind == RecordVoice {
 		if l.cfg.Gateways != nil {
 			if l.toGateways != "" && l.toGateways != st.holder {

@@ -776,6 +776,9 @@
 
     var gws = p25.gateways || [];
     var p25Lines = [];
+    /* Amber, apart from the neutral lines: each is something wrong that
+     * has a fix. */
+    var p25Warnings = [];
 
     /* A refusal is named rather than counted: the IPSC listener reached
      * 2,144 unnamed refusals before anybody could say which repeater. */
@@ -838,6 +841,17 @@
       /* Withheld from a public view, so printed only when carried. */
       if (r.router) bits.push("through " + escapeText(r.router));
       p25Lines.push(bits.join(", "));
+      /* **Said on its own line, because it is why audio goes one way.** A
+       * repeater whose calls are marked RT/RT disabled is linked, is heard
+       * and carries everything sent to it, and no other repeater transmits a
+       * word it sends: found on 2026-10-22 with a packet capture, after an
+       * hour of looking at a link that reported itself healthy. */
+      if (r.rtrt_disabled) {
+        p25Warnings.push("The Motorola repeater" +
+          (r.router ? " through " + escapeText(r.router) : (r.site ? " at site " + r.site : "")) +
+          " marks its calls RT/RT disabled, so other repeaters will not " +
+          "transmit them. Set RT/RT Configuration to ENABLED in its codeplug.");
+      }
     });
 
     /* One call at a time crosses between gateways and repeaters. The ones
@@ -863,6 +877,9 @@
         '<p class="inline-note inline-note--neutral">' +
         p25Lines.join(". ") + ".</p>";
     }
+    p25Warnings.forEach(function (w) {
+      html += '<p class="inline-note" data-p25-warning>' + w + "</p>";
+    });
     return html;
   }
 

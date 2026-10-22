@@ -38,6 +38,42 @@ const (
 	recordHeader2Length = 22
 )
 
+// The byte before a marker's which-byte says whether the repeater that sent
+// the call is set up for repeater-to-repeater linking: 02 when RT/RT
+// Configuration is enabled in its codeplug, 04 when it is disabled.
+//
+// **Read off two captures of one repeater, before and after.** On 2026-10-22
+// a second Quantar was linked across the internet. Its calls reached the
+// first repeater intact and were never transmitted, while the first's played
+// on it. Every start, end, header and first voice record of each block it
+// sent carried 04 where the other carried 02, and nothing else differed.
+// RT/RT Configuration was disabled in its codeplug; enabled, the same
+// records carried 02 and both repeaters transmitted each other's calls. That
+// 02 and 04 mean RT/RT enabled and disabled is how other open V.24
+// implementations name them; the captures show the effect, not a
+// specification.
+const (
+	rtrtByte     = 2
+	rtrtEnabled  = 0x02
+	rtrtDisabled = 0x04
+)
+
+// RTRTDisabled reads a call start's RT/RT byte. known is false for anything
+// that is not a start, or a start with a value neither capture held.
+func RTRTDisabled(payload []byte) (disabled, known bool) {
+	rec, ok := ReadRecord(payload)
+	if !ok || rec.Kind != RecordStart {
+		return false, false
+	}
+	switch payload[2+rtrtByte] {
+	case rtrtEnabled:
+		return false, true
+	case rtrtDisabled:
+		return true, true
+	}
+	return false, false
+}
+
 // RecordKind names what one information frame carries.
 type RecordKind int
 

@@ -243,8 +243,12 @@ type P25RepeaterView struct {
 	// was talking.
 	Relayed uint64 `json:"relayed"`
 	Held    uint64 `json:"held,omitempty"`
-	// Sent is voice frames from gateways sent to this repeater to transmit.
+	// Sent is voice frames sent to this repeater to transmit, from gateways
+	// and from other repeaters.
 	Sent uint64 `json:"sent"`
+	// RTRTDisabled reports that its calls are marked RT/RT disabled, which
+	// other repeaters do not transmit.
+	RTRTDisabled bool `json:"rtrt_disabled,omitempty"`
 	// Talkgroup and SourceID are the last transmission that said who it was.
 	// Zero until one has; zero is not a talkgroup.
 	Talkgroup uint16 `json:"talkgroup,omitempty"`

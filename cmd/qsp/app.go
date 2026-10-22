@@ -1973,6 +1973,7 @@ func (p p25GatewaySource) repeaterRows(out *server.P25Traffic, now time.Time) {
 			Relayed:      r.Relayed,
 			Held:         r.Held,
 			Sent:         r.Sent,
+			RTRTDisabled: r.RTRTDisabled,
 			Talkgroup:    r.Talkgroup,
 			SourceID:     r.SourceID,
 		}
