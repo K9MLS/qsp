@@ -42,7 +42,7 @@ def serving(document):
 class Page:
     """One console page, open, with every request it made on record."""
 
-    def __init__(self, name, api=None, viewport=(1280, 900), clock=False):
+    def __init__(self, name, api=None, viewport=(1280, 900), clock=False, init=None):
         self.requests = []
         self.errors = []
         self.api = {
@@ -57,6 +57,10 @@ class Page:
         self.page.on("pageerror", lambda e: self.errors.append(str(e)))
         self.page.on("dialog", lambda d: d.accept())
         self.page.route("**/*", self._answer)
+        if init:
+            # Script run before the page's own, on every load: how a check
+            # takes something away from the browser, such as its storage.
+            self.page.add_init_script(init)
         if clock:
             # The page's timers are the check's to move: a page that
             # refreshes every ten seconds is checked without waiting ten.

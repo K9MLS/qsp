@@ -851,6 +851,156 @@ body {
   color: var(--color-foreground-muted);
 }
 
+/* ---- P25 stations ----------------------------------------------------- */
+/* One line folded, a table open; see stationsMarkup in console.js. The line
+   answers what is asked on every visit, in chips that reuse .pill so a green
+   "linked" here means what a green link state means on the Links page. */
+
+.stations {
+  border-top: 1px solid var(--color-border);
+}
+
+.stations__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  /* The metric rows' gutter, so the chevron sits under the P25 label. */
+  padding: var(--space-3) var(--space-5);
+  cursor: pointer;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+  /* A flex summary loses the browser's marker; the chevron replaces it, as
+     it does for .lede. */
+  list-style: none;
+  transition: background var(--duration-fast) var(--ease-out-expo);
+}
+
+.stations__summary::-webkit-details-marker {
+  display: none;
+}
+
+.stations__summary:hover {
+  background: var(--color-row-hover);
+}
+
+.stations__summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.stations__chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--color-foreground-subtle);
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.stations[open] .stations__chevron {
+  transform: rotate(90deg);
+}
+
+.stations__label {
+  margin-right: var(--space-2);
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
+/* Chips are read, not clicked: the pill's hover belongs to links. */
+.stations__chip,
+.stations__chip:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-foreground-muted);
+}
+
+.stations__chip.pill--good,
+.stations__chip.pill--good:hover {
+  border-color: var(--color-healthy);
+  color: var(--color-healthy);
+}
+
+.stations__chip.pill--warn,
+.stations__chip.pill--warn:hover {
+  border-color: var(--color-degraded);
+  color: var(--color-degraded);
+}
+
+.stations__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.stations__chip .live-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.stations__body {
+  border-top: 1px solid var(--color-border);
+}
+
+/* A station's name is a row header: the table's header style is for
+   column headings, and capitals would shout every name. */
+.stations__table tbody th {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-foreground);
+  white-space: nowrap;
+}
+
+.stations__table tr:last-child th {
+  border-bottom: none;
+}
+
+.stations__name,
+.stations__where {
+  display: block;
+}
+
+.stations__where {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: normal;
+  color: var(--color-foreground-subtle);
+}
+
+.stations__table .num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.stations__live {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--color-healthy);
+}
+
+.stations__empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stations__chevron,
+  .stations__summary {
+    transition: none;
+  }
+}
+
 /* ---- Peer map -------------------------------------------------------- */
 /* QSP draws its own map rather than vendoring one; see
    docs/adr/ADR-0025-no-bundled-map.md. These are the styles that map needs. */

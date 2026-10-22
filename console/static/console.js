@@ -172,6 +172,11 @@
     var before = container.querySelectorAll(".table-scroll");
     var places = [];
     var focused = -1;
+    /* Anything else focused that has an id is found again by it: a keyboard
+     * user on the stations summary was dropped to the top of the page by
+     * every refresh. */
+    var active = document.activeElement;
+    var focusedId = active && active.id && container.contains(active) ? active.id : "";
     for (var i = 0; i < before.length; i++) {
       places.push({ left: before[i].scrollLeft, top: before[i].scrollTop });
       if (before[i] === document.activeElement || before[i].contains(document.activeElement)) {
@@ -188,6 +193,11 @@
     }
     if (focused >= 0 && after[focused]) {
       after[focused].focus({ preventScroll: true });
+    } else if (focusedId) {
+      var again = document.getElementById(focusedId);
+      if (again && container.contains(again)) {
+        again.focus({ preventScroll: true });
+      }
     }
   }
 
@@ -748,6 +758,228 @@
     return !dropNote.dismissed;
   }
 
+  /* Seconds as a person says them: "12s", "4m", "2h 14m", "3d 2h". The
+   * second unit is dropped once the first is in days, and never shown as
+   * zero, so "2h" is not written "2h 0m". */
+  function spoken(seconds) {
+    var s = Math.max(0, Math.round(seconds || 0));
+    if (s < 60) { return s + "s"; }
+    var m = Math.floor(s / 60);
+    if (m < 60) { return m + "m"; }
+    var h = Math.floor(m / 60);
+    if (h < 24) { return h + "h" + (m % 60 ? " " + (m % 60) + "m" : ""); }
+    var d = Math.floor(h / 24);
+    return d + "d" + (h % 24 ? " " + (h % 24) + "h" : "");
+  }
+
+  /* **The P25 stations, folded to one line.** Until 0.1.344 every gateway
+   * and repeater was a sentence in one paragraph, joined with full stops: two
+   * repeaters filled four lines of the Overview with figures read perhaps one
+   * visit in twenty. Folded, the line answers what is asked on every visit —
+   * is everything linked, is anything wrong, who spoke last — and opening it
+   * gives one row per station with the figures in columns.
+   *
+   * **Nothing that needs doing is folded away.** A station with something
+   * wrong is counted in an amber chip on the line itself, and the sentence
+   * saying what to change is drawn below it whether the section is open or
+   * not: hiding the reason audio goes one way would make the fold the fault.
+   *
+   * **Its state is the operator's, not the refresh's.** The panel is redrawn
+   * on every refresh, and a section that closed itself every few seconds
+   * would be worse than none. Whether it is open lives here and in the
+   * browser's storage, and the markup is drawn to match. */
+  var STATIONS_KEY = "qsp.overview.p25-stations";
+  var stationsOpen = (function () {
+    try {
+      return window.localStorage.getItem(STATIONS_KEY) === "open";
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  /* The section is redrawn from markup, so the listener is on the panel and
+   * catches toggle on the way down: the event does not bubble. */
+  if (trafficBody) {
+    trafficBody.addEventListener("toggle", function (e) {
+      if (!e.target || e.target.id !== "p25-stations") { return; }
+      stationsOpen = e.target.open;
+      try {
+        window.localStorage.setItem(STATIONS_KEY, stationsOpen ? "open" : "closed");
+      } catch (err) {
+        /* Storage refused: it stays as chosen until the page is reloaded. */
+      }
+    }, true);
+  }
+
+  function chip(text, cls) {
+    return '<span class="pill stations__chip' + (cls ? " " + cls : "") + '">' + text + "</span>";
+  }
+
+  /* One repeater as a table row, and whatever about it needs saying. */
+  function repeaterRow(r) {
+    var name = r.type ? escapeText(r.type) : "Motorola repeater";
+    if (r.site) { name += " · site " + r.site; }
+    var where = r.router ? escapeText(r.router) : "";
+
+    var link;
+    if (!r.up) {
+      link = '<span class="pill pill--warn">opening</span>';
+    } else if (r.rtrt_disabled) {
+      link = '<span class="pill pill--warn">up · RT/RT off</span>';
+    } else {
+      link = '<span class="pill pill--good">up' +
+        (r.up_for_seconds ? " " + spoken(r.up_for_seconds) : "") + "</span>";
+    }
+
+    /* Zero is not a talkgroup or a radio, so neither is printed until a
+     * transmission has said who it was. */
+    var heard = "—";
+    if (r.transmitting) {
+      heard = '<span class="stations__live"><span class="live-dot" aria-hidden="true"></span>' +
+        (r.source_id ? r.source_id + " · " : "") + "transmitting now</span>";
+    } else if (r.source_id) {
+      heard = r.source_id + (r.talkgroup ? " · TG " + r.talkgroup : "") +
+        (r.heard ? " · " + spoken(r.last_heard_ago_seconds) + " ago" : "");
+    }
+
+    return "<tr>" +
+      '<th scope="row"><span class="stations__name">' + name + "</span>" +
+      (where ? '<span class="stations__where">' + where + "</span>" : "") + "</th>" +
+      "<td>" + link + "</td>" +
+      "<td>" + heard + "</td>" +
+      '<td class="num">' + (r.calls || 0) + "</td>" +
+      '<td class="num">' + (r.frames || 0) + " · " + (r.relayed || 0) + " · " + (r.sent || 0) + "</td>" +
+      "</tr>";
+  }
+
+  /* One gateway as a row. A gateway has no calls of its own to count and
+   * carries nothing onward, so those cells say so rather than show zero. */
+  function gatewayRow(g) {
+    var heard = "—";
+    if (g.source_id) {
+      heard = g.source_id + (g.talkgroup ? " · TG " + g.talkgroup : "");
+    }
+    return "<tr>" +
+      '<th scope="row"><span class="stations__name">' +
+      escapeText(g.callsign || "an unnamed gateway") + "</span>" +
+      '<span class="stations__where">P25 gateway' +
+      (g.address ? " · " + escapeText(g.address) : "") + "</span></th>" +
+      '<td><span class="pill pill--good">polled ' + spoken(g.last_poll_ago_seconds) + " ago</span></td>" +
+      "<td>" + heard + "</td>" +
+      '<td class="num">—</td>' +
+      '<td class="num">' + (g.frames || 0) + " · — · " + (g.sent || 0) + "</td>" +
+      "</tr>";
+  }
+
+  function stationsMarkup(p25) {
+    var reps = p25.repeaters || [];
+    var gws = p25.gateways_off ? [] : (p25.gateways || []);
+    var chips = [];
+    var warnings = [];
+    var rows = "";
+
+    if (reps.length > 0) {
+      /* The count first, because "is everything linked" is the question an
+       * administrator opens this page with. */
+      var linked = reps.filter(function (r) { return r.up; }).length;
+      chips.push(chip('<span class="stations__dot" aria-hidden="true"></span>' +
+        linked + " of " + reps.length + " " +
+        (reps.length === 1 ? "repeater" : "repeaters") + " linked",
+        linked === reps.length ? "pill--good" : "pill--warn"));
+    }
+    if (!p25.gateways_off) {
+      /* Not a fault: a reflector nobody has linked to is one waiting. */
+      chips.push(gws.length === 0 ? chip("No gateways linked") :
+        chip(gws.length + (gws.length === 1 ? " gateway" : " gateways") + " linked", "pill--good"));
+    }
+
+    var trouble = 0;
+    reps.forEach(function (r) {
+      rows += repeaterRow(r);
+      if (!r.up || r.rtrt_disabled) { trouble++; }
+      /* Found on 2026-10-22 with a packet capture, after an hour of looking
+       * at a link that reported itself healthy: a repeater whose calls are
+       * marked RT/RT disabled is linked and heard, and no other repeater
+       * transmits a word it sends. */
+      if (r.rtrt_disabled) {
+        warnings.push("The Motorola repeater" +
+          (r.router ? " through " + escapeText(r.router) : (r.site ? " at site " + r.site : "")) +
+          " marks its calls RT/RT disabled, so other repeaters will not " +
+          "transmit them. Set RT/RT Configuration to ENABLED in its codeplug.");
+      }
+    });
+    gws.forEach(function (g) { rows += gatewayRow(g); });
+
+    if (trouble > 0) {
+      chips.push(chip(trouble + (trouble === 1 ? " needs" : " need") + " attention", "pill--warn"));
+    }
+
+    /* Who spoke last, from the repeaters, which are the stations that say
+     * when. A transmission in progress beats any that has finished. */
+    var latest = null;
+    reps.forEach(function (r) {
+      if (!r.source_id) { return; }
+      if (r.transmitting) {
+        if (!latest || !latest.transmitting) { latest = r; }
+        return;
+      }
+      if (!r.heard || (latest && latest.transmitting)) { return; }
+      if (!latest || r.last_heard_ago_seconds < latest.last_heard_ago_seconds) { latest = r; }
+    });
+    if (latest) {
+      chips.push(latest.transmitting
+        ? chip('<span class="live-dot" aria-hidden="true"></span>' +
+          latest.source_id + " transmitting now", "pill--good")
+        : chip("Last heard " + latest.source_id + " · " + spoken(latest.last_heard_ago_seconds) + " ago"));
+    }
+
+    /* A refusal is named rather than counted: the IPSC listener reached
+     * 2,144 unnamed refusals before anybody could say which repeater. */
+    if ((p25.refused || 0) > 0 && p25.refused_last) {
+      chips.push(chip("Last refused " + escapeText(p25.refused_last), "pill--warn"));
+    }
+    /* One call at a time crosses between gateways and repeaters. Losing the
+     * floor is contention, not a fault, so it is counted quietly. */
+    if ((p25.held_calls || 0) > 0 || (p25.held_frames || 0) > 0) {
+      var lost = [];
+      if (p25.held_calls) {
+        lost.push(p25.held_calls + (p25.held_calls === 1 ? " call" : " calls"));
+      }
+      if (p25.held_frames) {
+        lost.push(p25.held_frames + (p25.held_frames === 1 ? " gateway frame" : " gateway frames"));
+      }
+      chips.push('<span class="pill stations__chip" title="Not carried because another station was talking">' +
+        "Held " + lost.join(" and ") + "</span>");
+    }
+
+    if (chips.length === 0) {
+      return "";
+    }
+
+    var html = '<details class="stations" id="p25-stations"' + (stationsOpen ? " open" : "") + ">" +
+      '<summary class="stations__summary" id="p25-stations-summary">' +
+      '<svg class="stations__chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M6 3.5 10.5 8 6 12.5"/></svg>' +
+      '<span class="stations__label">Stations</span>' + chips.join("") + "</summary>";
+    if (rows) {
+      html += '<div class="stations__body"><div class="table-scroll" tabindex="0" ' +
+        'aria-label="P25 gateways and repeaters"><table class="table stations__table"><thead><tr>' +
+        '<th scope="col">Station</th><th scope="col">Link</th><th scope="col">Last heard</th>' +
+        '<th scope="col" class="num">Calls</th>' +
+        '<th scope="col" class="num" title="Voice frames heard from it, carried onward, and sent to it">' +
+        "Heard · carried · sent</th>" +
+        "</tr></thead><tbody>" + rows + "</tbody></table></div></div>";
+    } else {
+      html += '<p class="stations__empty">No stations to list yet.</p>';
+    }
+    html += "</details>";
+    warnings.forEach(function (w) {
+      html += '<p class="inline-note" data-p25-warning>' + w + "</p>";
+    });
+    return html;
+  }
+
   var lastTraffic = null;
 
   /* The P25 row and the lines under it, as markup.
@@ -774,112 +1006,7 @@
       metric(p25.unparsed || 0, "unparsed", "metric--muted") +
       "</div>";
 
-    var gws = p25.gateways || [];
-    var p25Lines = [];
-    /* Amber, apart from the neutral lines: each is something wrong that
-     * has a fix. */
-    var p25Warnings = [];
-
-    /* A refusal is named rather than counted: the IPSC listener reached
-     * 2,144 unnamed refusals before anybody could say which repeater. */
-    if ((p25.refused || 0) > 0 && p25.refused_last) {
-      p25Lines.push("Last refused: " + escapeText(p25.refused_last));
-    }
-
-    if (p25.gateways_off) {
-      /* The gateway listener is not running, so there is nothing to say
-       * about gateways: "none have linked yet" would describe a listener
-       * that is not there to be linked to. */
-    } else if (gws.length === 0) {
-      /* Not a fault, and the health check says the same: a reflector nobody
-       * has linked to is a working reflector waiting. */
-      p25Lines.push("No P25 gateways have linked yet");
-    } else {
-      gws.forEach(function (g) {
-        var bits = [escapeText(g.callsign || "an unnamed gateway")];
-        /* Talkgroup and source are omitted until traffic has been heard.
-         * Zero is not a talkgroup, and printing it would claim a decode
-         * that never happened. */
-        if (g.talkgroup) bits.push("TG " + g.talkgroup);
-        if (g.source_id) bits.push("last heard " + g.source_id);
-        bits.push(g.frames + (g.frames === 1 ? " frame" : " frames"));
-        /* Withheld from a public view, so printed only when carried. */
-        if (g.address) bits.push(escapeText(g.address));
-        bits.push("polled " + g.last_poll_ago_seconds + "s ago");
-        return p25Lines.push(bits.join(", "));
-      });
-    }
-
-    /* Motorola repeaters, linked over V.24. One line each, built the way
-     * a gateway's is: what it is, whether its link is open, and the last
-     * radio heard through it once one has been. */
-    var reps = p25.repeaters || [];
-    if (reps.length > 0) {
-      /* The count first, because "is everything linked" is the question an
-       * administrator opens this page with, and with several repeaters it
-       * should not take reading every line to answer. */
-      var linked = reps.filter(function (r) { return r.up; }).length;
-      p25Lines.push(linked + " of " + reps.length + " Motorola " +
-        (reps.length === 1 ? "repeater" : "repeaters") + " linked");
-    }
-    reps.forEach(function (r) {
-      var bits = ["Motorola repeater" +
-        (r.type ? " (" + escapeText(r.type) + ")" : "") +
-        (r.site ? ", site " + r.site : "")];
-      bits.push(r.up ? "link up" : "link opening");
-      if (r.transmitting) bits.push("transmitting now");
-      /* Zero is not a talkgroup or a radio, so neither is printed until a
-       * transmission has said who it was. */
-      if (r.talkgroup) bits.push("TG " + r.talkgroup);
-      if (r.source_id) {
-        bits.push("last heard " + r.source_id +
-          (r.heard && !r.transmitting ? " " + r.last_heard_ago_seconds + "s ago" : ""));
-      }
-      bits.push(r.calls + (r.calls === 1 ? " call" : " calls"));
-      bits.push(r.frames + (r.frames === 1 ? " frame" : " frames") +
-        " heard, " + (r.relayed || 0) + " carried, " + (r.sent || 0) + " sent to it");
-      /* Withheld from a public view, so printed only when carried. */
-      if (r.router) bits.push("through " + escapeText(r.router));
-      p25Lines.push(bits.join(", "));
-      /* **Said on its own line, because it is why audio goes one way.** A
-       * repeater whose calls are marked RT/RT disabled is linked, is heard
-       * and carries everything sent to it, and no other repeater transmits a
-       * word it sends: found on 2026-10-22 with a packet capture, after an
-       * hour of looking at a link that reported itself healthy. */
-      if (r.rtrt_disabled) {
-        p25Warnings.push("The Motorola repeater" +
-          (r.router ? " through " + escapeText(r.router) : (r.site ? " at site " + r.site : "")) +
-          " marks its calls RT/RT disabled, so other repeaters will not " +
-          "transmit them. Set RT/RT Configuration to ENABLED in its codeplug.");
-      }
-    });
-
-    /* One call at a time crosses between gateways and repeaters. The ones
-     * that lost are said plainly and only when there are any: a count of
-     * zero is not news. */
-    if ((p25.held_calls || 0) > 0 || (p25.held_frames || 0) > 0) {
-      var lost = [];
-      if (p25.held_calls) {
-        lost.push(p25.held_calls + (p25.held_calls === 1 ? " repeater call" : " repeater calls"));
-      }
-      if (p25.held_frames) {
-        lost.push(p25.held_frames + (p25.held_frames === 1 ? " gateway frame" : " gateway frames"));
-      }
-      p25Lines.push("Not carried because another station was talking: " + lost.join(" and "));
-    }
-
-    /* **Neutral, not amber.** `.inline-note` alone is
-     * `var(--color-degraded)`, so the first version of this drew a gateway
-     * working perfectly in the warning colour. Every other amber thing on
-     * this page means something is wrong. */
-    if (p25Lines.length > 0) {
-      html +=
-        '<p class="inline-note inline-note--neutral">' +
-        p25Lines.join(". ") + ".</p>";
-    }
-    p25Warnings.forEach(function (w) {
-      html += '<p class="inline-note" data-p25-warning>' + w + "</p>";
-    });
+    html += stationsMarkup(p25);
     return html;
   }
 
@@ -894,14 +1021,14 @@
       var only = payload.traffic && payload.traffic.p25;
       if (only) {
         trafficNote.textContent = "since start";
-        trafficBody.innerHTML = p25Markup(only);
+        redraw(trafficBody, p25Markup(only));
         return;
       }
       trafficNote.textContent = "disabled";
-      trafficBody.innerHTML = emptyState(
+      redraw(trafficBody, emptyState(
         "The DMR listener is not enabled",
         payload.reason || "Turn on Accept hotspots and repeaters in Network settings."
-      );
+      ));
       return;
     }
 
@@ -933,7 +1060,11 @@
     var peers = (payload.peers || []).length;
 
     trafficNote.textContent = "since start";
-    trafficBody.innerHTML =
+    /* Built whole and drawn once, through redraw: assembled in the panel with
+     * `innerHTML +=` it was parsed four times a refresh, and every refresh
+     * replaced the stations section under an operator's pointer even when
+     * nothing in it had changed. */
+    var html =
       /* **Both groups are labelled or neither is.** With only P25 named, the
        * row above it read as a total for the server rather than as one
        * listener's counters — which is the same misreading the separate
@@ -1006,7 +1137,7 @@
         );
       });
       if (lines.length > 0) {
-        trafficBody.innerHTML +=
+        html +=
           '<p class="inline-note inline-note--drops">' +
           lines.join(". ") +
           ".</p>";
@@ -1041,7 +1172,7 @@
      * than no hint: an operator who learns to disbelieve one warning stops
      * reading all of them. */
     if (peers > 0 && inCount > 30 && frames === 0) {
-      trafficBody.innerHTML +=
+      html +=
         '<p class="inline-note inline-note--neutral">DMR: no voice frames yet, only keepalives. ' +
         "If nobody has transmitted, that is exactly what this should look like. " +
         "If somebody has, the sending side is probably not routing a talkgroup " +
@@ -1070,8 +1201,9 @@
      * omits the object, so a server not running P25 says nothing about it
      * instead of showing zeroes. */
     if (p25) {
-      trafficBody.innerHTML += p25Markup(p25);
+      html += p25Markup(p25);
     }
+    redraw(trafficBody, html);
 
   }
 

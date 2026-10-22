@@ -6,6 +6,18 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Overview's P25 stations fold to one line.** Every gateway and
+  repeater was a sentence in one paragraph under the P25 counters, so two
+  repeaters took four lines of the page on every visit. They are now a
+  **Stations** line: how many repeaters are linked, how many gateways, and who
+  was heard last, in chips. Click it, or press Enter on it, and a table opens
+  with one row per station: its link (with how long it has been up), the last
+  radio heard, calls, and frames heard, carried and sent. Anything that needs
+  doing is never folded away: an amber chip counts it, and the sentence
+  saying what to change stays below the line, open or not. The page
+  remembers whether you keep it open, the ten-second refresh no longer
+  replaces the section unless something in it changed, and a keyboard user
+  on it keeps their place when it does.
 - **QSP says when a repeater's calls go one way, and why.** A Quantar whose
   codeplug has RT/RT Configuration disabled marks every call it puts on the
   wireline that way, and another repeater with it enabled does not transmit
