@@ -6,6 +6,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **The Join page tells members which text format to use.** A member's BTech,
+  set to "DMR Standard", texted his Motorola 6550 and nothing showed, and the
+  network was suspected first. QSP carries a text exactly as the sending
+  radio packed it, so the sender's format decides who can read it. A new
+  **Text messages** section after the steps says to choose **M-SMS**, shows
+  which radios read each format (M-SMS, DMR Standard, H-M), and covers the
+  CAI network of 12 and turning off a single-network hotspot's automatic
+  rewrite rules. The README says the same.
 - **The Overview's P25 stations fold to one line.** Every gateway and
   repeater was a sentence in one paragraph under the P25 counters, so two
   repeaters took four lines of the page on every visit. They are now a

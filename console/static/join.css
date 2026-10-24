@@ -278,6 +278,84 @@
   }
 }
 
+/* ---- Further reading -------------------------------------------------- */
+
+/* A section after the steps: not a step, so no number on the rail, but set in
+   the same measure so it reads as part of the page rather than an appendix. */
+.extra {
+  margin-top: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.extra__title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  margin: 0 0 var(--space-2);
+}
+
+.extra__body {
+  color: var(--color-foreground-muted);
+  margin: 0 0 var(--space-3);
+}
+
+.extra strong {
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
+.extra code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--color-foreground);
+}
+
+/* The format column names the setting as a radio's menu shows it. */
+.fields--formats th[scope="row"] {
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
+.fields--formats td {
+  color: var(--color-foreground-muted);
+}
+
+/* The one to choose is marked by its row, not only by its tag, so the
+   recommendation survives a quick glance down the table. */
+.fields__recommended th,
+.fields__recommended td {
+  background: color-mix(in srgb, var(--color-healthy) 8%, transparent);
+}
+
+.extra__tag {
+  display: inline-block;
+  margin-left: var(--space-2);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-healthy);
+  border-radius: 999px;
+  color: var(--color-healthy);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  vertical-align: 1px;
+}
+
+.extra__list {
+  margin: var(--space-3) 0 0;
+  padding-left: var(--space-5);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.extra__list li + li {
+  margin-top: var(--space-2);
+}
+
 /* ---- Footer ---------------------------------------------------------- */
 
 .join__foot {

@@ -92,6 +92,14 @@ this machine's address, port **62031**, and your `QSP_PEER_PASSWORD`. The
 hotspot appears in the console once it logs in, and stations on the same
 talkgroup hear each other.
 
+**Text messages.** QSP carries a text exactly as the sending radio packed it,
+so the sender's text format decides who can read it. Set radios to **M-SMS**
+(Motorola) with a CAI network of 12: Motorola radios and most AnyTone, BTech,
+TYT and Retevis radios read it, and it is the format QSP's own texts use.
+"DMR Standard" is not read by most Motorola radios. On a hotspot carrying only
+this network, turn off automatic rewrite rules. The console's Join page says
+the same to members.
+
 Bridges, the schedule, links and Zello are all on the console's pages.
 [`deploy/docker/README.md`](deploy/docker/README.md) has the rest: what is on
 and off to begin with, upgrading, where your data lives, and troubleshooting.

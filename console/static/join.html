@@ -219,6 +219,58 @@
 
   </ol>
 
+  <!-- After the steps rather than among them: a hotspot works without it, and
+       it is where a member looks when a text goes missing. Written after a
+       member's two radios on 2026-10-24: a BTech set to "DMR Standard" texted a
+       MOTOTRBO 6550, which showed nothing, and the network was suspected first.
+       The network carries a text unchanged; the sender's format decided it. -->
+  <section class="extra" id="texting" aria-labelledby="texting-title">
+    <h2 class="extra__title" id="texting-title">Text messages</h2>
+    <p class="extra__body">
+      Texts cross this network exactly as your radio sends them, so whether
+      another radio can read yours depends on the <strong>text format set on
+      your radio</strong>. Choose <strong>M-SMS</strong> if your radio offers it.
+    </p>
+
+    <table class="fields fields--formats">
+      <thead>
+        <tr>
+          <th scope="col">Format</th>
+          <th scope="col">Which radios can read it</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="fields__recommended">
+          <th scope="row">M-SMS <span class="extra__tag">Use this</span></th>
+          <td>Motorola radios, and most AnyTone, BTech, TYT and Retevis radios.
+            Texts this network sends you are in this format.</td>
+        </tr>
+        <tr>
+          <th scope="row">DMR Standard</th>
+          <td>Most AnyTone, BTech, TYT and Retevis radios. <strong>Most Motorola
+            radios show nothing.</strong></td>
+        </tr>
+        <tr>
+          <th scope="row">H-M</th>
+          <td>Hytera radios. Motorola radios show nothing.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <ul class="extra__list">
+      <li><strong>The sender's setting is the one that counts.</strong> If
+        someone's radio shows nothing when you text it, change the format on
+        yours, not on theirs.</li>
+      <li>If your radio asks for a <strong>CAI network</strong>, set it to
+        <code>12</code>. Motorola-format texts are addressed with it and your
+        DMR ID.</li>
+      <li>On a hotspot that carries only this network, <strong>turn off any
+        automatic rewrite rules</strong> in its dashboard. They can readdress a
+        text so it never arrives. If you pasted the DMRGateway block above,
+        leave those rules as they are.</li>
+    </ul>
+  </section>
+
   <footer class="join__foot">
     <p>
       Stuck? Tell whoever runs the network which step you reached. That is
