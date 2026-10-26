@@ -6,6 +6,14 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **Last heard is a window ten rows tall.** All fifty calls are kept, and the
+  panel no longer runs the length of the Overview: about 600 pixels where it
+  was 2,400. The column headings stay put while the rows scroll, the caption
+  above says how many calls there are and "scroll for more" while there are,
+  and a soft fade at the foot shows there is more below and goes at the end.
+  When the list refreshes with new calls, **the call you were reading stays
+  where it was** rather than sliding down a row for every arrival; at the
+  top, new calls appear in view. Eight rows on a phone.
 - **The Join page tells members which text format to use.** A member's BTech,
   set to "DMR Standard", texted his Motorola 6550 and nothing showed, and the
   network was suspected first. QSP carries a text exactly as the sending

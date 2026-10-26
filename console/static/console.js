@@ -1264,7 +1264,7 @@
       ? ' <span class="tag tag--data">' + escapeText(call.mode) + "</span>"
       : "";
     return (
-      "<tr>" +
+      '<tr data-call="' + escapeText(callKey(call, live)) + '">' +
       "<td>" + who + mode + "</td>" +
       '<td class="mono">' + kind + "</td>" +
       (showSlot
@@ -1282,6 +1282,84 @@
   // It was static text reading "Nothing is forwarded", which was true when
   // written and became a lie the day the master learned to repeat. An
   // instance that had been relaying for eleven hours still displayed it.
+  /* Which call a row is, across refreshes. A finished call is fixed by when
+   * it ended; a live one has not ended, so it is the talker and the target
+   * until it does, and then becomes a different row, which is what it is. */
+  function callKey(call, live) {
+    return [call.source, call.target, call.group ? "g" : "p", call.mode || "",
+      call.via || "", live ? "live" : (call.ended_at || call.ago || "")].join("|");
+  }
+
+  /* **Where the reader is in Last heard, by call rather than by pixel.**
+   *
+   * The window holds fifty calls and refreshes every few seconds with the
+   * newest at the top. Put back at the same scroll offset, the list would
+   * slide under somebody reading call thirty by one row for every call that
+   * arrived, and the line they were on would walk away from them. So the
+   * call at the top of their view is noted before the redraw and put back in
+   * the same place after it. At the very top, the top is kept, so the newest
+   * call is what they see arrive. */
+  function callsPlace(win) {
+    if (!win || win.scrollTop <= 1) {
+      return { top: true };
+    }
+    var head = win.querySelector("thead");
+    var edge = win.getBoundingClientRect().top + (head ? head.getBoundingClientRect().height : 0);
+    var rows = win.querySelectorAll("tbody tr");
+    for (var i = 0; i < rows.length; i++) {
+      var box = rows[i].getBoundingClientRect();
+      if (box.bottom > edge + 1) {
+        return { key: rows[i].getAttribute("data-call"), offset: box.top - edge };
+      }
+    }
+    return { top: false };
+  }
+
+  function restoreCallsPlace(win, place) {
+    /* At the top there is no call to hold: redraw has already put the
+     * window back at zero, where the newest call arrives. */
+    if (!win || !place || !place.key) { return; }
+    var rows = win.querySelectorAll("tbody tr");
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].getAttribute("data-call") === place.key) {
+        var head = win.querySelector("thead");
+        var edge = win.getBoundingClientRect().top + (head ? head.getBoundingClientRect().height : 0);
+        win.scrollTop += rows[i].getBoundingClientRect().top - edge - place.offset;
+        return;
+      }
+    }
+    /* The call has aged out of the fifty: redraw's own offset stands. */
+  }
+
+  /* Whether there is more below, which the fade at the window's foot says.
+   * Set on every scroll and after every redraw, so the fade is gone the
+   * moment the last row is in view and back when there is something under
+   * it again. */
+  function markMore(win) {
+    if (!win) { return; }
+    var more = win.scrollTop + win.clientHeight < win.scrollHeight - 2;
+    if (win.getAttribute("data-more") !== String(more)) {
+      win.setAttribute("data-more", String(more));
+    }
+    /* "Scroll for more" is true while there is more below, and not at the
+     * end, where the same words would send somebody looking for rows that
+     * are not there. */
+    var hint = callsBody ? callsBody.querySelector(".calls__more") : null;
+    if (hint) {
+      hint.hidden = !more;
+    }
+  }
+
+  if (callsBody) {
+    /* scroll does not bubble; the window is replaced on every redraw, so the
+     * listener is on the panel and catches it on the way down. */
+    callsBody.addEventListener("scroll", function (e) {
+      if (e.target && e.target.classList && e.target.classList.contains("calls-window")) {
+        markMore(e.target);
+      }
+    }, true);
+  }
+
   function callsCaption(payload) {
     if (payload && payload.forwarding) {
       return "Transmissions observed by this master, and relayed to other peers " +
@@ -1349,14 +1427,30 @@
       rows += callRow(recent[i], false, showSlot);
     }
 
+    var total = active.length + recent.length;
+    var before = callsBody.querySelector(".calls-window");
+    var place = callsPlace(before);
+    /* The caption is the table's name for a screen reader, and is drawn above
+     * the window as well: inside it, it would scroll away with the rows. */
     redraw(callsBody,
-      '<div class="table-scroll" tabindex="0" role="group" aria-label="Last heard, scrollable"><table class="table">' +
-      "<caption>" + callsCaption(payload) + "</caption>" +
+      '<p class="calls__meta"><span>' + callsCaption(payload) + "</span>" +
+      '<span class="calls__count">' + total + (total === 1 ? " call" : " calls") +
+      ', newest first<span class="calls__more" hidden> · scroll for more</span></span></p>' +
+      '<div class="table-scroll calls-window" tabindex="0" role="group" ' +
+      'aria-label="Last heard, ' + total + (total === 1 ? " call" : " calls") + ', scrollable">' +
+      '<table class="table">' +
+      '<caption class="sr-only">' + callsCaption(payload) + "</caption>" +
       "<thead><tr>" +
       '<th scope="col">Radio ID</th><th scope="col">Target</th>' +
       (showSlot ? '<th scope="col">Slot</th>' : "") + '<th scope="col">Duration</th>' +
       '<th scope="col">Frames</th><th scope="col">When</th>' +
-      "</tr></thead><tbody>" + rows + "</tbody></table></div>");
+      "</tr></thead><tbody>" + rows + "</tbody></table>" +
+      '<div class="calls-window__fade" aria-hidden="true"></div></div>');
+    var win = callsBody.querySelector(".calls-window");
+    if (win !== before) {
+      restoreCallsPlace(win, place);
+    }
+    markMore(win);
   }
 
   function refreshPeers() {

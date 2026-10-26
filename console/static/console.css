@@ -620,6 +620,118 @@ body {
   }
 }
 
+/* ---- Last heard ------------------------------------------------------- */
+/*
+ * Fifty calls in a window ten rows tall. Fifty rows drawn in full made Last
+ * heard the longest thing on the Overview by a factor of three, and pushed
+ * everything under it off the screen for the sake of calls read perhaps once
+ * a day. The window keeps all fifty and scrolls by itself.
+ *
+ * **The height is rows, not pixels**, and the rows are given their height
+ * rather than left to their content: drawn by their content they measured 45
+ * and 44.5 pixels in one browser depending on whether the monospace face had
+ * loaded, and a window sized for one ended through the middle of a callsign
+ * in the other. Fixed, ten rows and the heading are exactly the window. The
+ * browser check fails if anything moves either.
+ */
+.calls-window {
+  --calls-rows: 10;
+  --calls-row: 2.8125rem;
+  --calls-head: 2.65625rem;
+  max-height: calc(var(--calls-head) + var(--calls-rows) * var(--calls-row));
+  overflow: auto;
+  overscroll-behavior: contain;
+  position: relative;
+}
+
+@media (max-width: 767px) {
+  /* Ten tall rows are most of a phone; eight leave the panels around it. */
+  .calls-window {
+    --calls-rows: 8;
+  }
+}
+
+/* The heading stays while the rows scroll under it, so row thirty-seven
+   still says which column is Duration. Sticky cells lose a collapsed
+   border, so the rule under them is drawn as a shadow instead. */
+.calls-window tbody tr {
+  height: var(--calls-row);
+}
+
+.calls-window thead tr {
+  height: var(--calls-head);
+}
+
+.calls-window thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  border-bottom: none;
+  box-shadow: inset 0 -1px 0 var(--color-border);
+}
+
+/* A soft edge where there is more to read, gone at the end. Sticky inside the
+   window, so it sits on the window's foot whatever has scrolled, and does not
+   cover the scrollbar the way a mask on the whole window would. */
+.calls-window__fade {
+  position: sticky;
+  left: 0;
+  bottom: 0;
+  height: 2.5rem;
+  margin-top: -2.5rem;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
+  opacity: 0;
+  transition: opacity var(--duration-fast) var(--ease-out-expo);
+}
+
+.calls-window[data-more="true"] .calls-window__fade {
+  opacity: 1;
+}
+
+.calls__meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+}
+
+.calls__count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The prompt is a shade brighter than the count it follows: it is the part
+   that asks something of the reader. */
+.calls__more {
+  color: var(--color-foreground-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calls-window__fade {
+    transition: none;
+  }
+}
+
+/* Read by a screen reader, not drawn: the table's name, which is also shown
+   above the window where it does not scroll away. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ---- A note that has had its moment ---------------------------------- */
 /*
  * The drop advisory dissolves ten seconds after it appears, and motion here
