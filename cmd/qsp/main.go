@@ -3,9 +3,9 @@
 // This build implements the DMR Homebrew Protocol, the peer lifecycle, call
 // observation, and routing with scheduled and PTT-triggered bridging, behind a
 // web console, with IPSC for Motorola repeaters, a P25 reflector, and Zello
-// through an AMBE dongle. AllStar is a later phase and is not present; the
-// health endpoint reports it as unavailable. EchoLink is neither built nor
-// reported — see unbuiltSubsystems in app.go for why.
+// through an AMBE dongle. AllStar and EchoLink are neither built nor
+// reported: an AllStar node links through DVSwitch as a hotspot does, and
+// unbuiltSubsystems in app.go says why neither is planned.
 package main
 
 import (

@@ -517,7 +517,10 @@ func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
 	planned := map[string]string{
 		"vocoder pool": "vocoder",
 		"p25":          "p25",
-		"allstar":      "allstar",
+		// AllStar, like EchoLink below, is neither built nor planned (0505),
+		// so no navigation may offer it; the Join page names it only to say
+		// a node links through DVSwitch.
+		"allstar": "allstar",
 		// EchoLink is in neither unbuiltSubsystems nor the code, so this row
 		// now means the console may not name it at all (0418), rather than
 		// only while it is listed as unbuilt.

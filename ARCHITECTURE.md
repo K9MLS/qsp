@@ -36,8 +36,9 @@ Implemented today: config, storage, events, health, logging, HTTP, console, the
 HBP codec (`parse` above), the peer lifecycle (`validate` above), the routing
 core, call observation, the scheduler and PTT triggers.
 
-P25 and the analog connectors (AllStar, Zello, EchoLink) are
-later phases and report `unavailable` in the health endpoint.
+P25 and Zello are built since this was written. AllStar and EchoLink are not
+planned and are not in the health report: an AllStar node links through
+DVSwitch as a hotspot does (docs/ALLSTAR.md).
 
 ---
 

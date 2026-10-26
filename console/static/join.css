@@ -356,6 +356,74 @@
   margin-top: var(--space-2);
 }
 
+/* A section that opens: the AllStar node's settings, wanted by few readers
+   of this page. Closed it is one line in the same card as the one above. */
+.extra--fold {
+  padding: 0;
+}
+
+.extra__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-lg);
+}
+
+.extra__summary::-webkit-details-marker {
+  display: none;
+}
+
+.extra__summary:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.extra__summary .extra__title {
+  margin: 0;
+}
+
+.extra__chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--color-foreground-subtle);
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+.extra--fold[open] .extra__chevron {
+  transform: rotate(90deg);
+}
+
+.extra--fold > :not(summary) {
+  margin-left: var(--space-5);
+  margin-right: var(--space-5);
+}
+
+.extra--fold > :last-child {
+  margin-bottom: var(--space-5);
+}
+
+.extra__label {
+  margin: var(--space-4) 0 0;
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.extra__note {
+  margin: var(--space-3) 0 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .extra__chevron {
+    transition: none;
+  }
+}
+
 /* ---- Footer ---------------------------------------------------------- */
 
 .join__foot {

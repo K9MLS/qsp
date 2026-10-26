@@ -2363,9 +2363,17 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// and that keeps the operator's hardware available to the operator. What
 	// is missing for each connector below is the connector, not the codec
 	// path.
-	{"allstar", "AllStar linking is not built yet; it is planned for roadmap phase 5."},
+	//
+	// **AllStar left this list in 0505, as EchoLink did in 0418: not built,
+	// and not planned.** An AllStar node reaches QSP today through DVSwitch,
+	// whose MMDVM_Bridge logs in to a DMR master exactly as a hotspot does,
+	// transcoding on the node owner's own hardware; docs/ALLSTAR.md and the
+	// Join page say how. A native connector would share the one AMBE channel
+	// Zello uses and earn little over that, so "planned for roadmap phase 5"
+	// was a promise the project was not making. If native AllStar is ever
+	// taken up, it comes back here first.
 
-	// **EchoLink left this list in 0418 without being built**, which is the one
+	// **EchoLink left this list in 0418 without being built**, the first
 	// exception to the rule above, and it is recorded here so nobody reads its
 	// absence as a shipped feature. The operator has no plan to build it, and a
 	// check saying "planned for roadmap phase 6" was a promise the project was

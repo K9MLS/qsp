@@ -103,28 +103,34 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// what exists and what does not.
 	for _, name := range []string{
 		"process", "database", "network", "peers", "routing", "scheduler",
-		"ipsc", "p25", "allstar", "zello",
+		"ipsc", "p25", "zello",
 	} {
 		if _, ok := byName[name]; !ok {
 			t.Errorf("subsystem %q is missing from the health report", name)
 		}
 	}
 
-	// **EchoLink is reported nowhere, and that is the point of 0418.** The
-	// operator has no plan to build it, so a check calling it a future phase
-	// promised work that will not happen. This asserts the absence rather than
+	// **EchoLink (0418) and AllStar (0505) are reported nowhere.** Neither is
+	// built and neither is planned, so a check calling either a future phase
+	// promised work that will not happen; an AllStar node links through
+	// DVSwitch as a hotspot does. This asserts the absence rather than
 	// trusting the list, because a check can be registered from anywhere and
 	// the failure mode is silent: a name back in the report reads to a
 	// stranger as a feature in progress.
-	for _, name := range []string{"echolink"} {
+	//
+	// To see it bite: put the allstar line back in unbuiltSubsystems.
+	notPlanned := map[string]string{
+		"echolink": "it was removed in 0418 because nobody intends to build it",
+		"allstar":  "it was removed in 0505: a node links through DVSwitch, and native AllStar is not planned",
+	}
+	for name, why := range notPlanned {
 		if got, ok := byName[name]; ok {
-			t.Errorf("subsystem %q is in the health report as %q; EchoLink is not built and not planned, so it is reported nowhere",
-				name, got.Status)
+			t.Errorf("subsystem %q is in the health report as %q; %s", name, got.Status, why)
 		}
 	}
 	for _, s := range unbuiltSubsystems {
-		if s.name == "echolink" {
-			t.Error("echolink is back in unbuiltSubsystems; it was removed in 0418 because nobody intends to build it")
+		if why, ok := notPlanned[s.name]; ok {
+			t.Errorf("%s is back in unbuiltSubsystems; %s", s.name, why)
 		}
 	}
 
@@ -176,13 +182,15 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 	// becomes a lie the moment it ships, and §8a records four instances in one
 	// day of exactly that kind of staleness — so it moves in the same patch
 	// that builds the thing rather than the next one.
-	for _, name := range []string{"allstar"} {
-		got := byName[name]
+	// **Empty since 0505**, and walked rather than named so that the next
+	// thing listed as unbuilt is held to it without editing this test.
+	for _, s := range unbuiltSubsystems {
+		got := byName[s.name]
 		if got.Status != health.StatusUnavailable {
-			t.Errorf("unbuilt subsystem %q reports %q, want %q", name, got.Status, health.StatusUnavailable)
+			t.Errorf("unbuilt subsystem %q reports %q, want %q", s.name, got.Status, health.StatusUnavailable)
 		}
 		if !strings.Contains(got.Summary, "phase") {
-			t.Errorf("subsystem %q does not say when it arrives: %q", name, got.Summary)
+			t.Errorf("subsystem %q does not say when it arrives: %q", s.name, got.Summary)
 		}
 	}
 

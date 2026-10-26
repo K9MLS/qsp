@@ -40,8 +40,10 @@ starts a server, logs four demonstration hotspots in and takes the picture.*
 - **Everything is set up from a web console**: who may connect, bridges, the
   schedule, links, accounts, the call record, backup and restore.
 
-Not built: AllStar. EchoLink is researched and not planned, so QSP does not
-report on it at all; BLUEPRINT.md has the notes.
+**AllStar** links through DVSwitch, whose MMDVM_Bridge logs in as a hotspot
+does; [`docs/ALLSTAR.md`](docs/ALLSTAR.md) has how, and why QSP has no
+AllStar connector of its own and none is planned. EchoLink is researched and
+not planned either, so QSP reports on neither; BLUEPRINT.md has the notes.
 
 ## What you need
 

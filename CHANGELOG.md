@@ -6,6 +6,17 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **AllStar links through DVSwitch, and QSP no longer promises a connector.**
+  The health report said AllStar was "planned for roadmap phase 5". It is
+  not planned: an AllStar node reaches QSP through DVSwitch, whose
+  MMDVM_Bridge logs in exactly as a hotspot does and transcodes on the
+  node's own vocoder, so it takes nothing from the AMBE dongle Zello uses.
+  The check is gone, as EchoLink's went in 0.1.260, and a test keeps it from
+  returning as "planned". The Join page has a folded **Linking an AllStar
+  node** section with this server's address and port filled into the
+  `MMDVM_Bridge.ini` values, and `docs/ALLSTAR.md` covers the server's half
+  and why there is no native connector. Both say plainly that no node has
+  been linked to QSP this way yet.
 - **Last heard is a window ten rows tall.** All fifty calls are kept, and the
   panel no longer runs the length of the Overview: about 600 pixels where it
   was 2,400. The column headings stay put while the rows scroll, the caption
