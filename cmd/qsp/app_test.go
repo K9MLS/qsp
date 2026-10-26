@@ -134,10 +134,13 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 		}
 	}
 
-	// **And no document may promise it either.** The check was the visible
-	// half; a README or capability list tying EchoLink to a roadmap phase makes
-	// the same promise in the place a stranger reads first, and nothing else
-	// here would notice.
+	// **And no document may promise either.** The check was the visible
+	// half; a README or capability list tying EchoLink or AllStar to a roadmap
+	// phase makes the same promise in the place a stranger reads first, and
+	// nothing else here would notice. AllStar joined this in 0505, after its
+	// first draft of CAPABILITIES.md quoted the old promise to explain its
+	// removal and this check, then EchoLink's only, caught the EchoLink in the
+	// same sentence.
 	for _, doc := range []string{"README.md", "docs/CAPABILITIES.md", "PROJECT_MEMORY.md"} {
 		b, err := os.ReadFile(filepath.Join(repoRoot, doc))
 		if err != nil {
@@ -145,7 +148,13 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 		}
 		for _, sentence := range strings.Split(strings.Join(strings.Fields(string(b)), " "), ". ") {
 			lower := strings.ToLower(sentence)
-			if !strings.Contains(lower, "echolink") {
+			name := ""
+			for _, n := range []string{"echolink", "allstar"} {
+				if strings.Contains(lower, n) {
+					name = n
+				}
+			}
+			if name == "" {
 				continue
 			}
 			// **A promise, not a mention.** These documents have to be able to
@@ -169,7 +178,7 @@ func TestHealthReportsUnbuiltSubsystemsHonestly(t *testing.T) {
 				}
 			}
 			if promising {
-				t.Errorf("%s promises EchoLink: %q", doc, sentence)
+				t.Errorf("%s promises %s: %q", doc, name, sentence)
 			}
 		}
 	}

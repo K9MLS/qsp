@@ -402,6 +402,11 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **A test caught 0.1.347's capabilities page promising AllStar a phase.**
+  Explaining the removal, `docs/CAPABILITIES.md` quoted the old "planned for
+  roadmap phase 5" in a sentence that also named EchoLink, and the check
+  that no document promises EchoLink failed on it. The sentence no longer
+  quotes the promise, and the check now covers AllStar as well as EchoLink.
 - **"Sent to it" counts calls from other repeaters.** A Motorola repeater's
   Overview row counted only frames from P25 gateways, so two repeaters
   carrying each other's calls both said "0 sent to it" while they were
