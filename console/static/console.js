@@ -705,19 +705,25 @@
    * event is news even if the first was read and dismissed.
    */
   var NOTE_LIFETIME_MS = 10000;
-  var dropNote = { seen: -1, dismissed: false, timer: null };
+  /* **Two advisories live this way**: IGNORED's, and since 0.1.349
+   * COLLISIONS's, which was amber for as long as the server ran — 748 of them
+   * on 2026-10-27, three key-overs the day before, explained nowhere on the
+   * page. Each has its own lifetime, because one being read says nothing
+   * about the other. */
+  var dropNote = { cls: "inline-note--drops", seen: -1, dismissed: false, timer: null };
+  var collisionNote = { cls: "inline-note--collisions", seen: -1, dismissed: false, timer: null };
 
-  /* dismissDropNote starts the dissolve and removes the element after it.
+  /* dismissNote starts the dissolve and removes the element after it.
    *
    * The element is removed rather than left hidden, so that a panel rendered
    * again while the animation is running does not find a stale note to
    * re-animate. */
-  function dismissDropNote() {
-    dropNote.timer = null;
-    dropNote.dismissed = true;
+  function dismissNote(state) {
+    state.timer = null;
+    state.dismissed = true;
 
     var note = trafficBody
-      ? trafficBody.querySelector(".inline-note--drops")
+      ? trafficBody.querySelector("." + state.cls)
       : null;
     if (!note) {
       return;
@@ -741,21 +747,92 @@
     }, 600);
   }
 
-  /* noteDropsFor arms the dismissal and reports whether the note should be
-   * drawn at all. */
-  function noteDropsFor(ignored) {
-    if (ignored > dropNote.seen) {
-      /* Something new was turned away: news, even if the previous note was
-       * read and dismissed. */
-      dropNote.seen = ignored;
-      dropNote.dismissed = false;
-      if (dropNote.timer !== null) {
-        window.clearTimeout(dropNote.timer);
+  /* noteFor arms a note's dismissal and reports whether it should be drawn
+   * at all. */
+  function noteFor(state, count) {
+    if (count > state.seen) {
+      /* Something new happened: news, even if the previous note was read and
+       * dismissed. */
+      state.seen = count;
+      state.dismissed = false;
+      if (state.timer !== null) {
+        window.clearTimeout(state.timer);
       }
-      dropNote.timer = window.setTimeout(dismissDropNote, NOTE_LIFETIME_MS);
+      state.timer = window.setTimeout(function () {
+        dismissNote(state);
+      }, NOTE_LIFETIME_MS);
       return true;
     }
-    return !dropNote.dismissed;
+    return !state.dismissed;
+  }
+
+  function noteDropsFor(ignored) {
+    return noteFor(dropNote, ignored);
+  }
+
+  /* A moment as the note says it: the time alone today, with the date on any
+   * other day, because "last at 4:36 PM" read the next morning is the
+   * misreading the time is there to prevent. */
+  function whenSaid(iso) {
+    var d = new Date(iso);
+    var now = new Date();
+    var time = { hour: "numeric", minute: "2-digit" };
+    if (d.toDateString() === now.toDateString()) {
+      return d.toLocaleTimeString([], time);
+    }
+    return d.toLocaleString([], {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+    });
+  }
+
+  /* collisionLines says what COLLISIONS counted: one line per thing that
+   * happened, newest first, at most two.
+   *
+   * **A run is the unit, not a frame.** The server joins a key-over's fifty
+   * frames a second into one note, and this joins notes with the same
+   * sentence, so "3 key-overs" is three times somebody talked over Zello,
+   * which is what an operator can do something about. Two lines, because the
+   * question is "what was it" and the latest answers it; the counter beside
+   * it is still the whole number. */
+  function collisionLines(notes, peerList) {
+    /* **A callsign where the console knows one.** The server names a peer by
+     * its ID because that is what routing has; the operator reading this
+     * knows "K9MLS" and has to look "3121380" up. Only peers registered now
+     * are known here, so one that has gone keeps its number, which is still
+     * true. */
+    var callsigns = {};
+    (peerList || []).forEach(function (p) {
+      if (p && p.id && p.callsign) callsigns[p.id] = p.callsign;
+    });
+    function named(summary) {
+      return escapeText(summary).replace(/\bpeer[ ](\d+)/g, function (all, id) {
+        return callsigns[id] ? escapeText(callsigns[id]) + " (" + id + ")" : all;
+      });
+    }
+    var groups = [];
+    var bySummary = {};
+    (notes || []).forEach(function (n) {
+      var g = bySummary[n.summary];
+      if (!g) {
+        g = bySummary[n.summary] = { summary: n.summary, keyOver: n.key_over, n: 0, at: n.at };
+        groups.push(g);
+      }
+      g.n += 1;
+      /* Compared as times: Go writes fractions of a second only when there
+       * are some, so two of its timestamps do not sort as strings. */
+      if (Date.parse(n.at) > Date.parse(g.at)) g.at = n.at;
+    });
+    groups.sort(function (a, b) { return Date.parse(b.at) - Date.parse(a.at); });
+    return groups.slice(0, 2).map(function (g) {
+      var noun = g.keyOver
+        ? (g.n === 1 ? "key-over" : "key-overs")
+        : (g.n === 1 ? "refusal" : "refusals");
+      return (
+        '<span class="inline-note__when">' +
+        g.n + " " + noun + (g.n === 1 ? " at " : ", last at ") +
+        escapeText(whenSaid(g.at)) + "</span> \u2014 " + named(g.summary) + "."
+      );
+    });
   }
 
   /* Seconds as a person says them: "12s", "4m", "2h 14m", "3d 2h". The
@@ -1055,6 +1132,13 @@
      * disagree — an amber number with no reason beside it, or a reason beside
      * a muted number. */
     var showDrops = ignored > 0 && noteDropsFor(ignored);
+    /* **The same rule for COLLISIONS**, and one condition more: there must be
+     * something to say. A public view has the number and not the sentences
+     * (they are an operator's), so there it is a quiet number, which is all
+     * it can honestly be. */
+    var collisions = t.collisions || 0;
+    var collided = collisions > 0 ? collisionLines(t.recent_collisions, payload.peers) : [];
+    var showCollisions = collided.length > 0 && noteFor(collisionNote, collisions);
 
     var p25 = t.p25;
     var peers = (payload.peers || []).length;
@@ -1078,8 +1162,8 @@
       '<div class="metrics-row__mode">DMR</div>' +
       metric(inCount, "datagrams in") +
       metric(frames, "voice frames", frames === 0 ? "metric--muted" : "") +
-      metric(t.collisions || 0, "collisions",
-        (t.collisions || 0) > 0 ? "metric--warn" : "metric--muted") +
+      metric(collisions, "collisions",
+        showCollisions ? "metric--warn" : "metric--muted") +
       /* **Only traffic nobody asked for gets amber.** A refusal QSP answered is
        * the protocol working — a keepalive from a peer that has not registered
        * is answered so it logs in again — and counting that beside a stray port
@@ -1115,6 +1199,17 @@
      * Signed-in only — recent_drops is withheld from unauthenticated callers
      * because the reasons name addresses — so this is absent on a public view
      * rather than empty, which is correct. */
+    /* Before IGNORED's note, in the order of the counters. Each line is its
+     * own paragraph, so two things that happened read as two. */
+    if (showCollisions) {
+      html +=
+        '<div class="inline-note inline-note--collisions">' +
+        collided.map(function (line) {
+          return '<p class="inline-note__line">' + line + "</p>";
+        }).join("") +
+        "</div>";
+    }
+
     if (ignored > 0 && showDrops) {
       var silent = (t.recent_drops || []).filter(function (d) {
         return !d.answered;

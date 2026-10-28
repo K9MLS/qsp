@@ -59,3 +59,40 @@ func TestDropReasonsAreNotPublished(t *testing.T) {
 		t.Error("the reason reached a signed-in operator with its address removed")
 	}
 }
+
+// TestCollisionNotesAreForASignedInOperator: the sentences that explain
+// COLLISIONS are withheld from a public view as the drop reasons are, and
+// reach an operator whole.
+//
+// To see it fail: remove `body.Traffic.RecentCollisions = nil`, and the public
+// case fails; remove the field from cmd/qsp's Traffic and nothing is shown
+// to anybody (the browser checks catch that half).
+func TestCollisionNotesAreForASignedInOperator(t *testing.T) {
+	notes := []peers.CollisionNote{{
+		At: time.Now().UTC(), Refusals: 50, KeyOver: true,
+		Summary: `peer 3121380 keyed up while transcoder "zello" was carrying TG 2`,
+	}}
+	srv := peersServer(t,
+		fixedPeers{traffic: Traffic{Collisions: 50, RecentCollisions: notes}},
+		fixedPeers{},
+	)
+	for _, tc := range []struct {
+		name     string
+		signedIn bool
+		want     int
+	}{
+		{"public", false, 0},
+		{"signed in", true, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := peersBodyAs(t, srv, tc.signedIn)
+			if got := len(body.Traffic.RecentCollisions); got != tc.want {
+				t.Errorf("%d collision notes, want %d", got, tc.want)
+			}
+			if body.Traffic.Collisions != 50 {
+				t.Errorf("the counter reads %d, want 50: it names nobody and stays",
+					body.Traffic.Collisions)
+			}
+		})
+	}
+}

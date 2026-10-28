@@ -174,6 +174,11 @@ type Listener struct {
 	peers     atomic.Int64
 	writeErr  atomic.Uint64
 
+	// collisionNotes explains collided as recentDrops explains ignored.
+	// Written from the serve goroutine and read by the console.
+	collisionNoteMu sync.Mutex
+	collisionNotes  []CollisionNote
+
 	// scheduleState is the set of bridges the schedule last said should be
 	// enabled, so a change can be detected without rebuilding every sweep.
 	// Owned by the serve goroutine.
@@ -1004,7 +1009,8 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 			// Constitution §18: a frame that is not carried says why. A bridge
 			// naming a link that this build has no sender for is a
 			// configuration error the operator needs to see.
-			l.collided.Add(1)
+			l.countCollision(fmt.Sprintf("not sent to link %s: a bridge names it, "+
+				"and no links are configured", u.Upstream), false)
 			l.log.Warn("a bridge names an upstream, but no links are configured",
 				slog.String("upstream", u.Upstream),
 				slog.String("bridge", u.Bridge),
@@ -1031,7 +1037,8 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 
 	for _, d := range res.Transcoders {
 		if l.cfg.Transcoders == nil {
-			l.collided.Add(1)
+			l.countCollision(fmt.Sprintf("not sent to transcoder %q: no transcoder "+
+				"channels are running", d.Transcoder), false)
 			if l.noteRoutingDrop(routing.Drop{To: routing.Endpoint{Transcoder: d.Transcoder},
 				Reason: "no transcoder channels are running"}) {
 				l.log.Warn("a bridge names a transcoder, but no transcoder channels are running",
@@ -1112,7 +1119,7 @@ func (l *Listener) deliver(from hbp.RepeaterID, res routing.Result) {
 		// Traffic panel amber for a configuration working exactly as written.
 		// A counter's name is a claim.
 		if !drop.NotAJudgement && !drop.NotACollision {
-			l.collided.Add(1)
+			l.countCollision(collisionSummary(drop))
 		}
 		// **Debug is where a reason goes to be unreachable.** Production runs
 		// at info, raising the level needs a restart, and by then the

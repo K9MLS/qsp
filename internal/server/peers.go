@@ -418,6 +418,13 @@ type Traffic struct {
 	// out from the refusals is a separate decision and wants a number that is
 	// actually wrong first.
 	Collisions uint64 `json:"collisions"`
+	// RecentCollisions explains Collisions: the latest runs of refused
+	// frames, newest first, each a sentence and a time. A key-over says who
+	// talked over whom.
+	//
+	// Signed-in only, as RecentDrops is. These name no addresses, but they
+	// are an operator's diagnostics, and the console draws them only for one.
+	RecentCollisions []peers.CollisionNote `json:"recent_collisions,omitempty"`
 }
 
 // PeerSource supplies the current peer list.
@@ -647,6 +654,7 @@ func (s *Server) handlePeers(w http.ResponseWriter, r *http.Request) {
 		// free prose would be a regular expression standing between a member's
 		// home connection and a public page, which is not a thing to rely on.
 		body.Traffic.RecentDrops = nil
+		body.Traffic.RecentCollisions = nil
 		// **And a P25 gateway's address.** The same disclosure as a peer's,
 		// one field further down a different object; the callsign and the
 		// counters stay, because a public view showing who is linked is the

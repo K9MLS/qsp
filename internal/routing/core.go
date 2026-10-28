@@ -117,6 +117,27 @@ type Drop struct {
 	// number the operator has been reading. Worth settling, separately and on
 	// purpose.
 	NotACollision bool
+	// Contention is set when the destination refused the frame because
+	// another transmission held it: a key-over. Nil for every other refusal.
+	//
+	// **Said in fields as well as in Reason**, so the console can tell an
+	// operator who talked over whom without parsing a sentence. On 2026-10-27
+	// COLLISIONS read 748, amber, for three key-overs the day before, and
+	// the only place that said so was a log line naming "peer 0".
+	Contention *Contention
+}
+
+// Contention is who held a destination and who was refused it.
+type Contention struct {
+	// Holder is the transmission already on the destination, named as an
+	// operator would: "peer 3132910", "link BCARA", `transcoder "zello"` or
+	// "this server".
+	Holder string
+	// Refused is the transmission turned away, named the same way.
+	Refused string
+	// Talkgroup is what the holder was carrying, which is often not the
+	// refused frame's (ADR-0022: one timeslot, one transmission).
+	Talkgroup uint32
 }
 
 // Result is the outcome of routing one frame.
@@ -302,10 +323,20 @@ type carrier struct {
 }
 
 // String names the path a transmission arrived by, for an operator reading a
-// drop reason. A link is named; a peer is its ID.
+// drop reason. A link and a transcoder are named; a peer is its ID.
+//
+// **Never "peer 0".** A transmission out of a transcoder has no peer, and
+// until 0.1.349 it was named by the empty peer field: Zello holding a timeslot
+// was logged as "already carrying TG 2 from peer 0", which names nothing on
+// the network and sent an operator looking for a peer that does not exist.
 func (s sourceKey) String() string {
-	if s.upstream != "" {
+	switch {
+	case s.upstream != "":
 		return "link " + s.upstream
+	case s.transcoder != "":
+		return fmt.Sprintf("transcoder %q", s.transcoder)
+	case s.peer == ServerOrigin:
+		return "this server"
 	}
 	return fmt.Sprintf("peer %d", s.peer)
 }
@@ -321,6 +352,10 @@ type sourceKey struct {
 	// collision would look like a continuation of the same stream and the
 	// second talker's audio would be interleaved with the first.
 	upstream string
+	// transcoder names the vocoder channel a frame came out of, empty
+	// otherwise. Kept so the transmission can be named (see String), and for
+	// the reason upstream is: two channels choose stream IDs independently.
+	transcoder string
 }
 
 // Core applies a routing table to live traffic.
@@ -823,6 +858,7 @@ func (c *Core) routeScoped(origin Endpoint, frame hbp.Data, now time.Time, local
 		// collision is a matter of time rather than malice.
 		src.upstream = origin.Upstream
 	}
+	src.transcoder = origin.Transcoder
 
 	// **Deduplication, which is what lets a link relay** (ADR-0051).
 	//
@@ -1052,11 +1088,9 @@ func (c *Core) routeScoped(origin Endpoint, frame hbp.Data, now time.Time, local
 					// often a different one from this frame's — that is the
 					// whole point of ADR-0022, and an operator seeing only
 					// "busy" would have no idea what took the slot.
-					res.Drops = append(res.Drops, Drop{
-						To: dest,
-						Reason: fmt.Sprintf("timeslot already carrying TG %d from peer %d",
-							held.endpoint.Talkgroup, held.source.peer),
-					})
+					res.Drops = append(res.Drops, keyOver(dest, held, src,
+						fmt.Sprintf("timeslot already carrying TG %d from %s",
+							held.endpoint.Talkgroup, held.source)))
 					continue
 				}
 				// The previous transmission went silent without a terminator.
@@ -1202,10 +1236,8 @@ func (c *Core) deliverUpstream(res *Result, target Endpoint, frame hbp.Data, src
 		// one to the link). Delivered without disturbing the reservation.
 	case occupied && held.source != src:
 		if now.Sub(held.lastSeen) <= c.timeout {
-			res.Drops = append(res.Drops, Drop{
-				To:     target,
-				Reason: fmt.Sprintf("already carrying a transmission from peer %d", held.source.peer),
-			})
+			res.Drops = append(res.Drops, keyOver(target, held, src,
+				fmt.Sprintf("already carrying a transmission from %s", held.source)))
 			return
 		}
 		fallthrough
@@ -1258,12 +1290,10 @@ func (c *Core) deliverTranscoder(res *Result, target Endpoint, frame hbp.Data, s
 		// everywhere on a server with a transcoder and no hotspots.
 	case occupied && held.source != src:
 		if now.Sub(held.lastSeen) <= c.timeout {
-			res.Drops = append(res.Drops, Drop{
-				To: target,
-				Reason: fmt.Sprintf("transcoder %q is already carrying TG %d from peer %d; "+
+			res.Drops = append(res.Drops, keyOver(target, held, src,
+				fmt.Sprintf("transcoder %q is already carrying TG %d from %s; "+
 					"one chip is one channel", target.Transcoder,
-					held.endpoint.Talkgroup, held.source.peer),
-			})
+					held.endpoint.Talkgroup, held.source)))
 			return
 		}
 		fallthrough
@@ -1463,5 +1493,19 @@ func contendsForSlot(frame hbp.Data) bool {
 // genuinely different transmissions must contend, and two networks choosing the
 // same stream ID must not look like one.
 func sameOrigin(a, b sourceKey) bool {
-	return a.peer == b.peer && a.slot == b.slot && a.upstream == b.upstream
+	return a.peer == b.peer && a.slot == b.slot && a.upstream == b.upstream &&
+		a.transcoder == b.transcoder
+}
+
+// keyOver is the drop for a destination another transmission holds.
+func keyOver(to Endpoint, held *reservation, refused sourceKey, reason string) Drop {
+	return Drop{
+		To:     to,
+		Reason: reason,
+		Contention: &Contention{
+			Holder:    held.source.String(),
+			Refused:   refused.String(),
+			Talkgroup: held.endpoint.Talkgroup,
+		},
+	}
 }

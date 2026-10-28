@@ -402,6 +402,24 @@ All notable changes to QSP. Dates are UTC.
 
 ### Fixed
 
+- **COLLISIONS says what it counted, and stops being amber for ever.** On
+  2026-10-27 the Overview showed 748 collisions in amber with nothing beside
+  them. They were three key-overs the day before: somebody keying up while
+  Zello was carrying TG 2. The number rose and stayed amber for as long as
+  the server ran, so a network working normally looked like it had a fault.
+  The counter now behaves as IGNORED does. When it rises, it turns amber with
+  a line beneath naming what happened, such as **2 key-overs, last at
+  4:36 PM: K9MLS (3121380) keyed up while transcoder "zello" was carrying
+  TG 2**. After ten seconds the line fades and the number turns grey. The
+  count itself is always shown. One key-over is one line, however many
+  frames it refused, and a key-over from another day carries its date. A
+  peer the console knows is named by its callsign. Signed out, the number
+  is grey and the lines are not sent.
+- **A refusal no longer blames "peer 0".** Audio out of a transcoder has no
+  peer, and the routing core named the holder of a timeslot by its peer
+  field, so Zello holding one was logged as "already carrying TG 2 from
+  peer 0". Refusals now name the holder as an operator knows it: a peer by
+  its ID, a link by its name, a transcoder by its name, or "this server".
 - **A test caught 0.1.347's capabilities page promising AllStar a phase.**
   Explaining the removal, `docs/CAPABILITIES.md` quoted the old "planned for
   roadmap phase 5" in a sentence that also named EchoLink, and the check

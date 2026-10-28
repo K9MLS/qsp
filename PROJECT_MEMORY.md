@@ -3469,6 +3469,16 @@ Three things worth keeping:
   broken enough to complain about; a number was merely unexplained. Every
   question of that shape this week has ended in a real fault.
 
+**2026-10-27, the same question about the same counter.** COLLISIONS read 748,
+amber, and was three real key-overs the day before. Nothing was wrong with
+the count; it was a number that only rises, in the colour for trouble, with
+no time and no names. 0.1.349 gave it IGNORED's treatment (amber only while
+a line says what happened, then a quiet number) and the line says who
+talked over whom. The log had said "peer 0", which was Zello: a transcoder
+has no peer, and the reason was built from the empty field. **A name built
+from a field that one kind of origin leaves empty is a wrong name, not a
+missing one.**
+
 The same investigation found that the Homebrew side logged `call started` and
 never `call ended` — the whole tree had that line in one file,
 `internal/ipsclink/listener.go` — so the project's primary diagnostic was

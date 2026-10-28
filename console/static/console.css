@@ -746,7 +746,9 @@ body {
 @keyframes note-dissolve {
   from {
     opacity: 1;
-    max-height: 4rem;
+    /* The note's own height when it says so, so a taller one does not jump
+       to 4rem on the first frame of its fade. */
+    max-height: var(--note-height, 4rem);
     transform: translateY(0);
   }
   to {
@@ -769,6 +771,38 @@ body {
 .inline-note--drops {
   overflow: hidden;
   max-height: 4rem;
+}
+
+/*
+ * COLLISIONS's advisory: up to two lines, each one thing that happened, with
+ * how many and when in the weight that is read first. The rest of the line is
+ * who talked over whom, which is what an operator acts on.
+ */
+.inline-note--collisions {
+  --note-height: 6rem;
+  overflow: hidden;
+  max-height: var(--note-height);
+}
+
+/* Two lines wrap to five on a phone; the ceiling is only where the fade
+   starts, so it is set to what the lines can take and no higher. */
+@media (max-width: 767px) {
+  .inline-note--collisions {
+    --note-height: 10rem;
+  }
+}
+
+.inline-note__line {
+  margin: 0;
+}
+
+.inline-note__line + .inline-note__line {
+  margin-top: var(--space-1);
+}
+
+.inline-note__when {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .inline-note.is-dissolving {

@@ -1573,6 +1573,8 @@ func (p peerViews) Traffic() server.Traffic {
 		FramesForwarded: s.Forwarded,
 		Collisions:      s.Collisions,
 		RecentDrops:     p.listener.RecentDrops(),
+		// Named for the console beside the counter it explains.
+		RecentCollisions: p.listener.RecentCollisions(),
 	}
 }
 

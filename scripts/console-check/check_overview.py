@@ -229,3 +229,119 @@ def check_keyboard_focus_survives_the_refresh():
         assert is_open(p), "Enter on the summary did not open it"
     finally:
         p.close()
+
+
+ZELLO_OVER = 'peer 3121380 keyed up while transcoder "zello" was carrying TG 2'
+LINK_OVER = "peer 3132910 keyed up while link BCARA was carrying TG 9"
+
+
+def collided(count, notes):
+    """/api/peers for a server that has refused `count` frames, explained by
+    `notes`, newest first, as the server sends them."""
+    traffic = {"datagrams_in": 48211, "frames_accepted": 9120, "collisions": count, "ignored": 0}
+    if notes is not None:
+        traffic["recent_collisions"] = notes
+    return {"enabled": True, "forwarding": True, "active": [], "recent": [], "refused": [],
+            "peers": [{"id": 3121380, "callsign": "K9MLS", "protocol": "homebrew"}],
+            "traffic": traffic}
+
+
+def note(summary, at, refusals=50, key_over=True):
+    return {"started": at, "at": at, "refusals": refusals, "summary": summary, "key_over": key_over}
+
+
+THREE_OVERS = [note(ZELLO_OVER, "2026-10-26T21:36:04Z", 120), note(ZELLO_OVER, "2026-10-26T21:31:13Z", 310),
+               note(LINK_OVER, "2026-10-26T21:20:05Z", 318)]
+
+
+def collisions_metric(p):
+    return p.page.locator(".metric", has_text="collisions")
+
+
+def check_collisions_say_who_talked_over_whom():
+    """COLLISIONS read 748 in amber on 2026-10-27 with nothing beside it: three
+    key-overs the day before. Now the number comes with what it counted, run
+    by run, and a peer the console knows is called by its callsign.
+
+    Break it: drop the `showCollisions` note block in renderTraffic, pass
+    collisionLines no peer list, or make whenSaid leave out the date."""
+    p = open_overview(lambda rq: (200, collided(748, THREE_OVERS)))
+    try:
+        assert "metric--warn" in collisions_metric(p).get_attribute("class")
+        lines = p.page.locator(".inline-note--collisions .inline-note__line").all_inner_texts()
+        assert len(lines) == 2, lines
+        assert lines[0].startswith("2 key-overs, last at "), lines[0]
+        assert "K9MLS (3121380) keyed up while transcoder \"zello\" was carrying TG 2" in lines[0], lines[0]
+        assert "Oct 26" in lines[0], "a key-over from another day has no date: " + lines[0]
+        assert lines[1].startswith("1 key-over at "), lines[1]
+        assert "peer 3132910" in lines[1], "an unknown peer lost its number: " + lines[1]
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
+def check_collisions_go_quiet_and_keep_their_number():
+    """The note and the amber end together, as IGNORED's do: an amber number
+    that outlives its reason is what this was built to fix. The count stays.
+
+    Break it: colour the metric on `collisions > 0` again, or in noteFor test
+    `count >= state.seen`, and an unchanged number never lets it go."""
+    p = open_overview(lambda rq: (200, collided(748, THREE_OVERS)))
+    try:
+        p.pass_time(12)
+        assert "metric--muted" in collisions_metric(p).get_attribute("class")
+        assert p.page.locator(".inline-note--collisions").count() == 0
+        assert collisions_metric(p).locator(".metric__value").inner_text() == "748"
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
+def check_a_new_key_over_is_news_again():
+    """Once dismissed, the note comes back when the number rises: somebody
+    has just talked over somebody, and that is worth saying.
+
+    Break it: in noteFor, arm only the first time (`&& state.seen < 0`)."""
+    state = {"count": 748, "notes": THREE_OVERS}
+    p = open_overview(lambda rq: (200, collided(state["count"], state["notes"])))
+    try:
+        p.pass_time(12)
+        assert p.page.locator(".inline-note--collisions").count() == 0
+        state["count"] = 798
+        state["notes"] = [note(ZELLO_OVER, "2026-10-28T12:00:00Z")] + THREE_OVERS
+        p.pass_time(11)
+        assert "metric--warn" in collisions_metric(p).get_attribute("class")
+        lines = p.page.locator(".inline-note--collisions .inline-note__line").all_inner_texts()
+        assert lines and lines[0].startswith("3 key-overs"), lines
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
+def check_a_public_view_shows_a_quiet_number():
+    """Signed out, the server withholds the sentences, so the page has a
+    number and nothing to say about it: muted, never an unexplained amber.
+
+    Break it: let showCollisions be true without lines."""
+    p = open_overview(lambda rq: (200, collided(748, None)))
+    try:
+        assert "metric--muted" in collisions_metric(p).get_attribute("class")
+        assert p.page.locator(".inline-note--collisions").count() == 0
+        assert not p.errors, p.errors
+    finally:
+        p.close()
+
+
+def check_the_collision_note_is_not_cut_off_on_a_phone():
+    """Two lines wrap to five at phone width, and the note's ceiling, which
+    the fade starts from, cut the second one in half.
+
+    Break it: remove the 767px rule for .inline-note--collisions."""
+    p = open_overview(lambda rq: (200, collided(748, THREE_OVERS)), viewport=(390, 844))
+    try:
+        clipped = p.page.evaluate("""() => { const n = document.querySelector('.inline-note--collisions');
+                                     return n.scrollHeight - n.clientHeight; }""")
+        assert clipped <= 1, "%dpx of the note is cut off" % clipped
+        assert not p.errors, p.errors
+    finally:
+        p.close()
