@@ -329,6 +329,8 @@ func TestTheMapVendorsNothing(t *testing.T) {
 		"weather.js": true,
 		"savebar.js": true,
 		"get.js":     true,
+		// The DVSwitch guide's filler, 0.1.350.
+		"dvswitch.js": true,
 	}
 	entries, err := assets.ReadDir("static")
 	if err != nil {

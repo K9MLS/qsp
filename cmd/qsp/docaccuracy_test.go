@@ -495,6 +495,9 @@ func TestTheLocalEnvFileIsIgnored(t *testing.T) {
 // A value in two places disagrees with itself, which §8a already records. This
 // is the cheap half of the fix: the markup may name a planned subsystem only
 // while this package still calls it unbuilt.
+// codeValue is a <code> element and what it holds.
+var codeValue = regexp.MustCompile(`(?is)<code[^>]*>.*?</code>`)
+
 func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
 	assets, err := console.Assets()
 	if err != nil {
@@ -536,7 +539,10 @@ func TestTheConsoleNamesNoSubsystemThatIsNotUnbuilt(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading %s: %v", page, err)
 		}
-		lower := strings.ToLower(string(b))
+		// **A <code> value is a setting to type, not a place to go.** The
+		// DVSwitch guide (0508) tells a node owner to set ambeMode to P25,
+		// which is a value, and this matched it as a sidebar entry.
+		lower := strings.ToLower(codeValue.ReplaceAllString(string(b), "<code></code>"))
 		for label, name := range planned {
 			if strings.Contains(lower, ">"+label+"<") && !unbuilt[name] {
 				t.Errorf("%s offers %q in its navigation, and this build does not list %q "+

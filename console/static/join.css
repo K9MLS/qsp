@@ -356,56 +356,6 @@
   margin-top: var(--space-2);
 }
 
-/* A section that opens: the AllStar node's settings, wanted by few readers
-   of this page. Closed it is one line in the same card as the one above. */
-.extra--fold {
-  padding: 0;
-}
-
-.extra__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  cursor: pointer;
-  list-style: none;
-  border-radius: var(--radius-lg);
-}
-
-.extra__summary::-webkit-details-marker {
-  display: none;
-}
-
-.extra__summary:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: -2px;
-}
-
-.extra__summary .extra__title {
-  margin: 0;
-}
-
-.extra__chevron {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--color-foreground-subtle);
-  transition: transform var(--duration-fast) var(--ease-out-expo);
-}
-
-.extra--fold[open] .extra__chevron {
-  transform: rotate(90deg);
-}
-
-.extra--fold > :not(summary) {
-  margin-left: var(--space-5);
-  margin-right: var(--space-5);
-}
-
-.extra--fold > :last-child {
-  margin-bottom: var(--space-5);
-}
-
 .extra__label {
   margin: var(--space-4) 0 0;
   color: var(--color-foreground-muted);
@@ -416,12 +366,6 @@
   margin: var(--space-3) 0 0;
   color: var(--color-foreground-subtle);
   font-size: var(--text-sm);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .extra__chevron {
-    transition: none;
-  }
 }
 
 /* ---- Footer ---------------------------------------------------------- */
@@ -504,4 +448,204 @@
 
 .config__warnings li {
   margin-bottom: var(--space-2);
+}
+
+/* ---- The DVSwitch guide ------------------------------------------------ */
+
+/* dvswitch.html shares this sheet: it is the Join page's companion, read by
+   the same people in the same frame of mind, and a second look would make it
+   feel like somewhere else. What is new here is the routes and their marks. */
+
+.guide__section {
+  margin-top: var(--space-6);
+}
+
+.guide__heading {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  margin: 0 0 var(--space-3);
+}
+
+.guide__section code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+  color: var(--color-foreground);
+}
+
+/* One column of setting names down the whole guide, so the values line up
+   from table to table rather than each table finding its own width. */
+.guide .fields th[scope="row"] {
+  width: 45%;
+}
+
+.guide__list {
+  margin-top: 0;
+  font-size: var(--text-base);
+}
+
+.guide__caption {
+  caption-side: top;
+  text-align: left;
+  padding: var(--space-3) 0 var(--space-1);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+.guide__back {
+  margin-top: var(--space-3);
+}
+
+.guide__back a {
+  color: var(--color-primary);
+}
+
+/* What it gets you: four routes, two abreast where there is room. Each says
+   what changes for the people on the radios first, then who sets it up and
+   how far it can be trusted, in that order, because that is the order the
+   questions are asked in. */
+.routes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-3);
+}
+
+.route {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.route__title {
+  font-size: var(--text-base);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  margin: 0 0 var(--space-2);
+}
+
+.route__body {
+  margin: 0 0 var(--space-3);
+  color: var(--color-foreground-muted);
+  font-size: var(--text-sm);
+}
+
+/* Pushed to the foot of the card, so the marks line up across a row however
+   long each description is. */
+.route__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: auto 0 0;
+  font-size: var(--text-xs);
+}
+
+.route__who {
+  color: var(--color-foreground-subtle);
+}
+
+/* A route this server cannot offer right now: still described, because it
+   is what DVSwitch can do, and plainly not on offer. */
+.route--off {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+/* How far an instruction can be trusted, the vocabulary docs/DVSWITCH.md and
+   P25-REPEATER-SITE.md use. Green is kept for what has been seen working: a
+   page that paints a guess green has spent the colour. */
+.mark {
+  display: inline-block;
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  line-height: 1.6;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+
+.mark--proven {
+  color: var(--color-healthy);
+}
+
+/* Grey rather than the accent: the accent is this page's links and its
+   orange sits too near the amber of Not known to tell apart at a glance. */
+.mark--published {
+  color: var(--color-foreground-muted);
+}
+
+.mark--unknown {
+  color: var(--color-degraded);
+}
+
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-4) 0 0;
+  color: var(--color-foreground-subtle);
+  font-size: var(--text-xs);
+}
+
+.marks__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.marks dt,
+.marks dd {
+  margin: 0;
+}
+
+.fields--trouble td:first-child {
+  color: var(--color-foreground);
+  width: 40%;
+}
+
+.fields--trouble code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--color-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.1em 0.35em;
+}
+
+/* The Join page's way in: one paragraph saying what it is for, and a link to
+   the rest. */
+.extra__go {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  color: var(--color-primary);
+  font-weight: var(--weight-semibold);
+  text-decoration: none;
+}
+
+.extra__go:hover {
+  text-decoration: underline;
+}
+
+.extra__go:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.extra__go svg {
+  width: 16px;
+  height: 16px;
 }

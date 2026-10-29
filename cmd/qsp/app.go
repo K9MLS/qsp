@@ -2369,8 +2369,8 @@ var unbuiltSubsystems = []struct{ name, arrives string }{
 	// **AllStar left this list in 0505, as EchoLink did in 0418: not built,
 	// and not planned.** An AllStar node reaches QSP today through DVSwitch,
 	// whose MMDVM_Bridge logs in to a DMR master exactly as a hotspot does,
-	// transcoding on the node owner's own hardware; docs/ALLSTAR.md and the
-	// Join page say how. A native connector would share the one AMBE channel
+	// transcoding on the node owner's own hardware; docs/DVSWITCH.md and the
+	// console's /dvswitch guide say how. A native connector would share the one AMBE channel
 	// Zello uses and earn little over that, so "planned for roadmap phase 5"
 	// was a promise the project was not making. If native AllStar is ever
 	// taken up, it comes back here first.
@@ -2426,6 +2426,11 @@ func joinSettings(cfg config.Config) server.JoinSettings {
 	if cfg.DMR.Parrot.Enabled {
 		out.Parrot = cfg.DMR.Parrot.Talkgroup
 	}
+	// Only when the P25 listener is on, for the same reason: a port with
+	// nothing behind it is an instruction that cannot work.
+	if cfg.P25.Enabled {
+		out.P25Port = listenPortOr(cfg.P25.ListenAddress, 41000)
+	}
 	for _, tg := range cfg.DMR.Join.Talkgroups {
 		out.Talkgroups = append(out.Talkgroups, server.JoinTalkgroup{
 			Name:     tg.Name,
@@ -2442,13 +2447,19 @@ func joinSettings(cfg config.Config) server.JoinSettings {
 // join page is worse than a conventional one: the member would have no reason
 // to doubt it.
 func listenPort(addr string) int {
+	return listenPortOr(addr, 62031)
+}
+
+// listenPortOr is the port in addr, or fallback when addr has none: the
+// listener's own default, which is where it binds when the address omits it.
+func listenPortOr(addr string, fallback int) int {
 	_, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
-		return 62031
+		return fallback
 	}
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 || port > 65535 {
-		return 62031
+		return fallback
 	}
 	return port
 }

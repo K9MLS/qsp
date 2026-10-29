@@ -75,8 +75,9 @@ decoded, which is ADR-0062's line.
 
 **AllStar has no connector, and none is planned** (0.1.347). A node links
 through DVSwitch, whose MMDVM_Bridge logs in as a hotspot does and transcodes
-on the node's own vocoder; [`ALLSTAR.md`](ALLSTAR.md) has how, marked
-**Published** until a node is linked. Its health check, which named a roadmap
+on the node's own vocoder; [`DVSWITCH.md`](DVSWITCH.md) has how, for DMR and
+for P25, marked **Published** until a node is linked, and the console's public
+`/dvswitch` guide gives a node owner the same with this server's settings. Its health check, which named a roadmap
 phase for it, went the way EchoLink's did below.
 
 **EchoLink has no health check either**, and that is the exception. Reporting a

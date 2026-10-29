@@ -196,6 +196,11 @@ func newJoinServer(t *testing.T, opts Options) *Server {
 
 // TestJoinPathRedirects: /join is the URL an admin sends to fifty members.
 // Making them type join.html would be a small tax collected fifty times.
+//
+// The DVSwitch guide is sent to node owners the same way, so it gets the same
+// treatment.
+//
+// To see it fail: remove the /dvswitch handler in server.go.
 func TestJoinPathRedirects(t *testing.T) {
 	assets, err := console.Assets()
 	if err != nil {
@@ -207,15 +212,22 @@ func TestJoinPathRedirects(t *testing.T) {
 		Join:          joinSettings(),
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/join", nil)
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
+	for _, tc := range []struct{ path, want string }{
+		{"/join", "/join.html"},
+		{"/dvswitch", "/dvswitch.html"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			rec := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusFound {
-		t.Fatalf("GET /join returned %d, want 302", rec.Code)
-	}
-	if loc := rec.Header().Get("Location"); loc != "/join.html" {
-		t.Errorf("Location = %q, want /join.html", loc)
+			if rec.Code != http.StatusFound {
+				t.Fatalf("GET %s returned %d, want 302", tc.path, rec.Code)
+			}
+			if loc := rec.Header().Get("Location"); loc != tc.want {
+				t.Errorf("Location = %q, want %s", loc, tc.want)
+			}
+		})
 	}
 }
 
@@ -226,7 +238,7 @@ func TestJoinPageIsEmbedded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("console.Assets: %v", err)
 	}
-	for _, name := range []string{"join.html", "join.css", "join.js"} {
+	for _, name := range []string{"join.html", "join.css", "join.js", "dvswitch.html", "dvswitch.js"} {
 		if _, err := fs.Stat(assets, name); err != nil {
 			t.Errorf("%s is not embedded in the console assets: %v", name, err)
 		}

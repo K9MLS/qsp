@@ -38,7 +38,7 @@ core, call observation, the scheduler and PTT triggers.
 
 P25 and Zello are built since this was written. AllStar and EchoLink are not
 planned and are not in the health report: an AllStar node links through
-DVSwitch as a hotspot does (docs/ALLSTAR.md).
+DVSwitch as a hotspot does (docs/DVSWITCH.md).
 
 ---
 

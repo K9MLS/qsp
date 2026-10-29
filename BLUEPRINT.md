@@ -22,7 +22,7 @@
 
 **Changes from v0.3:**
 - **P25 position revised.** We don't rebuild the wire protocol, but we *do* own the setup experience. DVM being technically excellent and painful to configure is our thesis, not a reason to walk away (§5).
-- **AllStar and Zello are now full bidirectional v1 features.** Not listen-only, not deferred (§6). *AllStar has since been withdrawn: a node links through DVSwitch (§6, `docs/ALLSTAR.md`).*
+- **AllStar and Zello are now full bidirectional v1 features.** Not listen-only, not deferred (§6). *AllStar has since been withdrawn: a node links through DVSwitch (§6, `docs/DVSWITCH.md`).*
 - **Transcoding architecture added** — the real engineering problem, with hard capacity limits (§7). QSP does not decode audio; a transcoder outside it owns the AMBE hardware.
 - **Transcoding policy is now an admin decision, exposed in the UI** (§8).
 - **Engineering standards section added** (§13).
@@ -108,7 +108,7 @@ Published guides warn about this specific footgun. That is not a documentation p
 **Neither box under the audio bus is planned now.** EchoLink was dropped in
 0418 and AllStar on 2026-10-26: an AllStar node links through DVSwitch, whose
 MMDVM_Bridge logs in as a hotspot does, so it needs no connector here. The
-USRP bus is built, for Zello. See `docs/ALLSTAR.md`.
+USRP bus is built, for Zello. See `docs/DVSWITCH.md`.
 
 ### The headline feature
 
@@ -170,7 +170,7 @@ The connectors are genuinely cheap. USRP includes signaling (TX/RX transitions) 
 | Connector | Difficulty | Notes |
 |---|---|---|
 | **USRP bus** | Easy | ~200 lines. UDP, PCM, TX/RX flags |
-| **AllStar** | Not planned | Withdrawn 2026-10-26. A node links through DVSwitch as a hotspot does and transcodes on its own vocoder; a native connector would share the one AMBE channel Zello uses. `docs/ALLSTAR.md` |
+| **AllStar** | Not planned | Withdrawn 2026-10-26. A node links through DVSwitch as a hotspot does and transcodes on its own vocoder; a native connector would share the one AMBE channel Zello uses. `docs/DVSWITCH.md` |
 | **Zello** | Medium | WebSocket + JSON + Opus. Works with **Zello Free and Zello Work** |
 | **EchoLink** | Medium-Hard | Protocol is fine; the policy is the friction |
 
@@ -483,7 +483,7 @@ Each phase ends at an **approval gate** with **real hardware validation**. A pas
 | **2** | Console: wizard, routing matrix, live feed, health, full field-help | A ham who's never seen it is running in under 10 minutes, unassisted |
 | **3** | Scheduler + PTT-triggered bridging + config versioning | A scheduled net links and unlinks unattended for **two weeks** |
 | **4** | P25 peer + DVM network peering + guided DVM provisioning | P25 and DMR live on one instance; a Quantar site configured from our UI |
-| **5** | USRP bus | Built, carrying Zello. AllStar is reached through DVSwitch rather than a connector (`docs/ALLSTAR.md`) |
+| **5** | USRP bus | Built, carrying Zello. AllStar is reached through DVSwitch rather than a connector (`docs/DVSWITCH.md`) |
 | **6** | Zello connector (full duplex) + EchoLink via ASL3 | Bidirectional QSO through both |
 | **7** | Closed beta with the group | 5+ independent operators running it |
 | **8** | Public repo, docs, Docker image | v1.0 |

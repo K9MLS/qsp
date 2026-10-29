@@ -271,67 +271,25 @@
     </ul>
   </section>
 
-  <!-- Folded: most people on this page bring a hotspot, and a node owner is
-       one reader in many. A node links through DVSwitch, whose MMDVM_Bridge
-       logs in as a hotspot does, so the values are the hotspot's and are
-       filled in by the same code. QSP has no AllStar connector and none is
-       planned (0505); docs/ALLSTAR.md has the server's half and the reasons. -->
-  <details class="extra extra--fold" id="allstar">
-    <summary class="extra__summary">
-      <svg class="extra__chevron" viewBox="0 0 16 16" fill="none" stroke="currentColor"
-           stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"
-           aria-hidden="true" focusable="false"><path d="M6 3.5 10.5 8 6 12.5"/></svg>
-      <span class="extra__title">Linking an AllStar node</span>
-    </summary>
+  <!-- A node owner is one reader in many here, so the Join page says what
+       DVSwitch is for in a paragraph and the guide has the rest. QSP has no
+       AllStar connector and none is planned (0505); a node comes in through
+       DVSwitch, on its owner's hardware. docs/DVSWITCH.md is the operator's
+       half. -->
+  <section class="extra" id="dvswitch" aria-labelledby="dvswitch-title">
+    <h2 class="extra__title" id="dvswitch-title">Bring other radios in with DVSwitch</h2>
     <p class="extra__body">
-      An AllStar node joins through <strong>DVSwitch</strong>: its MMDVM_Bridge
-      logs in here as a hotspot does, and Analog_Bridge turns the node's audio
-      into DMR on the node's own vocoder. Ask whoever runs this network to
-      admit your node's DMR ID first, as you would for a hotspot.
+      Run an <strong>AllStar repeater or node</strong>? With DVSwitch, free
+      software on your own machine, the people on it talk on this
+      network&rsquo;s DMR or P25 talkgroups from the FM radios they already
+      have. The guide says what it gets you, what you need, and the settings
+      for this network.
     </p>
-
-    <p class="extra__label">In <code>MMDVM_Bridge.ini</code></p>
-    <table class="fields">
-      <tbody>
-        <tr>
-          <th scope="row">[General] Id</th>
-          <td class="fields__missing">The DMR ID your node registers with</td>
-        </tr>
-        <tr>
-          <th scope="row">[DMR Network] Address</th>
-          <td><code id="allstar-address">…</code></td>
-        </tr>
-        <tr>
-          <th scope="row">[DMR Network] Port</th>
-          <td><code id="allstar-port">…</code></td>
-        </tr>
-        <tr>
-          <th scope="row">[DMR Network] Password</th>
-          <td class="fields__missing">Sent to you separately — it is not shown on this page</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p class="extra__label">In <code>Analog_Bridge.ini</code>, under <code>[AMBE_AUDIO]</code></p>
-    <table class="fields">
-      <tbody>
-        <tr>
-          <th scope="row">txTg</th>
-          <td>A number from the <strong>Dial this</strong> column above</td>
-        </tr>
-        <tr>
-          <th scope="row">txTs</th>
-          <td>Its timeslot, from the same table</td>
-        </tr>
-      </tbody>
-    </table>
-
-    <p class="extra__note">
-      Names as DVSwitch's sample files give them; check them against your
-      version. <strong>This network has not linked a node this way yet</strong>
-      &mdash; tell whoever runs it how it goes.
-    </p>
-  </details>
+    <a class="extra__go" href="/dvswitch">Open the DVSwitch guide
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.75"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"
+           focusable="false"><path d="M3 8h10M9 4l4 4-4 4"/></svg></a>
+  </section>
 
   <footer class="join__foot">
     <p>

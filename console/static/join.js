@@ -185,10 +185,6 @@
     /* 62031 is the port QSP listens on by default, not a guess, so it is a
      * value to type even when the server has not told us one. */
     setField($("field-port"), settings.port ? String(settings.port) : "62031", "");
-    /* The AllStar node's MMDVM_Bridge logs in where a hotspot does, so its
-     * values are these and nothing else. */
-    setField($("allstar-address"), settings.address, "Ask whoever runs the network");
-    setField($("allstar-port"), settings.port ? String(settings.port) : "62031", "");
 
     var notice = $("disabled-notice");
     if (notice) {

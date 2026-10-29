@@ -26,23 +26,18 @@ def check_the_page_says_which_text_format_to_use():
         p.close()
 
 
-def check_the_allstar_guide_is_folded_and_filled_in():
-    """A node owner needs this server's address and port in MMDVM_Bridge.ini,
-    the same values a hotspot uses; most readers of this page bring a
-    hotspot, so the section starts closed.
+def check_the_page_says_what_dvswitch_is_for_and_where_the_guide_is():
+    """An AllStar owner reading the Join page needs to learn in a paragraph
+    what DVSwitch gets them, and find the rest; the settings live on the
+    guide, not here.
 
-    Break it: in join.js, stop filling allstar-address."""
-    join = lambda rq: (200, {"enabled": True, "settings": {"address": "qsp.example.org", "port": 62031}})
-    p = Page("join", api={("GET", "/api/join"): join})
+    Break it: delete the DVSwitch section from join.html, or point its link
+    anywhere but /dvswitch."""
+    p = Page("join")
     try:
-        assert not p.page.evaluate("() => document.getElementById('allstar').open"), "it starts open"
-        assert not p.page.is_visible("#allstar-address"), "its values show while it is closed"
-        p.page.click("#allstar summary")
-        p.page.wait_for_timeout(100)
-        assert p.page.inner_text("#allstar-address") == "qsp.example.org", p.page.inner_text("#allstar-address")
-        assert p.page.inner_text("#allstar-port") == "62031", p.page.inner_text("#allstar-port")
-        assert "has not linked a node this way yet" in p.page.inner_text("#allstar"), \
-            "it does not say this is untried"
+        body = p.page.inner_text("#dvswitch")
+        assert "AllStar" in body and "FM radios" in body, body
+        assert p.page.get_attribute("#dvswitch a.extra__go", "href") == "/dvswitch"
         assert not p.errors, p.errors
     finally:
         p.close()

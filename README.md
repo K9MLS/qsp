@@ -41,8 +41,10 @@ starts a server, logs four demonstration hotspots in and takes the picture.*
   schedule, links, accounts, the call record, backup and restore.
 
 **AllStar** links through DVSwitch, whose MMDVM_Bridge logs in as a hotspot
-does; [`docs/ALLSTAR.md`](docs/ALLSTAR.md) has how, and why QSP has no
-AllStar connector of its own and none is planned. EchoLink is researched and
+does, to DMR or, in P25 mode, to the P25 side. Every server has a public
+guide for node owners at `/dvswitch`, with its own settings filled in;
+[`docs/DVSWITCH.md`](docs/DVSWITCH.md) is the operator's half, and why QSP has
+no AllStar connector of its own and none is planned. EchoLink is researched and
 not planned either, so QSP reports on neither; BLUEPRINT.md has the notes.
 
 ## What you need

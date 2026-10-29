@@ -143,7 +143,7 @@ Phase 2 no longer gates anything; the soak is the only clock still running.
 Nothing, since 0.1.347. AllStar registered a health check reporting
 `unavailable` with the phase that would bring it, until it left in 0505 the
 way EchoLink did: a node links through DVSwitch as a hotspot does
-(docs/ALLSTAR.md), and a native connector is not planned. The authoritative
+(docs/DVSWITCH.md), and a native connector is not planned. The authoritative
 list is `unbuiltSubsystems` in `cmd/qsp/app.go`,
 and a subsystem leaves it on the commit that implements it. P25 and Zello left
 it by being built, in 0.1.x and 0.1.243 respectively. **EchoLink left it in 0418
@@ -860,7 +860,7 @@ it is more use than a list of what exists today.
 | **IPSC** | built since this table was written, from captures as [ADR-0029](docs/adr/ADR-0029-ipsc-from-capture.md) required; Motorola repeaters link today |
 | **A vocoder** | built since this table was written: QSP decodes through an AMBE dongle (ADR-0061, `internal/ambe`) for bridges that name a transcoder, and still relays DMR-to-DMR untouched |
 | **Hotspot configuration guidance** | a member's own hotspot needs `TGRewrite` and `PCRewrite` rules QSP cannot supply, and the join page does not mention them. Every new member repeats the same afternoon. See §6a |
-| **AllStar** | not planned since 0505: a node links through DVSwitch as a hotspot does, transcoding on its own vocoder (docs/ALLSTAR.md) |
+| **AllStar** | not planned since 0505: a node links through DVSwitch as a hotspot does, transcoding on its own vocoder (docs/DVSWITCH.md) |
 | **EchoLink** | dropped from the report in 0418 with no plan to build it; BLUEPRINT.md keeps the notes |
 | **Zello** | built since this table was written: on the air 2026-09-16 through a DVstick 30 — §8s |
 | **P25** | built 2026-09-11 — a P25 reflector over IP, off unless `p25.enabled`. Not a Quantar link; that is V.24/HDLC and unbuilt |

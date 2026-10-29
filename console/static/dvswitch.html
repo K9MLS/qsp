@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bring other radios in with DVSwitch — QSP</title>
+<link rel="stylesheet" href="/tokens.css">
+<link rel="stylesheet" href="/console.css">
+<link rel="stylesheet" href="/join.css">
+<link rel="icon" href="/mark.svg" type="image/svg+xml">
+</head>
+<body class="join-body">
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<!-- The DVSwitch guide, public as the Join page is: a node owner reads it
+     before they have anything to sign in with. QSP has no AllStar connector
+     and none is planned (0505); DVSwitch is how other radios come in, on the
+     node owner's own hardware. docs/DVSWITCH.md is the operator's half.
+
+     Every route is marked with how far it can be trusted. Nothing here has
+     been done against this network yet, so nothing says "Proven here"; the
+     marks change when a test passes, not before. -->
+<main class="join guide" id="main">
+
+  <header class="join__head">
+    <svg class="join__mark" viewBox="0 0 32 32" fill="none" stroke="currentColor"
+         stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true" focusable="false">
+      <path d="M5 11h17M17 6l5 5-5 5"/>
+      <path d="M27 21H10M15 16l-5 5 5 5"/>
+    </svg>
+    <h1 class="join__title">Bring other radios in with DVSwitch</h1>
+    <p class="join__lede">
+      DVSwitch is free software that turns audio from one kind of radio
+      system into another. Run on your own machine, it lets an AllStar
+      repeater or node take part in <span id="network-name">this network</span>
+      &mdash; and the people on it keep the radios they already have.
+    </p>
+  </header>
+
+  <section class="guide__section" aria-labelledby="gets-title">
+    <h2 class="guide__heading" id="gets-title">What it gets you</h2>
+
+    <ul class="routes">
+      <li class="route">
+        <h3 class="route__title">AllStar to DMR</h3>
+        <p class="route__body">Anyone on your AllStar node, on any FM radio,
+          talks on one of this network's DMR talkgroups, and DMR users hear
+          them.</p>
+        <p class="route__meta">
+          <span class="route__who">You set it up</span>
+          <span class="mark mark--published">Published</span>
+        </p>
+      </li>
+      <li class="route" id="route-p25">
+        <h3 class="route__title">AllStar to P25</h3>
+        <p class="route__body">The same, on this network's P25 side. QSP
+          copies P25 as it comes, so the node is heard by every P25 hotspot and
+          repeater linked here.</p>
+        <p class="route__meta">
+          <span class="route__who">You set it up</span>
+          <span class="mark mark--published">Published</span>
+        </p>
+      </li>
+      <li class="route">
+        <h3 class="route__title">YSF, D-STAR or NXDN onto DMR</h3>
+        <p class="route__body">A DVSwitch machine with a vocoder joins a
+          reflector of another mode to one DMR talkgroup here.</p>
+        <p class="route__meta">
+          <span class="route__who">The network's administrator</span>
+          <span class="mark mark--published">Published</span>
+        </p>
+      </li>
+      <li class="route">
+        <h3 class="route__title">DMR and P25 as one conversation</h3>
+        <p class="route__body">A DVSwitch machine converts between a DMR
+          talkgroup and a P25 one on this network, so users of both hear each
+          other.</p>
+        <p class="route__meta">
+          <span class="route__who">The network's administrator</span>
+          <span class="mark mark--unknown">Not known</span>
+        </p>
+      </li>
+    </ul>
+
+    <dl class="marks">
+      <div class="marks__item">
+        <dt><span class="mark mark--proven">Proven here</span></dt>
+        <dd>Done against this network and seen to work</dd>
+      </div>
+      <div class="marks__item">
+        <dt><span class="mark mark--published">Published</span></dt>
+        <dd>From DVSwitch&rsquo;s own documentation and guides; not yet tried here</dd>
+      </div>
+      <div class="marks__item">
+        <dt><span class="mark mark--unknown">Not known</span></dt>
+        <dd>A part nobody here has confirmed</dd>
+      </div>
+    </dl>
+  </section>
+
+  <section class="guide__section" aria-labelledby="need-title">
+    <h2 class="guide__heading" id="need-title">What you need</h2>
+    <ul class="extra__list guide__list">
+      <li><strong>DVSwitch</strong> on the machine beside your node: a
+        Raspberry Pi or any Debian computer. The DVSwitch Server package
+        installs MMDVM_Bridge, Analog_Bridge and the gateways together.</li>
+      <li><strong>A vocoder for DMR</strong>: a ThumbDV or DV3000 on USB, or
+        the software one DVSwitch offers on some machines. It does the
+        converting, on your hardware; this server converts nothing for you.</li>
+      <li><strong>A DMR ID</strong> that whoever runs this network has
+        allowed in, and the network&rsquo;s password from them. P25 uses the
+        same ID.</li>
+    </ul>
+    <p class="extra__note">
+      DVSwitch Server&rsquo;s <code>dvs</code> menu sets most of what follows
+      for you. The file names below are the ones it writes, usually under
+      <code>/opt</code>; check them against your install.
+    </p>
+  </section>
+
+  <section class="extra" id="dmr" aria-labelledby="dmr-title">
+    <h2 class="extra__title" id="dmr-title">Setting up AllStar to DMR</h2>
+    <p class="extra__body">
+      MMDVM_Bridge logs in here as a hotspot does, so its values are a
+      hotspot&rsquo;s.
+    </p>
+
+    <p class="extra__label">In <code>MMDVM_Bridge.ini</code></p>
+    <table class="fields">
+      <tbody>
+        <tr>
+          <th scope="row">[General] Id</th>
+          <td class="fields__missing">The DMR ID this network allowed in</td>
+        </tr>
+        <tr>
+          <th scope="row">[DMR Network] Enable</th>
+          <td><code>1</code></td>
+        </tr>
+        <tr>
+          <th scope="row">[DMR Network] Address</th>
+          <td><code id="dmr-address">…</code></td>
+        </tr>
+        <tr>
+          <th scope="row">[DMR Network] Port</th>
+          <td><code id="dmr-port">…</code></td>
+        </tr>
+        <tr>
+          <th scope="row">[DMR Network] Password</th>
+          <td class="fields__missing">Sent to you separately — it is not shown on this page</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="extra__label">In <code>Analog_Bridge.ini</code>, under <code>[AMBE_AUDIO]</code></p>
+    <table class="fields">
+      <tbody>
+        <tr>
+          <th scope="row">ambeMode</th>
+          <td><code>DMR</code></td>
+        </tr>
+        <tr>
+          <th scope="row">gatewayDmrId</th>
+          <td class="fields__missing">The same DMR ID; your node&rsquo;s calls carry it</td>
+        </tr>
+        <tr>
+          <th scope="row">txTg</th>
+          <td>A talkgroup from the table below</td>
+        </tr>
+        <tr>
+          <th scope="row">txTs</th>
+          <td>Its timeslot</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="fields fields--talkgroups" id="talkgroups">
+      <caption class="guide__caption">This network&rsquo;s talkgroups</caption>
+      <thead>
+        <tr>
+          <th scope="col">txTg</th>
+          <th scope="col">txTs</th>
+          <th scope="col">Name</th>
+        </tr>
+      </thead>
+      <tbody id="talkgroup-rows">
+        <tr><td colspan="3" class="fields__missing">Loading…</td></tr>
+      </tbody>
+    </table>
+
+    <p class="extra__note">
+      One talkgroup at a time. Changing it from the node by DTMF is a
+      DVSwitch feature <span class="mark mark--unknown">Not known</span> here.
+    </p>
+  </section>
+
+  <section class="extra" id="p25" aria-labelledby="p25-title">
+    <h2 class="extra__title" id="p25-title">Setting up AllStar to P25</h2>
+
+    <p class="extra__body" id="p25-off" hidden>
+      <strong>This network is not taking P25 gateways right now.</strong>
+      Ask whoever runs it; the settings appear here when it is.
+    </p>
+
+    <div id="p25-on">
+      <p class="extra__body">
+        The same machine, switched to P25. Its P25Gateway reaches this server
+        as a P25 hotspot&rsquo;s does, and needs no vocoder of yours for
+        P25 to P25.
+      </p>
+
+      <p class="extra__label">In <code>Analog_Bridge.ini</code>, under <code>[AMBE_AUDIO]</code></p>
+      <table class="fields">
+        <tbody>
+          <tr>
+            <th scope="row">ambeMode</th>
+            <td><code>P25</code></td>
+          </tr>
+          <tr>
+            <th scope="row">txTg</th>
+            <td class="fields__missing">The reflector number whoever runs this network gives you</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="extra__label">In <code>MMDVM_Bridge.ini</code></p>
+      <table class="fields">
+        <tbody>
+          <tr>
+            <th scope="row">[P25 Network] Enable</th>
+            <td><code>1</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="extra__label">In <code>P25Gateway.ini</code></p>
+      <table class="fields">
+        <tbody>
+          <tr>
+            <th scope="row">[General] Callsign</th>
+            <td class="fields__missing">Your callsign. Ask for it to be added to the P25 gateways this network answers</td>
+          </tr>
+          <tr>
+            <th scope="row">[Network] Startup</th>
+            <td class="fields__missing">The same reflector number</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="extra__label">And one line in P25Gateway&rsquo;s local hosts file, with that number first</p>
+      <pre class="config" id="p25-hosts">number  …  …</pre>
+
+      <p class="extra__note">
+        If the number is already in the downloaded host list, that entry wins
+        and yours is ignored: check both. Restart P25Gateway after any change,
+        then relink. Whether DVSwitch&rsquo;s P25 audio needs a vocoder of its
+        own is <span class="mark mark--unknown">Not known</span> here.
+      </p>
+    </div>
+  </section>
+
+  <section class="extra" id="admin" aria-labelledby="admin-title">
+    <h2 class="extra__title" id="admin-title">For the network&rsquo;s administrator</h2>
+    <p class="extra__body">
+      <strong>Other modes onto DMR.</strong> A DVSwitch machine with a vocoder
+      logs in here as a hotspot on one talkgroup, and to a YSF, D-STAR or NXDN
+      reflector on the other side, converting between them.
+    </p>
+    <p class="extra__body">
+      <strong>DMR and P25 together.</strong> The same machine on both of this
+      network&rsquo;s sides: a hotspot on a DMR talkgroup and a P25 gateway on
+      a reflector number, converting AMBE to IMBE and back.
+    </p>
+    <p class="extra__note">
+      QSP itself converts nothing between modes, by design: a vocoder in the
+      server would be one shared channel deciding who is heard. Each machine
+      that converts brings its own, and the server carries what arrives.
+    </p>
+  </section>
+
+  <section class="guide__section" aria-labelledby="trouble-title">
+    <h2 class="guide__heading" id="trouble-title">When it does not work</h2>
+    <table class="fields fields--trouble">
+      <thead>
+        <tr>
+          <th scope="col">You see</th>
+          <th scope="col">Look at</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Nothing reaches the network</td>
+          <td>The address and port above, and whether your machine can reach
+            them over UDP</td>
+        </tr>
+        <tr>
+          <td>The node connects, and its calls never appear</td>
+          <td><code>txTg</code> and <code>txTs</code>, then
+            <code>gatewayDmrId</code></td>
+        </tr>
+        <tr>
+          <td>Refused, or connected and then dropped</td>
+          <td>Your DMR ID, password or callsign, with whoever runs the
+            network</td>
+        </tr>
+        <tr>
+          <td>Too loud or too quiet one way</td>
+          <td>Analog_Bridge&rsquo;s gain settings, on your machine. Nothing
+            here changes your audio</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="join__foot">
+    <p>
+      <strong>Nobody has linked DVSwitch to this network yet.</strong> If you
+      are the first, tell whoever runs it how it went, and what on this page
+      was wrong.
+    </p>
+    <p class="guide__back"><a href="/join">Back to joining with a hotspot</a></p>
+  </footer>
+
+</main>
+
+<script src="/dvswitch.js"></script>

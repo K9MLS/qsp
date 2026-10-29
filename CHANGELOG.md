@@ -6,6 +6,27 @@ All notable changes to QSP. Dates are UTC.
 
 ### Added
 
+- **A DVSwitch guide for node owners, at `/dvswitch` on every server.** The
+  Join page's AllStar section was all settings and never said why anybody
+  would want them. It is now one paragraph saying what DVSwitch gets an
+  AllStar owner, with a link to a guide. The guide opens with four routes,
+  each saying who sets it up and how far it can be trusted:
+  - **AllStar to DMR**: FM users on the node talk on this network's DMR
+    talkgroups.
+  - **AllStar to P25**: the same on the P25 side, heard by P25 hotspots and
+    the Motorola repeaters linked here.
+  - **YSF, D-STAR or NXDN onto DMR**, for the administrator.
+  - **DMR and P25 as one conversation**, for the administrator.
+
+  Then it covers what you need (DVSwitch, a vocoder, an admitted DMR ID) and
+  the settings for DMR and for P25, with this server's address, ports and
+  talkgroups filled in. Talkgroups are shown as they arrive, which is the
+  number a node sets. The P25 steps appear only when the server accepts P25
+  gateways; otherwise the guide says so rather than giving a port nothing
+  answers on. Every route is marked **Published** or **Not known**, because
+  nobody has linked DVSwitch to QSP yet, and the guide says that too. The
+  join API now carries the P25 port. The AllStar doc becomes
+  `docs/DVSWITCH.md`, the operator's half, covering all four routes.
 - **AllStar links through DVSwitch, and QSP no longer promises a connector.**
   The health report said AllStar was "planned for roadmap phase 5". It is
   not planned: an AllStar node reaches QSP through DVSwitch, whose
@@ -14,7 +35,7 @@ All notable changes to QSP. Dates are UTC.
   The check is gone, as EchoLink's went in 0.1.260, and a test keeps it from
   returning as "planned". The Join page has a folded **Linking an AllStar
   node** section with this server's address and port filled into the
-  `MMDVM_Bridge.ini` values, and `docs/ALLSTAR.md` covers the server's half
+  `MMDVM_Bridge.ini` values, and `docs/DVSWITCH.md` (then `ALLSTAR.md`) covers the server's half
   and why there is no native connector. Both say plainly that no node has
   been linked to QSP this way yet.
 - **Last heard is a window ten rows tall.** All fifty calls are kept, and the

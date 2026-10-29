@@ -35,6 +35,13 @@ type JoinSettings struct {
 	Address string `json:"address,omitempty"`
 	// Port is the DMR listener's UDP port.
 	Port int `json:"port"`
+	// P25Port is the P25 listener's UDP port, or zero when it is off.
+	//
+	// For the DVSwitch guide: a node in P25 mode reaches this server as a
+	// P25 gateway does, at the same address. Zero is said rather than guessed,
+	// so the guide can say this network takes no P25 gateways instead of
+	// printing a port nothing answers on.
+	P25Port int `json:"p25_port,omitempty"`
 	// Talkgroups are the ones members can use, in the form they must be
 	// dialled.
 	Talkgroups []JoinTalkgroup `json:"talkgroups"`
