@@ -2426,6 +2426,11 @@ func joinSettings(cfg config.Config) server.JoinSettings {
 	if cfg.DMR.Parrot.Enabled {
 		out.Parrot = cfg.DMR.Parrot.Talkgroup
 	}
+	// A permit list admits only what it names. Any other mode, or no list,
+	// turns nobody away for their ID.
+	if a := cfg.DMR.Access; a != nil && a.Registration.Mode == "permit" {
+		out.IDsListed = true
+	}
 	// Only when the P25 listener is on, for the same reason: a port with
 	// nothing behind it is an instruction that cannot work.
 	if cfg.P25.Enabled {

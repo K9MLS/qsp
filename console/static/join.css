@@ -113,6 +113,21 @@
   margin: var(--space-3) 0 0;
 }
 
+/* Something the member must do before the rest can work, so it is not left
+   in the quiet grey of the notes around it: a rule down the side in the
+   colour that asks for attention, and text at full strength. */
+.step__note--listed {
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--color-degraded);
+  background: var(--color-surface);
+  color: var(--color-foreground);
+}
+
+.step__note--listed strong {
+  color: var(--color-foreground);
+  font-weight: var(--weight-semibold);
+}
+
 .step code {
   font-family: var(--font-mono);
   font-size: 0.9em;

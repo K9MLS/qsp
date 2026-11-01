@@ -42,6 +42,16 @@ type JoinSettings struct {
 	// so the guide can say this network takes no P25 gateways instead of
 	// printing a port nothing answers on.
 	P25Port int `json:"p25_port,omitempty"`
+	// IDsListed says this server admits only the hotspots named under Who
+	// may connect, so a member's ID must be added before their hotspot can
+	// log in.
+	//
+	// **Said rather than hedged** (0509). The pages told every member to have
+	// their ID "allowed in", which is needed on a listed network and is a
+	// question for nobody on an open one; a Docker install starts listed,
+	// from QSP_ALLOWED_PEERS, and a systemd one may well not. Only the ID
+	// list's mode is published, never the IDs.
+	IDsListed bool `json:"ids_listed,omitempty"`
 	// Talkgroups are the ones members can use, in the form they must be
 	// dialled.
 	Talkgroups []JoinTalkgroup `json:"talkgroups"`

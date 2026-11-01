@@ -93,3 +93,17 @@ def check_a_phone_does_not_scroll_sideways():
         assert not p.errors, p.errors
     finally:
         p.close()
+
+
+def check_a_node_owner_is_told_to_send_their_id_only_when_it_is_needed():
+    """As on the Join page: a node is turned away on a listed network until
+    its ID is added, and an open one has nothing to ask.
+
+    Break it: in dvswitch.js, stop setting ids-listed."""
+    for listed in (True, False):
+        p = Page("dvswitch", api=joined(ids_listed=listed))
+        try:
+            assert p.page.is_visible("#ids-listed") == listed, "listed=%s" % listed
+            assert not p.errors, p.errors
+        finally:
+            p.close()

@@ -56,8 +56,10 @@ also written as the only radios allowed to transmit — see "Upgrading".
 
 **QSP will not start an open master for you.** A listener reachable from the
 internet that accepts anybody is a problem for the people it relays to as much
-as for you, so it asks who may connect before it starts listening. Add IDs to
-`dmr.access` later to admit more.
+as for you, so it asks who may connect before it starts listening. These IDs
+become the console's **Access control → Who may connect** list, which admits
+only what it names: add each new hotspot's ID there, or change the list to
+turn away only the IDs it names. The Join page tells members which applies.
 
 Both values are read **only on the first run**. After that
 `/var/lib/qsp/qsp.json` is yours, and nothing here overwrites it.
@@ -201,17 +203,44 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml \
 
 ## Upgrading
 
-The image tag is pinned rather than `latest`, so an upgrade is a decision you
-make:
+**One command, for an install made with `git clone`** as the README describes.
+Every release updates the image tag in `docker-compose.yml`, so pulling the
+repository is choosing the new version, and pulling the image fetches it:
 
 ```sh
-nano docker-compose.yml     # change the tag, and in docker-compose.zello.yml if you added Zello
-docker compose pull && docker compose up -d
-docker compose exec qsp /qsp -version
+cd ~/qsp && git pull && cat VERSION && cd deploy/docker && docker compose pull && docker compose up -d && sleep 15 && docker exec qsp /qsp -version
 ```
 
-**Check the version.** `docker compose ps` says a container started; only the
-version says what.
+Change `~/qsp` if you cloned somewhere else. The last line it prints is the
+version now running, and it should match the `cat VERSION` above it.
+**Check it.** `docker compose ps` says a container started; only the version
+says which.
+
+- **Your settings are safe.** `.env` and the `qsp-data` volume, which holds
+  the configuration, accounts and call history, are not part of the
+  repository, and `git pull` does not touch them.
+- **If `git pull` refuses** because you edited `docker-compose.yml`, put the
+  change in `.env` instead, then `git checkout docker-compose.yml` and run
+  the command again.
+- **"manifest unknown"** from `docker compose pull` means the release is
+  still being built: an image is published a few minutes after a version is
+  tagged. Nothing has changed and the running version carries on; try again
+  in ten minutes.
+- **With Zello**, if you uncommented `COMPOSE_FILE` in `.env` the command
+  above already includes it. Otherwise name both files on both compose
+  commands, as you did to start it:
+
+  ```sh
+  cd ~/qsp && git pull && cat VERSION && cd deploy/docker && docker compose -f docker-compose.yml -f docker-compose.zello.yml pull && docker compose -f docker-compose.yml -f docker-compose.zello.yml up -d && sleep 15 && docker exec qsp /qsp -version
+  ```
+
+**Without git**, if you downloaded only this folder: change the tag in
+`docker-compose.yml` (and `docker-compose.zello.yml` with Zello) to the new
+version, then `docker compose pull && docker compose up -d`.
+
+**Built from your own checkout** with `docker-compose.build.yml`, add `--build`
+to `up -d` instead of pulling: `docker compose pull` would fetch the last
+released image, not what is in front of you.
 
 ### Upgrading from 0.1.253 or earlier: one command first
 

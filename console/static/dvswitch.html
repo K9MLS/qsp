@@ -108,10 +108,15 @@
       <li><strong>A vocoder for DMR</strong>: a ThumbDV or DV3000 on USB, or
         the software one DVSwitch offers on some machines. It does the
         converting, on your hardware; this server converts nothing for you.</li>
-      <li><strong>A DMR ID</strong> that whoever runs this network has
-        allowed in, and the network&rsquo;s password from them. P25 uses the
-        same ID.</li>
+      <li><strong>Your DMR ID</strong>, and the network&rsquo;s password
+        from whoever runs it. P25 uses the same ID.</li>
     </ul>
+    <!-- Shown only when this server admits listed IDs alone (0509). -->
+    <p class="step__note step__note--listed" id="ids-listed" hidden>
+      <strong>This network admits only stations it has listed.</strong> Send
+      your node&rsquo;s DMR ID to whoever runs it first, or it will be turned
+      away however right the rest is.
+    </p>
     <p class="extra__note">
       DVSwitch Server&rsquo;s <code>dvs</code> menu sets most of what follows
       for you. The file names below are the ones it writes, usually under
@@ -131,7 +136,7 @@
       <tbody>
         <tr>
           <th scope="row">[General] Id</th>
-          <td class="fields__missing">The DMR ID this network allowed in</td>
+          <td class="fields__missing">Your DMR ID</td>
         </tr>
         <tr>
           <th scope="row">[DMR Network] Enable</th>

@@ -104,6 +104,9 @@ TYT and Retevis radios read it, and it is the format QSP's own texts use.
 this network, turn off automatic rewrite rules. The console's Join page says
 the same to members.
 
+**Upgrading** is one command from the folder you cloned; see "Upgrading" in
+[`deploy/docker/README.md`](deploy/docker/README.md).
+
 Bridges, the schedule, links and Zello are all on the console's pages.
 [`deploy/docker/README.md`](deploy/docker/README.md) has the rest: what is on
 and off to begin with, upgrading, where your data lives, and troubleshooting.

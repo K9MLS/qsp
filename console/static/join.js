@@ -185,6 +185,11 @@
     /* 62031 is the port QSP listens on by default, not a guess, so it is a
      * value to type even when the server has not told us one. */
     setField($("field-port"), settings.port ? String(settings.port) : "62031", "");
+    /* Said only where it is true: see JoinSettings.IDsListed. */
+    var listed = $("ids-listed");
+    if (listed) {
+      listed.hidden = !settings.ids_listed;
+    }
 
     var notice = $("disabled-notice");
     if (notice) {

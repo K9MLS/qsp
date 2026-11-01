@@ -98,6 +98,10 @@
     /* 62031 is QSP's own default, not a guess; join.js says the same. */
     setField($("dmr-port"), settings.port ? String(settings.port) : "62031", "");
     renderTalkgroups(settings.talkgroups);
+    var listed = $("ids-listed");
+    if (listed) {
+      listed.hidden = !settings.ids_listed;
+    }
     /* Unknown is not off: when this server could not be asked, the P25
      * steps stay, with placeholders, rather than saying it takes no
      * gateways. */

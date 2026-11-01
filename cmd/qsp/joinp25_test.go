@@ -34,3 +34,29 @@ func TestTheJoinSettingsCarryTheP25PortOnlyWhenItIsOn(t *testing.T) {
 		})
 	}
 }
+
+// TestTheJoinSettingsSayWhetherIDsMustBeListed: the Join page and the
+// DVSwitch guide tell a member to send their ID first only when the server
+// admits nothing else.
+//
+// To see it fail: set IDsListed whenever cfg.DMR.Access is not nil, and the
+// deny-list case says listed; drop the line, and the permit case says open.
+func TestTheJoinSettingsSayWhetherIDsMustBeListed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		access *config.Access
+		want   bool
+	}{
+		{"no access block", nil, false},
+		{"a ban list", &config.Access{Registration: config.ACL{Mode: "deny", IDs: []string{"1"}}}, false},
+		{"an allow-only list, as a Docker install starts", &config.Access{Registration: config.ACL{Mode: "permit", IDs: []string{"3132910"}}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := config.Default()
+			cfg.DMR.Access = tc.access
+			if got := joinSettings(cfg).IDsListed; got != tc.want {
+				t.Errorf("IDs listed %v, want %v", got, tc.want)
+			}
+		})
+	}
+}

@@ -1060,6 +1060,26 @@ All notable changes to QSP. Dates are UTC.
 
 ### Changed
 
+- **Upgrading a Docker install is one command, and the guide says so.**
+  "Upgrading" in `deploy/docker/README.md` told people to edit the image tag
+  by hand. An install made with `git clone` never needed to, because every
+  release updates the tag in the repository. It now leads with the one
+  command (`git pull`, then pull and restart, then print the running
+  version) and covers the rest:
+  - settings in `.env` and the data volume are untouched;
+  - what to do if `git pull` refuses;
+  - "manifest unknown" while a release is still being built;
+  - the Zello form of the command;
+  - a checkout built locally, which needs `--build` instead.
+
+  The README points to it, and a test keeps the command naming files that
+  exist and the container the compose file starts.
+- **The Join page and DVSwitch guide say "send your DMR ID first" only where
+  it is true.** A server whose **Who may connect** list admits only the IDs
+  it names, as a Docker install does from `QSP_ALLOWED_PEERS`, now shows
+  members a notice to send their ID before they start. An open server says
+  nothing about it. The join API reports only whether the list is
+  allow-only, never the IDs on it.
 - **The subscriber list is a ban list only. QSP never restricts which radios
   may transmit** (decided by K9MLS, 0448). An allow-only subscriber list means
   every visitor, every new radio and every member's second radio is refused,

@@ -41,3 +41,19 @@ def check_the_page_says_what_dvswitch_is_for_and_where_the_guide_is():
         assert not p.errors, p.errors
     finally:
         p.close()
+
+
+def check_members_are_told_to_send_their_id_only_when_it_is_needed():
+    """A network that admits only listed hotspots turns away a member whose
+    ID nobody added, however right the rest is; an open one has nothing to
+    ask. The page says which, from the server, rather than hedging to all.
+
+    Break it: in join.js, stop setting ids-listed from settings.ids_listed."""
+    for listed in (True, False):
+        settings = {"address": "qsp.example.org", "port": 62031, "ids_listed": listed}
+        p = Page("join", api={("GET", "/api/join"): lambda rq: (200, {"enabled": True, "settings": settings})})
+        try:
+            assert p.page.is_visible("#ids-listed") == listed, "listed=%s" % listed
+            assert not p.errors, p.errors
+        finally:
+            p.close()
